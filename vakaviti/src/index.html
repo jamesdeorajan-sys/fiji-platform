@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vakaviti — Fijian Dictionary</title>
+  <meta name="description" content="A living dictionary of Fijian words with phonetic pronunciation, audio, and English translations. Learn Fijian every day." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="#" class="logo" aria-label="Vakaviti home">
+        <svg viewBox="0 0 44 44" fill="none" aria-hidden="true" class="logo-mark">
+          <circle cx="22" cy="22" r="20" stroke="currentColor" stroke-width="2"/>
+          <path d="M10 28 C14 16, 22 12, 30 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          <path d="M14 32 C18 22, 26 18, 34 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.6"/>
+          <circle cx="22" cy="14" r="2.5" fill="currentColor"/>
+        </svg>
+        <span class="logo-text">
+          <span class="logo-fijian">Vakaviti</span>
+          <span class="logo-sub">Fijian Dictionary</span>
+        </span>
+      </a>
+
+      <div class="header-actions">
+        <!-- XP chip -->
+        <button class="xp-chip" id="xpChip" aria-label="Your XP level" title="Your XP and level" onclick="openLeaderboard()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
+          </svg>
+          <span class="xp-chip-label" id="xpChipLabel">Vulagi</span>
+          <span class="xp-chip-sub" id="xpChipSub">0 XP</span>
+        </button>
+
+        <!-- Streak chip -->
+        <button class="streak-chip" id="streakChip" aria-label="Quiz streak" title="Your daily quiz streak">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/>
+          </svg>
+          <span class="streak-count" id="streakCount">0</span>
+          <span class="streak-label">day streak</span>
+        </button>
+
+        <!-- Trophy / leaderboard button -->
+        <button class="btn-icon btn-trophy" id="lbOpenBtn" aria-label="Achievements and leaderboard" title="Achievements & Leaderboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+            <path d="M4 22h16"/>
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+          </svg>
+        </button>
+
+        <!-- Tier Challenges button -->
+        <button class="btn-icon btn-challenges" id="tcOpenBtn" aria-label="Tier Challenges" title="Tier Challenges — your path to the next level">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </button>
+
+        <button class="btn-icon btn-progress" id="dashOpenBtn" aria-label="Progress dashboard" title="My Progress">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+        </button>
+
+        <!-- Phonetics Practice button -->
+        <button class="btn-icon btn-phonetics" id="phoneticsLaunchBtn" aria-label="Phonetics Practice" title="Phonetics Practice — type the sounds">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+
+        <button class="btn-quiz-launch" id="quizLaunchBtn" aria-label="Start quiz">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".5" fill="currentColor"/>
+            <circle cx="12" cy="12" r="10"/>
+          </svg>
+          Quiz
+        </button>
+        <button class="btn-icon" id="favoritesToggle" aria-label="Open favorites" title="My Favorites">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+          <span class="fav-badge" id="favBadge" aria-live="polite">0</span>
+        </button>
+        <!-- Help / Guide button -->
+        <button class="btn-icon btn-help" id="guideOpenBtn" aria-label="How to use Vakaviti" title="User Guide">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <circle cx="12" cy="17" r=".5" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <button class="btn-icon" data-theme-toggle aria-label="Switch theme">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="hero-eyebrow">The living Fijian lexicon</p>
+      <h1 class="hero-title">
+        <em>Bula!</em> Learn Fijian<br/>one word at a time
+      </h1>
+      <p class="hero-sub">160 words with phonetic guides, audio pronunciation, and authentic definitions — built for daily use.</p>
+
+      <!-- SEARCH -->
+      <div class="search-wrap">
+        <label for="searchInput" class="sr-only">Search Fijian words</label>
+        <div class="search-field">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            type="search"
+            id="searchInput"
+            placeholder="Search by Fijian word or English meaning…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="search-clear" id="searchClear" aria-label="Clear search" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <button class="btn-random" id="randomBtn" title="Show a random word">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/>
+            <path d="m18 2 4 4-4 4"/>
+            <path d="M2 6h1.9c1.5 0 2.9.9 3.5 2.2"/>
+            <path d="M22 18h-5.9c-1.3 0-2.5-.6-3.3-1.7l-.5-.8"/>
+            <path d="m18 14 4 4-4 4"/>
+          </svg>
+          Random Word
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORD OF THE DAY -->
+  <!-- MONTHLY SPONSOR PRIZE BANNER -->
+  <section class="sponsor-banner" id="sponsorBanner" aria-label="Monthly Prize Sponsor">
+    <div class="sponsor-inner">
+      <div class="sponsor-tag">🏆 This Month's Prize</div>
+      <div class="sponsor-content">
+        <div class="sponsor-prize-col">
+          <p class="sponsor-prize-label">Win with <strong id="sponsorTierLabel">Matai or above</strong></p>
+          <p class="sponsor-prize-name" id="sponsorPrizeName">Loading prize…</p>
+          <p class="sponsor-prize-detail" id="sponsorPrizeDetail"></p>
+        </div>
+        <div class="sponsor-brand-col">
+          <div class="sponsor-logo-wrap" id="sponsorLogoWrap">
+            <span class="sponsor-logo-emoji" id="sponsorLogoEmoji">🌴</span>
+          </div>
+          <p class="sponsor-brand-name" id="sponsorBrandName"></p>
+          <a class="sponsor-brand-link" id="sponsorBrandLink" href="#" target="_blank" rel="noopener">Visit website →</a>
+        </div>
+      </div>
+      <div class="sponsor-cta">
+        <p class="sponsor-cta-text">Reach <span id="sponsorCtaTier">Matai</span> tier to be eligible &nbsp;·&nbsp; New prize every month</p>
+        <button class="sponsor-cta-btn" onclick="document.getElementById('quizLaunchBtn').click()">
+          Start Quiz to Earn XP
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section><!-- /.sponsor-banner -->
+
+  <section class="wotd-banner" id="wotdBanner" aria-label="Word of the Day">
+    <div class="wotd-inner">
+      <div class="wotd-label-col">
+        <span class="wotd-eyebrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          Word of the Day
+        </span>
+        <p class="wotd-date" id="wotdDate"></p>
+      </div>
+
+      <div class="wotd-content">
+        <div class="wotd-word-group">
+          <h2 class="wotd-word" id="wotdWord"></h2>
+          <span class="wotd-phonetic" id="wotdPhonetic"></span>
+          <span class="wotd-pos" id="wotdPos"></span>
+        </div>
+        <p class="wotd-translation" id="wotdTranslation"></p>
+        <p class="wotd-example" id="wotdExample"></p>
+      </div>
+
+      <div class="wotd-actions">
+        <button class="btn-wotd-audio" id="wotdPlayBtn" aria-label="Hear pronunciation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Listen
+        </button>
+        <button class="btn-wotd-open" id="wotdOpenBtn">
+          Full entry
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- wave divider -->
+    <div class="wotd-wave" aria-hidden="true">
+      <svg viewBox="0 0 1440 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,20 C240,40 480,0 720,20 C960,40 1200,0 1440,20 L1440,40 L0,40 Z" fill="var(--color-bg)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- SPONSOR LANDING SECTION -->
+  <section class="sponsor-landing" id="sponsorLanding" aria-label="Prize Sponsor Schedule">
+    <div class="sl-header">
+      <div class="sl-eyebrow">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Prizes &amp; Sponsors
+      </div>
+      <h2 class="sl-title">Win Real Prizes While Learning Fijian</h2>
+      <p class="sl-subtitle">Top learners on the XP leaderboard earn prizes sponsored by Fiji-based businesses every month. Reach Cauravou tier or above to be eligible.</p>
+    </div>
+
+    <!-- Prize calendar cards (rendered by JS) -->
+    <div class="sl-prize-grid" id="slPrizeGrid"></div>
+
+    <!-- PUBLIC LEADERBOARD -->
+    <div class="sl-lb-section" id="slLbSection">
+      <div class="sl-lb-header">
+        <div>
+          <div class="sl-lb-title">Community Top 10</div>
+          <div class="sl-lb-subtitle">Updated as members submit scores — honour system verified via WhatsApp</div>
+        </div>
+        <button class="sl-lb-join-btn" onclick="document.getElementById('quizLaunchBtn').click()">
+          Join the leaderboard →
+        </button>
+      </div>
+      <!-- Filter tabs -->
+      <div class="sl-lb-tabs" id="slLbTabs">
+        <button class="sl-lb-tab active" data-tier="All">All Tiers</button>
+        <button class="sl-lb-tab" data-tier="Turaga">Turaga</button>
+        <button class="sl-lb-tab" data-tier="Matai">Matai</button>
+        <button class="sl-lb-tab" data-tier="Cauravou">Cauravou</button>
+        <button class="sl-lb-tab" data-tier="Tamata">Tamata</button>
+      </div>
+      <!-- Board -->
+      <div class="sl-lb-board">
+        <div class="sl-lb-col-headers">
+          <span>#</span>
+          <span>Player</span>
+          <span>Tier</span>
+          <span style="text-align:right">XP</span>
+        </div>
+        <div id="slLbRows"><!-- populated by JS --></div>
+        <div class="sl-lb-footer">
+          Earn your spot — <a href="#" onclick="document.getElementById('quizLaunchBtn').click();return false;">start learning</a> and submit your rank card via WhatsApp to appear here.
+        </div>
+      </div>
+    </div>
+
+    <!-- How to win strip -->
+    <div class="sl-how-strip">
+      <div class="sl-how-title">How to Win</div>
+      <div class="sl-steps">
+        <div class="sl-step">
+          <div class="sl-step-num">1</div>
+          <div class="sl-step-label">Start Learning</div>
+          <div class="sl-step-hint">Take quizzes and phonetics practice to earn XP</div>
+        </div>
+        <div class="sl-step">
+          <div class="sl-step-num">2</div>
+          <div class="sl-step-label">Reach a Prize Tier</div>
+          <div class="sl-step-hint">Hit Cauravou (500 XP), Matai (1,000 XP) or Turaga (2,000 XP)</div>
+        </div>
+        <div class="sl-step">
+          <div class="sl-step-num">3</div>
+          <div class="sl-step-label">Claim Your Prize</div>
+          <div class="sl-step-hint">A popup appears — fill in your details and submit via WhatsApp</div>
+        </div>
+        <div class="sl-step">
+          <div class="sl-step-num">4</div>
+          <div class="sl-step-label">We Verify &amp; Send</div>
+          <div class="sl-step-hint">We confirm your score and arrange your prize — Vinaka!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tier eligibility table -->
+    <div class="sl-tier-section">
+      <div class="sl-tier-title">XP Tier Eligibility</div>
+      <table class="sl-tier-table" aria-label="XP tier prize eligibility">
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>XP Required</th>
+            <th>Level</th>
+            <th>Prize Eligible?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="sl-tier-name-cell"><span class="sl-tier-pill sl-tier-Cauravou" style="font-size:0.68rem;padding:0.15rem 0.5rem">Vulagi</span></td>
+            <td class="sl-tier-xp-cell">0 – 199 XP</td>
+            <td>New learner</td>
+            <td><span class="sl-eligible-no">Not eligible</span></td>
+          </tr>
+          <tr>
+            <td class="sl-tier-name-cell"><span style="display:inline-block;background:#f0ece6;color:#6b6560;border:1px solid #ddd;font-size:0.68rem;padding:0.15rem 0.5rem;border-radius:20px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tamata</span></td>
+            <td class="sl-tier-xp-cell">200 – 499 XP</td>
+            <td>Building vocabulary</td>
+            <td><span class="sl-eligible-no">Not eligible</span></td>
+          </tr>
+          <tr class="sl-tier-row-eligible">
+            <td class="sl-tier-name-cell"><span class="sl-card-tier sl-tier-Cauravou">Cauravou</span></td>
+            <td class="sl-tier-xp-cell">500 – 999 XP</td>
+            <td>Intermediate</td>
+            <td><span class="sl-eligible-yes">✓ Some prizes</span></td>
+          </tr>
+          <tr class="sl-tier-row-eligible">
+            <td class="sl-tier-name-cell"><span class="sl-card-tier sl-tier-Matai">Matai</span></td>
+            <td class="sl-tier-xp-cell">1,000 – 1,999 XP</td>
+            <td>Advanced learner</td>
+            <td><span class="sl-eligible-yes">✓ Most prizes</span></td>
+          </tr>
+          <tr class="sl-tier-row-eligible">
+            <td class="sl-tier-name-cell"><span class="sl-card-tier sl-tier-Turaga">Turaga</span></td>
+            <td class="sl-tier-xp-cell">2,000+ XP</td>
+            <td>Expert</td>
+            <td><span class="sl-eligible-yes">✓ All prizes</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- CTA -->
+    <div class="sl-cta">
+      <p class="sl-cta-text">New prizes added every month from Fiji-based sponsors. Play daily, climb the XP leaderboard, and keep learning.</p>
+      <button class="sl-cta-btn" onclick="document.getElementById('quizLaunchBtn').click()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Start Earning XP
+      </button>
+    </div>
+  </section><!-- /.sponsor-landing -->
+
+  <!-- PHONETIC GUIDE -->
+  <div class="phonetic-banner">
+    <div class="phonetic-inner">
+      <span class="phonetic-label">Pronunciation guide:</span>
+      <span class="phonetic-rule"><strong>B</strong> = <em>mb</em></span>
+      <span class="phonetic-rule"><strong>C</strong> = <em>th</em></span>
+      <span class="phonetic-rule"><strong>D</strong> = <em>nd</em></span>
+      <span class="phonetic-rule"><strong>G</strong> = <em>ng</em></span>
+      <span class="phonetic-rule"><strong>Q</strong> = <em>ngg</em></span>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+
+    <!-- CATEGORY FILTER -->
+    <div class="filter-bar" role="navigation" aria-label="Filter by category">
+      <div class="filter-scroll" id="filterScroll" role="list"></div>
+    </div>
+
+    <!-- RESULTS COUNT -->
+    <div class="results-bar">
+      <p class="results-count" id="resultsCount" aria-live="polite"></p>
+      <div class="sort-group">
+        <label for="sortSelect" class="sort-label">Sort:</label>
+        <select id="sortSelect" class="sort-select">
+          <option value="alpha">A–Z</option>
+          <option value="category">Category</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- WORD GRID -->
+    <div class="word-grid" id="wordGrid" role="list" aria-label="Fijian words"></div>
+
+    <!-- NO RESULTS -->
+    <div class="no-results" id="noResults" hidden>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        <path d="M8 11h6M11 8v6" opacity="0.5"/>
+      </svg>
+      <p>No words found for "<span id="noResultsQuery"></span>"</p>
+      <button class="btn-secondary" id="clearSearch">Clear search</button>
+    </div>
+
+  </main>
+
+  <!-- WORD MODAL -->
+  <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalWord" hidden>
+    <div class="modal">
+      <button class="modal-close" id="modalClose" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-category-pill" id="modalCategory"></div>
+          <h2 class="modal-word" id="modalWord"></h2>
+          <p class="modal-phonetic" id="modalPhonetic"></p>
+          <p class="modal-pos" id="modalPos"></p>
+        </div>
+        <button class="btn-fav-modal" id="modalFavBtn" aria-label="Add to favorites">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-audio-section">
+        <button class="btn-audio" id="modalPlayBtn" aria-label="Play pronunciation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>Hear pronunciation</span>
+        </button>
+        <div class="audio-wave" id="audioWave" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="def-block">
+          <h3 class="def-lang">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>
+            </svg>
+            Fijian Definition
+          </h3>
+          <p class="def-text fijian-def" id="modalFijianDef"></p>
+        </div>
+
+        <div class="def-block">
+          <h3 class="def-lang">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            English Translation
+          </h3>
+          <p class="def-text" id="modalEnglishDef"></p>
+        </div>
+
+        <div class="example-block" id="modalExampleBlock">
+          <h3 class="def-lang">Example</h3>
+          <blockquote class="example-quote">
+            <p class="example-fijian" id="modalExample"></p>
+            <footer class="example-translation" id="modalExampleTranslation"></footer>
+          </blockquote>
+        </div>
+      </div>
+
+      <div class="modal-nav">
+        <button class="btn-nav" id="modalPrev" aria-label="Previous word">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          Previous
+        </button>
+        <button class="btn-nav" id="modalRandom" aria-label="Random word">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/>
+            <path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.5 2.2"/>
+            <path d="M22 18h-5.9c-1.3 0-2.5-.6-3.3-1.7l-.5-.8"/>
+            <path d="m18 14 4 4-4 4"/>
+          </svg>
+          Random
+        </button>
+        <button class="btn-nav" id="modalNext" aria-label="Next word">
+          Next
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAVORITES PANEL -->
+  <div class="fav-panel" id="favPanel" role="complementary" aria-label="Favorites" hidden>
+    <div class="fav-panel-header">
+      <h2 class="fav-panel-title">My Favorites</h2>
+      <button class="btn-icon" id="favPanelClose" aria-label="Close favorites">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="fav-list" id="favList"></div>
+    <div class="fav-empty" id="favEmpty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      </svg>
+      <p>No favorites yet.<br/>Tap the heart on any word to save it here.</p>
+    </div>
+    <button class="btn-danger" id="clearFavs" hidden>Clear all favorites</button>
+  </div>
+  <div class="panel-backdrop" id="panelBackdrop" hidden></div>
+
+  <!-- PROGRESS DASHBOARD PANEL -->
+  <aside class="dash-panel" id="dashPanel" role="complementary" aria-label="Progress Dashboard" hidden>
+    <div class="dash-panel-header">
+      <div class="dash-panel-title-group">
+        <h2 class="dash-panel-title">Progress</h2>
+        <p class="dash-panel-sub">SM-2 card states across all 160 words</p>
+      </div>
+      <button class="btn-icon" id="dashCloseBtn" aria-label="Close dashboard">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mode tabs -->
+    <div class="dash-tabs" role="tablist">
+      <button class="dash-tab active" data-mode="forward" role="tab" aria-selected="true">English → Fijian</button>
+      <button class="dash-tab" data-mode="reverse" role="tab" aria-selected="false">Fijian → English</button>
+    </div>
+
+    <!-- KPI row -->
+    <div class="dash-kpi-row">
+      <div class="dash-kpi" id="dashDueKPIWrap">
+        <span class="dash-kpi-value" id="dashDueKPI">0</span>
+        <span class="dash-kpi-label">due now</span>
+      </div>
+      <div class="dash-kpi">
+        <span class="dash-kpi-value dash-kpi-mastered" id="dashMasteredKPI">0</span>
+        <span class="dash-kpi-label">mastered</span>
+      </div>
+      <div class="dash-kpi">
+        <span class="dash-kpi-value dash-kpi-unseen" id="dashUnseenKPI">0</span>
+        <span class="dash-kpi-label">unseen</span>
+      </div>
+    </div>
+
+    <!-- Stacked bar -->
+    <div class="dash-bar-wrap">
+      <div class="dash-bar" id="dashBar" role="img" aria-label="Word state breakdown"></div>
+      <div class="dash-bar-legend">
+        <span class="dash-legend-item"><span class="dash-swatch-unseen"></span>Unseen</span>
+        <span class="dash-legend-item"><span class="dash-swatch-learning"></span>Learning</span>
+        <span class="dash-legend-item"><span class="dash-swatch-due"></span>Due</span>
+        <span class="dash-legend-item"><span class="dash-swatch-review"></span>Review</span>
+        <span class="dash-legend-item"><span class="dash-swatch-strong"></span>Strong</span>
+        <span class="dash-legend-item"><span class="dash-swatch-graduated"></span>Graduated</span>
+      </div>
+    </div>
+
+    <!-- Breakdown list -->
+    <div class="dash-breakdown" id="dashBreakdownList"></div>
+
+    <!-- Footer note -->
+    <p class="dash-footer-note"><span id="dashBankTotal">0</span> words currently in your drill bank for this mode.</p>
+
+    <!-- FijiTourTransfers brand tile -->
+    <div class="brand-tile">
+      <div class="brand-tile-icon" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M24 6C24 6 14 16 14 26a10 10 0 0 0 20 0C34 16 24 6 24 6z" fill="#0a6e7c" opacity="0.18"/>
+          <path d="M8 36 Q16 30 24 34 Q32 38 40 32" stroke="#0a6e7c" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          <path d="M4 40 Q14 34 24 38 Q34 42 44 36" stroke="#c47b2b" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.7"/>
+          <circle cx="24" cy="18" r="3.5" fill="#0a6e7c"/>
+          <path d="M24 22 L24 30" stroke="#0a6e7c" stroke-width="2" stroke-linecap="round"/>
+          <path d="M18 26 L30 26" stroke="#0a6e7c" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+        </svg>
+      </div>
+      <div class="brand-tile-body">
+        <p class="brand-tile-heading">Planning a trip to Fiji?</p>
+        <p class="brand-tile-sub">Fiji Tours &amp; Transfers — airport pickups, waterfall hikes, Natadola beach horse riding &amp; more.</p>
+      </div>
+      <a class="brand-tile-cta" href="https://www.fijitourtransfers.com" target="_blank" rel="noopener noreferrer">
+        Explore Tours
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      </a>
+    </div>
+  </aside>
+  <div class="dash-backdrop" id="dashBackdrop" hidden></div>
+
+  <!-- ACHIEVEMENT TOAST -->
+  <div class="xp-toast" id="xpToast" role="status" aria-live="polite" hidden>
+    <span class="xp-toast-icon" id="xpToastIcon">🌺</span>
+    <div class="xp-toast-body">
+      <p class="xp-toast-title" id="xpToastTitle">Achievement Unlocked!</p>
+      <p class="xp-toast-desc" id="xpToastDesc"></p>
+    </div>
+  </div>
+
+  <!-- LEVEL UP BANNER (header-anchored, drops from XP chip) -->
+  <div class="levelup-banner" id="levelupBanner" aria-live="assertive" aria-atomic="true">
+    <canvas class="levelup-confetti" id="levelupConfetti" aria-hidden="true"></canvas>
+    <div class="levelup-banner-inner">
+      <div class="levelup-star-ring" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="1.5" opacity="0.25" class="levelup-ring-1"/>
+          <circle cx="32" cy="32" r="20" stroke="currentColor" stroke-width="1.5" opacity="0.4" class="levelup-ring-2"/>
+          <path d="M32 12l2.8 8.6H44l-7.4 5.4 2.8 8.6L32 29.2l-7.4 5.4 2.8-8.6L20 20.6h9.2z" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="levelup-text">
+        <span class="levelup-eyebrow">Level Up!</span>
+        <span class="levelup-title" id="levelupTitle">You are now a Tamata</span>
+        <span class="levelup-sub" id="levelupSub">Learner</span>
+      </div>
+      <button class="levelup-dismiss" id="levelupDismiss" aria-label="Dismiss">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- NAME PROMPT MODAL -->
+  <div class="xp-name-modal" id="xpNameModal" role="dialog" aria-modal="true" aria-labelledby="xpNameModalTitle">
+    <div class="xp-name-modal-box">
+      <div class="xp-name-modal-icon" aria-hidden="true">🌺</div>
+      <h2 class="xp-name-modal-title" id="xpNameModalTitle">Bula! Welcome to Vakaviti</h2>
+      <p class="xp-name-modal-sub">Enter a display name to track your XP and achievements.</p>
+      <input class="xp-name-input" id="xpNameInput" type="text" placeholder="Your name…" maxlength="24" autocomplete="off" />
+      <button class="btn-quiz-start xp-name-save-btn" id="xpNameSaveBtn">Start Learning</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD / ACHIEVEMENTS PANEL -->
+  <aside class="lb-panel" id="lbPanel" role="complementary" aria-label="Achievements and Rewards" hidden>
+    <div class="lb-panel-header">
+      <div class="lb-panel-title-group">
+        <h2 class="lb-panel-title" id="lbPanelTitle">Achievements</h2>
+        <p class="lb-panel-sub" id="lbPlayerLevel">Vulagi — Visitor</p>
+      </div>
+      <button class="btn-icon" id="lbCloseBtn" aria-label="Close panel">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Panel tabs -->
+    <div class="lb-tabs" role="tablist">
+      <button class="lb-tab active" data-lbtab="achievements" role="tab" aria-selected="true">Badges</button>
+      <button class="lb-tab" data-lbtab="rewards" role="tab" aria-selected="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="opacity:.8"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
+        Rewards
+      </button>
+      <button class="lb-tab" data-lbtab="history" role="tab" aria-selected="false">History</button>
+      <button class="lb-tab lb-tab-top10" data-lbtab="top10" role="tab" aria-selected="false">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="opacity:.85"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
+        Top 10
+      </button>
+    </div>
+
+    <!-- Player card -->
+    <div class="lb-player-card">
+      <div class="lb-player-info">
+        <span class="lb-player-name" id="lbPlayerName">Learner</span>
+        <span class="lb-total-xp" id="lbTotalXP">0 XP total</span>
+      </div>
+      <div class="lb-level-bar-wrap">
+        <div class="lb-level-bar"><div class="lb-level-fill" id="lbLevelProgress" style="width:0%"></div></div>
+        <span class="lb-level-label" id="lbLevelProgressLabel">0 / 200 XP to next level</span>
+      </div>
+    </div>
+
+    <!-- TAB: Achievements -->
+    <div class="lb-tab-content" id="lbTabAchievements">
+      <div class="lb-section-header">
+        <span class="lb-section-title">Badges</span>
+        <span class="lb-ach-tally" id="lbAchCount">0 / 13</span>
+      </div>
+      <div class="lb-ach-grid" id="lbAchGrid"></div>
+    </div>
+
+    <!-- TAB: Rewards -->
+    <div class="lb-tab-content" id="lbTabRewards" hidden>
+      <div class="rewards-list" id="rewardsList"></div>
+    </div>
+
+    <!-- TAB: History -->
+    <div class="lb-tab-content" id="lbTabHistory" hidden>
+      <div class="lb-section-header lb-section-header-history">
+        <span class="lb-section-title">Weekly XP History</span>
+      </div>
+      <div class="lb-history" id="lbHistory"></div>
+    </div>
+
+    <!-- TAB: Top 10 -->
+    <div class="lb-tab-content" id="lbTabTop10" hidden>
+      <div class="lb-section-header">
+        <span class="lb-section-title">Community Top 10</span>
+        <span class="lb-ach-tally">All-time XP</span>
+      </div>
+      <p class="lb-top10-intro">Scores submitted by players in the Facebook group. Post your rank card and WhatsApp your score to claim a spot!</p>
+      <div class="lb-top10-list" id="lbTop10List"></div>
+      <!-- Submit your score CTA -->
+      <div class="lb-submit-wrap" id="lbSubmitWrap">
+        <div class="lb-submit-card">
+          <div class="lb-submit-you" id="lbSubmitYou">
+            <span class="lb-submit-rank">#?</span>
+            <div class="lb-submit-info">
+              <span class="lb-submit-name" id="lbSubmitName">You</span>
+              <span class="lb-submit-xp" id="lbSubmitXP">0 XP</span>
+            </div>
+            <span class="lb-submit-tier" id="lbSubmitTier">Vulagi</span>
+          </div>
+          <p class="lb-submit-hint">Think you deserve a spot? Screenshot your rank card and tap below — it opens a pre-filled WhatsApp to submit your score.</p>
+          <a class="lb-submit-btn" id="lbSubmitBtn" href="#" target="_blank" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.553 4.118 1.523 5.847L0 24l6.335-1.501A11.94 11.94 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.805 9.805 0 0 1-5.032-1.386l-.361-.214-3.741.981.999-3.648-.235-.374A9.79 9.79 0 0 1 2.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg>
+            Submit My Score
+          </a>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lb-backdrop" id="lbBackdrop" hidden></div>
+
+  <!-- TIER CHALLENGES PANEL -->
+  <aside class="tc-panel" id="tcPanel" role="complementary" aria-label="Tier Challenges" hidden>
+    <div class="tc-panel-header">
+      <div class="tc-panel-title-group">
+        <h2 class="tc-panel-title">Tier Challenges</h2>
+        <p class="tc-panel-sub" id="tcPanelSub">Your path to the next level</p>
+      </div>
+      <button class="btn-icon" id="tcCloseBtn" aria-label="Close challenges">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Current tier status card -->
+    <div class="tc-status-card" id="tcStatusCard">
+      <div class="tc-status-tier" id="tcStatusTierBadge"></div>
+      <div class="tc-status-body">
+        <p class="tc-status-xp" id="tcStatusXP"></p>
+        <div class="tc-xp-bar-wrap">
+          <div class="tc-xp-bar"><div class="tc-xp-fill" id="tcXPFill" style="width:0%"></div></div>
+          <span class="tc-xp-label" id="tcXPLabel"></span>
+        </div>
+        <p class="tc-status-next" id="tcStatusNext"></p>
+      </div>
+    </div>
+
+    <!-- Challenge list -->
+    <div class="tc-challenges-list" id="tcChallengesList"></div>
+
+    <!-- Share nudge -->
+    <div class="tc-share-cta">
+      <p class="tc-share-text">Create a branded rank card to share in the group — shows your tier, XP and streak in one shareable image.</p>
+      <div class="tc-share-btns">
+        <button class="tc-rank-card-btn" id="tcRankCardBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <path d="M3 9h18M9 21V9"/>
+          </svg>
+          Get My Rank Card
+        </button>
+        <button class="tc-share-btn" id="tcShareBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/>
+          </svg>
+          Share link
+        </button>
+      </div>
+    </div>
+  </aside>
+  <div class="tc-backdrop" id="tcBackdrop" hidden></div>
+
+  <!-- USER GUIDE MODAL -->
+  <div class="guide-modal" id="guideModal" role="dialog" aria-modal="true" aria-label="Vakaviti User Guide">
+    <div class="guide-box">
+
+      <!-- Header -->
+      <div class="guide-header">
+        <div class="guide-header-left">
+          <svg viewBox="0 0 44 44" fill="none" class="guide-logo-mark" aria-hidden="true" width="32" height="32">
+            <circle cx="22" cy="22" r="20" stroke="currentColor" stroke-width="2"/>
+            <path d="M10 28 C14 16, 22 12, 30 16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+            <path d="M14 32 C18 22, 26 18, 34 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.6"/>
+            <circle cx="22" cy="14" r="2.5" fill="currentColor"/>
+          </svg>
+          <div>
+            <h2 class="guide-title">Vakaviti Guide</h2>
+            <p class="guide-subtitle">Everything you need to know</p>
+          </div>
+        </div>
+        <button class="btn-icon" id="guideCloseBtn" aria-label="Close guide">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Chapter nav -->
+      <div class="guide-nav" role="tablist" aria-label="Guide chapters">
+        <button class="guide-nav-btn active" data-chapter="welcome"    role="tab" aria-selected="true">Welcome</button>
+        <button class="guide-nav-btn"         data-chapter="learning"   role="tab" aria-selected="false">Learning</button>
+        <button class="guide-nav-btn"         data-chapter="xp"        role="tab" aria-selected="false">XP &amp; Tiers</button>
+        <button class="guide-nav-btn"         data-chapter="rewards"   role="tab" aria-selected="false">Rewards</button>
+        <button class="guide-nav-btn"         data-chapter="community" role="tab" aria-selected="false">Community</button>
+      </div>
+
+      <!-- Chapter content -->
+      <div class="guide-body">
+
+        <!-- CHAPTER 1: Welcome -->
+        <div class="guide-chapter" id="guideChapterWelcome">
+          <div class="guide-chapter-hero guide-hero-welcome">
+            <span class="guide-hero-emoji" aria-hidden="true">🌺</span>
+            <h3 class="guide-hero-title">Bula! Welcome to Vakaviti</h3>
+            <p class="guide-hero-sub">The free, living Fijian word library — built for daily learners, travellers, and the Fiji-loving community.</p>
+          </div>
+          <div class="guide-cards">
+            <div class="guide-card">
+              <span class="guide-card-icon">📖</span>
+              <div>
+                <p class="guide-card-title">160 Fijian Words</p>
+                <p class="guide-card-desc">Browse the full dictionary, hear authentic pronunciations, and read each word's Fijian definition, English translation, and example sentence.</p>
+              </div>
+            </div>
+            <div class="guide-card">
+              <span class="guide-card-icon">🔍</span>
+              <div>
+                <p class="guide-card-title">Search &amp; Filter</p>
+                <p class="guide-card-desc">Type any Fijian word or English meaning in the search bar. Filter by category (Greetings, Food, Travel, Nature…) or sort A–Z / Random.</p>
+              </div>
+            </div>
+            <div class="guide-card">
+              <span class="guide-card-icon">⭐</span>
+              <div>
+                <p class="guide-card-title">Word of the Day</p>
+                <p class="guide-card-desc">A new featured word appears every day at the top of the page — tap <em>Full entry</em> to read its complete definition, or <em>Listen</em> to hear it spoken aloud.</p>
+              </div>
+            </div>
+            <div class="guide-card">
+              <span class="guide-card-icon">❤️</span>
+              <div>
+                <p class="guide-card-title">Favourites</p>
+                <p class="guide-card-desc">Tap the heart on any word to save it to your personal Favourites list. Access it any time via the heart icon in the header.</p>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">
+            <span class="guide-tip-label">Pronunciation key</span>
+            <div class="guide-tip-rules">
+              <span><strong>B</strong> = <em>mb</em></span>
+              <span><strong>C</strong> = <em>th</em></span>
+              <span><strong>D</strong> = <em>nd</em></span>
+              <span><strong>G</strong> = <em>ng</em></span>
+              <span><strong>Q</strong> = <em>ngg</em></span>
+            </div>
+          </div>
+
+          <!-- TIP OF THE DAY -->
+          <div class="guide-totd" id="guideTotd">
+            <div class="guide-totd-header">
+              <span class="guide-totd-badge">💡 Tip of the Day</span>
+              <span class="guide-totd-date" id="guideTotdDate"></span>
+            </div>
+            <p class="guide-totd-text" id="guideTotdText"></p>
+            <div class="guide-totd-footer">
+              <span class="guide-totd-tag" id="guideTotdTag"></span>
+              <span class="guide-totd-counter" id="guideTotdCounter"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHAPTER 2: Learning -->
+        <div class="guide-chapter" id="guideChapterLearning" hidden>
+          <div class="guide-chapter-hero guide-hero-learning">
+            <span class="guide-hero-emoji" aria-hidden="true">🎯</span>
+            <h3 class="guide-hero-title">Three ways to learn</h3>
+            <p class="guide-hero-sub">Each mode is designed for a different stage of learning — from first encounter to long-term memory.</p>
+          </div>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Quiz Mode
+                  <span class="guide-step-badge quiz">Quiz</span>
+                </p>
+                <p class="guide-step-desc">Tap the <strong>Quiz</strong> button in the header to start. You'll see an English meaning and must pick the correct Fijian word from 4 options — or flip to <em>Fijian → English</em> for a harder challenge.</p>
+                <ul class="guide-step-list">
+                  <li>Choose 5, 10, 20 or all 160 questions per round</li>
+                  <li>Filter by category (e.g. Travel words only)</li>
+                  <li>Earn XP for every correct answer and perfect round</li>
+                  <li>Missed words are automatically sent to your Drill Bank</li>
+                </ul>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Flashcard Drill
+                  <span class="guide-step-badge drill">Drill</span>
+                </p>
+                <p class="guide-step-desc">After a quiz, missed words go into your personal <strong>Drill Bank</strong>. The drill uses <em>spaced repetition (SM-2)</em> — harder words come back more often until they graduate out.</p>
+                <ul class="guide-step-list">
+                  <li>Launch from the quiz results screen</li>
+                  <li>Each correct answer earns XP and advances the card</li>
+                  <li>Graduated cards move to your Progress Dashboard</li>
+                  <li>Cards have difficulty states: Learning → Due → Strong → Graduated</li>
+                </ul>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Progress Dashboard
+                  <span class="guide-step-badge dash">Dashboard</span>
+                </p>
+                <p class="guide-step-desc">Tap the <strong>bar chart</strong> icon in the header to see your SM-2 card states across all 160 words — a stacked bar showing Unseen / Learning / Due / Review / Strong / Graduated.</p>
+                <ul class="guide-step-list">
+                  <li>Switch between English→Fijian and Fijian→English views</li>
+                  <li>See how many words are due for review today</li>
+                  <li>Track your mastery over time</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHAPTER 3: XP & Tiers -->
+        <div class="guide-chapter" id="guideChapterXp" hidden>
+          <div class="guide-chapter-hero guide-hero-xp">
+            <span class="guide-hero-emoji" aria-hidden="true">⚡</span>
+            <h3 class="guide-hero-title">XP &amp; Tier System</h3>
+            <p class="guide-hero-sub">Every action earns XP. Accumulate enough to climb the five Fijian tiers — each one unlocks better rewards.</p>
+          </div>
+
+          <!-- XP table -->
+          <div class="guide-xp-table">
+            <div class="guide-xp-row header">
+              <span>Action</span><span>XP</span>
+            </div>
+            <div class="guide-xp-row"><span>✅ Correct quiz answer</span><span class="guide-xp-val">+10</span></div>
+            <div class="guide-xp-row"><span>🏁 Complete any quiz round</span><span class="guide-xp-val">+50</span></div>
+            <div class="guide-xp-row highlight"><span>⭐ Perfect round (100% score)</span><span class="guide-xp-val">+100</span></div>
+            <div class="guide-xp-row"><span>🔥 New streak day</span><span class="guide-xp-val">+25</span></div>
+            <div class="guide-xp-row"><span>📚 Correct drill flashcard</span><span class="guide-xp-val">+15</span></div>
+            <div class="guide-xp-row highlight"><span>🎓 Flashcard graduates</span><span class="guide-xp-val">+75</span></div>
+          </div>
+
+          <!-- Tier ladder -->
+          <p class="guide-section-label">The Five Tiers</p>
+          <div class="guide-tier-ladder">
+            <div class="guide-tier-row" style="--tier-color:#5ba4b0">
+              <span class="guide-tier-pill" style="background:#5ba4b0">Vulagi</span>
+              <span class="guide-tier-range">0 – 199 XP</span>
+              <span class="guide-tier-meaning">Visitor</span>
+            </div>
+            <div class="guide-tier-row" style="--tier-color:#3d9e6e">
+              <span class="guide-tier-pill" style="background:#3d9e6e">Tamata</span>
+              <span class="guide-tier-range">200 – 499 XP</span>
+              <span class="guide-tier-meaning">Learner</span>
+            </div>
+            <div class="guide-tier-row" style="--tier-color:#e08b2a">
+              <span class="guide-tier-pill" style="background:#e08b2a">Cauravou</span>
+              <span class="guide-tier-range">500 – 999 XP</span>
+              <span class="guide-tier-meaning">Student</span>
+            </div>
+            <div class="guide-tier-row" style="--tier-color:#c47b2b">
+              <span class="guide-tier-pill" style="background:#c47b2b">Matai</span>
+              <span class="guide-tier-range">1,000 – 1,999 XP</span>
+              <span class="guide-tier-meaning">Scholar</span>
+            </div>
+            <div class="guide-tier-row" style="--tier-color:#7c5cbf">
+              <span class="guide-tier-pill" style="background:#7c5cbf">Turaga</span>
+              <span class="guide-tier-range">2,000+ XP</span>
+              <span class="guide-tier-meaning">Chief 👑</span>
+            </div>
+          </div>
+
+          <div class="guide-tip">
+            <span class="guide-tip-label">💡 Fast-track tip</span>
+            <p class="guide-tip-text">Do a 10-question quiz with a perfect score = <strong>200 XP in one round</strong> (10×10 correct + 50 complete + 100 perfect). That's enough to jump from Vulagi straight to Tamata.</p>
+          </div>
+        </div>
+
+        <!-- CHAPTER 4: Rewards -->
+        <div class="guide-chapter" id="guideChapterRewards" hidden>
+          <div class="guide-chapter-hero guide-hero-rewards">
+            <span class="guide-hero-emoji" aria-hidden="true">🎁</span>
+            <h3 class="guide-hero-title">Real Fiji Rewards</h3>
+            <p class="guide-hero-sub">Every tier you reach unlocks a genuine discount or perk from <strong>Fiji Tours &amp; Transfers</strong> — airport pickups, waterfall hikes, beach rides, and more.</p>
+          </div>
+          <div class="guide-rewards-list">
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#5ba4b0">Vulagi</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">Bula Bonus Welcome Pack</p>
+                <p class="guide-reward-perks">5% off any Nadi airport transfer · Welcome certificate</p>
+              </div>
+            </div>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#3d9e6e">Tamata</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">Vakaviti Learner Tour Discount</p>
+                <p class="guide-reward-perks">10% off any day tour · Fijian phrase card PDF</p>
+              </div>
+            </div>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#e08b2a">Cauravou</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">Spirit of Fiji Adventure Pack</p>
+                <p class="guide-reward-perks">15% off adventure tours · Priority booking · Community shout-out</p>
+              </div>
+            </div>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#c47b2b">Matai</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">Matai Insider Cultural Package</p>
+                <p class="guide-reward-perks">20% off any tour · Free vehicle upgrade · Featured spotlight</p>
+              </div>
+            </div>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#7c5cbf">Turaga</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">Turaga's Welcome — Full Fiji Experience</p>
+                <p class="guide-reward-perks">25% off · 1 FREE tour · Meet-and-greet · Hall of Fame</p>
+              </div>
+            </div>
+          </div>
+          <div class="guide-reward-special">
+            <p class="guide-section-label">Weekly &amp; Monthly Prizes</p>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#0a6e7c">Weekly</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">🏆 Tiko Bibi Award</p>
+                <p class="guide-reward-perks">Top XP earner each week — 15% off any tour + social shout-out</p>
+              </div>
+            </div>
+            <div class="guide-reward-row">
+              <span class="guide-reward-tier" style="background:#b03060">Monthly</span>
+              <div class="guide-reward-detail">
+                <p class="guide-reward-title">🌸 Turaga ni Vula</p>
+                <p class="guide-reward-perks">Monthly champion — free return Nadi transfer + flower lei greeting</p>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">
+            <span class="guide-tip-label">How to claim</span>
+            <p class="guide-tip-text">Open the <strong>Trophy</strong> button → <strong>Rewards</strong> tab → tap <em>Claim on WhatsApp</em> next to any unlocked reward. The message is pre-filled — just hit send.</p>
+          </div>
+        </div>
+
+        <!-- CHAPTER 5: Community -->
+        <div class="guide-chapter" id="guideChapterCommunity" hidden>
+          <div class="guide-chapter-hero guide-hero-community">
+            <span class="guide-hero-emoji" aria-hidden="true">👑</span>
+            <h3 class="guide-hero-title">Compete with the group</h3>
+            <p class="guide-hero-sub">Challenge your Facebook community and see who reaches Turaga first.</p>
+          </div>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Get your Rank Card</p>
+                <p class="guide-step-desc">Tap <strong>⚡ Tier Challenges</strong> → <em>Get My Rank Card</em>. A branded 1080×1080 image is generated showing your tier, XP, streak, and stats. Download it or share directly.</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Post in the Facebook group</p>
+                <p class="guide-step-desc">Share your rank card image in the group and challenge members to beat your score. The more people join, the bigger the competition — and the more active the leaderboard becomes.</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Submit to the Community Top 10</p>
+                <p class="guide-step-desc">Think you've earned a leaderboard spot? Open <strong>Trophy → Top 10</strong> and tap <em>Submit My Score</em>. A pre-filled WhatsApp message is sent to the Vakaviti team — your score gets manually verified and added to the public board.</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">4</div>
+              <div class="guide-step-body">
+                <p class="guide-step-title">Check your Tier Challenges</p>
+                <p class="guide-step-desc">The <strong>⚡</strong> button shows exactly which quiz and drill targets you need to hit to reach the next tier — with live progress bars so you always know what's next.</p>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip guide-tip-cta">
+            <span class="guide-tip-label">🌺 Vakaviti is a free project from</span>
+            <a href="https://www.fijitourtransfers.com" target="_blank" rel="noopener" class="guide-ftt-link">
+              <strong>Fiji Tour Transfers</strong> — fijitourtransfers.com
+            </a>
+            <p class="guide-tip-text">Locally owned, Fiji-based tour operator. We built this free Fijian dictionary because every traveller who arrives knowing even five words feels Fiji as home. Airport transfers, waterfall hikes, beach horse riding, cultural tours — vinaka for learning with us.</p>
+          </div>
+        </div>
+
+      </div><!-- /.guide-body -->
+
+      <!-- Footer nav -->
+      <div class="guide-footer">
+        <button class="guide-prev-btn" id="guidePrevBtn" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+          Previous
+        </button>
+        <div class="guide-dots" id="guideDots"></div>
+        <button class="guide-next-btn" id="guideNextBtn">
+          Next
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+    </div><!-- /.guide-box -->
+  </div><!-- /.guide-modal -->
+
+  <!-- RANK CARD MODAL -->
+  <div class="rc-modal" id="rankCardModal" role="dialog" aria-modal="true" aria-label="Your Rank Card">
+    <div class="rc-modal-box">
+      <div class="rc-modal-header">
+        <h2 class="rc-modal-title">Your Rank Card</h2>
+        <button class="btn-icon" id="rankCardClose" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="rc-preview-wrap">
+        <img id="rankCardImg" class="rc-preview-img" src="" alt="Your Vakaviti rank card" />
+      </div>
+      <p class="rc-hint">Screenshot this card and post it in your Facebook group to challenge friends!</p>
+      <div class="rc-actions">
+        <a class="rc-download-btn" id="rankCardDownload" href="#" download="vakaviti-rank-card.png">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download PNG
+        </a>
+        <button class="rc-share-btn" id="rankCardShare">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/>
+          </svg>
+          Share to Facebook
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHONETICS PRACTICE OVERLAY -->
+  <div class="ph-overlay" id="phoneticsOverlay" role="dialog" aria-modal="true" aria-label="Phonetics Practice">
+    <div class="ph-box">
+
+      <!-- START SCREEN -->
+      <div class="ph-screen" id="phStartScreen">
+        <button class="ph-close" id="phCloseBtn" aria-label="Close phonetics practice">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="ph-start-icon" aria-hidden="true">🗣️</div>
+        <h2 class="ph-start-title">Phonetics Practice</h2>
+        <p class="ph-start-sub">See a Fijian word — type its phonetic spelling using the pronunciation rules. Build the reading skill that makes every word speakable.</p>
+
+        <!-- Rule reminder -->
+        <div class="ph-rules-strip">
+          <span class="ph-rule-chip" data-letter="b"><strong>B</strong> → <em>mb</em></span>
+          <span class="ph-rule-chip" data-letter="c"><strong>C</strong> → <em>th</em></span>
+          <span class="ph-rule-chip" data-letter="d"><strong>D</strong> → <em>nd</em></span>
+          <span class="ph-rule-chip" data-letter="g"><strong>G</strong> → <em>ng</em></span>
+          <span class="ph-rule-chip" data-letter="q"><strong>Q</strong> → <em>ngg</em></span>
+        </div>
+
+        <div class="ph-settings">
+          <div class="ph-setting-row">
+            <label class="ph-setting-label" for="phCountSelect">Words per round</label>
+            <select class="ph-setting-select" id="phCountSelect">
+              <option value="5">5 — Quick</option>
+              <option value="10" selected>10 — Standard</option>
+              <option value="20">20 — Challenge</option>
+              <option value="40">40 — Marathon</option>
+            </select>
+          </div>
+          <div class="ph-setting-row">
+            <label class="ph-setting-label" for="phCatSelect">Category</label>
+            <select class="ph-setting-select" id="phCatSelect">
+              <option value="all">All categories</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn-quiz-start ph-start-btn" id="phStartBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start Practice
+        </button>
+
+        <p class="ph-xp-note">+12 XP per correct answer &nbsp;·&nbsp; +80 XP perfect round bonus</p>
+      </div>
+
+      <!-- QUESTION SCREEN -->
+      <div class="ph-screen" id="phQuestionScreen" hidden>
+        <!-- Header bar -->
+        <div class="ph-q-header">
+          <button class="quiz-back" id="phQuitBtn" aria-label="Quit phonetics" onclick="closePhonetics()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          <div class="ph-progress-wrap">
+            <div class="ph-progress-bar"><div class="ph-progress-fill" id="phProgressFill"></div></div>
+            <span class="ph-progress-label" id="phProgressLabel">1 / 10</span>
+          </div>
+          <div class="quiz-score-badge" id="phScoreBadge">0 correct</div>
+          <div class="ph-timer-display" id="phTimerDisplay">0.0s</div>
+        </div>
+
+        <!-- Prompt -->
+        <p class="ph-prompt">Type the phonetic spelling of this word:</p>
+
+        <!-- Word card -->
+        <div class="ph-word-card">
+          <p class="ph-word" id="phWord">bula</p>
+          <p class="ph-pos" id="phPos">exclamation</p>
+          <span class="ph-word-best" id="phWordBestTime" hidden></span>
+        </div>
+
+        <!-- Rule reminder (active letters highlighted) -->
+        <div class="ph-rules-strip ph-rules-inline">
+          <span class="ph-rule-chip" data-letter="b"><strong>B</strong>→<em>mb</em></span>
+          <span class="ph-rule-chip" data-letter="c"><strong>C</strong>→<em>th</em></span>
+          <span class="ph-rule-chip" data-letter="d"><strong>D</strong>→<em>nd</em></span>
+          <span class="ph-rule-chip" data-letter="g"><strong>G</strong>→<em>ng</em></span>
+          <span class="ph-rule-chip" data-letter="q"><strong>Q</strong>→<em>ngg</em></span>
+        </div>
+
+        <!-- Input area -->
+        <div class="ph-input-wrap">
+          <input class="ph-input" id="phInput" type="text" placeholder="Type phonetic spelling…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+        </div>
+
+        <!-- Feedback -->
+        <div class="ph-feedback" id="phFeedback" hidden></div>
+
+        <!-- English hint (shown after check/reveal) -->
+        <div class="ph-hint-row" id="phHintRow" hidden>
+          <span class="ph-hint-label">Meaning:</span>
+          <span class="ph-hint-text" id="phHintText"></span>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="ph-actions">
+          <button class="btn-quiz-secondary ph-reveal-btn" id="phRevealBtn">Show answer</button>
+          <button class="btn-quiz-start ph-check-btn" id="phCheckBtn">Check ✓</button>
+          <button class="btn-quiz-next ph-next-btn" id="phNextBtn" hidden>Next word →</button>
+        </div>
+      </div>
+
+      <!-- RESULT SCREEN -->
+      <div class="ph-screen" id="phResultScreen" hidden>
+        <div class="ph-result-header">
+          <div class="ph-result-score" id="phResultScore">0 / 10</div>
+          <div class="ph-result-pct" id="phResultPct">0%</div>
+          <div class="ph-result-grade" id="phResultGrade">Keep going!</div>
+          <div class="ph-result-streak" id="phResultStreak">Best run: 0 in a row</div>
+        </div>
+        <div class="ph-result-list" id="phResultList"></div>
+        <div class="ph-result-actions">
+          <button class="btn-quiz-start" id="phPlayAgainBtn">Practice again</button>
+          <button class="btn-quiz-secondary ph-speed-board-btn" id="phSpeedBoardBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Speed Board
+          </button>
+          <button class="btn-quiz-secondary" id="phReturnBtn">Back to dictionary</button>
+        </div>
+      </div>
+
+    </div><!-- /.ph-box -->
+  </div><!-- /.ph-overlay -->
+
+  <!-- PHONETICS SPEED BOARD PANEL -->
+  <div class="ph-speed-board" id="phSpeedBoard" hidden>
+    <div class="ph-sb-header">
+      <div class="ph-sb-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Speed Board
+      </div>
+      <p class="ph-sb-sub">Your fastest correct entry per word. Red = needs work, green = fast.</p>
+      <button class="ph-close ph-sb-close-btn" id="phSbClose" aria-label="Close speed board">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Stats strip -->
+    <div class="ph-sb-stats" id="phSbStats" hidden></div>
+
+    <!-- Sort controls -->
+    <div class="ph-sb-sort">
+      <span class="ph-sb-sort-label">Sort:</span>
+      <button class="ph-sb-sort-btn active" data-sort="slowest">🐢 Needs Practice</button>
+      <button class="ph-sb-sort-btn" data-sort="fastest">⚡ Fastest First</button>
+      <button class="ph-sb-sort-btn" data-sort="attempts">🔄 Most Attempted</button>
+    </div>
+
+    <!-- Empty state -->
+    <p class="ph-sb-empty" id="phSbEmpty">No times recorded yet — complete a practice round to start tracking your speed.</p>
+
+    <!-- Slow Rules breakdown -->
+    <div class="ph-sb-slow-rules" id="phSbSlowRules" hidden>
+      <div class="ph-sb-section-label">🐢 Slow Rules Breakdown</div>
+      <p class="ph-sb-section-sub">Average time across all your entries that use each rule — the higher the bar, the more that transformation slows you down.</p>
+      <div class="ph-sb-rule-bars" id="phSbRuleBars"></div>
+    </div>
+
+    <!-- Word list -->
+    <div class="ph-sb-list" id="phSbList"></div>
+
+    <!-- Footer -->
+    <div class="ph-sb-footer">
+      <button class="btn-quiz-secondary ph-sb-reset" id="phSbResetBtn">🗑️ Clear all times</button>
+    </div>
+  </div><!-- /.ph-speed-board -->
+
+  <!-- WINNER CONTACT POPUP -->
+  <div class="winner-overlay" id="winnerOverlay" hidden>
+    <div class="winner-box">
+      <div class="winner-confetti-strip" aria-hidden="true">🎉🌴🏆🌴🎉</div>
+      <div class="winner-badge" id="winnerBadge">Turaga</div>
+      <h2 class="winner-title" id="winnerTitle">You've reached Turaga!</h2>
+      <p class="winner-sub">You've unlocked a prize tier. Fill in your details and we'll verify your score and send you your reward via WhatsApp.</p>
+
+      <div class="winner-prize-preview" id="winnerPrizePreview">
+        <!-- Populated from active sponsor -->
+      </div>
+
+      <form class="winner-form" id="winnerForm" novalidate>
+        <div class="winner-field">
+          <label class="winner-label" for="winnerName">Full name</label>
+          <input class="winner-input" id="winnerName" type="text" placeholder="Your name" required />
+        </div>
+        <div class="winner-field">
+          <label class="winner-label" for="winnerPhone">WhatsApp number</label>
+          <input class="winner-input" id="winnerPhone" type="tel" placeholder="+61 or +679 number" required />
+        </div>
+        <div class="winner-field">
+          <label class="winner-label" for="winnerLocation">Country / City</label>
+          <input class="winner-input" id="winnerLocation" type="text" placeholder="e.g. Suva, Fiji" required />
+        </div>
+        <button class="winner-submit" id="winnerSubmitBtn" type="submit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M5.072 18.928l1.428-5.217A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10a9.958 9.958 0 0 1-5.327-1.538l-4.601 1.466z"/></svg>
+          Send to WhatsApp
+        </button>
+      </form>
+
+      <button class="winner-skip" id="winnerSkipBtn">I'll claim later</button>
+    </div>
+  </div><!-- /.winner-overlay -->
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p class="footer-text">
+        <strong>Vakaviti</strong> — A free Fijian dictionary from <a href="https://www.fijitourtransfers.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">Fiji Tour Transfers</a>, built for the Fiji-loving community.
+        Pronunciation guide: B=mb, C=th, D=nd, G=ng, Q=ngg.
+      </p>
+      <p class="footer-note">Audio uses your browser's text-to-speech. Fijian phonetic spelling used for accuracy.</p>
+    </div>
+  </footer>
+
+  <!-- QUIZ OVERLAY -->
+  <div class="quiz-overlay" id="quizOverlay" role="dialog" aria-modal="true" aria-labelledby="quizHeading" hidden>
+
+    <!-- START SCREEN -->
+    <div class="quiz-screen" id="quizStartScreen">
+      <button class="quiz-back" id="quizCloseStart" aria-label="Close quiz">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="quiz-start-icon" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="2" opacity="0.2"/>
+          <path d="M24 20 C26 14, 38 14, 40 20 C42 26, 36 29, 32 32 L32 38" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <circle cx="32" cy="45" r="3" fill="currentColor"/>
+        </svg>
+      </div>
+      <h2 class="quiz-start-title" id="quizHeading">Fijian Word Quiz</h2>
+      <p class="quiz-start-sub" id="quizStartSub">You'll see an English meaning — pick the correct Fijian word from 4 options.</p>
+      <!-- Mode toggle -->
+      <div class="quiz-mode-toggle" role="group" aria-label="Quiz direction">
+        <button class="quiz-mode-btn active" id="quizModeForward" data-mode="forward">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10"/></svg>
+          English → Fijian
+        </button>
+        <button class="quiz-mode-btn" id="quizModeReverse" data-mode="reverse">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+          Fijian → English
+        </button>
+      </div>
+
+      <div class="quiz-settings">
+        <div class="quiz-setting-row">
+          <label class="quiz-setting-label" for="quizLengthSelect">Questions per round</label>
+          <select class="quiz-setting-select" id="quizLengthSelect">
+            <option value="5">5 — Quick warm-up</option>
+            <option value="10" selected>10 — Standard</option>
+            <option value="20">20 — Challenge</option>
+            <option value="160">All 160 — Master</option>
+          </select>
+        </div>
+        <div class="quiz-setting-row">
+          <label class="quiz-setting-label" for="quizCatSelect">Category</label>
+          <select class="quiz-setting-select" id="quizCatSelect">
+            <option value="all">All categories</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-quiz-start" id="quizStartBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Start Quiz
+      </button>
+    </div>
+
+    <!-- QUESTION SCREEN -->
+    <div class="quiz-screen" id="quizQuestionScreen" hidden>
+      <div class="quiz-q-header">
+        <button class="quiz-back" id="quizQuitBtn" aria-label="Quit quiz">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="quiz-progress-wrap">
+          <div class="quiz-progress-bar"><div class="quiz-progress-fill" id="quizProgressFill"></div></div>
+          <span class="quiz-progress-label" id="quizProgressLabel"></span>
+        </div>
+        <div class="quiz-score-badge" id="quizScoreBadge">0 / 0</div>
+      </div>
+
+      <div class="quiz-q-body">
+        <p class="quiz-q-prompt" id="quizQPrompt">Which Fijian word means…</p>
+        <div class="quiz-q-card">
+          <p class="quiz-q-english" id="quizEnglish"></p>
+          <p class="quiz-q-hint" id="quizHint"></p>
+        </div>
+        <div class="quiz-options" id="quizOptions" role="list"></div>
+        <div class="quiz-feedback" id="quizFeedback" hidden></div>
+        <button class="btn-quiz-next" id="quizNextBtn" hidden>Next question →</button>
+      </div>
+    </div>
+
+    <!-- RESULTS SCREEN -->
+    <div class="quiz-screen" id="quizResultScreen" hidden>
+      <div class="quiz-result-inner">
+        <div class="quiz-result-score-ring" id="quizResultRing" aria-hidden="true">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--color-border)" stroke-width="8"/>
+            <circle cx="50" cy="50" r="42" fill="none" stroke="var(--color-primary)" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264"
+              id="quizRingCircle" transform="rotate(-90 50 50)"/>
+          </svg>
+          <div class="quiz-result-score-text">
+            <span class="quiz-result-big" id="quizResultBig"></span>
+            <span class="quiz-result-denom" id="quizResultDenom"></span>
+          </div>
+        </div>
+        <h2 class="quiz-result-title" id="quizResultTitle"></h2>
+        <p class="quiz-result-sub" id="quizResultSub"></p>
+
+        <div class="quiz-missed-wrap" id="quizMissedWrap" hidden>
+          <h3 class="quiz-missed-heading">Words to review</h3>
+          <div class="quiz-missed-list" id="quizMissedList"></div>
+        </div>
+
+        <!-- Personal best badge -->
+        <div class="quiz-pb-badge" id="quizPBBadge" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
+          </svg>
+          <span id="quizPBText"></span>
+        </div>
+
+        <!-- Streak celebration (shown after completing a round) -->
+        <div class="quiz-streak-result" id="quizStreakResult" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/>
+          </svg>
+          <span id="quizStreakResultText"></span>
+        </div>
+
+        <!-- Drill launch button (shown only when missed bank has words) -->
+        <button class="btn-drill-launch" id="drillLaunchBtn" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            <path d="M9 7h6M9 11h4"/>
+          </svg>
+          Drill missed words
+          <span class="drill-btn-count">0</span>
+        </button>
+
+        <div class="quiz-result-actions">
+          <button class="btn-quiz-start" id="quizPlayAgainBtn">Play again</button>
+          <button class="btn-quiz-secondary" id="quizReturnBtn">Back to dictionary</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DRILL SCREEN -->
+    <div class="quiz-screen drill-screen" id="drillScreen" hidden>
+      <div class="drill-header">
+        <button class="quiz-back" id="drillCloseBtn" aria-label="Close drill">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <div class="drill-title-group">
+          <span class="drill-eyebrow">Flashcard Drill</span>
+          <div class="drill-progress-bar"><div class="drill-progress-fill" id="drillProgressFill"></div></div>
+        </div>
+        <div class="drill-counter">
+          <span id="drillRemaining">0</span>
+          <span class="drill-counter-sep">/</span>
+          <span id="drillTotal">0</span>
+          <span class="drill-counter-label">left</span>
+        </div>
+      </div>
+
+      <!-- Card area (question + options) -->
+      <div class="drill-card-area" id="drillCardArea">
+        <div class="quiz-q-body">
+          <div class="drill-card-meta">
+            <p class="quiz-q-prompt" id="drillLabel">Which Fijian word means…</p>
+            <span class="drill-difficulty-pill" id="drillDifficultyPill" hidden></span>
+          </div>
+          <div class="quiz-q-card drill-q-card">
+            <p class="quiz-q-english" id="drillPrompt"></p>
+            <p class="quiz-q-hint" id="drillHint"></p>
+          </div>
+          <div class="quiz-options" id="drillOptions" role="list"></div>
+          <div class="quiz-feedback" id="drillFeedback" hidden></div>
+          <button class="btn-quiz-next" id="drillNextBtn" hidden>Next card →</button>
+        </div>
+      </div>
+
+      <!-- Completion area (shown when bank is cleared) -->
+      <div class="drill-complete-area" id="drillCompleteArea" hidden>
+        <div class="drill-complete-inner">
+          <div class="drill-complete-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="32" cy="32" r="30" stroke="currentColor" stroke-width="2" opacity="0.15"/>
+              <path d="M18 32 L27 42 L46 22" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h2 class="drill-complete-title">Session complete!</h2>
+          <p class="drill-complete-sub">You reviewed <strong id="drillReviewedCount">0</strong> cards and graduated <strong id="drillClearedCount">0</strong> from the bank.</p>
+          <div class="drill-stats-row">
+            <div class="drill-stat">
+              <span class="drill-stat-value" id="drillBankCount">0</span>
+              <span class="drill-stat-label">still in bank</span>
+            </div>
+          </div>
+          <div class="quiz-result-actions">
+            <button class="btn-quiz-start" id="drillPlayAgainBtn">Take a new quiz</button>
+            <button class="btn-quiz-secondary" id="drillReturnBtn">Back to dictionary</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="words.js"></script>
+  <script src="app.js"></script>
+  <script src="streak.js"></script>
+  <script src="pb.js"></script>
+  <script src="quiz.js"></script>
+  <script src="drill.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="rankcard.js"></script>
+  <script src="xp.js"></script>
+  <script src="guide.js"></script>
+  <script src="phonetics.js"></script>
+  <script src="sponsors.js"></script>
+  <script src="chat-widget.js?v=20260505a"></script>
+  <script>streakInit(); dashInit(); xpInit(); guideInit(); phoneticsInit(); sponsorsInit();</script>
+</body>
+</html>

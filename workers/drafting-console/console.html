@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fiji Tour Transfers — Drafting Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ocean: #0d4d6e;
+    --ocean-deep: #08334a;
+    --sunset: #d97540;
+    --coral: #c83e3e;
+    --palm: #2d7a5f;
+    --paper: #faf6f0;
+    --paper-warm: #f5ede0;
+    --paper-card: #fffdf8;
+    --ink: #1a1a1a;
+    --ink-soft: #4a4a4a;
+    --ink-quiet: #8a8580;
+    --line: #d8d0c2;
+    --line-soft: #ebe5d6;
+    --gold: #b8884a;
+    --shadow-sm: 0 1px 2px rgba(8, 51, 74, 0.05);
+    --shadow-md: 0 4px 14px rgba(8, 51, 74, 0.06), 0 1px 3px rgba(8, 51, 74, 0.04);
+    --shadow-lg: 0 10px 40px rgba(8, 51, 74, 0.08), 0 2px 6px rgba(8, 51, 74, 0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--paper); color: var(--ink); font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.55; min-height: 100%; }
+  body { padding: 32px 24px 80px; }
+  .container { max-width: 980px; margin: 0 auto; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+  .brand { display: flex; flex-direction: column; gap: 4px; }
+  .brand-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); font-weight: 500; }
+  .brand-title { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 500; color: var(--ocean-deep); letter-spacing: -0.02em; line-height: 1.05; font-variation-settings: "opsz" 36; }
+  .brand-title em { font-style: italic; color: var(--sunset); font-weight: 400; }
+  .session-info { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-quiet); text-align: right; line-height: 1.5; }
+  .session-info strong { color: var(--ocean); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .panel { background: var(--paper-card); border: 1px solid var(--line); border-radius: 4px; padding: 24px 26px; box-shadow: var(--shadow-sm); position: relative; }
+  .panel-eyebrow { display: flex; align-items: baseline; gap: 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ocean); font-weight: 600; margin-bottom: 14px; }
+  .panel-eyebrow .num { color: var(--gold); }
+  .panel-eyebrow .hint { color: var(--ink-quiet); font-weight: 400; letter-spacing: 0.08em; text-transform: none; margin-left: auto; font-size: 11px; }
+  textarea, input[type="text"] { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.6; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 12px 14px; resize: vertical; transition: border-color 0.15s, background 0.15s; }
+  textarea:focus, input:focus { outline: none; border-color: var(--ocean); background: var(--paper-card); box-shadow: 0 0 0 3px rgba(13, 77, 110, 0.08); }
+  textarea#incoming { min-height: 110px; }
+  textarea#draft { min-height: 140px; background: var(--paper-card); border-color: var(--palm); }
+  textarea#draft:focus { border-color: var(--ocean); }
+  .small-input { display: flex; gap: 12px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+  .small-input label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-quiet); font-weight: 500; }
+  .small-input input { flex: 1; min-width: 140px; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  button { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 3px; border: 1px solid transparent; cursor: pointer; transition: all 0.15s; letter-spacing: -0.005em; }
+  .btn-primary { background: var(--ocean); color: var(--paper); border-color: var(--ocean); }
+  .btn-primary:hover:not(:disabled) { background: var(--ocean-deep); border-color: var(--ocean-deep); }
+  .btn-primary:disabled { background: var(--ink-quiet); border-color: var(--ink-quiet); cursor: not-allowed; opacity: 0.6; }
+  .btn-secondary { background: var(--paper); color: var(--ocean); border-color: var(--ocean); }
+  .btn-secondary:hover { background: var(--ocean); color: var(--paper); }
+  .btn-ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); }
+  .btn-ghost:hover { background: var(--paper-warm); color: var(--ink); }
+  .btn-danger { background: transparent; color: var(--coral); border-color: var(--coral); }
+  .btn-danger:hover { background: var(--coral); color: var(--paper); }
+  .loading-state { display: none; flex-direction: column; gap: 8px; padding: 24px; text-align: center; color: var(--ink-soft); }
+  .loading-state.active { display: flex; }
+  .loading-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.08em; color: var(--ocean); }
+  .loading-bar { width: 100%; height: 2px; background: var(--line-soft); border-radius: 1px; overflow: hidden; position: relative; }
+  .loading-bar::after { content: ''; position: absolute; height: 100%; width: 30%; background: var(--ocean); animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { left: -30%; } 100% { left: 100%; } }
+  .ai-output { display: none; }
+  .ai-output.visible { display: block; }
+  .draft-area { margin-bottom: 18px; }
+  .meta-row { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; padding: 14px 16px; background: var(--paper-warm); border-left: 3px solid var(--gold); border-radius: 0 3px 3px 0; margin-bottom: 14px; font-size: 13px; }
+  .meta-row dt { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-quiet); font-weight: 600; padding-top: 1px; }
+  .meta-row dd { color: var(--ink); }
+  .meta-row dd em { color: var(--ink-soft); font-style: italic; }
+  .confidence-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .confidence-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .confidence-pill.high { background: rgba(45, 122, 95, 0.12); color: var(--palm); }
+  .confidence-pill.high::before { background: var(--palm); }
+  .confidence-pill.medium { background: rgba(184, 136, 74, 0.14); color: var(--gold); }
+  .confidence-pill.medium::before { background: var(--gold); }
+  .confidence-pill.low { background: rgba(200, 62, 62, 0.12); color: var(--coral); }
+  .confidence-pill.low::before { background: var(--coral); }
+  .escalate-banner { display: none; padding: 12px 16px; background: rgba(200, 62, 62, 0.08); border: 1px solid rgba(200, 62, 62, 0.25); border-radius: 3px; margin-bottom: 14px; }
+  .escalate-banner.active { display: block; }
+  .escalate-banner-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--coral); font-weight: 700; margin-bottom: 4px; }
+  .escalate-banner-text { color: var(--ink); font-size: 13px; }
+  .feedback-row { display: flex; gap: 8px; align-items: center; padding-top: 14px; border-top: 1px solid var(--line-soft); margin-top: 14px; }
+  .feedback-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: var(--ink-quiet); margin-right: 4px; }
+  .feedback-btn { background: transparent; border: 1px solid var(--line); color: var(--ink-soft); padding: 5px 10px; font-size: 12px; cursor: pointer; transition: all 0.15s; border-radius: 3px; font-weight: 500; }
+  .feedback-btn:hover { border-color: var(--ocean); color: var(--ocean); }
+  .feedback-btn.active.useful { background: var(--palm); color: var(--paper); border-color: var(--palm); }
+  .feedback-btn.active.edit { background: var(--gold); color: var(--paper); border-color: var(--gold); }
+  .feedback-btn.active.bad { background: var(--coral); color: var(--paper); border-color: var(--coral); }
+  .history-panel { margin-top: 32px; }
+  .history-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .history-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ocean); font-weight: 600; }
+  .history-stats { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-quiet); letter-spacing: 0.05em; }
+  .history-stats strong { color: var(--ocean); font-weight: 600; }
+  .history-empty { padding: 32px 20px; text-align: center; color: var(--ink-quiet); font-style: italic; font-family: 'Fraunces', serif; font-size: 14px; }
+  .history-list { display: flex; flex-direction: column; gap: 8px; }
+  .history-item { background: var(--paper-card); border: 1px solid var(--line-soft); border-radius: 3px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; font-size: 13px; }
+  .history-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-quiet); white-space: nowrap; }
+  .history-msg-preview { color: var(--ink-soft); overflow: hidden; }
+  .history-msg-preview .incoming-snippet { color: var(--ink); font-weight: 500; display: block; margin-bottom: 3px; line-height: 1.4; }
+  .history-msg-preview .draft-snippet { color: var(--ink-quiet); font-style: italic; font-size: 12px; line-height: 1.4; }
+  .history-feedback-icon { font-size: 14px; opacity: 0.7; }
+  footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--ink-quiet); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; }
+  footer a { color: var(--ocean); text-decoration: underline; text-underline-offset: 2px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(120%); background: var(--ocean-deep); color: var(--paper); padding: 12px 20px; border-radius: 3px; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); z-index: 100; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  @media (max-width: 640px) {
+    body { padding: 20px 16px 60px; }
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .session-info { text-align: left; }
+    .brand-title { font-size: 26px; }
+    .panel { padding: 20px 18px; }
+    .meta-row { grid-template-columns: 1fr; gap: 4px 0; }
+    .meta-row dt { padding-top: 8px; }
+    .meta-row dt:first-of-type { padding-top: 0; }
+    .history-item { grid-template-columns: 1fr; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="brand">
+      <span class="brand-eyebrow">Fiji Tour Transfers · Internal Tool</span>
+      <h1 class="brand-title">Drafting <em>Console</em></h1>
+    </div>
+    <div class="session-info">
+      <div>session · <strong id="sessionDate">—</strong></div>
+      <div>drafts today · <strong id="draftsToday">0</strong></div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <div class="panel-eyebrow">
+        <span class="num">01</span>
+        <span>Incoming Message</span>
+        <span class="hint">paste from WhatsApp</span>
+      </div>
+      <textarea id="incoming" placeholder="Paste the customer's WhatsApp message here.&#10;&#10;Example: 'Hi, what's the price for airport pickup to Outrigger Coral Coast for 4 people on May 15th?'"></textarea>
+      <div class="small-input">
+        <label for="context">Context (optional):</label>
+        <input type="text" id="context" placeholder="e.g. returning customer, already booked Hilton next week, just landed">
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="generateBtn">Generate Draft</button>
+        <button class="btn-ghost" id="clearBtn">Clear</button>
+      </div>
+    </section>
+
+    <div class="loading-state" id="loadingState">
+      <div class="loading-text">drafting reply…</div>
+      <div class="loading-bar"></div>
+    </div>
+
+    <section class="panel ai-output" id="aiOutput">
+      <div class="panel-eyebrow">
+        <span class="num">02</span>
+        <span>Draft Reply</span>
+        <span class="hint" id="confidenceContainer"></span>
+      </div>
+      <div class="escalate-banner" id="escalateBanner">
+        <div class="escalate-banner-title">⚠ Escalate to human</div>
+        <div class="escalate-banner-text" id="escalateReason"></div>
+      </div>
+      <div class="draft-area">
+        <textarea id="draft" placeholder="Draft will appear here..."></textarea>
+      </div>
+      <dl class="meta-row" id="metaRow">
+        <dt>Reasoning</dt>
+        <dd id="reasoningField">—</dd>
+        <dt>Assumptions</dt>
+        <dd id="assumptionsField">—</dd>
+      </dl>
+      <div class="actions">
+        <button class="btn-primary" id="copyBtn">Copy to Clipboard</button>
+        <button class="btn-secondary" id="regenBtn">Regenerate</button>
+      </div>
+      <div class="feedback-row">
+        <span class="feedback-label">draft was:</span>
+        <button class="feedback-btn" data-feedback="useful" id="fbUseful">used as-is</button>
+        <button class="feedback-btn" data-feedback="edit" id="fbEdit">edited</button>
+        <button class="feedback-btn" data-feedback="bad" id="fbBad">not useful</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="history-panel">
+    <div class="history-header">
+      <span class="history-title">Recent Drafts</span>
+      <span class="history-stats" id="historyStats">— total drafts</span>
+    </div>
+    <div id="historyList" class="history-list">
+      <div class="history-empty">No drafts yet — paste a message above to start.</div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Fiji Tour Transfers · "One message. We sort it."</span>
+    <span><button class="btn-danger" style="font-size: 11px; padding: 4px 10px;" id="clearHistoryBtn">clear all history</button></span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const WORKER_URL = 'https://fiji-drafting-console.helpronline.workers.dev/';
+
+  let lastDraft = null;
+  let historyCache = [];
+
+  const SYSTEM_PROMPT = `You are a drafting assistant for FIJI TOUR TRANSFERS, an Australian-registered Fiji ground-transfer & tour booking company. You draft replies to incoming WhatsApp messages from prospective and current customers. A human operator reviews every draft before sending — you are NOT speaking directly to the customer.
+
+═══════════════════════════════════════════════════════════════
+BRAND VOICE (non-negotiable)
+═══════════════════════════════════════════════════════════════
+- Open with "Bula" or "Bula vinaka" — never "Hi" or "Hello"
+- Close with "Vinaka" or "Vinaka vakalevu" when appropriate
+- Warm, professional, knowledgeable, direct. Never salesy or pushy.
+- Use customer's first name if known (and only first name)
+- Short sentences. Concrete details. No corporate filler.
+- Do NOT use generic phrases like "valued customer" or "we appreciate your inquiry"
+
+═══════════════════════════════════════════════════════════════
+PRICING REFERENCE (FJD, sedan/minivan/minibus, ONE-WAY)
+═══════════════════════════════════════════════════════════════
+NADI AIRPORT to:
+  Tokatoka Resort Hotel    : FJ$15  / FJ$25  / FJ$35
+  Tanoa International      : FJ$15  / FJ$25  / FJ$35
+  Crowne Plaza Nadi Bay    : FJ$45  / FJ$59  / FJ$75
+  Hilton/Sheraton/Westin Denarau: FJ$49 / FJ$69 / FJ$99
+  Sofitel/Radisson Denarau : FJ$49  / FJ$69  / FJ$99
+  Port Denarau Marina      : FJ$55  / FJ$79  / FJ$110
+  DoubleTree Sonaisali     : FJ$69  / FJ$99  / FJ$149
+  First Landing (Vuda)     : FJ$95  / FJ$115 / FJ$165
+  Marriott Momi Bay        : FJ$99  / FJ$129 / FJ$79
+  IC Natadola              : FJ$129 / FJ$169 / FJ$199
+  Shangri-La Yanuca        : FJ$199 / FJ$249 / FJ$299
+  Outrigger Fiji           : FJ$129 / FJ$159 / FJ$199
+  Warwick / Naviti         : FJ$219 / FJ$259 / FJ$299
+  Pearl South Pacific      : FJ$269 / FJ$299 / FJ$349
+  Volivoli (Rakiraki)      : FJ$259 / FJ$309 / FJ$379
+  Grand Pacific Suva       : FJ$319 / FJ$369 / FJ$499
+  Tanoa Plaza Suva         : FJ$319 / FJ$369 / FJ$499
+  Nausori Airport (SUV)    : FJ$369 / FJ$499 / FJ$549
+
+MODIFIERS:
+  Return trip: roughly transfer × 1.85 (so a FJ$129 one-way becomes ~FJ$240 return)
+  Night surcharge (10pm-6am pickups): +20%
+  10% loyalty discount on transfer-only bookings over FJ$50 (does NOT stack with tour discounts)
+  Add-ons: child seat +FJ$8 each, surfboard/oversized +FJ$24, supermarket stop FREE
+
+VEHICLES: Sedan up to 3 pax + 3 bags. Minivan up to 7 pax + 7 bags. Minibus up to 12 pax + 14 bags.
+
+If asked for a price NOT in this list, say so honestly and offer to confirm it within the hour. Don't guess.
+
+═══════════════════════════════════════════════════════════════
+TOUR PRICING (per person, FJD)
+═══════════════════════════════════════════════════════════════
+  Natadola Beach Horse Riding (50 min)        : FJ$138
+  Natadola Cross Country Horse Riding (1 hr)  : FJ$181
+  Coral Coast Beach Horse Riding (1 hr)       : FJ$138
+  Nadi Cultural Night Tour (4 hrs)            : FJ$196
+  Suva City Day Tour (2 hrs)                  : FJ$261
+  Naihehe Cave Tour (3 hrs)                   : FJ$232
+  Biausevu Waterfall & Village Trek (3 hrs)   : FJ$271
+  Sigatoka River + Biausevu Combo (6 hrs)     : FJ$218
+  Coral Coast Full Day (6 hrs)                : FJ$174
+  Nadi Zip Line (3 hrs)                       : FJ$320
+  Nausori Highland ATV (5 hrs)                : FJ$434
+  Snorkel with Sharks (4 hrs)                 : FJ$244
+  Mamanuca Sailing Cruise (7 hrs)             : FJ$262
+  Whale's Tale Day Cruise (7 hrs)             : FJ$361
+  Sigatoka Coastal Fishing Charter (3 hrs)    : FJ$544
+  Sabeto Hot Springs & Mud Pool (4 hrs)       : FJ$276
+
+A tour booking includes the tour cost (per person × pax) PLUS the transfer cost separately.
+
+═══════════════════════════════════════════════════════════════
+ALWAYS ESCALATE — do NOT draft a reply, set escalate: true
+═══════════════════════════════════════════════════════════════
+- Refund or compensation requests
+- Complaints about driver, vehicle, or service quality
+- Customer says they want to speak to a human/manager/owner
+- Group bookings 10+ passengers
+- Wedding or corporate events
+- Medical emergencies, lost passengers, missing luggage
+- Anything mentioning legal action, ACCC, or formal complaint
+- Customer is clearly upset, angry, or distressed
+- Booking modifications less than 2 hours before pickup time
+- Pricing questions for routes/destinations not in your reference data
+- Anything that requires real-time information you don't have (driver ETA, current traffic)
+- Multi-leg trips involving domestic flights or other operators
+
+═══════════════════════════════════════════════════════════════
+SAFE TO DRAFT — pricing, FAQs, tour info, simple modifications
+═══════════════════════════════════════════════════════════════
+- Pricing quotes for routes in the reference table
+- Vehicle recommendations based on pax/bags
+- Tour information (duration, price, what's included)
+- Simple booking modifications more than 2 hours before pickup
+- General questions about the service ("do you have car seats?", "can we stop for groceries?")
+- Confirmations and thank-you replies
+
+═══════════════════════════════════════════════════════════════
+RESPONSE FORMAT (JSON only, no markdown, no commentary)
+═══════════════════════════════════════════════════════════════
+{
+  "draft": "<the suggested reply text, or empty string if escalating>",
+  "confidence": "<high | medium | low>",
+  "escalate": <true | false>,
+  "escalate_reason": "<why this should go to human, or empty string>",
+  "reasoning": "<one short sentence: how you interpreted the message and why this draft>",
+  "assumptions": "<one short line listing what you assumed that the operator should verify>"
+}
+
+CONFIDENCE GUIDE:
+- high: Pricing is in your reference table, intent is clear, no ambiguity
+- medium: You can draft a reasonable reply but there are 1-2 assumptions worth flagging
+- low: Multiple assumptions or ambiguity; operator should review carefully
+
+Be honest. If you're guessing, say so in assumptions. If you don't know, say "I don't have this info — confirming with the team within the hour" and set escalate: true.`;
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem('drafts:history');
+      if (raw) historyCache = JSON.parse(raw);
+    } catch (e) {
+      historyCache = [];
+    }
+    renderHistory();
+    updateStats();
+  }
+
+  function saveHistory() {
+    try {
+      const trimmed = historyCache.slice(0, 100);
+      localStorage.setItem('drafts:history', JSON.stringify(trimmed));
+    } catch (e) {
+      console.error('Failed to save history:', e);
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function setButtonsDisabled(disabled) {
+    document.getElementById('generateBtn').disabled = disabled;
+    document.getElementById('regenBtn').disabled = disabled;
+    document.getElementById('copyBtn').disabled = disabled;
+  }
+
+  function renderHistory() {
+    const list = document.getElementById('historyList');
+    if (historyCache.length === 0) {
+      list.innerHTML = '<div class="history-empty">No drafts yet — paste a message above to start.</div>';
+      return;
+    }
+    list.innerHTML = historyCache.slice(0, 12).map(item => {
+      const t = new Date(item.timestamp);
+      const timeLabel = t.toLocaleString('en-AU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const incomingShort = (item.incoming || '').slice(0, 75) + ((item.incoming || '').length > 75 ? '…' : '');
+      const draftShort = item.escalate ? '↗ escalated' : ((item.draft || '').slice(0, 80) + ((item.draft || '').length > 80 ? '…' : ''));
+      const fbIcon = ({ useful: '✓', edit: '~', bad: '✗' })[item.feedback] || '·';
+      return `<div class="history-item"><span class="history-time">${escapeHtml(timeLabel)}</span><div class="history-msg-preview"><span class="incoming-snippet">${escapeHtml(incomingShort)}</span><span class="draft-snippet">${escapeHtml(draftShort)}</span></div><span class="history-feedback-icon">${fbIcon}</span></div>`;
+    }).join('');
+  }
+
+  function updateStats() {
+    document.getElementById('historyStats').innerHTML = `<strong>${historyCache.length}</strong> total drafts`;
+    const today = new Date().toDateString();
+    const todayCount = historyCache.filter(h => new Date(h.timestamp).toDateString() === today).length;
+    document.getElementById('draftsToday').textContent = todayCount;
+    document.getElementById('sessionDate').textContent = new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  function clearFeedbackButtons() {
+    document.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('active'));
+  }
+
+  async function generateDraft() {
+    const incoming = document.getElementById('incoming').value.trim();
+    const context = document.getElementById('context').value.trim();
+    if (!incoming) {
+      showToast('Paste a message first');
+      return;
+    }
+    document.getElementById('aiOutput').classList.remove('visible');
+    document.getElementById('loadingState').classList.add('active');
+    setButtonsDisabled(true);
+
+    const userMessage = `INCOMING WHATSAPP MESSAGE:
+"${incoming}"
+${context ? `\nADDITIONAL CONTEXT FROM OPERATOR:\n${context}` : ''}
+
+Draft a reply following the brand voice and format. Return JSON only.`;
+
+    try {
+      const response = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userMessage }]
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Worker returned ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      const data = await response.json();
+      const textBlock = (data.content || []).find(b => b.type === 'text');
+      if (!textBlock) throw new Error('No text in API response');
+      let parsed;
+      try {
+        const cleaned = textBlock.text.replace(/```json\s*|\s*```/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      } catch (parseErr) {
+        throw new Error('Could not parse AI response as JSON');
+      }
+      displayDraft(parsed, incoming, context);
+    } catch (err) {
+      console.error(err);
+      showToast('Error: ' + err.message);
+    } finally {
+      document.getElementById('loadingState').classList.remove('active');
+      setButtonsDisabled(false);
+    }
+  }
+
+  function displayDraft(parsed, incoming, context) {
+    lastDraft = { ...parsed, incoming, context, timestamp: Date.now(), feedback: null };
+    const aiOut = document.getElementById('aiOutput');
+    aiOut.classList.add('visible');
+    const conf = (parsed.confidence || 'medium').toLowerCase();
+    document.getElementById('confidenceContainer').innerHTML = `<span class="confidence-pill ${conf}">${conf} confidence</span>`;
+    const banner = document.getElementById('escalateBanner');
+    if (parsed.escalate) {
+      banner.classList.add('active');
+      document.getElementById('escalateReason').textContent = parsed.escalate_reason || 'This requires human attention.';
+    } else {
+      banner.classList.remove('active');
+    }
+    document.getElementById('draft').value = parsed.draft || '';
+    document.getElementById('reasoningField').textContent = parsed.reasoning || '—';
+    const assumptionsText = parsed.assumptions || 'none';
+    document.getElementById('assumptionsField').innerHTML = assumptionsText.toLowerCase() === 'none'
+      ? '<em>none flagged</em>'
+      : escapeHtml(assumptionsText);
+    clearFeedbackButtons();
+    aiOut.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function recordFeedback(type) {
+    if (!lastDraft) return;
+    lastDraft.feedback = type;
+    lastDraft.draft = document.getElementById('draft').value;
+    historyCache.unshift({ ...lastDraft });
+    saveHistory();
+    clearFeedbackButtons();
+    document.querySelector(`[data-feedback="${type}"]`).classList.add('active', type);
+    renderHistory();
+    updateStats();
+    showToast(`Logged: ${type === 'useful' ? 'used as-is' : type === 'edit' ? 'edited' : 'not useful'}`);
+  }
+
+  document.getElementById('generateBtn').addEventListener('click', generateDraft);
+  document.getElementById('regenBtn').addEventListener('click', generateDraft);
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    document.getElementById('incoming').value = '';
+    document.getElementById('context').value = '';
+    document.getElementById('aiOutput').classList.remove('visible');
+    lastDraft = null;
+  });
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    const text = document.getElementById('draft').value;
+    if (!text) { showToast('Nothing to copy'); return; }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('Copied — paste into WhatsApp'))
+      .catch(() => showToast('Copy failed — select text manually'));
+  });
+  document.querySelectorAll('.feedback-btn').forEach(btn => {
+    btn.addEventListener('click', () => recordFeedback(btn.dataset.feedback));
+  });
+  document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+    if (!confirm('Clear all draft history? This cannot be undone.')) return;
+    historyCache = [];
+    try { localStorage.removeItem('drafts:history'); } catch (e) {}
+    renderHistory();
+    updateStats();
+    showToast('History cleared');
+  });
+
+  loadHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Cloudflare Pages — _redirects
+# SEO-friendly URL redirects
+
+/transfers          /index.html         200
+/tours              /index.html         200
+/book               /index.html         200
+/faq                /index.html         200
+/nadi-to-denarau    /index.html         200
+/nadi-to-coral-coast /index.html        200
+/nadi-to-pacific-harbour /index.html    200
+/airport-transfer   /index.html         200

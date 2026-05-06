@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vakaviti — Sponsor Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:   #0a6e7c;
+      --accent:    #c47b2b;
+      --bg:        #f5f0e8;
+      --surface:   #ffffff;
+      --border:    #ddd8ce;
+      --text:      #1a1a1a;
+      --muted:     #6b6560;
+      --danger:    #c0392b;
+      --success:   #2e8b57;
+      --tier-c:    #3d9e6e;
+      --tier-m:    #0a6e7c;
+      --tier-t:    #c47b2b;
+      --radius:    10px;
+      --shadow:    0 2px 12px rgba(0,0,0,0.09);
+    }
+
+    body {
+      font-family: 'Source Sans 3', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Lock screen ── */
+    #lockScreen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0a6e7c 0%, #0d4f5c 100%);
+    }
+    .lock-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+      text-align: center;
+    }
+    .lock-logo { font-size: 2.4rem; margin-bottom: 0.5rem; }
+    .lock-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      color: var(--primary);
+      margin-bottom: 0.25rem;
+    }
+    .lock-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.5rem; }
+    .lock-input {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.7rem 1rem;
+      font-size: 1rem;
+      font-family: inherit;
+      text-align: center;
+      letter-spacing: 0.2em;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 0.75rem;
+    }
+    .lock-input:focus { border-color: var(--primary); }
+    .lock-btn {
+      width: 100%;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-size: 1rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .lock-btn:hover { background: #0d5f6e; }
+    .lock-error {
+      color: var(--danger);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      min-height: 1.2rem;
+    }
+    @keyframes shake {
+      0%,100%{transform:translateX(0)}
+      20%,60%{transform:translateX(-6px)}
+      40%,80%{transform:translateX(6px)}
+    }
+    .shake { animation: shake 0.4s ease; }
+
+    /* ── App shell ── */
+    #adminApp { display: none; }
+    #adminApp.visible { display: block; }
+
+    .admin-header {
+      background: var(--primary);
+      color: #fff;
+      padding: 0 1.5rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .admin-header-left { display: flex; align-items: center; gap: 0.75rem; }
+    .admin-header-logo { font-size: 1.4rem; }
+    .admin-header-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .admin-header-sub { font-size: 0.75rem; opacity: 0.75; }
+    .admin-header-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .btn-header { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.8rem; font-family: inherit; cursor: pointer; transition: background 0.15s; font-weight: 500; }
+    .btn-header:hover { background: rgba(255,255,255,0.28); }
+    .btn-header.danger { background: rgba(192,57,43,0.7); border-color: rgba(192,57,43,0.5); }
+    .btn-header.danger:hover { background: rgba(192,57,43,1); }
+
+    .admin-main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+
+    /* ── Section headings ── */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.15rem;
+      color: var(--primary);
+    }
+    .section-desc { font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* ── Sponsor cards grid ── */
+    .sponsors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .sponsor-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+    .sponsor-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+    .sponsor-card.active-month { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(10,110,124,0.18); }
+
+    .sponsor-card-header {
+      padding: 0.85rem 1rem 0.7rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sponsor-card-emoji { font-size: 1.8rem; line-height: 1; }
+    .sponsor-card-meta { flex: 1; min-width: 0; }
+    .sponsor-card-brand { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sponsor-card-month { font-size: 0.75rem; color: var(--muted); }
+    .sponsor-active-pill {
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .sponsor-card-body { padding: 0.8rem 1rem; }
+    .sponsor-card-prize { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; }
+    .sponsor-card-detail { font-size: 0.78rem; color: var(--muted); line-height: 1.45; margin-bottom: 0.5rem; }
+    .sponsor-tier-pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.18rem 0.6rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tier-Cauravou { background: #e8f5ee; color: var(--tier-c); border: 1px solid #b2dcc5; }
+    .tier-Matai    { background: #e0f2f5; color: var(--tier-m); border: 1px solid #8dd0da; }
+    .tier-Turaga   { background: #fdf0e0; color: var(--tier-t); border: 1px solid #f0c890; }
+
+    .sponsor-card-footer {
+      padding: 0.6rem 1rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .btn-edit, .btn-delete {
+      flex: 1;
+      border: none;
+      border-radius: 7px;
+      padding: 0.45rem 0.5rem;
+      font-size: 0.82rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-edit   { background: #e8f2f5; color: var(--primary); }
+    .btn-edit:hover { background: #d0e8ee; }
+    .btn-delete { background: #fbeaea; color: var(--danger); }
+    .btn-delete:hover { background: #f0c5c5; }
+
+    .color-swatch {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ── Add / no sponsors ── */
+    .btn-add-sponsor {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-add-sponsor:hover { background: #0d5f6e; }
+    .btn-add-sponsor svg { flex-shrink: 0; }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1.5px dashed var(--border);
+    }
+    .empty-state-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .empty-state-text { font-size: 0.9rem; }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(3px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-backdrop.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 580px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 12px 60px rgba(0,0,0,0.3);
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.2s;
+    }
+    .modal-backdrop.open .modal { transform: translateY(0) scale(1); }
+
+    .modal-header {
+      padding: 1.25rem 1.5rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+    .modal-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.15rem;
+      color: var(--primary);
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 0.25rem;
+      border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+      display: flex;
+      align-items: center;
+    }
+    .modal-close:hover { color: var(--text); background: var(--bg); }
+
+    .modal-body { padding: 1.25rem 1.5rem; }
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      position: sticky;
+      bottom: 0;
+      background: var(--surface);
+    }
+
+    /* ── Form elements ── */
+    .form-row { margin-bottom: 1.1rem; }
+    .form-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+      margin-bottom: 1.1rem;
+    }
+    label.form-label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+    label.form-label span { color: var(--danger); }
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 0.85rem;
+      font-size: 0.92rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--primary); }
+    .form-textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+    .form-hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+
+    /* Emoji picker row */
+    .emoji-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .emoji-preview {
+      font-size: 2rem;
+      width: 48px;
+      height: 48px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+    .emoji-input { flex: 1; text-align: center; font-size: 1.4rem; letter-spacing: 0.1em; }
+    .emoji-quick { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .emoji-quick button {
+      font-size: 1.2rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      width: 36px; height: 36px;
+      cursor: pointer;
+      transition: background 0.1s;
+      line-height: 1;
+    }
+    .emoji-quick button:hover { background: #e0ece8; }
+
+    /* Color row */
+    .color-row { display: flex; align-items: center; gap: 0.75rem; }
+    .color-input-native {
+      width: 48px; height: 44px;
+      padding: 3px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      background: none;
+      flex-shrink: 0;
+    }
+    .color-hex { flex: 1; }
+    .color-swatches { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .color-swatch-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .color-swatch-btn:hover, .color-swatch-btn.selected { border-color: var(--text); transform: scale(1.15); }
+
+    /* Tier selector */
+    .tier-options { display: flex; gap: 0.5rem; }
+    .tier-option { display: none; }
+    .tier-option + label {
+      flex: 1;
+      text-align: center;
+      padding: 0.55rem 0.5rem;
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.03em;
+    }
+    #tierC + label { color: var(--tier-c); }
+    #tierC:checked + label { background: #e8f5ee; border-color: var(--tier-c); }
+    #tierM + label { color: var(--tier-m); }
+    #tierM:checked + label { background: #e0f2f5; border-color: var(--tier-m); }
+    #tierT + label { color: var(--tier-t); }
+    #tierT:checked + label { background: #fdf0e0; border-color: var(--tier-t); }
+
+    /* ── Banner preview ── */
+    .preview-section {
+      margin-top: 2rem;
+    }
+    .preview-banner {
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      background: var(--primary);
+      transition: background 0.3s;
+    }
+    .preview-banner::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        135deg,
+        rgba(255,255,255,0.03) 0px,
+        rgba(255,255,255,0.03) 1px,
+        transparent 1px,
+        transparent 12px
+      );
+    }
+    .preview-banner-emoji { font-size: 2.4rem; position: relative; z-index: 1; flex-shrink: 0; }
+    .preview-banner-body { flex: 1; position: relative; z-index: 1; }
+    .preview-banner-tag {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      opacity: 0.8;
+      margin-bottom: 0.15rem;
+    }
+    .preview-banner-prize { font-size: 1.05rem; font-weight: 700; line-height: 1.2; }
+    .preview-banner-brand { font-size: 0.8rem; opacity: 0.85; margin-top: 0.2rem; }
+    .preview-banner-tier {
+      font-size: 0.72rem;
+      background: rgba(255,255,255,0.18);
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      margin-top: 0.4rem;
+      display: inline-block;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Save bar ── */
+    .save-bar {
+      position: sticky;
+      bottom: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
+      z-index: 50;
+    }
+    .save-bar-hint { font-size: 0.82rem; color: var(--muted); }
+    .btn-save {
+      background: var(--success);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.6rem 1.4rem;
+      font-size: 0.92rem;
+      font-family: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-save:hover { background: #25774a; }
+    .btn-save:active { transform: scale(0.97); }
+    .btn-cancel-edit {
+      background: var(--bg);
+      color: var(--muted);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 1rem;
+      font-size: 0.92rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-cancel-edit:hover { background: #ede8df; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1a1a1a;
+      color: #fff;
+      padding: 0.65rem 1.4rem;
+      border-radius: 30px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      z-index: 500;
+      transition: transform 0.3s ease, opacity 0.3s;
+      opacity: 0;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* ── Confirm delete modal ── */
+    .confirm-body { padding: 1.5rem; text-align: center; }
+    .confirm-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .confirm-msg { font-size: 0.95rem; color: var(--text); line-height: 1.5; }
+    .confirm-msg strong { color: var(--danger); }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.6rem 1.3rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-danger:hover { background: #a93226; }
+    .btn-ghost {
+      background: none;
+      color: var(--muted);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 1.1rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-ghost:hover { background: var(--bg); }
+
+    /* ── Responsive ── */
+    @media (max-width: 500px) {
+      .form-row-2 { grid-template-columns: 1fr; }
+      .modal-body, .modal-header, .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+      .sponsors-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Lock Screen ── -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <div class="lock-logo">🌴</div>
+    <div class="lock-title">Vakaviti Admin</div>
+    <div class="lock-sub">Sponsor & Prize Management</div>
+    <input class="lock-input" id="lockInput" type="password" placeholder="Enter admin password" autocomplete="off" />
+    <button class="lock-btn" id="lockBtn">Unlock</button>
+    <div class="lock-error" id="lockError"></div>
+  </div>
+</div>
+
+<!-- ── Admin App ── -->
+<div id="adminApp">
+
+  <!-- Header -->
+  <header class="admin-header">
+    <div class="admin-header-left">
+      <span class="admin-header-logo">🌴</span>
+      <div>
+        <div class="admin-header-title">Vakaviti Sponsors</div>
+        <div class="admin-header-sub">Prize & Sponsor Management</div>
+      </div>
+    </div>
+    <div class="admin-header-actions">
+      <button class="btn-header" onclick="window.open('index.html','_blank')">View Site</button>
+      <button class="btn-header danger" id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="admin-main">
+
+    <!-- Section: Sponsors list -->
+    <div class="section-head">
+      <div>
+        <div class="section-title">Monthly Sponsors</div>
+        <div class="section-desc">Active sponsor is matched by current month — first entry is the fallback.</div>
+      </div>
+      <button class="btn-add-sponsor" id="addSponsorBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Sponsor
+      </button>
+    </div>
+
+    <!-- Sponsor cards -->
+    <div class="sponsors-grid" id="sponsorsGrid"></div>
+
+    <!-- Live Banner Preview -->
+    <div class="preview-section">
+      <div class="section-head" style="margin-bottom:0.75rem">
+        <div>
+          <div class="section-title">Live Banner Preview</div>
+          <div class="section-desc">How the current active sponsor looks on the homepage right now.</div>
+        </div>
+      </div>
+      <div class="preview-banner" id="previewBanner">
+        <div class="preview-banner-emoji" id="pvEmoji">🌴</div>
+        <div class="preview-banner-body">
+          <div class="preview-banner-tag">🏆 This Month's Prize</div>
+          <div class="preview-banner-prize" id="pvPrize">Loading…</div>
+          <div class="preview-banner-brand" id="pvBrand"></div>
+          <div class="preview-banner-tier" id="pvTier"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Save bar (shown when unsaved changes) -->
+  <div class="save-bar" id="saveBar" style="display:none">
+    <span class="save-bar-hint">You have unsaved changes — save to push to the live site.</span>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn-cancel-edit" id="discardBtn">Discard</button>
+      <button class="btn-save" id="saveAllBtn">Save &amp; Publish</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add / Edit Modal ── -->
+<div class="modal-backdrop" id="editModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Add Sponsor</div>
+      <button class="modal-close" id="modalCloseBtn" aria-label="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="sponsorForm" novalidate>
+
+        <div class="form-row-2">
+          <!-- Month -->
+          <div>
+            <label class="form-label" for="fMonth">Month <span>*</span></label>
+            <input class="form-input" id="fMonth" type="month" required />
+            <div class="form-hint">The month this sponsor is active</div>
+          </div>
+          <!-- Min tier -->
+          <div>
+            <label class="form-label">Min Tier <span>*</span></label>
+            <div class="tier-options">
+              <input type="radio" name="fTier" id="tierC" value="Cauravou" />
+              <label for="tierC">Cauravou</label>
+              <input type="radio" name="fTier" id="tierM" value="Matai" checked />
+              <label for="tierM">Matai</label>
+              <input type="radio" name="fTier" id="tierT" value="Turaga" />
+              <label for="tierT">Turaga</label>
+            </div>
+            <div class="form-hint">Minimum player tier to claim prize</div>
+          </div>
+        </div>
+
+        <!-- Brand name -->
+        <div class="form-row">
+          <label class="form-label" for="fBrand">Sponsor / Business Name <span>*</span></label>
+          <input class="form-input" id="fBrand" type="text" placeholder="e.g. Fiji Tour Transfers" required />
+        </div>
+
+        <!-- Website URL -->
+        <div class="form-row">
+          <label class="form-label" for="fUrl">Sponsor Website URL</label>
+          <input class="form-input" id="fUrl" type="url" placeholder="https://www.example.com" />
+        </div>
+
+        <!-- Prize name -->
+        <div class="form-row">
+          <label class="form-label" for="fPrize">Prize Name <span>*</span></label>
+          <input class="form-input" id="fPrize" type="text" placeholder="e.g. Free Airport Transfer for Two" required />
+        </div>
+
+        <!-- Prize detail -->
+        <div class="form-row">
+          <label class="form-label" for="fDetail">Prize Detail</label>
+          <textarea class="form-textarea" id="fDetail" placeholder="Describe the prize — terms, value, how to claim…"></textarea>
+        </div>
+
+        <!-- Logo emoji -->
+        <div class="form-row">
+          <label class="form-label">Logo Emoji <span>*</span></label>
+          <div class="emoji-row">
+            <div class="emoji-preview" id="emojiPreview">🌴</div>
+            <input class="form-input emoji-input" id="fLogo" type="text" maxlength="4" placeholder="Paste emoji" />
+          </div>
+          <div class="emoji-quick">
+            <button type="button" data-e="🚐">🚐</button>
+            <button type="button" data-e="🏝️">🏝️</button>
+            <button type="button" data-e="☕">☕</button>
+            <button type="button" data-e="🌺">🌺</button>
+            <button type="button" data-e="🏄">🏄</button>
+            <button type="button" data-e="🐠">🐠</button>
+            <button type="button" data-e="🍍">🍍</button>
+            <button type="button" data-e="🎁">🎁</button>
+            <button type="button" data-e="🏆">🏆</button>
+            <button type="button" data-e="🌊">🌊</button>
+            <button type="button" data-e="🦜">🦜</button>
+            <button type="button" data-e="⛵">⛵</button>
+          </div>
+        </div>
+
+        <!-- Brand colours -->
+        <div class="form-row">
+          <label class="form-label">Brand Colour</label>
+          <div class="color-row">
+            <input class="color-input-native" id="fColorNative" type="color" value="#0a6e7c" />
+            <input class="form-input color-hex" id="fColor" type="text" maxlength="7" placeholder="#0a6e7c" />
+          </div>
+          <div class="color-swatches" id="colorSwatches"></div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Accent Colour</label>
+          <div class="color-row">
+            <input class="color-input-native" id="fAccentNative" type="color" value="#c47b2b" />
+            <input class="form-input color-hex" id="fAccent" type="text" maxlength="7" placeholder="#c47b2b" />
+          </div>
+        </div>
+
+        <!-- Live preview inside modal -->
+        <div style="margin-top:1rem">
+          <label class="form-label">Banner Preview</label>
+          <div class="preview-banner" id="modalPreview" style="padding:1rem 1.2rem">
+            <div class="preview-banner-emoji" id="mpEmoji">🌴</div>
+            <div class="preview-banner-body">
+              <div class="preview-banner-tag">🏆 This Month's Prize</div>
+              <div class="preview-banner-prize" id="mpPrize">Prize name</div>
+              <div class="preview-banner-brand" id="mpBrand">Brand name</div>
+              <div class="preview-banner-tier" id="mpTier">Matai or above</div>
+            </div>
+          </div>
+        </div>
+
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" id="modalCancelBtn">Cancel</button>
+      <button class="btn-save" id="modalSaveBtn">Save Sponsor</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm Delete Modal ── -->
+<div class="modal-backdrop" id="deleteModal">
+  <div class="modal" style="max-width:380px">
+    <div class="confirm-body">
+      <div class="confirm-icon">🗑️</div>
+      <p class="confirm-msg">Remove <strong id="deleteBrandName"></strong> as sponsor for <strong id="deleteMonthName"></strong>?<br/>This cannot be undone.</p>
+    </div>
+    <div class="modal-footer" style="justify-content:center">
+      <button class="btn-ghost" id="deleteCancelBtn">Cancel</button>
+      <button class="btn-danger" id="deleteConfirmBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════
+   Vakaviti Sponsor Admin — full logic
+══════════════════════════════════════════════ */
+
+const ADMIN_KEY     = 'vakaviti_sponsors_admin';
+const SESSION_KEY   = 'vakaviti_admin_session';
+const ADMIN_PASS    = 'vakaviti2026';   // ← change this password as needed
+
+// Tier map
+const TIERS = {
+  Cauravou: 2,
+  Matai:    3,
+  Turaga:   4,
+};
+const TIER_ORDER = ['Cauravou', 'Matai', 'Turaga'];
+
+// Default seed data (same as sponsors.js hardcoded)
+const DEFAULT_SPONSORS = [
+  { month:'2026-04', brand:'Fiji Tour Transfers', logo:'🚐', url:'https://www.fijitourtransfers.com', prize:'Free Airport Transfer for Two', detail:'Return airport transfer from Nadi International Airport to any Coral Coast resort, for 2 people. Valid 12 months.', minTier:'Matai', minTierIdx:3, color:'#0a6e7c', accentColor:'#c47b2b' },
+  { month:'2026-05', brand:'Taki Mai Resort',      logo:'🏝️', url:'https://www.fijitourtransfers.com', prize:'One Night Overwater Bure Stay', detail:'A romantic one-night stay in an overwater bure with breakfast included. Proudly sponsored by Taki Mai Resort.', minTier:'Matai', minTierIdx:3, color:'#1a6b8a', accentColor:'#e08b2a' },
+  { month:'2026-06', brand:'Bula Coffee Co.',       logo:'☕',  url:'https://www.fijitourtransfers.com', prize:'Premium Fijian Coffee Hamper', detail:'A curated hamper of 100% Fijian-grown arabica coffee, teas, and local treats — delivered to your door anywhere in Fiji.', minTier:'Cauravou', minTierIdx:2, color:'#5c3d2e', accentColor:'#e0a060' },
+];
+
+const BRAND_COLORS = ['#0a6e7c','#1a6b8a','#2e8b57','#5c3d2e','#7c5cbf','#c47b2b','#e08b2a','#b83232','#1a5276','#34495e'];
+
+let sponsors = [];
+let editingIdx = null;  // null = new, number = edit index
+let pendingDelete = null;
+
+/* ── Auth ── */
+function checkSession() {
+  return sessionStorage.getItem(SESSION_KEY) === '1';
+}
+function unlock() {
+  const val = document.getElementById('lockInput').value;
+  if (val === ADMIN_PASS) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    showApp();
+  } else {
+    const err = document.getElementById('lockError');
+    err.textContent = 'Incorrect password. Try again.';
+    const inp = document.getElementById('lockInput');
+    inp.classList.remove('shake');
+    void inp.offsetWidth;
+    inp.classList.add('shake');
+    inp.value = '';
+    inp.focus();
+  }
+}
+function logout() {
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+
+/* ── Data load/save ── */
+function loadSponsors() {
+  try {
+    const raw = localStorage.getItem(ADMIN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) { sponsors = parsed; return; }
+    }
+  } catch {}
+  // First visit: seed from defaults
+  sponsors = JSON.parse(JSON.stringify(DEFAULT_SPONSORS));
+}
+function saveSponsors() {
+  localStorage.setItem(ADMIN_KEY, JSON.stringify(sponsors));
+  hideSaveBar();
+  showToast('✅ Saved & published to live site');
+  renderAll();
+}
+function discardChanges() {
+  loadSponsors();
+  hideSaveBar();
+  renderAll();
+  showToast('Changes discarded');
+}
+
+/* ── Active sponsor ── */
+function getActiveMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+function getActiveSponsor() {
+  const key = getActiveMonthKey();
+  return sponsors.find(s => s.month === key) || sponsors[0];
+}
+
+/* ── Render sponsors grid ── */
+function renderAll() {
+  renderGrid();
+  renderMainPreview();
+}
+
+function renderGrid() {
+  const grid = document.getElementById('sponsorsGrid');
+  const activeKey = getActiveMonthKey();
+  if (!sponsors.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-icon">🏖️</div><div class="empty-state-text">No sponsors yet — click <strong>Add Sponsor</strong> to get started.</div></div>`;
+    return;
+  }
+  grid.innerHTML = sponsors.map((sp, i) => {
+    const isActive = sp.month === activeKey;
+    const monthLabel = formatMonth(sp.month);
+    return `
+      <div class="sponsor-card ${isActive ? 'active-month' : ''}">
+        <div class="sponsor-card-header">
+          <div class="sponsor-card-emoji">${sp.logo || '🌴'}</div>
+          <div class="sponsor-card-meta">
+            <div class="sponsor-card-brand">${escHtml(sp.brand)}</div>
+            <div class="sponsor-card-month">${monthLabel}</div>
+          </div>
+          ${isActive ? '<div class="sponsor-active-pill">Active</div>' : ''}
+          <div class="color-swatch" style="background:${sp.color || '#0a6e7c'}"></div>
+        </div>
+        <div class="sponsor-card-body">
+          <div class="sponsor-card-prize">${escHtml(sp.prize)}</div>
+          <div class="sponsor-card-detail">${escHtml(sp.detail || '')}</div>
+          <span class="sponsor-tier-pill tier-${sp.minTier}">${sp.minTier} +</span>
+        </div>
+        <div class="sponsor-card-footer">
+          <button class="btn-edit" onclick="openEdit(${i})">✏️ Edit</button>
+          <button class="btn-delete" onclick="openDelete(${i})">🗑️ Remove</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMainPreview() {
+  const sp = getActiveSponsor();
+  if (!sp) return;
+  document.getElementById('pvEmoji').textContent  = sp.logo || '🌴';
+  document.getElementById('pvPrize').textContent  = sp.prize;
+  document.getElementById('pvBrand').textContent  = `Sponsored by ${sp.brand}`;
+  document.getElementById('pvTier').textContent   = `${sp.minTier} or above to claim`;
+  const banner = document.getElementById('previewBanner');
+  banner.style.background = sp.color || '#0a6e7c';
+}
+
+function formatMonth(ym) {
+  if (!ym) return '';
+  const [y, m] = ym.split('-');
+  const d = new Date(+y, +m - 1, 1);
+  return d.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Edit modal ── */
+function openAdd() {
+  editingIdx = null;
+  document.getElementById('modalTitle').textContent = 'Add Sponsor';
+  document.getElementById('modalSaveBtn').textContent = 'Add Sponsor';
+  resetForm();
+  openModal('editModal');
+}
+function openEdit(i) {
+  editingIdx = i;
+  document.getElementById('modalTitle').textContent = 'Edit Sponsor';
+  document.getElementById('modalSaveBtn').textContent = 'Save Changes';
+  fillForm(sponsors[i]);
+  openModal('editModal');
+}
+function resetForm() {
+  document.getElementById('fMonth').value  = getActiveMonthKey();
+  document.getElementById('fBrand').value  = '';
+  document.getElementById('fUrl').value    = '';
+  document.getElementById('fPrize').value  = '';
+  document.getElementById('fDetail').value = '';
+  document.getElementById('fLogo').value   = '🌴';
+  document.getElementById('fColor').value  = '#0a6e7c';
+  document.getElementById('fAccent').value = '#c47b2b';
+  document.getElementById('fColorNative').value  = '#0a6e7c';
+  document.getElementById('fAccentNative').value = '#c47b2b';
+  document.getElementById('tierM').checked = true;
+  syncEmojiPreview();
+  syncModalPreview();
+  updateColorSwatches('#0a6e7c');
+}
+function fillForm(sp) {
+  document.getElementById('fMonth').value  = sp.month || '';
+  document.getElementById('fBrand').value  = sp.brand || '';
+  document.getElementById('fUrl').value    = sp.url   || '';
+  document.getElementById('fPrize').value  = sp.prize || '';
+  document.getElementById('fDetail').value = sp.detail || '';
+  document.getElementById('fLogo').value   = sp.logo  || '🌴';
+  document.getElementById('fColor').value  = sp.color || '#0a6e7c';
+  document.getElementById('fAccent').value = sp.accentColor || '#c47b2b';
+  document.getElementById('fColorNative').value  = sp.color || '#0a6e7c';
+  document.getElementById('fAccentNative').value = sp.accentColor || '#c47b2b';
+  const tierRadio = document.querySelector(`input[name="fTier"][value="${sp.minTier}"]`);
+  if (tierRadio) tierRadio.checked = true; else document.getElementById('tierM').checked = true;
+  syncEmojiPreview();
+  syncModalPreview();
+  updateColorSwatches(sp.color || '#0a6e7c');
+}
+function saveForm() {
+  const month  = document.getElementById('fMonth').value.trim();
+  const brand  = document.getElementById('fBrand').value.trim();
+  const prize  = document.getElementById('fPrize').value.trim();
+  const logo   = document.getElementById('fLogo').value.trim() || '🌴';
+  if (!month || !brand || !prize) {
+    showToast('⚠️ Month, Brand and Prize are required');
+    return;
+  }
+  const tierRadio = document.querySelector('input[name="fTier"]:checked');
+  const minTier   = tierRadio ? tierRadio.value : 'Matai';
+  const entry = {
+    month,
+    brand,
+    url:         document.getElementById('fUrl').value.trim(),
+    prize,
+    detail:      document.getElementById('fDetail').value.trim(),
+    logo,
+    minTier,
+    minTierIdx:  TIERS[minTier] || 3,
+    color:       document.getElementById('fColor').value.trim() || '#0a6e7c',
+    accentColor: document.getElementById('fAccent').value.trim() || '#c47b2b',
+  };
+  if (editingIdx !== null) {
+    sponsors[editingIdx] = entry;
+  } else {
+    // Insert sorted by month
+    sponsors.push(entry);
+    sponsors.sort((a, b) => a.month.localeCompare(b.month));
+  }
+  closeModal('editModal');
+  showSaveBar();
+  renderAll();
+  showToast(editingIdx !== null ? '✏️ Sponsor updated — save to publish' : '➕ Sponsor added — save to publish');
+}
+
+/* ── Delete modal ── */
+function openDelete(i) {
+  pendingDelete = i;
+  document.getElementById('deleteBrandName').textContent = sponsors[i].brand;
+  document.getElementById('deleteMonthName').textContent = formatMonth(sponsors[i].month);
+  openModal('deleteModal');
+}
+function confirmDelete() {
+  if (pendingDelete === null) return;
+  sponsors.splice(pendingDelete, 1);
+  pendingDelete = null;
+  closeModal('deleteModal');
+  showSaveBar();
+  renderAll();
+  showToast('🗑️ Removed — save to publish');
+}
+
+/* ── Modal helpers ── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ── Save bar ── */
+function showSaveBar()  { document.getElementById('saveBar').style.display = 'flex'; }
+function hideSaveBar()  { document.getElementById('saveBar').style.display = 'none'; }
+
+/* ── Toast ── */
+let _toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+/* ── Live preview sync ── */
+function syncEmojiPreview() {
+  const val = document.getElementById('fLogo').value || '🌴';
+  document.getElementById('emojiPreview').textContent = val;
+  document.getElementById('mpEmoji').textContent = val;
+}
+function syncModalPreview() {
+  const prize  = document.getElementById('fPrize').value  || 'Prize name';
+  const brand  = document.getElementById('fBrand').value  || 'Brand name';
+  const tierEl = document.querySelector('input[name="fTier"]:checked');
+  const tier   = tierEl ? tierEl.value : 'Matai';
+  const color  = document.getElementById('fColor').value  || '#0a6e7c';
+  document.getElementById('mpPrize').textContent = prize;
+  document.getElementById('mpBrand').textContent = `Sponsored by ${brand}`;
+  document.getElementById('mpTier').textContent  = `${tier} or above`;
+  document.getElementById('modalPreview').style.background = color;
+}
+
+/* ── Color swatches ── */
+function buildColorSwatches() {
+  const wrap = document.getElementById('colorSwatches');
+  wrap.innerHTML = BRAND_COLORS.map(c =>
+    `<button class="color-swatch-btn" type="button" style="background:${c}" data-color="${c}" aria-label="${c}" title="${c}"></button>`
+  ).join('');
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('.color-swatch-btn');
+    if (!btn) return;
+    const c = btn.dataset.color;
+    document.getElementById('fColor').value = c;
+    document.getElementById('fColorNative').value = c;
+    updateColorSwatches(c);
+    syncModalPreview();
+  });
+}
+function updateColorSwatches(selected) {
+  document.querySelectorAll('.color-swatch-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.color === selected);
+  });
+}
+
+/* ── Wire up form inputs for live preview ── */
+function wireFormListeners() {
+  ['fPrize','fBrand','fLogo'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => { syncEmojiPreview(); syncModalPreview(); });
+  });
+  document.querySelectorAll('input[name="fTier"]').forEach(r => r.addEventListener('change', syncModalPreview));
+
+  // Color native ↔ hex sync
+  document.getElementById('fColorNative').addEventListener('input', e => {
+    document.getElementById('fColor').value = e.target.value;
+    updateColorSwatches(e.target.value);
+    syncModalPreview();
+  });
+  document.getElementById('fColor').addEventListener('input', e => {
+    let v = e.target.value;
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      document.getElementById('fColorNative').value = v;
+      updateColorSwatches(v);
+      syncModalPreview();
+    }
+  });
+  document.getElementById('fAccentNative').addEventListener('input', e => {
+    document.getElementById('fAccent').value = e.target.value;
+  });
+  document.getElementById('fAccent').addEventListener('input', e => {
+    if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) document.getElementById('fAccentNative').value = e.target.value;
+  });
+
+  // Quick emoji buttons
+  document.querySelectorAll('.emoji-quick button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('fLogo').value = btn.dataset.e;
+      syncEmojiPreview();
+      syncModalPreview();
+    });
+  });
+}
+
+/* ── App init ── */
+function showApp() {
+  document.getElementById('lockScreen').style.display = 'none';
+  document.getElementById('adminApp').classList.add('visible');
+  loadSponsors();
+  buildColorSwatches();
+  wireFormListeners();
+  renderAll();
+  bindEvents();
+}
+
+function bindEvents() {
+  // Lock screen
+  document.getElementById('lockBtn').addEventListener('click', unlock);
+  document.getElementById('lockInput').addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  // Add sponsor
+  document.getElementById('addSponsorBtn').addEventListener('click', openAdd);
+
+  // Edit modal
+  document.getElementById('modalCloseBtn').addEventListener('click',  () => closeModal('editModal'));
+  document.getElementById('modalCancelBtn').addEventListener('click', () => closeModal('editModal'));
+  document.getElementById('modalSaveBtn').addEventListener('click', saveForm);
+  document.getElementById('editModal').addEventListener('click', e => { if (e.target === document.getElementById('editModal')) closeModal('editModal'); });
+
+  // Delete modal
+  document.getElementById('deleteConfirmBtn').addEventListener('click', confirmDelete);
+  document.getElementById('deleteCancelBtn').addEventListener('click',  () => closeModal('deleteModal'));
+  document.getElementById('deleteModal').addEventListener('click', e => { if (e.target === document.getElementById('deleteModal')) closeModal('deleteModal'); });
+
+  // Save bar
+  document.getElementById('saveAllBtn').addEventListener('click', saveSponsors);
+  document.getElementById('discardBtn').addEventListener('click', discardChanges);
+}
+
+/* ── Boot ── */
+(function boot() {
+  if (checkSession()) {
+    showApp();
+  } else {
+    // Lock screen is visible by default
+    document.getElementById('lockInput').focus();
+    // Wire lock events immediately
+    document.getElementById('lockBtn').addEventListener('click', unlock);
+    document.getElementById('lockInput').addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
+  }
+})();
+</script>
+</body>
+</html>

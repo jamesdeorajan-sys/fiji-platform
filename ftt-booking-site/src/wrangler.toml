@@ -1,0 +1,11 @@
+name = "fiji-tour-transfers"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+[build]
+command = ""
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
