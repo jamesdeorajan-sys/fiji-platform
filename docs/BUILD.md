@@ -1,0 +1,264 @@
+# Vakaviti.ai — Master Build Document
+> Paste this entire document at the start of every new Claude session.
+> Update it at the end of every session before closing the tab.
+> GitHub: https://github.com/jamesdeorajan-sys/fiji-platform
+
+---
+
+## Who & What
+**James Richardson** — WhatsApp: +61 478 886 145
+**Cloudflare Account ID:** 595101df2c562b3c65595420d43f9fe1
+
+This repo powers two things:
+1. **Existing business** — FTT Booking Site + Vakaviti dictionary (live, serving traffic)
+2. **New platform** — Vakaviti.ai partner network (branded AI concierge for Fiji tourism operators)
+
+---
+
+## Live Systems (as of 2026-05-12)
+
+| System | URL | Status |
+|---|---|---|
+| FTT Booking Site | nadiairporttransfers.com | ✅ Live |
+| Vakaviti Dictionary | vosavakaviti.com | ✅ Live |
+| Chat Worker | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v4) |
+| Drafting Console | fiji-drafting-console.helpronline.workers.dev | ✅ Live |
+| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ⚠️ Live but needs site_id fix |
+| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live & working |
+
+---
+
+## Repo Structure (github.com/jamesdeorajan-sys/fiji-platform)
+
+```
+fiji-platform/
+├── README.md
+├── ftt-booking-site/src/         ← live FTT booking site (v0.17)
+├── vakaviti/src/                 ← live Vakaviti dictionary (v1.1)
+├── workers/
+│   ├── chat-widget/worker.js     ← DEPLOYED as fiji-chat-widget (v4)
+│   └── drafting-console/         ← internal tool
+├── docs/                         ← strategy docs
+│   ├── BUILD_LOG.md
+│   ├── STATUS.md
+│   └── ... (VISION, ROADMAP, etc)
+├── archives/                     ← deployment zips
+│
+│   ── NOT YET IN REPO (add these) ──
+├── partners/                     ← NEW: partner demo pages
+│   ├── palms-denarau/index.html
+│   └── blue-lagoon/index.html
+└── database/
+    ├── schema.sql                ← full D1 schema
+    └── seeds/partners.sql        ← all INSERT statements
+```
+
+### Files to add to repo immediately
+1. `partners/blue-lagoon/index.html` — working demo (built 2026-05-12)
+2. `partners/palms-denarau/index.html` — demo (needs site_id fix)
+3. `database/schema.sql` — full D1 schema (see below)
+4. `database/seeds/partners.sql` — all partner INSERTs run so far
+
+---
+
+## Cloudflare Worker — fiji-chat-widget (v4)
+
+**File in repo:** `workers/chat-widget/worker.js`
+**Deployed URL:** fiji-chat-widget.helpronline.workers.dev
+
+### Bindings (all confirmed active)
+| Binding | Type | Value |
+|---|---|---|
+| ANTHROPIC_API_KEY | Secret | Anthropic API key |
+| SENDGRID_API_KEY | Secret | Email notifications |
+| AI | Workers AI | @cf/baai/bge-base-en-v1.5 embeddings |
+| DB | D1 | vakaviti-kb (e697a253-e5fc-4201-939c-9aaeca6c5278) |
+| VECTORIZE | Vectorize | vakaviti-knowledge (51 vectors) |
+| CHAT_USAGE | KV | Daily token budget tracking |
+
+### Exact POST body (chat endpoint)
+```json
+{
+  "messages":   [{ "role": "user", "content": "..." }],
+  "site_id":    "op_bluelagoon_001",
+  "partner_id": "op_bluelagoon_001",
+  "session_id": "any-string"
+}
+```
+
+### Response shape
+```json
+{ "type": "reply", "message": "...", "intent": "accommodation" }
+```
+
+### Routing logic
+- `site_id` present + D1 lookup succeeds → **Phase 2** (partner identity + RAG)
+- `site_id` null or lookup fails → **Legacy** (Fiji Tour Transfers identity)
+- All `.pages.dev` origins allowed via CORS
+
+### Other endpoints
+- `GET /config?site_id=...` — partner config for widget embed
+- `POST /lead` — store lead, score it, notify partner
+- `POST /event` — analytics beacon
+- `GET /v2.js` — Phase 2 widget JS
+
+---
+
+## D1 Database — vakaviti-kb
+
+### partners table
+```sql
+CREATE TABLE partners (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  category TEXT,
+  region TEXT,
+  description TEXT,
+  website_url TEXT,
+  whatsapp_number TEXT,
+  status TEXT DEFAULT 'active',
+  created_at INTEGER
+);
+```
+
+### embed_config table
+```sql
+CREATE TABLE embed_config (
+  site_id TEXT PRIMARY KEY,
+  partner_id TEXT,
+  theme_color TEXT,
+  greeting_text TEXT,
+  allowed_intents TEXT,
+  primary_intent TEXT,
+  region_lock TEXT,
+  created_at INTEGER
+);
+```
+
+### leads table
+```sql
+-- includes: is_cross_referral, referred_by_site_id, referred_by_partner_id
+-- (3 new columns added in Session 1)
+```
+
+### Other tables
+- `kb_chunks` — knowledge base manifest (51 chunks)
+- `partner_referrals` — cross-referral routing (6 rows seeded)
+- `conversation_events` — analytics log
+
+---
+
+## Partners in D1
+
+| ID | Name | WhatsApp | Slug | Status |
+|---|---|---|---|---|
+| op_nadi_001 | Nadi Airport Transfers | 61478886145 | nadi-airport-transfers | active |
+| op_vosavakaviti_001 | Vosa Vakaviti | 61478886145 | vosa-vakaviti | active |
+| op_tourfiji_001 | Tour Fiji Tours | TBC | tour-fiji-tours | active |
+| op_palms_001 | The Palms Denarau | 6796750104 | the-palms-denarau | active |
+| op_bluelagoon_001 | Blue Lagoon Beach Resort | 6797766223 | blue-lagoon-beach-resort | active |
+
+---
+
+## Demo Pages
+
+### Blue Lagoon (✅ fully working)
+- URL: vakaviti-bluelagoon.pages.dev
+- File: `partners/blue-lagoon/index.html`
+- site_id: `op_bluelagoon_001`
+- Routes through Worker correctly
+
+### The Palms Denarau (⚠️ needs fix)
+- URL: vakaviti-palms-denarau.pages.dev
+- File: `partners/palms-denarau/index.html`
+- **Bug:** Currently calling api.anthropic.com directly OR not passing site_id
+- **Fix needed:** Same pattern as Blue Lagoon — route through Worker with site_id: "op_palms_001"
+
+### Correct fetch pattern for ALL demo pages
+```javascript
+const WORKER_URL = 'https://fiji-chat-widget.helpronline.workers.dev/';
+
+const response = await fetch(WORKER_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages:   messages,        // conversation array
+    site_id:    'op_XXX_001',   // partner's site_id from D1
+    partner_id: 'op_XXX_001',
+    session_id: 'session-' + Date.now()
+  })
+});
+const data = await response.json();
+const reply = data.message;  // NOT data.content — that's direct Anthropic shape
+```
+
+### CRITICAL RULES
+- **Never call api.anthropic.com from browser** — API key cannot be in browser
+- **Always pass site_id** — without it Worker uses legacy Fiji Tour Transfers identity
+- **Windows file save bug** — HTML files save as `.html.html` — always rename via CMD
+
+---
+
+## Windows Deployment Process (until GitHub auto-deploy is set up)
+
+```cmd
+cd %USERPROFILE%\Desktop\[folder-name]
+rename index.html.html index.html
+powershell Compress-Archive -Path index.html -DestinationPath "%USERPROFILE%\Desktop\deploy.zip" -Force
+```
+Then: Cloudflare Pages → project → Deployments → Create new deployment → upload zip.
+
+---
+
+## Phase 2 Widget Embed (for partner websites)
+```html
+<script src="https://fiji-chat-widget.helpronline.workers.dev/v2.js"
+        data-site-id="op_bluelagoon_001"></script>
+```
+Widget auto-fetches config from D1, loads branding, greeting, WhatsApp URL.
+
+---
+
+## Pending Actions (priority order)
+
+1. ⬜ Send Palms invitation email → reservations@thepalmsdenarau.com
+2. ⬜ Send Blue Lagoon outreach email → reservations@bluelagoonresortfiji.com
+3. ⬜ Fix Palms demo page — update fetch to use Worker + site_id: "op_palms_001"
+4. ⬜ Add partners/ and database/ folders to GitHub repo
+5. ⬜ Connect Cloudflare Pages to GitHub (eliminate zip uploads)
+6. ⬜ Run kb-ingest.py — add palms-chunk-v2.py content → push 51→52 vectors
+7. ⬜ Register 6 remaining in-house sites in D1 (URLs needed from James)
+8. ⬜ Build next partner demo page (confirm target with James)
+
+---
+
+## GitHub → Cloudflare Auto-Deploy Setup (do once, saves hours)
+
+For each Pages project:
+1. Cloudflare Pages → project → Settings → Build & deployments
+2. Connect to Git → select `jamesdeorajan-sys/fiji-platform`
+3. Set build output directory to e.g. `partners/blue-lagoon`
+4. Save — now every push to GitHub auto-deploys
+
+---
+
+## Known Issues & Lessons Learned
+
+| Issue | Root Cause | Fix |
+|---|---|---|
+| Chat returns Fiji Tour Transfers identity | site_id missing → legacy path | Always pass site_id in POST body |
+| "Connection issue" error | Page calling api.anthropic.com directly | Route through Worker only |
+| index.html.html double extension | Windows file save behaviour | Rename via CMD before zipping |
+| partners INSERT fails | slug column NOT NULL | Always include slug in INSERT |
+| Demo page 404 after deploy | File not named index.html in zip | Rename before zipping |
+| lookupPartner returns null | SQL error on missing column | description column exists — was transient |
+
+---
+
+## Session Log
+
+| Date | Session | What was built |
+|---|---|---|
+| Pre 2026-05-06 | Session 1 | FTT booking site, Vakaviti dictionary, chat worker v1-v3, D1 schema, Vectorize (51 vectors), partner_referrals seeded, leads columns added, Palms demo page |
+| 2026-05-11 | Session 2 | Worker v4 deployed (cross-partner lead splitting), Blue Lagoon demo page built & live, op_bluelagoon_001 seeded in D1, Worker routing debugged & fixed, BUILD.md created, GitHub repo identified |
