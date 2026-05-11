@@ -262,3 +262,4 @@ For each Pages project:
 |---|---|---|
 | Pre 2026-05-06 | Session 1 | FTT booking site, Vakaviti dictionary, chat worker v1-v3, D1 schema, Vectorize (51 vectors), partner_referrals seeded, leads columns added, Palms demo page |
 | 2026-05-11 | Session 2 | Worker v4 deployed (cross-partner lead splitting), Blue Lagoon demo page built & live, op_bluelagoon_001 seeded in D1, Worker routing debugged & fixed, BUILD.md created, GitHub repo identified |
+| 2026-05-12 | Session 2 | Worker v4 live, Blue Lagoon demo built & working, op_bluelagoon_001 seeded in D1, Worker routing debugged & fixed, BUILD.md created, GitHub repo structured with partners/ folder |
