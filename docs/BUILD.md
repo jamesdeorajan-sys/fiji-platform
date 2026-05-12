@@ -267,3 +267,4 @@ For each Pages project:
 firing in chat responses. Blue Lagoon transfers intent now routes to 
 Nadi Airport Transfers via D1 partner_referrals lookup. referralPartner 
 injected into buildPhase2SystemPrompt. |
+| 2026-05-12 | Session 3 | Worker v6 deployed — permanent 3-layer Lagi character. Layer 1 soul (permanent), Layer 2 D1 partner context (6 new fields), Layer 3 referral engine with pre-filled WhatsApp attribution links. Blue Lagoon + Nadi Transfers fully populated. Humanised responses live. Claude Pro activated. Memory + voice enabled. |
