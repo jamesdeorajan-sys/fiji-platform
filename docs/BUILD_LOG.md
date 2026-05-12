@@ -187,3 +187,6 @@
 Each entry shows what was shipped, when, and why. When you're trying to remember "did we already do X?" — search this file. When you're explaining the platform to someone new, this is the chronology.
 
 When something gets reverted or replaced, leave the original entry intact and add a note — never delete history.
+| 2026-05-13 | Session 4 | Palms demo fixed & deployed. WhatsApp button rendering fixed (markdown → green button). Worker v7 deployed with clean WhatsApp buttons. Cross-referral engine tested — Palms → Nadi Transfers firing correctly. Partner onboarding form live at vakaviti-join-page.pages.dev. Partner dashboard live at vakaviti-dashboard.pages.dev with login, leads, stats, settings. D1 contact_email column added. SendGrid configured. vakaviti.ai domain added to Cloudflare — awaiting nameserver propagation. |
+| Partner Onboarding | vakaviti-join-page.pages.dev | ✅ Live |
+| Partner Dashboard  | vakaviti-dashboard.pages.dev | ✅ Live |
