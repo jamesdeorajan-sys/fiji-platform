@@ -268,3 +268,4 @@ firing in chat responses. Blue Lagoon transfers intent now routes to
 Nadi Airport Transfers via D1 partner_referrals lookup. referralPartner 
 injected into buildPhase2SystemPrompt. |
 | 2026-05-12 | Session 3 | Worker v6 deployed — permanent 3-layer Lagi character. Layer 1 soul (permanent), Layer 2 D1 partner context (6 new fields), Layer 3 referral engine with pre-filled WhatsApp attribution links. Blue Lagoon + Nadi Transfers fully populated. Humanised responses live. Claude Pro activated. Memory + voice enabled. |
+| 2026-05-13 | Session 4 | Palms demo fixed. WhatsApp green buttons live. Worker v7 deployed. Cross-referral engine tested. Partner onboarding live at vakaviti-join-page.pages.dev. Partner dashboard live at vakaviti-dashboard.pages.dev. D1 contact_channels seeded for all 5 partners. Lagi embedded on vosavakaviti dictionary — funnel working. vakaviti.ai domain active on Cloudflare. DNS records being configured. |
