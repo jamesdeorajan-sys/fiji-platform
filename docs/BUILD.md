@@ -1112,3 +1112,258 @@ powershell Compress-Archive -Path index.html -DestinationPath "%USERPROFILE%\Des
 | 2026-05-13 | Session 5 | DNS complete, custom domains active, 999999 removed (v8), vakaviti-leads deployed, 175 words → Vectorize (226 total) |
 | 2026-05-13 | Session 6 | 5-Worker split complete — config, events, onboard, dashboard-api all live. Chat Worker now chat-only. |
 | 2026-05-13 | Session 7 | Lagi v2 deployed (v9). Unified RAG. Layer 4 Fijian language intelligence. Dictionary answers with phonetics + cultural context confirmed working. |
+# Vakaviti.ai — Master Build Document
+> Paste this entire document at the start of every new Claude session.
+> Update it at the end of every session before closing the tab.
+> GitHub: https://github.com/jamesdeorajan-sys/fiji-platform
+
+---
+
+## Who & What
+**James Richardson** — WhatsApp: +61 478 886 145
+**Cloudflare Account ID:** 595101df2c562b3c65595420d43f9fe1
+
+This repo powers two things:
+1. **Existing business** — FTT Booking Site + Vakaviti dictionary (live, serving traffic)
+2. **New platform** — Vakaviti.ai partner network (branded AI concierge for Fiji tourism operators)
+
+---
+
+## Live Systems (as of 2026-05-14)
+
+| System | URL | Status |
+|---|---|---|
+| FTT Booking Site | nadiairporttransfers.com | ✅ Live |
+| Vakaviti Dictionary | vosavakaviti.com | ✅ Live |
+| Chat Worker (Lagi v2) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v10) |
+| Leads Worker | vakaviti-leads.helpronline.workers.dev | ✅ Live (v1) |
+| Config Worker | vakaviti-config.helpronline.workers.dev | ✅ Live (v1) |
+| Events Worker | vakaviti-events.helpronline.workers.dev | ✅ Live (v1) |
+| Onboard Worker | vakaviti-onboard.helpronline.workers.dev | ✅ Live (v1) |
+| Dashboard API Worker | vakaviti-dashboard-api.helpronline.workers.dev | ✅ Live (v1) |
+| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live (updated) |
+| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ✅ Live |
+| Join Page | join.vakaviti.ai | ✅ Live |
+| Dashboard | dashboard.vakaviti.ai | ✅ Live |
+| Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
+
+---
+
+## Domain — vakaviti.ai
+
+### DNS Records (confirmed 2026-05-13)
+| Type | Name | Target | Status |
+|---|---|---|---|
+| CNAME | vakaviti.ai | vakavitiai.pages.dev | ✅ Proxied |
+| CNAME | www | vakavitiai.pages.dev | ✅ Proxied |
+| CNAME | join | vakaviti-join-page.pages.dev | ✅ Proxied |
+| CNAME | dashboard | vakaviti-dashboard.pages.dev | ✅ Proxied |
+| MX (x5) | vakaviti.ai | eforward1-5.registrar-servers.com | ✅ Email forwarding |
+| TXT | vakaviti.ai | v=spf1 include:spf.efwd... | ✅ SPF |
+
+---
+
+## Worker Architecture — 5-Worker Split (complete)
+
+| Worker | URL | Purpose | Bindings |
+|---|---|---|---|
+| fiji-chat-widget (v10) | fiji-chat-widget.helpronline.workers.dev | Lagi AI concierge — chat only | ANTHROPIC_API_KEY, SENDGRID_API_KEY, AI, DB, VECTORIZE, CHAT_USAGE |
+| vakaviti-leads (v1) | vakaviti-leads.helpronline.workers.dev | Lead storage, scoring, referrals | DB, SENDGRID_API_KEY |
+| vakaviti-config (v1) | vakaviti-config.helpronline.workers.dev | Widget config from D1 | DB |
+| vakaviti-events (v1) | vakaviti-events.helpronline.workers.dev | Analytics beacon | DB |
+| vakaviti-onboard (v1) | vakaviti-onboard.helpronline.workers.dev | Partner self-registration | DB, SENDGRID_API_KEY |
+| vakaviti-dashboard-api (v1) | vakaviti-dashboard-api.helpronline.workers.dev | Partner dashboard auth + data | DB, CHAT_USAGE, SENDGRID_API_KEY |
+
+---
+
+## Lagi — AI Concierge (v2 — current)
+
+### Architecture
+- **Model:** claude-sonnet-4-5, max_tokens: 800
+- **4-layer system prompt:** Soul + Partner context + Network intelligence + Fijian language
+- **Unified RAG:** Single Vectorize query → splits into dictWords / kbChunks / partnerKb
+- **Intent detection:** transfers, tours, dive, accommodation, dining, visa, weather, safety, language, pricing, ferry, general
+- **Referral engine:** D1 partner_referrals lookup → `referral_btn` JSON field in response
+
+### Worker response shape (v10)
+```json
+{
+  "type": "reply",
+  "message": "Lagi's text response",
+  "intent": "transfers",
+  "referral_btn": {
+    "url": "https://wa.me/61478886145?text=Hi%20Nadi...",
+    "label": "Contact Nadi Airport Transfers on WhatsApp"
+  }
+}
+```
+`referral_btn` is `null` when no referral applies.
+
+### CRITICAL — Referral button pattern (see docs/PARTNER_DEMO_BUILD_STANDARD.md)
+- Worker returns `referral_btn` as separate JSON field — NOT in message text
+- Demo pages render button with DOM `createElement` — NOT innerHTML or regex parsing
+- This is the ONLY reliable pattern. Never ask Claude to output WhatsApp links.
+
+---
+
+## Vectorize — vakaviti-knowledge
+
+| Metric | Value |
+|---|---|
+| Total vectors | 245 |
+| KB chunks (general) | 51 |
+| Dictionary words | 175 (dict_word_1 → dict_word_175) |
+| Blue Lagoon partner KB | 19 (bl_location, bl_room_*, bl_diving, bl_activities, etc) |
+| Embedding model | @cf/baai/bge-base-en-v1.5 |
+| Score threshold | 0.65 |
+
+### Vector metadata fields (partner KB)
+- `title`, `content` (500 chars), `category`, `partner_id`, `source: partner_kb`
+
+---
+
+## D1 Database — vakaviti-kb (e697a253-e5fc-4201-939c-9aaeca6c5278)
+
+### Tables
+- `partners` — 5 partners seeded
+- `embed_config` — widget config per site_id
+- `leads` — all leads (primary + cross-referral)
+- `kb_chunks` — knowledge base manifest
+- `partner_referrals` — cross-referral routing (6 rows seeded)
+- `conversation_events` — analytics log
+- `contact_channels` — notification channels per partner
+
+### partner_referrals seeded
+| site_id | intent | referred_partner_id | active |
+|---|---|---|---|
+| op_bluelagoon_001 | transfers | op_nadi_001 | 1 |
+| op_bluelagoon_001 | tours | op_tourfiji_001 | 1 |
+
+---
+
+## Partners in D1
+
+| ID | Name | WhatsApp | Slug | Status |
+|---|---|---|---|---|
+| op_nadi_001 | Nadi Airport Transfers | 61478886145 | nadi-airport-transfers | active |
+| op_vosavakaviti_001 | Vosa Vakaviti | 61478886145 | vosa-vakaviti | active |
+| op_tourfiji_001 | Tour Fiji Tours | TBC | tour-fiji-tours | active |
+| op_palms_001 | The Palms Denarau | 6796750104 | the-palms-denarau | active |
+| op_bluelagoon_001 | Blue Lagoon Beach Resort | 6797766223 | blue-lagoon-beach-resort | active |
+
+---
+
+## Blue Lagoon Knowledge Base (ingested Session 8)
+
+19 vectors covering:
+- Location (Nacula Island, Yasawa Islands, 45nm from mainland)
+- Transfers: Finnoki Kai boat schedules, charter Waya Flyer NZD $2,399, helicopter
+- Rooms: Bula Lodge, Garden Villa, Deluxe Garden Villa, Lagoon Villa, Family Suite
+- Pricing: NZD low/high season rates with AUD + USD conversions
+- Seasons: High = Mar 15–Oct 31 + Dec 21–Jan 14 | Low = Nov–mid-Dec + mid-Jan–Mar 14
+- Meal plan: Adults NZD $143/day, Kids NZD $105/day, Infants FREE
+- Dining: Main Restaurant + Donu (Japanese omakase)
+- Deals: 7-night package, Kids Eat Free, Dive Free, Free Scuba 5+ nights
+- Diving: PADI courses, unlimited free diving after course
+- Activities: Paddle boarding, snorkelling, Sawa-i-Lau caves, hiking, Tumba Kids Club
+- Weddings, family rates, contact details, booking terms
+
+---
+
+## Demo Pages
+
+### Blue Lagoon (✅ fully working — updated Session 8)
+- URL: vakaviti-bluelagoon.pages.dev
+- site_id: `op_bluelagoon_001`
+- Referral button: ✅ Green WhatsApp button with pre-filled attribution message
+- Partner KB: ✅ 19 vectors — Lagi answers pricing, room types, packages accurately
+
+### The Palms Denarau (✅ working — needs KB ingest)
+- URL: vakaviti-palms-denarau.pages.dev
+- site_id: `op_palms_001`
+- Referral button: ⬜ Not yet updated to new pattern
+
+### Standard fetch pattern (all demo pages)
+```javascript
+const WORKER_URL = 'https://fiji-chat-widget.helpronline.workers.dev/';
+const response = await fetch(WORKER_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages: messages, site_id: 'op_XXX_001',
+    partner_id: 'op_XXX_001', session_id: 'session-' + Date.now()
+  })
+});
+const data = await response.json();
+const reply = data.message;
+// Render referral_btn with DOM if data.referral_btn exists
+// See docs/PARTNER_DEMO_BUILD_STANDARD.md
+```
+
+---
+
+## Key Documents in Repo
+
+| File | Purpose |
+|---|---|
+| docs/BUILD.md | Master build doc — paste at session start |
+| docs/PARTNER_DEMO_BUILD_STANDARD.md | How to build partner demo pages — referral button pattern |
+| docs/BRAND_GUIDELINES.md | Visual identity |
+| docs/ROADMAP.md | Feature roadmap |
+| docs/PRICING_MODEL.md | Partner pricing |
+
+---
+
+## Security
+
+| Item | Status |
+|---|---|
+| Master code 999999 bypass | ✅ Removed (Session 5) |
+| API keys in browser | ✅ Never |
+| SendGrid sender | ✅ leads@vakaviti.ai |
+| Single point of failure | ✅ Eliminated — 5-Worker split |
+| WhatsApp links in system prompt | ✅ Removed — referral_btn JSON field only |
+
+---
+
+## Pending Actions (priority order)
+
+1. ⬜ Update Palms demo to new referral button pattern (copy Blue Lagoon pattern)
+2. ⬜ Ingest Palms Denarau partner KB into Vectorize
+3. ⬜ Send Palms invitation → reservations@thepalmsdenarau.com
+4. ⬜ Send Blue Lagoon outreach → reservations@bluelagoonresortfiji.com
+5. ⬜ Add partners/ and database/ to GitHub repo
+6. ⬜ Connect Cloudflare Pages → GitHub auto-deploy
+7. ⬜ Register 6 remaining in-house sites in D1
+8. ⬜ Build next partner demo page (Tour Fiji Tours or Nadi Airport Transfers)
+9. ⬜ Activate auto-onboarding (join → D1 → live widget, no manual step)
+10. ⬜ Claude-powered intent detection (replace regex)
+
+---
+
+## Known Issues & Lessons Learned
+
+| Issue | Root Cause | Fix |
+|---|---|---|
+| Chat returns Fiji Tour Transfers identity | site_id missing | Always pass site_id |
+| Connection issue error | Browser calling Anthropic directly | Route through Worker only |
+| index.html.html double extension | Windows save behaviour | Rename via CMD |
+| partners INSERT fails | slug NOT NULL | Always include slug |
+| Binding dialog defaults to D1 | Cloudflare UI quirk | Click Back for type selector |
+| kb_chunks D1 insert failed | Schema column mismatch | Vectorize succeeded — D1 fix pending |
+| WhatsApp referral button showing as raw text | Claude outputs markdown links with newlines; escHtml breaks URLs | Return referral_btn as JSON field, render with DOM. See PARTNER_DEMO_BUILD_STANDARD.md |
+
+---
+
+## Session Log
+
+| Date | Session | What was built |
+|---|---|---|
+| Pre 2026-05-06 | Session 1 | FTT booking site, Vakaviti dictionary, chat worker v1-v3, D1 schema, Vectorize (51 vectors), partner_referrals seeded, leads columns added, Palms demo |
+| 2026-05-11 | Session 2 | Worker v4, Blue Lagoon demo live, op_bluelagoon_001 seeded, routing fixed, BUILD.md created |
+| 2026-05-12 | Session 3 | Worker v6 — 3-layer Lagi, RAG live, Blue Lagoon + Nadi Transfers populated |
+| 2026-05-12 | Session 4 | Palms demo fixed, Worker v7, join.vakaviti.ai + dashboard.vakaviti.ai live, vakaviti.ai domain activated |
+| 2026-05-13 | Session 5 | DNS complete, custom domains active, 999999 removed (v8), vakaviti-leads deployed, 175 words → Vectorize (226 total) |
+| 2026-05-13 | Session 6 | 5-Worker split complete — config, events, onboard, dashboard-api all live. Chat Worker now chat-only. |
+| 2026-05-13 | Session 7 | Lagi v2 deployed (v9). Unified RAG. Layer 4 Fijian language intelligence. Dictionary answers confirmed working. |
+| 2026-05-14 | Session 8 | Blue Lagoon partner KB ingested (19 vectors, 245 total). Cross-referral green WhatsApp button live with pre-filled attribution message. referral_btn JSON pattern documented in PARTNER_DEMO_BUILD_STANDARD.md. Worker v10 deployed. |
