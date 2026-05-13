@@ -869,3 +869,246 @@ powershell Compress-Archive -Path index.html -DestinationPath "%USERPROFILE%\Des
 | 2026-05-12 | Session 4 | Palms demo fixed, Worker v7, join.vakaviti.ai + dashboard.vakaviti.ai live, vakaviti.ai domain activated |
 | 2026-05-13 | Session 5 | DNS complete, custom domains active, 999999 removed (v8), vakaviti-leads deployed, 175 words → Vectorize (226 total) |
 | 2026-05-13 | Session 6 | 5-Worker split complete — vakaviti-config, vakaviti-events, vakaviti-onboard, vakaviti-dashboard-api all live. fiji-chat-widget now chat-only. Architecture scales to 50+ partners. |
+# Vakaviti.ai — Master Build Document
+> Paste this entire document at the start of every new Claude session.
+> Update it at the end of every session before closing the tab.
+> GitHub: https://github.com/jamesdeorajan-sys/fiji-platform
+
+---
+
+## Who & What
+**James Richardson** — WhatsApp: +61 478 886 145
+**Cloudflare Account ID:** 595101df2c562b3c65595420d43f9fe1
+
+This repo powers two things:
+1. **Existing business** — FTT Booking Site + Vakaviti dictionary (live, serving traffic)
+2. **New platform** — Vakaviti.ai partner network (branded AI concierge for Fiji tourism operators)
+
+---
+
+## Live Systems (as of 2026-05-13)
+
+| System | URL | Status |
+|---|---|---|
+| FTT Booking Site | nadiairporttransfers.com | ✅ Live |
+| Vakaviti Dictionary | vosavakaviti.com | ✅ Live |
+| Chat Worker (Lagi v2) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v9 — Lagi v2) |
+| Leads Worker | vakaviti-leads.helpronline.workers.dev | ✅ Live (v1) |
+| Config Worker | vakaviti-config.helpronline.workers.dev | ✅ Live (v1) |
+| Events Worker | vakaviti-events.helpronline.workers.dev | ✅ Live (v1) |
+| Onboard Worker | vakaviti-onboard.helpronline.workers.dev | ✅ Live (v1) |
+| Dashboard API Worker | vakaviti-dashboard-api.helpronline.workers.dev | ✅ Live (v1) |
+| Drafting Console | fiji-drafting-console.helpronline.workers.dev | ✅ Live |
+| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ✅ Live |
+| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live |
+| Join Page | join.vakaviti.ai | ✅ Live |
+| Dashboard | dashboard.vakaviti.ai | ✅ Live |
+| Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
+
+---
+
+## Domain — vakaviti.ai
+
+### DNS Records (confirmed 2026-05-13)
+| Type | Name | Target | Status |
+|---|---|---|---|
+| CNAME | vakaviti.ai | vakavitiai.pages.dev | ✅ Proxied |
+| CNAME | www | vakavitiai.pages.dev | ✅ Proxied |
+| CNAME | join | vakaviti-join-page.pages.dev | ✅ Proxied |
+| CNAME | dashboard | vakaviti-dashboard.pages.dev | ✅ Proxied |
+| MX (x5) | vakaviti.ai | eforward1-5.registrar-servers.com | ✅ Email forwarding |
+| TXT | vakaviti.ai | v=spf1 include:spf.efwd... | ✅ SPF |
+
+### Custom Domains on Pages (confirmed 2026-05-13)
+| Pages Project | Custom Domain | Status |
+|---|---|---|
+| vakavitiai | vakaviti.ai | ✅ Active |
+| vakavitiai | www.vakaviti.ai | ✅ Active |
+| vakaviti-join-page | join.vakaviti.ai | ✅ Active |
+| vakaviti-dashboard | dashboard.vakaviti.ai | ✅ Active |
+
+---
+
+## Worker Architecture — 5-Worker Split (complete)
+
+| Worker | URL | Purpose | Bindings |
+|---|---|---|---|
+| fiji-chat-widget (v9) | fiji-chat-widget.helpronline.workers.dev | Lagi AI concierge — chat only | ANTHROPIC_API_KEY, SENDGRID_API_KEY, AI, DB, VECTORIZE, CHAT_USAGE |
+| vakaviti-leads (v1) | vakaviti-leads.helpronline.workers.dev | Lead storage, scoring, referrals, notify | DB, SENDGRID_API_KEY |
+| vakaviti-config (v1) | vakaviti-config.helpronline.workers.dev | Widget config from D1 | DB |
+| vakaviti-events (v1) | vakaviti-events.helpronline.workers.dev | Analytics beacon | DB |
+| vakaviti-onboard (v1) | vakaviti-onboard.helpronline.workers.dev | Partner self-registration | DB, SENDGRID_API_KEY |
+| vakaviti-dashboard-api (v1) | vakaviti-dashboard-api.helpronline.workers.dev | Partner dashboard auth + data | DB, CHAT_USAGE, SENDGRID_API_KEY |
+
+---
+
+## Lagi — AI Concierge (v2 — current)
+
+### Architecture
+- **Model:** claude-sonnet-4-5, max_tokens: 800
+- **4-layer system prompt:**
+  - Layer 1: Lagi soul (permanent character, voice, lead capture rules)
+  - Layer 2: Partner context (D1 lookup — name, category, region, description, WhatsApp)
+  - Layer 3: Network intelligence (cross-referral engine, trusted partner routing)
+  - Layer 4: Fijian language & cultural knowledge (dictionary + cultural customs)
+- **Unified RAG:** Single Vectorize query → splits into dictWords, kbChunks, partnerKb
+- **Intent detection:** transfers, tours, dive, accommodation, dining, visa, weather, safety, language, pricing, ferry, general
+
+### Lagi v2 changes (Session 7)
+- `searchKnowledge` rewritten — uses Vectorize metadata directly, no D1 fallback needed for dict words
+- Score threshold 0.65 — only relevant matches sent to Claude
+- Results bucketed: `dictWords` / `kbChunks` / `partnerKb`
+- Layer 4 added — Lagi teaches Fijian words with phonetics, meaning, cultural context
+- Language intent expanded — catches: bula, vinaka, moce, kerekere, yadra, fijian word, how do you say, what does * mean, vosa, dictionary
+- Dashboard routes now return 301 to standalone Workers
+- Widget greeting updated — Lagi introduces herself by name and mentions language teaching
+
+### Confirmed working (tested 2026-05-13)
+- "What does bula mean?" → phonetics (mboo-lah) + 4 meanings + cultural context + bula vinaka bonus + invitation to learn more ✅
+
+---
+
+## Vectorize — vakaviti-knowledge
+
+| Metric | Value |
+|---|---|
+| Total vectors | 226 |
+| KB chunks | 51 (chunk_XXX) |
+| Dictionary words | 175 (dict_word_1 → dict_word_175) |
+| Embedding model | @cf/baai/bge-base-en-v1.5 |
+| Score threshold | 0.65 |
+
+### Vector metadata fields (dictionary words)
+- `word`, `phonetic`, `category`, `englishDef` (200 chars), `tags`, `source: vakaviti_dictionary`
+
+### Vector metadata fields (partner KB — next build)
+- `word/title`, `content`, `partner_id`, `source: partner_kb`
+
+---
+
+## D1 Database — vakaviti-kb (e697a253-e5fc-4201-939c-9aaeca6c5278)
+
+### Tables
+- `partners` — 5 partners seeded
+- `embed_config` — widget config per site_id
+- `leads` — all leads (primary + cross-referral)
+- `kb_chunks` — knowledge base manifest
+- `partner_referrals` — cross-referral routing (6 rows)
+- `conversation_events` — analytics log
+- `contact_channels` — notification channels per partner
+
+---
+
+## Partners in D1
+
+| ID | Name | WhatsApp | Slug | Status |
+|---|---|---|---|---|
+| op_nadi_001 | Nadi Airport Transfers | 61478886145 | nadi-airport-transfers | active |
+| op_vosavakaviti_001 | Vosa Vakaviti | 61478886145 | vosa-vakaviti | active |
+| op_tourfiji_001 | Tour Fiji Tours | TBC | tour-fiji-tours | active |
+| op_palms_001 | The Palms Denarau | 6796750104 | the-palms-denarau | active |
+| op_bluelagoon_001 | Blue Lagoon Beach Resort | 6797766223 | blue-lagoon-beach-resort | active |
+
+---
+
+## Demo Pages
+
+### Blue Lagoon (✅ working + Lagi v2 live)
+- URL: vakaviti-bluelagoon.pages.dev
+- site_id: `op_bluelagoon_001`
+
+### The Palms Denarau (✅ working)
+- URL: vakaviti-palms-denarau.pages.dev
+- site_id: `op_palms_001`
+
+### Correct fetch pattern
+```javascript
+const WORKER_URL = 'https://fiji-chat-widget.helpronline.workers.dev/';
+const response = await fetch(WORKER_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages:   messages,
+    site_id:    'op_XXX_001',
+    partner_id: 'op_XXX_001',
+    session_id: 'session-' + Date.now()
+  })
+});
+const data = await response.json();
+const reply = data.message;
+```
+
+### CRITICAL RULES
+- Never call api.anthropic.com from browser
+- Always pass site_id
+- Windows: rename .html.html → .html before zipping
+
+---
+
+## Phase 2 Widget Embed
+```html
+<script src="https://fiji-chat-widget.helpronline.workers.dev/v2.js"
+        data-site-id="op_bluelagoon_001"></script>
+```
+
+---
+
+## Windows Deployment Process
+```cmd
+cd %USERPROFILE%\Desktop\[folder-name]
+rename index.html.html index.html
+powershell Compress-Archive -Path index.html -DestinationPath "%USERPROFILE%\Desktop\deploy.zip" -Force
+```
+
+---
+
+## Security
+
+| Item | Status |
+|---|---|
+| Master code 999999 bypass | ✅ Removed (Session 5) |
+| API keys in browser | ✅ Never |
+| SendGrid sender | ✅ leads@vakaviti.ai |
+| Single point of failure | ✅ Eliminated — 5-Worker split |
+
+---
+
+## Pending Actions (priority order)
+
+1. ⬜ **Partner KB ingest** — push Blue Lagoon room types, dive packages, pricing into Vectorize so Lagi answers factually (Session 8)
+2. ⬜ Send Palms invitation → reservations@thepalmsdenarau.com
+3. ⬜ Send Blue Lagoon outreach → reservations@bluelagoonresortfiji.com
+4. ⬜ Add partners/ and database/ to GitHub repo
+5. ⬜ Connect Cloudflare Pages → GitHub auto-deploy
+6. ⬜ Fix D1 kb_chunks insert (minor — Vectorize complete)
+7. ⬜ Register 6 remaining in-house sites in D1
+8. ⬜ Build next partner demo page
+9. ⬜ Activate auto-onboarding (join → D1 → live widget, no manual step)
+10. ⬜ Claude-powered intent detection (replace regex with fast Claude call)
+
+---
+
+## Known Issues & Lessons Learned
+
+| Issue | Root Cause | Fix |
+|---|---|---|
+| Chat returns Fiji Tour Transfers identity | site_id missing | Always pass site_id |
+| Connection issue error | Browser calling Anthropic directly | Route through Worker only |
+| index.html.html double extension | Windows save behaviour | Rename via CMD |
+| partners INSERT fails | slug NOT NULL | Always include slug |
+| Binding dialog defaults to D1 | Cloudflare UI quirk | Click Back for type selector |
+| kb_chunks D1 insert failed | Schema column mismatch | Vectorize succeeded — D1 fix pending |
+
+---
+
+## Session Log
+
+| Date | Session | What was built |
+|---|---|---|
+| Pre 2026-05-06 | Session 1 | FTT booking site, Vakaviti dictionary, chat worker v1-v3, D1 schema, Vectorize (51 vectors), partner_referrals seeded, leads columns added, Palms demo |
+| 2026-05-11 | Session 2 | Worker v4, Blue Lagoon demo live, op_bluelagoon_001 seeded, routing fixed, BUILD.md created |
+| 2026-05-12 | Session 3 | Worker v6 — 3-layer Lagi, RAG live, Blue Lagoon + Nadi Transfers populated |
+| 2026-05-12 | Session 4 | Palms demo fixed, Worker v7, join.vakaviti.ai + dashboard.vakaviti.ai live, vakaviti.ai domain activated |
+| 2026-05-13 | Session 5 | DNS complete, custom domains active, 999999 removed (v8), vakaviti-leads deployed, 175 words → Vectorize (226 total) |
+| 2026-05-13 | Session 6 | 5-Worker split complete — config, events, onboard, dashboard-api all live. Chat Worker now chat-only. |
+| 2026-05-13 | Session 7 | Lagi v2 deployed (v9). Unified RAG. Layer 4 Fijian language intelligence. Dictionary answers with phonetics + cultural context confirmed working. |
