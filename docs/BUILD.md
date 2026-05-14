@@ -1367,3 +1367,4 @@ const reply = data.message;
 | 2026-05-13 | Session 6 | 5-Worker split complete — config, events, onboard, dashboard-api all live. Chat Worker now chat-only. |
 | 2026-05-13 | Session 7 | Lagi v2 deployed (v9). Unified RAG. Layer 4 Fijian language intelligence. Dictionary answers confirmed working. |
 | 2026-05-14 | Session 8 | Blue Lagoon partner KB ingested (19 vectors, 245 total). Cross-referral green WhatsApp button live with pre-filled attribution message. referral_btn JSON pattern documented in PARTNER_DEMO_BUILD_STANDARD.md. Worker v10 deployed. |
+| 2026-05-15 | Session 9 | Palms demo updated (referral btn pattern). Palms KB ingested (15 vectors). General Fiji KB ingested (24 vectors, 284 total). Worker v12 deployed — proactive Fijian language, -- fix, WA strip fix. widget.vakaviti.ai live as permanent widget CDN. Vosa Vakaviti upgraded to Phase 2 (live traffic). Nadi Airport Transfers flagship demo live. |
