@@ -1369,3 +1369,10 @@ const reply = data.message;
 | 2026-05-14 | Session 8 | Blue Lagoon partner KB ingested (19 vectors, 245 total). Cross-referral green WhatsApp button live with pre-filled attribution message. referral_btn JSON pattern documented in PARTNER_DEMO_BUILD_STANDARD.md. Worker v10 deployed. |
 | 2026-05-15 | Session 9 | Palms demo updated (referral btn pattern). Palms KB ingested (15 vectors). General Fiji KB ingested (24 vectors, 284 total). Worker v12 deployed — proactive Fijian language, -- fix, WA strip fix. widget.vakaviti.ai live as permanent widget CDN. Vosa Vakaviti upgraded to Phase 2 (live traffic). Nadi Airport Transfers flagship demo live. |
 | 2026-05-15 | Session 10 | Tour Fiji Tours demo live (vakaviti-tourfiji.pages.dev). Tour Fiji Tours KB ingested (15 vectors). Nadi Airport Transfers KB ingested (20 vectors). Vectorize total 319 vectors. lagi.vakaviti.ai public page live — network-wide mode, live deals ticker, partner sidebar, Smugglers Cove featured. lagi.vakaviti.ai DNS active with SSL. |
+| Lagi Public Page | lagi.vakaviti.ai | ✅ Live |
+| Tour Fiji Tours Demo | vakaviti-tourfiji.pages.dev | ✅ Live |
+| Nadi Transfers Demo | vakaviti-nadi-transfers.pages.dev | ✅ Live |
+| CNAME | lagi | vakaviti-lagi-public.pages.dev | ✅ Proxied |
+Total vectors: 319
+Tour Fiji Tours KB: 15
+Nadi Airport Transfers KB: 20
