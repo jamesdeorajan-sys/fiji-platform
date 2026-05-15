@@ -1381,11 +1381,6 @@ const reply = data.message;
 | 2026-05-14 | Session 8 | Blue Lagoon partner KB ingested (19 vectors, 245 total). Cross-referral green WhatsApp button live with pre-filled attribution message. referral_btn JSON pattern documented in PARTNER_DEMO_BUILD_STANDARD.md. Worker v10 deployed. |
 | 2026-05-15 | Session 9 | Palms demo updated (referral btn pattern). Palms KB ingested (15 vectors). General Fiji KB ingested (24 vectors, 284 total). Worker v12 deployed — proactive Fijian language, -- fix, WA strip fix. widget.vakaviti.ai live as permanent widget CDN. Vosa Vakaviti upgraded to Phase 2 (live traffic). Nadi Airport Transfers flagship demo live. |
 | 2026-05-15 | Session 10 | Tour Fiji Tours demo live (vakaviti-tourfiji.pages.dev). Tour Fiji Tours KB ingested (15 vectors). Nadi Airport Transfers KB ingested (20 vectors). Vectorize total 319 vectors. lagi.vakaviti.ai public page live — network-wide mode, live deals ticker, partner sidebar, Smugglers Cove featured. lagi.vakaviti.ai DNS active with SSL. |
-| Lagi Public Page | lagi.vakaviti.ai | ✅ Live |
-| Tour Fiji Tours Demo | vakaviti-tourfiji.pages.dev | ✅ Live |
-| Nadi Transfers Demo | vakaviti-nadi-transfers.pages.dev | ✅ Live |
-| CNAME | lagi | vakaviti-lagi-public.pages.dev | ✅ Proxied |
-Total vectors: 319
-Tour Fiji Tours KB: 15
-Nadi Airport Transfers KB: 20
+
 | 2026-05-15 | Session 11 | deals table created in D1 (5 live deals seeded). Worker v13 deployed — deals engine + Layer 5 network intelligence. Worker v14 — Blue Lagoon cross-sell hardwired, all deals in public mode, RAG topK 12. Worker v15 — Super leads channel (no raw phone numbers, WhatsApp/email only, always-fire referral button, snorkel→dive intent fix, contact attribution). lagi.vakaviti.ai updated v2 — lead form suppressed, lagi_public site_id. Full CEO stress test completed — Lagi scored 10/10 in public mode. Power Lead Framework designed — heat scoring, Top 3 offers, partner pricing model defined. |
+| 2026-05-15 | Session 12 | Smugglers Cove onboarded as Partner 6 in D1. leads table upgraded (heat_score, heat_tier, deals_interested, contact_preference columns). Worker v16 deployed — Power Lead Engine: scoreConversationHeat(), Top 3 power offers at heat≥60, WhatsApp/email choice, enhanced lead payload. CEO stress test — v16 scored 9.4/10. Platform ready for Facebook group deployment. |
