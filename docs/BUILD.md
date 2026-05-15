@@ -1376,3 +1376,4 @@ const reply = data.message;
 Total vectors: 319
 Tour Fiji Tours KB: 15
 Nadi Airport Transfers KB: 20
+| 2026-05-15 | Session 11 | deals table created in D1 (5 live deals seeded). Worker v13 deployed — deals engine + Layer 5 network intelligence. Worker v14 — Blue Lagoon cross-sell hardwired, all deals in public mode, RAG topK 12. Worker v15 — Super leads channel (no raw phone numbers, WhatsApp/email only, always-fire referral button, snorkel→dive intent fix, contact attribution). lagi.vakaviti.ai updated v2 — lead form suppressed, lagi_public site_id. Full CEO stress test completed — Lagi scored 10/10 in public mode. Power Lead Framework designed — heat scoring, Top 3 offers, partner pricing model defined. |
