@@ -15,16 +15,27 @@ This repo powers two things:
 
 ---
 
-## Live Systems (as of 2026-05-12)
+## Live Systems (as of 2026-05-15)
 
 | System | URL | Status |
 |---|---|---|
 | FTT Booking Site | nadiairporttransfers.com | ✅ Live |
-| Vakaviti Dictionary | vosavakaviti.com | ✅ Live |
-| Chat Worker | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v4) |
-| Drafting Console | fiji-drafting-console.helpronline.workers.dev | ✅ Live |
-| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ⚠️ Live but needs site_id fix |
-| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live & working |
+| Vakaviti Dictionary | vosavakaviti.com | ✅ Live (Phase 2) |
+| Chat Worker (Lagi v2) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v15) |
+| Leads Worker | vakaviti-leads.helpronline.workers.dev | ✅ Live (v1) |
+| Config Worker | vakaviti-config.helpronline.workers.dev | ✅ Live (v1) |
+| Events Worker | vakaviti-events.helpronline.workers.dev | ✅ Live (v1) |
+| Onboard Worker | vakaviti-onboard.helpronline.workers.dev | ✅ Live (v1) |
+| Dashboard API Worker | vakaviti-dashboard-api.helpronline.workers.dev | ✅ Live (v1) |
+| Widget CDN | widget.vakaviti.ai/widget.js | ✅ Live |
+| Lagi Public Page | lagi.vakaviti.ai | ✅ Live (v2) |
+| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live |
+| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ✅ Live |
+| Nadi Transfers Demo | vakaviti-nadi-transfers.pages.dev | ✅ Live |
+| Tour Fiji Tours Demo | vakaviti-tourfiji.pages.dev | ✅ Live |
+| Join Page | join.vakaviti.ai | ✅ Live |
+| Dashboard | dashboard.vakaviti.ai | ✅ Live |
+| Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
 
 ---
 
@@ -269,6 +280,7 @@ Nadi Airport Transfers via D1 partner_referrals lookup. referralPartner
 injected into buildPhase2SystemPrompt. |
 | 2026-05-12 | Session 3 | Worker v6 deployed — permanent 3-layer Lagi character. Layer 1 soul (permanent), Layer 2 D1 partner context (6 new fields), Layer 3 referral engine with pre-filled WhatsApp attribution links. Blue Lagoon + Nadi Transfers fully populated. Humanised responses live. Claude Pro activated. Memory + voice enabled. |
 | 2026-05-13 | Session 4 | Palms demo fixed. WhatsApp green buttons live. Worker v7 deployed. Cross-referral engine tested. Partner onboarding live at vakaviti-join-page.pages.dev. Partner dashboard live at vakaviti-dashboard.pages.dev. D1 contact_channels seeded for all 5 partners. Lagi embedded on vosavakaviti dictionary — funnel working. vakaviti.ai domain active on Cloudflare. DNS records being configured. |
+| 2026-05-15 | Session 11 | deals table created in D1 (5 live deals seeded). Worker v13 deployed — deals engine + Layer 5 network intelligence. Worker v14 — Blue Lagoon cross-sell hardwired, all deals in public mode, RAG topK 12. Worker v15 — Super leads channel (no raw phone numbers, WhatsApp/email only, always-fire referral button, snorkel→dive intent fix). lagi.vakaviti.ai updated v2. Full CEO stress test — Lagi scored 10/10 in public mode. Power Lead Framework designed. |
 # Vakaviti.ai — Master Build Document
 > Paste this entire document at the start of every new Claude session.
 > Update it at the end of every session before closing the tab.
