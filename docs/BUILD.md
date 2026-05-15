@@ -1,4 +1,4 @@
-# Vakaviti.ai — Master Build Document
+````# Vakaviti.ai — Master Build Document
 > Paste this entire document at the start of every new Claude session.
 > Update it at the end of every session before closing the tab.
 > GitHub: https://github.com/jamesdeorajan-sys/fiji-platform
@@ -36,7 +36,8 @@ This repo powers two things:
 | Join Page | join.vakaviti.ai | ✅ Live |
 | Dashboard | dashboard.vakaviti.ai | ✅ Live |
 | Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
-
+| Chat Worker (Lagi v2) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v20) |
+| Partner Dashboard v2 | vakaviti-dashboard-v2.pages.dev | ✅ Live |
 ---
 
 ## Repo Structure (github.com/jamesdeorajan-sys/fiji-platform)
@@ -1385,3 +1386,4 @@ const reply = data.message;
 | 2026-05-15 | Session 11 | deals table created in D1 (5 live deals seeded). Worker v13 deployed — deals engine + Layer 5 network intelligence. Worker v14 — Blue Lagoon cross-sell hardwired, all deals in public mode, RAG topK 12. Worker v15 — Super leads channel (no raw phone numbers, WhatsApp/email only, always-fire referral button, snorkel→dive intent fix, contact attribution). lagi.vakaviti.ai updated v2 — lead form suppressed, lagi_public site_id. Full CEO stress test completed — Lagi scored 10/10 in public mode. Power Lead Framework designed — heat scoring, Top 3 offers, partner pricing model defined. |
 | 2026-05-15 | Session 12 | Smugglers Cove onboarded as Partner 6 in D1. leads table upgraded (heat_score, heat_tier, deals_interested, contact_preference columns). Worker v16 deployed — Power Lead Engine: scoreConversationHeat(), Top 3 power offers at heat≥60, WhatsApp/email choice, enhanced lead payload. CEO stress test — v16 scored 9.4/10. Platform ready for Facebook group deployment. |
 | 2026-05-15 | Session 12 final | Worker v17 — smart context routing (isFamily/isHoneymoon detection). Worker v18 — early lead trigger, two-step close enforced. Worker v19 — auto lead capture (phone/email detection, D1 storage, email notification). SendGrid sender fixed. Contact channel priorities updated. NON-NEGOTIABLE seed planting message 1, contact capture message 2. First live lead notification received. lagi.vakaviti.ai v4 — mobile optimised, 10 deals all screens. Platform approved for Facebook deployment. |
+| 2026-05-16 | Session 13 | Worker v20 deployed — rate limiting (50msg/IP/hr), prompt injection detection, security headers, conversation_snapshot stored with leads. Partner Dashboard v2 built — live leads, heat scores, conversation snippets, modal detail view. Privacy Policy + Terms of Service built. leads-query + deals-query endpoints added to Worker. Dashboard login fixed — Unicode syntax error resolved. D1: conversation_snapshot column added. |
