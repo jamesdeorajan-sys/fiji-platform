@@ -1402,3 +1402,12 @@ fiji-chat-widget. Lagi responding on WhatsApp with full intelligence
 + referral buttons. Test number: +1 (555) 641-4099. Privacy page 
 live at vakaviti-privacy.pages.dev. Permanent system user token 
 pending. |
+| 2026-05-17 | Session 20 | Permanent WhatsApp token live. 
+Lagi installed on 10 WordPress sites (fijitourtransfers.com, 
+tourfijitours.com, natadolabayhorseriding.com, coralcoasthorseriding.com, 
+bulaadventure.com, fijitourpackages.com, bulahappiness.com, fijibula.com, 
+namosiadventuretoursfiji.com, wananavudeals.com). 9 Cloudflare AI sites 
+registered in D1 with unique configs. tourfijitours.com security audit 
+complete — fake accounts deleted, admin email secured, Square reconnected, 
+bookings working for first time since March. fiji679.com domain down — 
+flag for developer. Widget header caching issue pending fix in next session.|
