@@ -1411,3 +1411,153 @@ registered in D1 with unique configs. tourfijitours.com security audit
 complete — fake accounts deleted, admin email secured, Square reconnected, 
 bookings working for first time since March. fiji679.com domain down — 
 flag for developer. Widget header caching issue pending fix in next session.|
+# Vakaviti.ai — Master Build Document
+> Paste this entire document at the start of every new Claude session.
+> Update it at the end of every session before closing the tab.
+> GitHub: https://github.com/jamesdeorajan-sys/fiji-platform
+
+---
+
+## Who & What
+**James Richardson** — WhatsApp: +61 478 886 145
+**Cloudflare Account ID:** 595101df2c562b3c65595420d43f9fe1
+
+---
+
+## Live Systems (as of 2026-05-18)
+
+| System | URL | Status |
+|---|---|---|
+| FTT Booking Site | nadiairporttransfers.com | ✅ Live |
+| Vakaviti Dictionary | vosavakaviti.com | ✅ Live |
+| Chat Worker (Lagi) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v48) |
+| Leads Worker | vakaviti-leads.helpronline.workers.dev | ✅ Live |
+| Config Worker | vakaviti-config.helpronline.workers.dev | ✅ Live |
+| Events Worker | vakaviti-events.helpronline.workers.dev | ✅ Live |
+| Onboard Worker | vakaviti-onboard.helpronline.workers.dev | ✅ Live |
+| Dashboard API Worker | vakaviti-dashboard-api.helpronline.workers.dev | ✅ Live |
+| Widget CDN | widget.vakaviti.ai/widget.js | ✅ Live (caching fixed Session 21) |
+| Lagi Public Page | lagi.vakaviti.ai | ✅ Live (v5) |
+| Blue Lagoon Demo | vakaviti-bluelagoon.pages.dev | ✅ Live |
+| Palms Denarau Demo | vakaviti-palms-denarau.pages.dev | ✅ Live |
+| Nadi Transfers Demo | vakaviti-nadi-transfers.pages.dev | ✅ Live |
+| Tour Fiji Tours Demo | vakaviti-tourfiji.pages.dev | ✅ Live |
+| Join Page | join.vakaviti.ai | ✅ Live |
+| Dashboard | dashboard.vakaviti.ai | ✅ Live (v2) |
+| Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
+| WhatsApp Worker | vakaviti-whatsapp Worker | ✅ Live (v5) |
+
+---
+
+## Widget CDN — widget.vakaviti.ai
+- Served from Cloudflare Pages project: vakaviti-widget
+- Cache-Control: no-store, no-cache, must-revalidate ✅ (fixed Session 21)
+- Snippet for all sites:
+```html
+<script src="https://widget.vakaviti.ai/widget.js"
+        data-site-id="op_SITEID_001"
+        defer></script>
+```
+
+---
+
+## Lagi — AI Concierge (v48 current)
+- Model: claude-sonnet-4-5, max_tokens: 800
+- 4-layer system prompt + deals engine + power lead engine + itinerary builder
+- RAG: 319+ Vectorize vectors
+- WhatsApp Business API: live (Meta App ID: 1700903951357623)
+- Test number: +1 (555) 641-4099
+
+---
+
+## D1 Database — vakaviti-kb
+
+### Partners in D1 (15 total)
+
+| ID | Name | Domain | Status |
+|---|---|---|---|
+| op_nadi_001 | Nadi Airport Transfers | nadiairporttransfers.com | active |
+| op_vosavakaviti_001 | Vosa Vakaviti | vosavakaviti.com | active |
+| op_tourfiji_001 | Tour Fiji Tours | tourfijitours.com | active |
+| op_palms_001 | The Palms Denarau | thepalmsdenarau.com | active |
+| op_bluelagoon_001 | Blue Lagoon Beach Resort | bluelagoonresortfiji.com | active |
+| op_smugglers_001 | Smugglers Cove | — | active |
+| op_fijitourtransfers_001 | Fiji Tour Transfers | fijitourtransfers.com | active |
+| op_fijithingstodo_001 | Fiji Things To Do | fijithingstodo.com | active |
+| op_guidefiji_001 | Guide Fiji | guidefiji.com | active |
+| op_bestfijitours_001 | Best Fiji Tours | bestfijitours.com | active |
+| op_fijihomestayz_001 | Fiji Homestayz | fijihomestayz.com | active |
+| op_realfijitours_001 | Real Fiji Tours | realfiji.tours | active |
+| op_fijiepictours_001 | Fiji Epic Tours | fijiepictours.com | active |
+| op_fijitoursonline_001 | Fiji Tours Online | fijitours.online | active |
+| op_fijidaytours_001 | Fiji Day Tours | fijidaytours.com.au | active |
+| op_bookfijitours_001 | Book Fiji Tours | bookfijitours.com.au | active |
+
+---
+
+## Domain Portfolio — Lagi Installation Status
+
+| Domain | Visits/mo | Lagi Status | site_id |
+|---|---|---|---|
+| fijitourtransfers.com | 8,960 | ✅ Live | op_fijitourtransfers_001 |
+| nadiairporttransfers.com | 2,740 | ✅ Live | op_nadi_001 |
+| guidefiji.com | 2,130 | ✅ Live | op_guidefiji_001 |
+| fijithingstodo.com | 1,560 | ✅ Live | op_fijithingstodo_001 |
+| bestfijitours.com | 1,280 | ✅ Live | op_bestfijitours_001 |
+| fijihomestayz.com | 1,170 | ⬜ Pending | op_fijihomestayz_001 |
+| realfiji.tours | 1,080 | ⬜ Pending | op_realfijitours_001 |
+| fijiepictours.com | 986 | ⬜ Pending | op_fijiepictours_001 |
+| fijitours.online | 967 | ⬜ Pending | op_fijitoursonline_001 |
+| vosavakaviti.com | 921 | ✅ Live | op_vosavakaviti_001 |
+| fijidaytours.com.au | 756 | ⬜ Pending | op_fijidaytours_001 |
+| vakaviti.ai | 786 | ✅ Live | platform |
+| bookfijitours.com.au | 632 | ⬜ Pending | op_bookfijitours_001 |
+
+**DO NOT install on:** eastwoodplumbing.au, innerwestplumber.au, petershamplumbing.au, aiwebst.online
+
+---
+
+## WordPress Sites with Lagi Installed (Session 20)
+fijitourtransfers.com, tourfijitours.com, natadolabayhorseriding.com, coralcoasthorseriding.com, bulaadventure.com, fijitourpackages.com, bulahappiness.com, fijibula.com, namosiadventuretoursfiji.com, wananavudeals.com
+
+---
+
+## Windows Deployment Process
+```cmd
+move %USERPROFILE%\Downloads\[filename].html %USERPROFILE%\Desktop\index.html
+```
+Type Yes if prompted.
+```cmd
+powershell Compress-Archive -Path %USERPROFILE%\Desktop\index.html -DestinationPath "%USERPROFILE%\Desktop\deploy.zip" -Force
+```
+Upload deploy.zip to Cloudflare Pages → correct project → Deployments → Create new deployment.
+
+---
+
+## Critical Rules
+- Never call api.anthropic.com from browser
+- Always pass site_id in widget script tag
+- Windows: use CMD move command to rename files — avoids .html.html bug
+- Cloudflare Pages merge deploys — uploading index.html only does NOT delete other files
+
+---
+
+## Pending Actions (Session 22)
+
+1. ⬜ Install Lagi on fijihomestayz.com (1,170/mo)
+2. ⬜ Install Lagi on realfiji.tours (1,080/mo)
+3. ⬜ Install Lagi on fijiepictours.com (986/mo)
+4. ⬜ Install Lagi on fijitours.online (967/mo)
+5. ⬜ Install Lagi on fijidaytours.com.au (756/mo)
+6. ⬜ Install Lagi on bookfijitours.com.au (632/mo)
+7. ⬜ Fix fiji679.com domain (down — flag for developer)
+8. ⬜ Add partners/ and database/ to GitHub repo
+9. ⬜ Connect Cloudflare Pages to GitHub auto-deploy
+
+---
+
+## Session Log
+
+| Date | Session | What was built |
+|---|---|---|
+| 2026-05-18 | Session 21 | Widget caching fixed (_headers, Cache-Control: no-store confirmed). 10 new sites registered in D1. Lagi installed on fijitourtransfers.com, guidefiji.com, fijithingstodo.com, bestfijitours.com. All Cloudflare Pages sites. 4 of 10 pending sites done. |
