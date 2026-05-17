@@ -1561,3 +1561,10 @@ Upload deploy.zip to Cloudflare Pages → correct project → Deployments → Cr
 | Date | Session | What was built |
 |---|---|---|
 | 2026-05-18 | Session 21 | Widget caching fixed (_headers, Cache-Control: no-store confirmed). 10 new sites registered in D1. Lagi installed on fijitourtransfers.com, guidefiji.com, fijithingstodo.com, bestfijitours.com. All Cloudflare Pages sites. 4 of 10 pending sites done. |
+| 2026-05-18 | Session 21 | CORS fix deployed to Worker v48 — all 10 WordPress domains added to ALLOWED_ORIGINS. fijitourtransfers.com confirmed working. fijihomestayz.com (Cloudflare Pages: fijivillagehomestay) — pending snippet install. realfiji.tours, fijiepictours.com, fijitours.online, fijidaytours.com.au, bookfijitours.com.au — pending. |
+1. ⬜ Install Lagi on fijihomestayz.com (Pages: fijivillagehomestay)
+2. ⬜ Install Lagi on realfiji.tours
+3. ⬜ Install Lagi on fijiepictours.com
+4. ⬜ Install Lagi on fijitours.online
+5. ⬜ Install Lagi on fijidaytours.com.au
+6. ⬜ Install Lagi on bookfijitours.com.au
