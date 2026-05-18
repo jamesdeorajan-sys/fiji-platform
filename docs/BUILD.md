@@ -1568,3 +1568,10 @@ Upload deploy.zip to Cloudflare Pages → correct project → Deployments → Cr
 4. ⬜ Install Lagi on fijitours.online
 5. ⬜ Install Lagi on fijidaytours.com.au
 6. ⬜ Install Lagi on bookfijitours.com.au
+| 2026-05-18 | Session 21-22 | lagi.vakaviti.ai 
+rebuilt — hero image, trust bar, live deals 
+slider, starter chips. vakaviti.ai redirect live. 
+Facebook bio + WhatsApp action button live. 
+Island Vibes post updated. 7.5K followers pointed 
+to Lagi. OG image card pending — Cloudflare bot 
+fix needed. |
