@@ -1575,3 +1575,9 @@ Facebook bio + WhatsApp action button live.
 Island Vibes post updated. 7.5K followers pointed 
 to Lagi. OG image card pending — Cloudflare bot 
 fix needed. |
+| 2026-05-18 | Session 22 | Facebook OG card live — 
+Fiji ocean image showing. Cloudflare WAF rule 
+deployed — Facebook scraper allowed. Island Vibes 
+post live to 7.5K followers with lagi.vakaviti.ai 
+link. 5 site installs pending — fijihomestayz.com 
+next (project: fijivillagehomestay). |
