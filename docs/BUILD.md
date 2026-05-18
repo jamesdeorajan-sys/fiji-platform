@@ -1581,4 +1581,4 @@ deployed — Facebook scraper allowed. Island Vibes
 post live to 7.5K followers with lagi.vakaviti.ai 
 link. 5 site installs pending — fijihomestayz.com 
 next (project: fijivillagehomestay). |
-
+| 2026-05-18 | Session 23 | Emergency fix: www.nadiairporttransfers.com was pointing to Namecheap parking page — fixed DNS CNAME to fttlandingpage.pages.dev, added custom domain to Cloudflare Pages, SSL active. Google Search Console: homepage + www re-indexed, sitemap resubmitted (23 pages). index.html brand fixes committed to GitHub: title tag fixed, og:title fixed, schema name fixed, nav/footer "Fiji Tour Transfers" → "Nadi Airport Transfers", phone → +679 936 9435, WhatsApp only in nav, auto email on booking fires to helpronline@gmail.com via vakaviti-leads Worker. Repo made public — Claude can now assist faster. WhatsApp Lagi confirmed working end-to-end (two live test responses). Referral markdown bug on WhatsApp identified (pending Worker fix). app.js brand name fix pending (FijiTransfers + AU number injected dynamically). Full site checklist compiled — 15 sites to verify Lagi widget. CEO priority board built. |
