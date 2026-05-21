@@ -170,7 +170,7 @@ CREATE TABLE embed_config (
 | op_tourfiji_001 | Tour Fiji Tours | TBC | tour-fiji-tours | active |
 | op_palms_001 | The Palms Denarau | 6796750104 | the-palms-denarau | active |
 | op_bluelagoon_001 | Blue Lagoon Beach Resort | 6797766223 | blue-lagoon-beach-resort | active |
-
+| op_sofitel_001 | Sofitel Fiji Resort & Spa | all.accor.com/hotel/5706 | sofitel-fiji | active | Demo: vakaviti-sofitel.pages.dev |
 ---
 
 ## Demo Pages
