@@ -38,7 +38,7 @@ This repo powers two things:
 | Main Domain | vakaviti.ai / www.vakaviti.ai | ✅ Live |
 | Chat Worker (Lagi v2) | fiji-chat-widget.helpronline.workers.dev | ✅ Live (v20) |
 | Partner Dashboard v2 | vakaviti-dashboard-v2.pages.dev | ✅ Live |
----
+---| Sofitel Demo | vakaviti-sofitel.pages.dev | ✅ Live |
 
 ## Repo Structure (github.com/jamesdeorajan-sys/fiji-platform)
 
