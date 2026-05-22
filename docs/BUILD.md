@@ -1351,7 +1351,14 @@ const reply = data.message;
 8. ⬜ Build next partner demo page (Tour Fiji Tours or Nadi Airport Transfers)
 9. ⬜ Activate auto-onboarding (join → D1 → live widget, no manual step)
 10. ⬜ Claude-powered intent detection (replace regex)
-
+| 2026-05-23 | Session 25 | fijitourtransfers.com banner fixed — fires at 15 seconds, 
+stays open, re-fires every page with page-specific greeting. Worker v49 deployed — 
+open endpoints bypass ALLOWED_ORIGINS (knowledge-gaps, knowledge-add, knowledge-list), 
+guidefiji/fijithingstodo/bestfijitours/sofitel added to CORS, WhatsApp markdown fix. 
+Self-learning loop activated and confirmed working. 9 knowledge gaps identified and 
+answered — 9 vectors pushed to Vectorize (328+ total). lagi-knowledge-push.html tool 
+built for weekly ritual. Deep Knowledge build planned — /knowledge-extract endpoint, 
+Partner Intake Form (knowledge.vakaviti.ai), Partner Knowledge Dashboard tab. |
 ---
 
 ## Known Issues & Lessons Learned
@@ -1584,3 +1591,11 @@ next (project: fijivillagehomestay). |
 | 2026-05-18 | Session 23 | Emergency fix: www.nadiairporttransfers.com was pointing to Namecheap parking page — fixed DNS CNAME to fttlandingpage.pages.dev, added custom domain to Cloudflare Pages, SSL active. Google Search Console: homepage + www re-indexed, sitemap resubmitted (23 pages). index.html brand fixes committed to GitHub: title tag fixed, og:title fixed, schema name fixed, nav/footer "Fiji Tour Transfers" → "Nadi Airport Transfers", phone → +679 936 9435, WhatsApp only in nav, auto email on booking fires to helpronline@gmail.com via vakaviti-leads Worker. Repo made public — Claude can now assist faster. WhatsApp Lagi confirmed working end-to-end (two live test responses). Referral markdown bug on WhatsApp identified (pending Worker fix). app.js brand name fix pending (FijiTransfers + AU number injected dynamically). Full site checklist compiled — 15 sites to verify Lagi widget. CEO priority board built. |
 | 2026-05-19 | Session 23 | Emergency fixes: www.nadiairporttransfers.com DNS fixed (was pointing to Namecheap parking) — CNAME updated, custom domain added to Cloudflare Pages, SSL active. Google Search Console: homepage + www re-indexed, sitemap resubmitted (23 pages). index.html brand fixes committed to GitHub. Booking widget crash diagnosed — root cause: deploying index.html alone deletes all other files (app.js, styles.css). Rule added: always zip ALL files together. Site restored via Cloudflare Pages rollback to 9e832da4. Vakaviti CEO Skill built and installed — SKILL.md + references/priorities.md + references/facebook.md + references/strategy.md. 16-session deep audit complete — all lost strategy recovered including revenue model (FJD 150-500/month), Stripe integration priority, Tourism Fiji endorsement opportunity, Pacific expansion roadmap, June launch plan, 30-minute weekly KB system. Sofitel Fiji demo page built and live (vakaviti-sofitel.pages.dev) — luxury design, real resort data, Lagi chat live. Sofitel seeded in D1 as op_sofitel_001. Enterprise hotel launch strategy built — 5-step playbook, Tawk.to competitive destruction, free pilot offer model. fijithingstodo.com CSS issue diagnosed — rollback applied. nadiairporttransfers.com booking widget confirmed working. WhatsApp Lagi confirmed working end-to-end. |
 | 2026-05-22 | Session 24 | Lagi power audit vs Captain Cook Cruises (Amanda 9-min queue). Proactive banner built and deployed to fijitourtransfers.com via functions.php — fires at 35 seconds, page-specific greetings (horse riding, waterfall, transfer, dive). Banner confirmed working. Next: find Lagi widget iframe selector to auto-open chat instead of banner. Sofitel demo live (vakaviti-sofitel.pages.dev). Captain Cook demo planned. Enterprise hotel strategy built — 5-step playbook. ROI calculator, authority one-pager planned. WhatsApp markdown fix still pending. |
+| 2026-05-23 | Session 25 | fijitourtransfers.com banner fixed — fires at 15 seconds, 
+stays open, re-fires every page with page-specific greeting. Worker v49 deployed — 
+open endpoints bypass ALLOWED_ORIGINS (knowledge-gaps, knowledge-add, knowledge-list), 
+guidefiji/fijithingstodo/bestfijitours/sofitel added to CORS, WhatsApp markdown fix. 
+Self-learning loop activated and confirmed working. 9 knowledge gaps identified and 
+answered — 9 vectors pushed to Vectorize (328+ total). lagi-knowledge-push.html tool 
+built for weekly ritual. Deep Knowledge build planned — /knowledge-extract endpoint, 
+Partner Intake Form (knowledge.vakaviti.ai), Partner Knowledge Dashboard tab. |
