@@ -1599,3 +1599,4 @@ Self-learning loop activated and confirmed working. 9 knowledge gaps identified 
 answered — 9 vectors pushed to Vectorize (328+ total). lagi-knowledge-push.html tool 
 built for weekly ritual. Deep Knowledge build planned — /knowledge-extract endpoint, 
 Partner Intake Form (knowledge.vakaviti.ai), Partner Knowledge Dashboard tab. |
+| 2026-05-23 | Session 26 | Worker v50 deployed — /knowledge-extract endpoint (GET snapshot, POST bulk ingest, POST answer-gap). D1 schema: category column added to knowledge_items. 121 vectors ingested across 5 partners (Blue Lagoon 35, Palms 20, Nadi Transfers 21, Tour Fiji 20, Sofitel 25). Vectorize total: 449+ vectors. Lagi deep knowledge build complete. |
