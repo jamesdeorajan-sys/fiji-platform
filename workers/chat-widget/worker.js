@@ -34,24 +34,54 @@ const DAILY_TOKEN_BUDGET = 16_000_000; // ~$50/day equivalent at Sonnet 4.5
 // the Worker and burning your credits. Add more origins here if you ever
 // embed the chat widget on additional sites.
 const ALLOWED_ORIGINS = [
+  // Nadi Airport Transfers (primary booking site)
   'https://nadiairporttransfers.com',
   'https://www.nadiairporttransfers.com',
-  // Cloudflare Pages preview URLs (for testing before promoting to prod)
   'https://nadiairporttransfers.pages.dev',
-  // Vakaviti — sister-brand Fijian dictionary, also operated by Fiji Tour Transfers
+  // Nadi Cultural Night Tour
+  'https://nadiculturealnighttour.com',
+  'https://www.nadiculturealnighttour.com',
+  'https://culturalnighttour.pages.dev',
+  // Vakaviti platform
+  'https://vakaviti.ai',
+  'https://www.vakaviti.ai',
+  'https://lagi.vakaviti.ai',
+  'https://dashboard.vakaviti.ai',
+  'https://join.vakaviti.ai',
+  // Vakaviti demo sites
+  'https://vakaviti-bluelagoon.pages.dev',
+  'https://vakaviti-palms-denarau.pages.dev',
+  'https://vakaviti-nadi-transfers.pages.dev',
+  'https://vakaviti-tourfiji.pages.dev',
+  'https://vakaviti-sofitel.pages.dev',
+  'https://vakaviti-gtm.pages.dev',
+  'https://lagi-capability-test.pages.dev',
+  'https://washdelivered.pages.dev',
+  // Sister brands
   'https://vakavitifijiandictionary.pages.dev',
   'https://vosavakaviti.com',
   'https://www.vosavakaviti.com',
-  // Local dev convenience — remove this line before production if paranoid
+  'https://fijitourtransfers.com',
+  'https://www.fijitourtransfers.com',
+  // Show pony sites
+  'https://fijiwatertaxi.pages.dev',
+  'https://guidefiji.com',
+  'https://bestfijitours.com',
+  'https://fijithingstodo.com',
+  'https://fijihomestayz.com',
+  // Local dev
   'http://localhost:8000',
+  'http://localhost:3000',
 ];
 
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const isAllowedOrigin = ALLOWED_ORIGINS.some(allowed => origin === allowed)
-      || origin.endsWith('.nadiairporttransfers.pages.dev') // FTT preview deploys
-      || origin.endsWith('.vakavitifijiandictionary.pages.dev'); // Vakaviti preview deploys
+      || origin.endsWith('.nadiairporttransfers.pages.dev')
+      || origin.endsWith('.vakavitifijiandictionary.pages.dev')
+      || origin.endsWith('.vakaviti.ai')
+      || origin.endsWith('.pages.dev'); // All Cloudflare Pages deploys
 
     const corsHeaders = {
       'Access-Control-Allow-Origin': isAllowedOrigin ? origin : ALLOWED_ORIGINS[0],
@@ -73,7 +103,7 @@ export default {
     // Reject requests from disallowed origins entirely
     if (!isAllowedOrigin) {
       return jsonResponse({
-        error: 'This chat is for nadiairporttransfers.com visitors only.'
+        error: 'Origin not authorised. Contact hello@vakaviti.ai to register your domain.'
       }, 403, corsHeaders);
     }
 
