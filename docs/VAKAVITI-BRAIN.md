@@ -84,8 +84,6 @@
 
 ## 4. STRATEGIC BETS — WHAT WE'RE BUILDING TOWARD
 
-> James: fill in your honest current thinking here each session
-
 **The big bet:** Vakaviti.ai becomes the AI layer that every Fiji tourism operator needs — not a booking platform, not an OTA, but the intelligence network that connects verified local operators to AI-driven traveller searches. Zero commission model is the moat.
 
 **Why we win:**
@@ -96,18 +94,24 @@
 
 **Current strategic focus:** AI search domination — get cited by ChatGPT, Perplexity, Google AI Overviews before any competitor understands what GEO is
 
-**What keeps me up at night:**
-- I have been building my brand for over 5 decades and now with AI my challenge is greater and more complex intergrating and building Vakaviti AI and Lagi
-- Revenue generation and online bookiings are the most important in using the available tools to power my online organisation.
-- Vakaviti AI and Lagi are the key power house to dominate the Fiji travel and tourism market
-- We have to be #1 using best of all what AI has to offer.
+---
 
-**What's working better than expected:**
-- Lagi is showing real humanized caractors
-- We are starting to be AI searchable on platforms
-- We are building great AI workflows and online presence
+**What keeps me up at night — James's honest words:**
+
+- 5 decades building this brand. AI makes the challenge greater and more complex — integrating and building Vakaviti AI and Lagi at this scale is the hardest thing I have built
+- Revenue generation and online bookings are the most important priority — every tool, every build must serve this. If it doesn't drive bookings it doesn't matter
+- Vakaviti AI and Lagi must be the powerhouse that dominates the Fiji travel and tourism market — nothing less
+- We have to be #1 — using the best of everything AI has to offer. Not second. First.
+
+**What's working better than expected — James's honest words:**
+
+- Lagi is showing real humanised character — travellers are responding to it as a person, not a bot
+- We are starting to be AI searchable across platforms — GEO strategy is working
+- We are building great AI workflows and online presence — the foundation is stronger than it looks
 
 ---
+
+> Claude: read this section before every build decision. Every feature, every fix, every strategy must serve revenue and booking conversion. James has 5 decades invested in this. Move fast. Be #1.
 
 ## 5. LAGI — PROTECTED CORE
 
