@@ -97,10 +97,15 @@
 **Current strategic focus:** AI search domination — get cited by ChatGPT, Perplexity, Google AI Overviews before any competitor understands what GEO is
 
 **What keeps me up at night:**
-> [James — add your honest concerns here each session]
+- I have been building my brand for over 5 decades and now with AI my challenge is greater and more complex intergrating and building Vakaviti AI and Lagi
+- Revenue generation and online bookiings are the most important in using the available tools to power my online organisation.
+- Vakaviti AI and Lagi are the key power house to dominate the Fiji travel and tourism market
+- We have to be #1 using best of all what AI has to offer.
 
 **What's working better than expected:**
-> [James — add wins here each session]
+- Lagi is showing real humanized caractors
+- We are starting to be AI searchable on platforms
+- We are building great AI workflows and online presence
 
 ---
 
@@ -187,9 +192,24 @@ ORDER BY l.score DESC, l.created_at DESC
 
 > James: drop raw ideas here anytime. Claude reviews and categorises each session.
 
+## 10. CEO IDEAS INBOX
+
+> James: drop raw ideas here anytime. Claude reviews and categorises each session.
+
 | Date | Idea | Category | Status |
 |---|---|---|---|
-| — | [Your ideas go here] | — | inbox |
+| 2026-06-02 | Lagi to scale fast — 99% autonomous intelligence: picking leads, qualifying them, and serving them directly to the right partner with zero manual intervention from James | lagi | inbox |
+| 2026-06-02 | All in-house tour and transfer sites (fijitourtransfers.com, tourfijitours.com, guidefiji.com, bestfijitours.com) must be 100% optimised for AI search — every page crawlable, structured, cited by ChatGPT and Perplexity | seo | inbox |
+| 2026-06-02 | Scale fast and block copycats — online dominance must be current with all AI advancements (technology, content, schema, GEO). Do not wait to be seen as the leader. BE the leader. Move faster than any competitor can follow | strategy | inbox |
+| 2026-06-02 | Partner trust through one single powerful approach — every operator we approach should say "wow, add me to Lagi and Vakaviti AI immediately." The demo, the pitch, the proof must be so strong that yes is the only answer | partners | inbox |
+
+---
+
+### CEO STRATEGIC NORTH STAR — Session 35
+
+> James's own words — read this every session
+
+"We must not be seen as the leader — we must BE the leader in AI tourism development in Fiji. Make certain partner trust is built with one single approach. They say wow, add me to Lagi and Vakaviti AI."
 
 ---
 
