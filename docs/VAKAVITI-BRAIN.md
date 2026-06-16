@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 40 CLOSED — 2026-06-12
+# Last updated: Session 41 CLOSED — 2026-06-16
 
 ---
 
@@ -31,7 +31,7 @@
 ### Live Systems
 | System | Status |
 |---|---|
-| Lagi chat worker | **v56 — 1,861 lines — LIVE** |
+| Lagi chat worker | **v57 — 1,874 lines — LIVE** |
 | widget.vakaviti.ai | Live |
 | lagi.vakaviti.ai | Live — beautiful public interface |
 | vakaviti.ai | Live — redirects to lagi.vakaviti.ai (fixed Session 40) |
@@ -39,7 +39,7 @@
 | tourfijitours.com | Live — Lagi active, AI visibility deployed |
 | fijitourtransfers.com | Live — Lagi active |
 | nadiairporttransfers.com | Live — 500+ reviews, real pricing calculator |
-| Vectorize knowledge base | ~300 vectors (target 700+ by July 1) |
+| Vectorize knowledge base | ~440 vectors (target 700+ by July 1) |
 | D1 vakaviti-kb | 16 tables, leads + partners + contact_channels live |
 
 ### Worker Version History
@@ -47,7 +47,8 @@
 |---|---|---|
 | v54 | 1,731 | Review metrics, RAG improvements |
 | v55 | 1,748 | Lead Capture Superpower — contact ask when heat ≥40 |
-| **v56** | **1,861** | **CURRENT — D1 routing, WhatsApp notify, Fiji heat signals, contact ask rotation, thresholds, cross-referral guard** |
+| **v56** | **1,861** | D1 routing, WhatsApp notify, Fiji heat signals, contact ask rotation, thresholds, cross-referral guard |
+| **v57** | **1,874** | **CURRENT — WhatsApp dual-notify fixed (all channels fire), channel_used records email+whatsapp** |
 
 ### GEO Pages (vakaviti.ai)
 | Page | Status |
@@ -62,32 +63,24 @@
 
 > Claude: read this section first. ONE task at a time.
 
-**P1 — Fix WhatsApp dual-notify (5 minutes)**
-- Current bug: notifyPartner breaks out of channel loop after email succeeds
-- WhatsApp never fires even when score ≥70
-- Fix: remove break-on-success, fire ALL channels that meet min_lead_score threshold
-- Worker v57 surgical patch — find the `if (notified) break` line and remove it
-
-**P2 — Verify +61 478 886 145 in Meta test console**
-- Go to Meta Developer Console → Vakaviti AI app → WhatsApp → API Setup
-- Add +61 478 886 145 as verified recipient number
-- Required for test account to send to this number
-
-**P3 — Facebook group knowledge push**
-- Tool built: lagi-knowledge-push.html — open in browser, no server needed
-- Target: 50 best Facebook group threads → 80-120 vectors
+**P1 — Facebook group knowledge push (continue)**
+- 140 vectors pushed in Session 41 — now at ~440
+- Continue with Facebook group threads — your own community Q&A is most valuable
+- Target: 700+ by July 1
+- Tool: lagi-knowledge-push.html (saved in Downloads)
 - Endpoint: https://fiji-chat-widget.helpronline.workers.dev/knowledge-add
-- Focus: transfers, safety, island choice, practical money, customs, getting sick
-- Current: ~300 vectors. Target by July 1: 700+
 
-**P4 — Practical travel facts batch**
-- 40 Q&A pairs ready covering: currency, visa, weather, health, safety
-- Push via knowledge tool after Facebook batch
+**P2 — Partner agreement document**
+- Draft one-page written agreement before external partner approach
+- Covers: what Lagi does, data policy, lead ownership, uptime, pricing
 
-**P5 — Add WhatsApp channels for remaining 28 partners**
-- Only op_fijitourtransfers_001 has WhatsApp channel in D1
-- All other partners need whatsapp row in contact_channels
-- Use +61 478 886 145 as default until partner numbers confirmed
+**P3 — vakaviti.ai proper homepage**
+- Currently redirects to lagi.vakaviti.ai
+- Build real homepage: what Vakaviti is, Lagi demo, partner CTA, reviews
+
+**P4 — Praveen fix briefs**
+- coralcoasthorseriding.com rage clicks on booking button
+- nadiairporttransfers.com branding FijiTransfers → Nadi Airport Transfers
 
 ---
 
@@ -116,8 +109,8 @@
 
 | Parameter | Value |
 |---|---|
-| Worker | fiji-chat-widget **v56**, 1,861 lines |
-| Vectorize | ~300 live vectors |
+| Worker | fiji-chat-widget **v57**, 1,874 lines |
+| Vectorize | ~440 live vectors |
 | WhatsApp Meta App | ID 1700903951357623 — VakavitiBot system user |
 | WHATSAPP_TOKEN | Set in Worker secrets ✅ |
 | WHATSAPP_PHONE_ID | Set in Worker secrets ✅ |
@@ -132,7 +125,7 @@
 | Contact ask — 4 rotating phrases | ✅ Live |
 | D1-driven partner routing — replaces hardcoded if/else | ✅ Live |
 | Email notify — fires for score ≥40 | ✅ Live — verified working |
-| WhatsApp notify — wired, score ≥70 | ⚠️ Partially live — breaks after email |
+| WhatsApp notify — wired, score ≥70 | ✅ Live — both email+WhatsApp fire confirmed |
 | Cross-referral with duplicate guard | ✅ Live |
 | Notify threshold — silence below 40 | ✅ Live |
 
@@ -218,9 +211,9 @@ ORDER BY l.score DESC, l.created_at DESC
 
 | Issue | Priority | Fix |
 |---|---|---|
-| WhatsApp breaks on email success | P1 | Remove break-on-success in notifyPartner — Worker v57 |
-| Meta test number not verified | P1 | Add +61 478 886 145 in Meta console |
-| Knowledge base only ~300 vectors | P1 | Facebook group push + practical facts — target 700+ |
+| WhatsApp dual-notify | ✅ FIXED v57 | Both email+WhatsApp fire confirmed |
+| Meta number verified | ✅ DONE | +61 478 886 145 verified in Meta console |
+| Knowledge base ~440 vectors | P1 | Continue Facebook group push — target 700+ by July 1 |
 | No partner agreements | P1 | Draft one page document before July 1 |
 | Only 1 partner has WhatsApp channel in D1 | P2 | Add rows for all 29 partners |
 | coralcoasthorseriding.com rage clicks | P2 | Booking button fix — send to Praveen |
@@ -249,6 +242,11 @@ ORDER BY l.score DESC, l.created_at DESC
 ---
 
 ## 12. SESSION HISTORY
+
+### Session 41 — 2026-06-16 — CLOSED
+**What we did:** Worker v57 deployed — WhatsApp dual-notify fixed (removed break-on-success, all channels now fire). contact_channels corrected — all 13 partners have both email (helpronline@gmail.com) and WhatsApp (61478886145). WhatsApp BURNING HOT ping confirmed live on phone. Meta token refreshed, +61478886145 verified as recipient. Knowledge base pushed from ~300 to ~440 vectors — 140 new Q&A pairs across 7 batches covering visa, currency, islands, culture, resorts, tours, health, safety, costs, honeymoon, diving, food, language, scams. Transfer Q&A corrected to recommend Nadi Airport Transfers not taxis.
+**Key learning:** Always audit Q&A for commercial accuracy — generic travel answers can route guests away from partners.
+**Session 42 focus:** Continue Facebook group knowledge push, partner agreement draft, vakaviti.ai homepage.
 
 ### Session 40 — 2026-06-12 — CLOSED
 **What we did:** Lead duplicate fix (session_id + partner_id) deployed and verified. Worker v56 built with 7 improvements: D1-driven partner routing, WhatsApp notify function, Fiji heat signals (25 signals), contact ask rotation (4 phrases), notify thresholds (email≥40, WA≥70), cross-referral duplicate guard. Full lead flow tested end-to-end — chat → D1 → email confirmed in inbox. vakaviti.ai 404 fixed with redirect to lagi.vakaviti.ai. WhatsApp secrets added to Worker. WhatsApp channel added to contact_channels for op_fijitourtransfers_001. Lagi Knowledge Push tool built. Deep research on AI competitive strategy, Facebook group knowledge value, July 1 knowledge build plan. Session 40 logged to D1 build_log.
