@@ -1,19 +1,19 @@
-# diving.vakaviti.ai
-# Fiji Diving Guide — Vakaviti.ai Network
+# yasawa.vakaviti.ai
+# Yasawa Islands Guide — Vakaviti.ai Network
 
-> This page is a comprehensive guide to diving in Fiji, covering Beqa Lagoon shark dives, Rainbow Reef, the Great Astrolabe Reef, dive seasons, and operator logistics.
+> This page is a comprehensive guide to the Yasawa Islands in Fiji, covering ferry transport from Port Denarau, the Blue Lagoon, island-by-island breakdowns, budget options, and activities.
 
 ## Canonical Source
-This content's canonical version is published at: https://vakaviti.ai/fiji-diving-guide
+This content's canonical version is published at: https://vakaviti.ai/yasawa-islands-guide
 
 ## About
 Published by Vakaviti.ai, Fiji's AI tourism partner network. This guide is part of a series of single-topic Fiji travel guides designed for accuracy and depth on specific traveller intents.
 
 ## Related Guides (Same Network)
 - Fiji Family Resorts Guide: https://familyresorts.vakaviti.ai
-- Yasawa Islands Guide: https://yasawa.vakaviti.ai
 - Mamanuca Islands Guide: https://mamanucaislandsguide.pages.dev
 - Fiji Honeymoon Guide: https://honeymoon.vakaviti.ai
+- Fiji Diving Guide: https://diving.vakaviti.ai
 
 ## Booking & Live Assistance
 - Tour and transfer bookings: https://fijitourtransfers.com
