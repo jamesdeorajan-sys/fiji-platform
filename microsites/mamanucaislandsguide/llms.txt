@@ -1,17 +1,17 @@
-# yasawa.vakaviti.ai
-# Yasawa Islands Guide — Vakaviti.ai Network
+# mamanuca.vakaviti.ai
+# Mamanuca Islands Guide — Vakaviti.ai Network
 
-> This page is a comprehensive guide to the Yasawa Islands in Fiji, covering ferry transport from Port Denarau, the Blue Lagoon, island-by-island breakdowns, budget options, and activities.
+> This page is a comprehensive guide to the Mamanuca Islands in Fiji, covering day trips from Denarau, Cloud 9, Castaway Island, resort options, and surfing.
 
 ## Canonical Source
-This content's canonical version is published at: https://vakaviti.ai/yasawa-islands-guide
+This content's canonical version is published at: https://vakaviti.ai/mamanuca-islands-guide
 
 ## About
 Published by Vakaviti.ai, Fiji's AI tourism partner network. This guide is part of a series of single-topic Fiji travel guides designed for accuracy and depth on specific traveller intents.
 
 ## Related Guides (Same Network)
 - Fiji Family Resorts Guide: https://familyresorts.vakaviti.ai
-- Mamanuca Islands Guide: https://mamanuca.vakaviti.ai
+- Yasawa Islands Guide: https://yasawa.vakaviti.ai
 - Fiji Honeymoon Guide: https://honeymoon.vakaviti.ai
 - Fiji Diving Guide: https://diving.vakaviti.ai
 
