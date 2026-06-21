@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Join Vakaviti.ai — Fiji's AI Tourism Partner Network</title>
+  <meta name="description" content="Join Vakaviti.ai, Fiji's AI tourism partner network. Get a free AI concierge widget that captures leads, answers traveller questions 24/7, and routes bookings straight to your business.">
+  <link rel="canonical" href="https://join.vakaviti.ai">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold: #C9A96E; --dark: #1A1610; --cream: #F5F0E8;
+      --sand: #E8DCC8; --green: #2D4A35; --muted: #8A7D6B;
+      --white: #FFFFFF; --radius: 12px;
+    }
+    body { font-family: 'Jost', sans-serif; background: var(--cream); min-height: 100vh; color: var(--dark); }
+
+    /* HERO */
+    .hero { background: var(--dark); padding: 56px 24px 48px; text-align: center; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 80% at 50% 120%, rgba(201,169,110,0.15) 0%, transparent 70%); pointer-events: none; }
+    .hero-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); margin-bottom: 16px; }
+    .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(28px, 5vw, 48px); font-weight: 300; color: var(--cream); line-height: 1.15; margin-bottom: 16px; }
+    .hero-title em { font-style: italic; color: var(--gold); }
+    .hero-sub { font-size: 15px; font-weight: 300; color: var(--muted); max-width: 520px; margin: 0 auto; line-height: 1.7; }
+    .hero-divider { width: 48px; height: 1px; background: var(--gold); margin: 24px auto 0; opacity: 0.6; }
+
+    /* BENEFITS */
+    .benefits { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; padding: 40px 24px; max-width: 860px; margin: 0 auto; }
+    .benefit { background: var(--white); border-radius: var(--radius); padding: 20px 24px; flex: 1; min-width: 200px; max-width: 260px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); }
+    .benefit-icon { font-size: 22px; margin-bottom: 10px; }
+    .benefit-title { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--dark); }
+    .benefit-text { font-size: 13px; font-weight: 300; color: var(--muted); line-height: 1.6; }
+
+    /* FORM */
+    .form-wrap { max-width: 600px; margin: 0 auto; padding: 0 24px 60px; }
+    .form-card { background: var(--white); border-radius: 16px; padding: 40px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+    .form-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 400; color: var(--dark); margin-bottom: 8px; }
+    .form-sub { font-size: 13px; font-weight: 300; color: var(--muted); margin-bottom: 32px; line-height: 1.6; }
+    .field { margin-bottom: 20px; }
+    .field label { display: block; font-size: 12px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 12px 14px; border: 1px solid var(--sand);
+      border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 14px;
+      font-weight: 300; color: var(--dark); background: var(--cream);
+      outline: none; transition: border-color 0.2s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--gold); background: #fff; }
+    .field textarea { resize: vertical; min-height: 90px; }
+    .field-row { display: flex; gap: 16px; }
+    .field-row .field { flex: 1; }
+    .field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238A7D6B' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+    .submit-btn {
+      width: 100%; padding: 16px; background: var(--green); color: var(--cream);
+      border: none; border-radius: 10px; font-family: 'Jost', sans-serif;
+      font-size: 15px; font-weight: 500; cursor: pointer; transition: background 0.2s, transform 0.1s;
+      margin-top: 8px; letter-spacing: 0.3px;
+    }
+    .submit-btn:hover { background: #3a5e44; }
+    .submit-btn:active { transform: scale(0.99); }
+    .submit-btn:disabled { background: var(--muted); cursor: not-allowed; }
+
+    /* STATES */
+    .msg { display: none; padding: 14px 16px; border-radius: 8px; font-size: 13.5px; font-weight: 400; margin-top: 16px; line-height: 1.6; }
+    .msg.success { display: block; background: #e8f5ee; color: #1a5c32; border-left: 3px solid #2D4A35; }
+    .msg.error   { display: block; background: #fff0f0; color: #c0392b; border-left: 3px solid #c0392b; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 24px; font-size: 11px; color: var(--muted); }
+    .footer span { color: var(--gold); font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="hero-eyebrow">Vakaviti.ai · Partner Network</div>
+    <h1 class="hero-title">Fiji's <em>AI Tourism</em><br>Partner Network</h1>
+    <p class="hero-sub">Give your guests a world-class AI concierge. Capture qualified leads automatically. Join the network that's transforming Fiji tourism.</p>
+    <div class="hero-divider"></div>
+  </div>
+
+  <div class="benefits">
+    <div class="benefit">
+      <div class="benefit-icon">🤖</div>
+      <div class="benefit-title">Lagi — your AI concierge</div>
+      <div class="benefit-text">A branded AI that knows your property, answers instantly, and captures leads while you sleep.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-icon">📲</div>
+      <div class="benefit-title">WhatsApp lead delivery</div>
+      <div class="benefit-text">Every qualified lead arrives on your WhatsApp with name, dates, group size — ready to close.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-icon">🌊</div>
+      <div class="benefit-title">Fiji network referrals</div>
+      <div class="benefit-text">Cross-partner referrals mean guests get the full Fiji experience — and you get a share of every lead.</div>
+    </div>
+    <div class="benefit">
+      <div class="benefit-icon">⚡</div>
+      <div class="benefit-title">Live in 48 hours</div>
+      <div class="benefit-text">Submit this form today. Your branded AI concierge goes live within 48 hours. No technical setup needed.</div>
+    </div>
+  </div>
+
+  <div class="form-wrap">
+    <div class="form-card">
+      <div class="form-title">Apply to join</div>
+      <div class="form-sub">Complete the form below. We'll have your AI concierge live within 48 hours and send you the embed code by email.</div>
+
+      <div class="field">
+        <label>Business name *</label>
+        <input type="text" id="biz_name" placeholder="e.g. Blue Lagoon Beach Resort" required />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Your name *</label>
+          <input type="text" id="contact_name" placeholder="First and last name" required />
+        </div>
+        <div class="field">
+          <label>Your role</label>
+          <input type="text" id="contact_role" placeholder="e.g. General Manager" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Email address *</label>
+          <input type="email" id="contact_email" placeholder="you@yourbusiness.com" required />
+        </div>
+        <div class="field">
+          <label>WhatsApp number *</label>
+          <input type="tel" id="whatsapp" placeholder="+679 XXX XXXX" required />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Business category *</label>
+          <select id="category" required>
+            <option value="">Select category</option>
+            <option value="resort">Resort / Hotel</option>
+            <option value="apartment">Apartment / Villa</option>
+            <option value="tours">Tours & Activities</option>
+            <option value="transfers">Transfers & Transport</option>
+            <option value="diving">Dive Operator</option>
+            <option value="ferry">Ferry / Cruise</option>
+            <option value="restaurant">Restaurant / Dining</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Region *</label>
+          <select id="region" required>
+            <option value="">Select region</option>
+            <option value="nadi">Nadi / Denarau</option>
+            <option value="coral_coast">Coral Coast</option>
+            <option value="yasawa">Yasawa Islands</option>
+            <option value="mamanuca">Mamanuca Islands</option>
+            <option value="suva">Suva / Pacific Harbour</option>
+            <option value="savusavu">Savusavu</option>
+            <option value="taveuni">Taveuni</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Website URL</label>
+        <input type="url" id="website" placeholder="https://yourbusiness.com" />
+      </div>
+
+      <div class="field">
+        <label>Tell Lagi about your business</label>
+        <textarea id="description" placeholder="What makes your business special? What do guests love most? What services do you offer? The more detail you give, the better Lagi will represent you."></textarea>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="submitForm()">
+        Apply to join Vakaviti.ai →
+      </button>
+
+      <div class="msg" id="successMsg">
+        ✅ Application received! We'll have your AI concierge live within 48 hours and send your embed code to the email address you provided. Vinaka!
+      </div>
+      <div class="msg" id="errorMsg"></div>
+    </div>
+  </div>
+
+  <div class="footer">Powered by <span>Vakaviti.ai</span> · Fiji's AI Tourism Partner Network</div>
+
+  <script>
+    const WORKER_URL = 'https://vakaviti-onboard.helpronline.workers.dev/onboard';
+
+    async function submitForm() {
+      const btn = document.getElementById('submitBtn');
+
+      const biz_name     = document.getElementById('biz_name').value.trim();
+      const contact_name = document.getElementById('contact_name').value.trim();
+      const contact_email= document.getElementById('contact_email').value.trim();
+      const whatsapp     = document.getElementById('whatsapp').value.trim();
+      const category     = document.getElementById('category').value;
+      const region       = document.getElementById('region').value;
+
+      if (!biz_name || !contact_name || !contact_email || !whatsapp || !category || !region) {
+        showError('Please fill in all required fields marked with *');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+      hideMessages();
+
+      try {
+        const response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            biz_name,
+            contact_name,
+            contact_role:  document.getElementById('contact_role').value.trim(),
+            contact_email,
+            whatsapp:      whatsapp.replace(/[^0-9]/g, ''),
+            category,
+            region,
+            website:       document.getElementById('website').value.trim(),
+            description:   document.getElementById('description').value.trim(),
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.ok) {
+          document.getElementById('successMsg').style.display = 'block';
+          btn.textContent = '✅ Application sent!';
+        } else {
+          showError(data.error || 'Something went wrong — please try again or WhatsApp us at +61 478 886 145');
+          btn.disabled = false;
+          btn.textContent = 'Apply to join Vakaviti.ai →';
+        }
+
+      } catch (err) {
+        showError('Connection issue — please try again or WhatsApp us at +61 478 886 145');
+        btn.disabled = false;
+        btn.textContent = 'Apply to join Vakaviti.ai →';
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = '⚠️ ' + msg;
+      el.style.display = 'block';
+    }
+
+    function hideMessages() {
+      document.getElementById('successMsg').style.display = 'none';
+      document.getElementById('errorMsg').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
