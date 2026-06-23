@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 44 CLOSED — 2026-06-19
+# Last updated: Session 45 CLOSED — 2026-06-23
 
 ---
 
@@ -10,7 +10,7 @@
 
 **Company:** Vakaviti.ai — Fiji's AI Tourism Partner Network
 **Mission:** Build Fiji's most powerful AI tourism platform
-**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 13 days remaining.
+**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 8 days remaining.
 **Founded by:** James Richardson — CEO
 **WhatsApp:** +61 478 886 145
 **Email:** helpronline@gmail.com
@@ -21,32 +21,70 @@
 
 ---
 
-## 2. PLATFORM STATE — CURRENT AS OF SESSION 44
+## 2. PLATFORM STATE — CURRENT AS OF SESSION 45
 
 ### Revenue confirmed (April 1 — June 3, 2026)
 - **$13,747.75 AUD across both booking sites — 44 orders**
 - Tuesday strongest day, peak hours 10am-3pm Sydney
 - Facebook ads AUD $258 spent — strong ROI confirmed
+- Not re-verified Session 45 — still the last confirmed figure
+
+### 🆕 NEW THIS SESSION — the Git auto-deploy pipeline
+**Biggest infrastructure change since platform inception.** A fine-grained GitHub PAT (Contents: Read/write, scoped only to `fiji-platform`) now lets Claude push code directly, and Cloudflare Pages auto-deploys on push. **7 properties are now on this pipeline** — no more zip uploads, no more single-file-deploy file-wiping risk, for any of them:
+
+| Pages Project | Custom Domain | Repo Folder |
+|---|---|---|
+| familyresortsfiji | familyresorts.vakaviti.ai | `microsites/familyresortsfiji` |
+| divingfijiguide | diving.vakaviti.ai | `microsites/divingfijiguide` |
+| honeymoonfijiguide | honeymoon.vakaviti.ai | `microsites/honeymoonfijiguide` |
+| yasawaislandsguide | yasawa.vakaviti.ai | `microsites/yasawaislandsguide` |
+| mamanucaislandsguide | mamanuca.vakaviti.ai | `microsites/mamanucaislandsguide` |
+| vakaviti-join-page | join.vakaviti.ai | `vakaviti-join-page` |
+| vakavitiai | vakaviti.ai | `vakaviti-root` |
+
+**NOT yet on this pipeline:** `lagi.vakaviti.ai` (project `vakaviti-lagi-public`) — still deployed by manual zip upload. Working perfectly, just not yet protected the same way. The remaining ~68 of 75 Workers & Pages projects in the account have not been audited — likely includes dead legacy demos (`vakaviti-bluelagoon`, `vakaviti-palms-denarau`, `vakaviti-sofitel`) that should be retired, not migrated.
+
+### 🆕 RESOLVED THIS SESSION — vakaviti.ai root domain redirect (the big one)
+**Root cause found and fixed.** `vakaviti.ai` had a wildcard redirect to `lagi.vakaviti.ai` swallowing every path including `/sitemap.xml` and the GEO guide pages — traced to months of single-file "Create new deployment" uploads each silently replacing the entire live file set (a Session 18 meta-refresh redirect and a Session 31 real-homepage build had both been partially overwritten by later single-page uploads, with neither fully surviving). Rebuilt from scratch: real homepage + all 3 original GEO pages (corrected 2025→2026 throughout) + robots.txt + sitemap.xml, committed to `vakaviti-root`, Git-connected, **confirmed live** (screenshot-verified: URL stays on vakaviti.ai, sitemap.xml returns real XML, GSC shows sitemap Status: Success with discovered pages same-day).
+
+### 🆕 RESOLVED THIS SESSION — P1 Lagi widget 404 on 5 GEO microsites
+Changed `site_id` on all 5 microsites from the dead `op_vakaviti_guides_001` to **`lagi_public`** — confirmed working via a real lead record already in the `leads` table using that exact site_id. No new D1 partner row needed. Deployed automatically via the Git pipeline (zero manual Cloudflare steps) — first fix in this platform's history to do so.
+
+### 🆕 NEW THIS SESSION — Lagi Knowledge Hub (first 3 pages live)
+Built a diagnostic-only Worker (`vakaviti-kb-inspect`, D1-bound to `vakaviti-kb`, no write access used for inspection) to export the real knowledge base for the first time. **Real counts: 578 `knowledge_items` + 95 `kb_chunks`** — higher than the previously assumed ~440, but with heavy duplication (true unique count closer to 200-250). `kb_chunks` only stores a `content_preview` column — full chunk text likely lives in Vectorize itself, not D1; querying that needs a different approach next session.
+
+**🔴 Critical finding, now fixed:** `knowledge_items` contained real customer PII — names, personal emails, a personal phone number — captured by the self-learning loop from live conversations instead of being filtered before storage. **32 rows identified and deleted** (47 other flagged rows were false positives — legitimate partner WhatsApp numbers/emails — correctly left alone). This was a live risk: Lagi was drawing on other travelers' personal data when answering new conversations, not just a publishing risk.
+
+3 Knowledge Hub pages now live on `vakaviti.ai`, built from verified clean content, FAQPage schema, same design system as the GEO pages: `/fiji-visa-money-guide`, `/fiji-culture-kava-language-guide`, `/fiji-weather-best-time-guide`. Diving, safety, and dining topics are confirmed clean and ready to build next.
+
+### 🔴 NEW FINDING, NOT YET ACTIONED — possible live checkout failure
+`sentinel_errors` table contains an unresolved critical error: `"checkout payment failed"` on `fijitourtransfers.com/checkout/`, dated ~1 month ago (2026-05-24). **Status unknown — never confirmed fixed or still happening.** This is your highest-traffic site (21.6k+ hits). Needs a real test booking or a fresh Sentinel check before anything else, given the revenue exposure.
+
+### 🔴 NEW FINDING — domain_compliance / statement_performance / question_clusters gaps
+- `domain_compliance` row for `vakaviti.ai` says "FULLY COMPLETE Session 34" in notes, but every structured flag (llms_txt_live, robots_txt_live, schema_deployed, lagi_widget) reads 0 — the notes field was never kept in sync with reality, which is exactly the pattern that let the redirect bug hide for months.
+- `statement_performance` (the 5 A/B power statements from Session 34) show `last_checked: null` and zero citations across the board — never actually measured since deployment.
+- `question_clusters` table is completely empty — the "self-learning knowledge gap detection" loop described in earlier sessions does not appear to be populating it.
 
 ### Live Systems
 | System | Status |
 |---|---|
-| Lagi chat Worker | **v57 — 1,874 lines — LIVE** |
+| Lagi chat Worker | **v57 — 1,874 lines — LIVE.** GitHub backup still stale at 512 lines — unresolved, flagged again this session, highest remaining infrastructure risk |
 | fiji-chat-widget Worker | v57 — both Anthropic calls routing through AI Gateway (lines 874 + 1767) |
 | widget.vakaviti.ai | Live |
-| lagi.vakaviti.ai | **v4 LIVE — 98/100 mobile, 99/100 desktop from Sydney** |
-| vakaviti.ai | Live — Reviews product — 96/100 speed |
-| vakaviti.ai GEO pages | Live — 3 pages indexed (root domain) |
-| 5 GEO microsites (.pages.dev) | **5/5 LIVE — Session 44** — familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, honeymoonfijiguide, divingfijiguide — all canonicalising to vakaviti.ai paths |
+| lagi.vakaviti.ai | **v4 LIVE — 98/100 mobile, 99/100 desktop.** Missing meta description (Bing-flagged) — fix given Session 45, never confirmed deployed |
+| vakaviti.ai | **REBUILT Session 45 — real homepage, 6 pages total, no redirect, Git-connected, GSC sitemap Status: Success** |
+| 5 GEO microsites | **5/5 on custom vakaviti.ai subdomains + Git pipeline, Session 45.** Widget fix (lagi_public) deployed to all 5 |
+| vakaviti-join-page | **Found not in GitHub, added Session 45** — meta description + canonical added, Git-connected |
 | tourfijitours.com | Live — Lagi active, AI visibility deployed |
-| fijitourtransfers.com | Live — Lagi active — llms.txt missing (Praveen task) |
-| nadiairporttransfers.com | Live — 500+ reviews, real pricing calculator |
-| Vectorize knowledge base | ~440 vectors (target 700+ by July 1) |
-| D1 vakaviti-kb | 18 tables (added zone_compliance, zone_speed_history, zone_audit_history) |
+| fijitourtransfers.com | Live — Lagi active — llms.txt still missing (Praveen) — **possible checkout error, unconfirmed, see above** |
+| nadiairporttransfers.com | Live — 500+ reviews — long-standing `app.js` brand/phone bug (FijiTransfers → Nadi Airport Transfers, AU→Fiji number) still unresolved since Session 22 |
+| Knowledge base (D1 source of truth) | **578 knowledge_items (546 after PII cleanup) + 95 kb_chunks** — real counts confirmed Session 45, exceeds prior ~440 estimate but with heavy duplication |
+| D1 vakaviti-kb | 21 tables (confirmed full list Session 45: partners, contact_channels, commission_tiers, embed_config, kb_chunks, leads, conversation_events, partner_referrals, deals, knowledge_queue, knowledge_items, question_clusters, reviews, sentinel_errors, meta_traffic_intents, build_log, domain_compliance, statement_performance, zone_compliance, zone_audit_history, zone_speed_history) |
 | vakaviti-ai-gateway | LIVE — all AI calls logging cost + tokens |
-| vakaviti-zone-manager | **v3 LIVE — D1-driven, Sydney speed tests, auto-enrol** |
-| join.vakaviti.ai | **LIVE — partner onboarding form fully operational** |
-| vakaviti-onboard Worker | **v3 LIVE — email notifications working** |
+| vakaviti-zone-manager | v3 LIVE — D1-driven, Sydney speed tests, auto-enrol |
+| join.vakaviti.ai | LIVE — now Git-connected, see above |
+| vakaviti-onboard Worker | v3 LIVE — email notifications working |
+| vakaviti-kb-inspect Worker | **NEW Session 45** — diagnostic-only, D1-bound to vakaviti-kb, used for KB export and PII cleanup |
 
 ### Worker Version History
 | Version | Lines | Key changes |
@@ -54,63 +92,62 @@
 | v54 | 1,731 | Review metrics, RAG improvements |
 | v55 | 1,748 | Lead Capture Superpower |
 | v56 | 1,861 | D1 routing, WhatsApp notify, Fiji heat signals |
-| **v57** | **1,874** | **CURRENT — WhatsApp dual-notify fixed. Both Anthropic API calls now route through AI Gateway** |
+| **v57** | **1,874** | **CURRENT — WhatsApp dual-notify fixed. Both Anthropic API calls now route through AI Gateway. GitHub backup still stale at 512 lines — unresolved 19 sessions running** |
 
 ---
 
-## 3. TOP PRIORITIES — SESSION 45
+## 3. TOP PRIORITIES — SESSION 46
 
 > Claude: read this section first. ONE task at a time.
 
-**P1 — Fix Lagi widget 404 on all 5 GEO microsites**
-- Widget on familyresortsfiji/yasawaislandsguide/mamanucaislandsguide/honeymoonfijiguide/divingfijiguide all call `site_id=op_vakaviti_guides_001`
-- Confirmed NOT in D1 partners table (checked against Section 11's 29 real partner IDs — no match)
-- 404 hit: `fiji-chat-widget.helpronline.workers.dev/config?site_id=op_vakaviti_guides_001`
-- Widget still loads and chats, but has no partner-specific config/branding/routing on these 5 pages
-- Needs a James decision first: insert new partner row for op_vakaviti_guides_001, OR repoint widget embed on all 5 guides to an existing valid site_id (e.g. op_fijitourtransfers_001) if leads should route there
-- Query to start: `SELECT site_id, name FROM partners WHERE site_id LIKE '%guide%' OR site_id LIKE '%vakaviti%';`
+**P1 — Worker GitHub backup still stale (1,362 lines of drift, 19 sessions unresolved)**
+- Live `fiji-chat-widget` Worker is v57, 1,874 lines. GitHub `workers/chat-widget/worker.js` is only 512 lines.
+- Confirmed via direct repo check Session 45. Highest remaining technical risk on the platform — if the live Worker is ever lost, the backup cannot rebuild it.
+- Fix: pull the real v57 source and commit it properly. Do NOT replace the whole file blindly — confirm the live source first.
 
-**P2 — Complete the GEO microsite link audit**
-- All 5 new guides cross-link to vakaviti.ai/nadi-airport-transfers-guide and /fiji-accommodation-guide
-- Family Resorts guide footer also links guidefiji.com, bestfijitours.com
-- James started checking these mid-Session 44, did not report results
-- If any are dead: fix or remove across all 5 guide HTML source files, rebuild zips, redeploy
+**P2 — Possible live checkout failure on fijitourtransfers.com**
+- `sentinel_errors` table shows `"checkout payment failed"` on `fijitourtransfers.com/checkout/`, dated 2026-05-24, severity critical, never confirmed resolved.
+- This is the highest-traffic site in the network (21.6k+ hits). Test a real booking or check Sentinel for recent recurrence before anything else this session.
 
-**P3 — Knowledge base push to 700+ vectors**
-- Currently ~440 vectors
-- Need 260+ new Q&A pairs
-- Tool: lagi-knowledge-push.html (saved in Downloads)
-- Endpoint: https://fiji-chat-widget.helpronline.workers.dev/knowledge-add
-- Best source: Facebook group Q&A + partner site content
+**P3 — Remove the 999999 master OTP bypass code**
+- Flagged Session 5 as "must remove before public launch." Never confirmed removed in any session since. 8 days to launch.
 
-**P4 — Partner agreement document**
-- Draft one-page written agreement before external partner approach
-- Covers: what Lagi does, data policy, lead ownership, uptime, pricing
-- Blocks ALL external partner conversations
+**P4 — Confirm lagi.vakaviti.ai meta description deployed**
+- Bing flagged missing meta description Session 45. Fix instructions given. Never confirmed live.
 
-**P5 — Google Business Profile**
-- Free major AI trust signal
-- Setup at: business.google.com
-- Entity: Fiji Tourism Guide Ltd / Vakaviti.ai
+**P5 — Continue the Lagi Knowledge Hub**
+- 3 pages live (visa/money, culture/kava/language, weather/best-time). Diving, safety, and dining content confirmed clean in the Session 45 export — ready to build the same way.
+- Re-query `kb_chunks` for full text (likely in Vectorize, not D1 — `content_preview` column is truncated).
 
-**P6 — WhatsApp permanent business number**
-- Still on Meta test number
-- Must resolve before July 1 launch
+**P6 — Put lagi.vakaviti.ai (vakaviti-lagi-public) on the Git pipeline**
+- Last property still on manual zip upload. Working fine, not urgent, but unprotected against the same single-file-deploy risk that caused the vakaviti.ai redirect bug.
 
-**P7 — fijitourtransfers.com/ask/ page — Praveen**
-- ask.html built Session 42 — 936 lines, 73KB, 21 FAQ pairs, Lagi embedded
-- Email brief sent to Praveen (Draft ID: r-6074124901006029401)
-- Deadline: June 22, 2026
-- After deploy: submit to GSC + Bing IndexNow
+**P7 — Audit the remaining ~68 of 75 Workers & Pages projects**
+- Sort by oldest-deployed in the Cloudflare dashboard. Identify dead legacy demos (`vakaviti-bluelagoon`, `vakaviti-palms-denarau`, `vakaviti-sofitel` are likely candidates) to retire, and any other active project that should join the Git pipeline.
 
-**P8 — fijinanny.com llms.txt**
-- 404 — needs file created and deployed
-- Use: https://vakaviti-zone-manager.helpronline.workers.dev/generate-llms-txt?domain=fijinanny.com
+**P8 — WhatsApp permanent business number**
+- Still on Meta test number. Must resolve before July 1 launch.
 
-**P9 — Confirm remaining Bing IndexNow pings fired**
-- 1 of 5 confirmed (familyresortsfiji)
-- 4 remaining: yasawaislandsguide, mamanucaislandsguide, honeymoonfijiguide, divingfijiguide
-- Quick check with James
+**P9 — Resolve backlink/widget-rollout mechanism with Praveen**
+- Unknown whether the Lagi widget is a shared/synced snippet across partner sites or individually installed. Determines whether the planned backlink campaign (partner sites linking back to vakaviti.ai/lagi) is one edit or a 29-site campaign.
+
+**P10 — Partner agreement document**
+- Draft before any external partner approach. Covers: what Lagi does, data policy, lead ownership, uptime, pricing. Blocks all external partner conversations.
+
+**P11 — Google Business Profile**
+- Setup at business.google.com. Entity: Fiji Tourism Guide Ltd / Vakaviti.ai.
+
+**P12 — fijitourtransfers.com/ask/ page — Praveen**
+- Brief sent Session 44, deadline was June 22 — status unconfirmed.
+
+**P13 — Verify 6 unconfirmed partner Lagi installs**
+- fijihomestayz.com, realfiji.tours, fijiepictours.com, fijitours.online, fijidaytours.com.au, bookfijitours.com.au — all show real traffic in Cloudflare Analytics, but none explicitly confirmed widget-live since their Session 21-22 install.
+
+**P14 — fijinanny.com llms.txt 404** — still unresolved, low urgency.
+
+**P15 — Decide the fijithingstodo.com / "Seru" competing-widget question** — strategic call, not a bug.
+
+**P16 — Define or retire aiwebst.online** — 2 total visitors, no session record of original intent.
 
 ---
 
@@ -395,6 +432,11 @@ ORDER BY l.score DESC, l.created_at DESC
 
 | Session | Decision | Reasoning |
 |---|---|---|
+| 45 | Git auto-deploy pipeline adopted as the standard for all new and fixed properties | Single-file Cloudflare Pages uploads were the confirmed root cause of the vakaviti.ai redirect bug and months of silent drift. Git makes that failure mode structurally impossible. |
+| 45 | vakaviti.ai rebuilt as a real content hub, redirect to lagi.vakaviti.ai removed entirely | AI search engines can't cite a page that bounces elsewhere. All 5 microsites already link to vakaviti.ai expecting real content. Lagi remains the conversion engine, not the homepage. |
+| 45 | Fixed the 5-microsite widget 404 by reusing existing `lagi_public` site_id, not creating a new partner row | Confirmed working via a real lead record already using that site_id. Simpler, faster, no new D1 row needed. |
+| 45 | PII identified in knowledge_items deleted at the source (32 rows), not just excluded from publishing | The PII was feeding back into Lagi's live answers to other travelers, not just a publishing risk. Required fixing the data itself. |
+| 45 | Knowledge Hub built only from manually verified clean entries, not the full table | Heavy duplication and the PII issue meant mechanical bulk-publishing was unsafe. Verify-then-publish, topic by topic. |
 | 43 | Zone Manager v3 — D1-driven zone list | New partners auto-enrol. No code change needed. |
 | 43 | Sydney (australia-southeast1) as speed test region | Audience is AU/NZ/Fiji. Iowa scores meaningless. |
 | 43 | Two cron jobs — 2am fix + 3am results | Speed tests async — need 1hr gap for results |
@@ -412,21 +454,32 @@ ORDER BY l.score DESC, l.created_at DESC
 
 | Issue | Priority | Fix |
 |---|---|---|
+| Worker GitHub backup stale — 512 lines vs live 1,874 | P1 | Pull real v57, commit properly. 19 sessions unresolved. |
+| Possible live checkout failure on fijitourtransfers.com | P1 | Confirmed unresolved sentinel error, dated 2026-05-24 — test a real booking |
+| 999999 master OTP bypass code | P1 | Must remove before July 1 — flagged Session 5, never confirmed removed |
 | WhatsApp permanent business number | P1 | Must resolve before July 1 |
-| Knowledge base ~440 vectors | P1 | Continue Facebook group push — target 700+ |
-| No partner agreements | P1 | Draft one page document |
-| fijitourtransfers.com llms.txt missing | P1 | Praveen brief sent — deadline June 22 |
-| ask.html not yet deployed | P1 | Praveen brief sent |
-| op_vakaviti_guides_001 not in D1 — 5 GEO microsites' Lagi widget 404s on /config | P1 | Decide routing (new partner row vs repoint), then fix. See Section 19. |
-| Unconfirmed links from 5 new GEO microsites: vakaviti.ai/nadi-airport-transfers-guide, /fiji-accommodation-guide, guidefiji.com, bestfijitours.com | P2 | James was mid-audit at Session 44 close — complete and fix/remove as needed |
+| lagi.vakaviti.ai meta description fix | P2 | Given Session 45, never confirmed deployed |
+| lagi.vakaviti.ai not on Git pipeline | P2 | Last property on manual zip upload — same risk class as the vakaviti.ai redirect bug |
+| nadiairporttransfers.com app.js brand/phone bug | P2 | Unresolved since Session 22 — flagged across 4 separate sessions |
+| No partner agreements | P2 | Draft one page document |
+| fijitourtransfers.com llms.txt missing | P2 | Praveen brief sent — deadline June 22 passed unconfirmed |
+| ask.html deployment status | P2 | Praveen brief sent, deadline passed, status unknown |
+| domain_compliance notes contradict actual flags for vakaviti.ai | P2 | Notes said "fully complete," structured flags all read 0 — don't trust notes fields without cross-checking data |
+| statement_performance (5 A/B test statements) never measured since deployment | P2 | last_checked is null on all — either measure or formally abandon the test |
+| question_clusters table empty | P2 | Self-learning knowledge-gap detection loop does not appear to be populating it |
+| 6 unconfirmed partner Lagi installs (fijihomestayz, realfiji.tours, fijiepictours, fijitours.online, fijidaytours.com.au, bookfijitours.com.au) | P2 | Real traffic confirmed in Analytics, widget status never explicitly verified |
+| fijithingstodo.com runs competing "Seru" widget instead of Lagi | P2 | Strategic decision needed, not a bug |
+| aiwebst.online — purpose unknown, 2 total visitors | P2 | Define or retire |
 | fijinanny.com llms.txt 404 | P2 | Use /generate-llms-txt endpoint |
-| aiwebst.online AI files 530 error | P2 | Server error — investigate |
-| CF Analytics token not embedded in lagi-v4 | P2 | Get token from Web Analytics, rebuild zip |
-| 22 partners routing to James only | P2 | Phase 2 routing when ready |
-| Old SendGrid key vakaviti-ai-v2 not deleted | P2 | Delete from SendGrid dashboard |
-| 4 of 5 Bing IndexNow pings for new GEO microsites unconfirmed | P3 | Quick check with James |
+| ~68 of 75 Workers & Pages projects unaudited | P2 | Sort oldest-first, identify dead demos to retire and active projects to migrate to Git |
+| Shared-snippet vs per-site widget install unknown | P2 | Ask Praveen — determines if backlink rollout is one edit or a 29-site campaign |
+| kb_chunks only stores content_preview, not full text | P2 | Full text likely in Vectorize — needs a different query than D1 SQL |
+| Old SendGrid key vakaviti-ai-v2 not deleted | P3 | Delete from SendGrid dashboard |
 | 0-RTT + Prefetch Preload failing on all zones | P3 | Plan limitation — remove from enforced settings in v4 |
 | Partner count shows 15 on lagi.vakaviti.ai | P3 | Update to 29 |
+| 22+ of 29 partners still route leads to James only | P3 | Phase 2/3 graduation framework already designed — becomes the real bottleneck at 500+ partners, not a technical one |
+| WhatsApp notifications fire to one centralized number, not per-partner | P3 | Same root issue as above — needs per-partner routing before scale forces it |
+| Cloudflare Pages Git-connect step is fully manual (5 dashboard clicks per project) | P3 | Fine at current scale, becomes the bottleneck past ~50 properties — Cloudflare API automation discussed, not built |
 
 ---
 
@@ -434,8 +487,12 @@ ORDER BY l.score DESC, l.created_at DESC
 
 | Date | Idea | Category | Status |
 |---|---|---|---|
+| 2026-06-23 | Automate the Cloudflare Pages Git-connect step via API (token scoped to Pages:Edit) | infrastructure | inbox — discussed Session 45, manual still fine at current scale |
+| 2026-06-23 | Extend vakaviti-zone-manager to auto-audit backlink presence + llms.txt compliance across all domains | infrastructure | inbox — directly addresses the "fixed once, never re-verified" pattern found repeatedly this session |
+| 2026-06-23 | Connect James's 7,300+ Facebook followers (+ Instagram, YouTube) directly into Lagi/GEO content funnel | growth | inbox |
+| 2026-06-23 | Publish anonymized real Lagi Q&A as fresh AI-citable content (separate from the static Knowledge Hub) | seo | inbox — contingent on the PII cleanup methodology proving reliable |
 | 2026-06-17 | vakaviti-notify Worker — centralised email + WhatsApp for all Workers | infrastructure | Session 44 — high value |
-| 2026-06-17 | status.vakaviti.ai public compliance dashboard | infrastructure | Session 45 |
+| 2026-06-17 | status.vakaviti.ai public compliance dashboard | infrastructure | Session 45 — not built, deprioritised in favour of the Git pipeline + redirect fix |
 | 2026-06-17 | Google Business Profile — free major AI trust signal | seo | pending — business.google.com |
 | 2026-06-17 | Workers AI intent classifier — cut Anthropic cost 40% | infrastructure | inbox |
 | 2026-06-17 | Durable Objects for conversation memory | infrastructure | inbox |
@@ -450,6 +507,27 @@ ORDER BY l.score DESC, l.created_at DESC
 
 ## 18. SESSION HISTORY
 
+### Session 45 — 2026-06-23 — CLOSED
+**The biggest infrastructure session since platform inception — found and fixed root causes, not just symptoms.**
+
+**What we built:**
+1. **GitHub → Cloudflare Pages Git auto-deploy pipeline** — established for the first time using a fine-grained GitHub PAT. 7 properties migrated onto it: the 5 GEO microsites (now on custom `vakaviti.ai` subdomains, not just `.pages.dev`), `vakaviti-join-page`, and `vakaviti-root` (the rebuilt `vakaviti.ai`). This eliminates the single-file-upload failure mode confirmed as the root cause of the redirect bug below.
+2. **vakaviti.ai redirect bug — root-caused and fixed.** Months of single-file Cloudflare Pages uploads had left a wildcard redirect to `lagi.vakaviti.ai` swallowing the homepage, `/sitemap.xml`, and the GEO guide pages — explaining both the long-standing sitemap error AND the unresolved P2 link-audit from Session 44. Rebuilt the complete file set (homepage + 3 GEO pages with 2025→2026 date fixes + robots.txt + sitemap.xml) from scratch, committed to Git, connected, confirmed live end-to-end (no redirect, real sitemap XML, GSC Status: Success same-day).
+3. **P1 Lagi widget 404 — fixed.** All 5 microsites' `site_id` changed from the dead `op_vakaviti_guides_001` to `lagi_public` (confirmed working via a real existing lead record). Auto-deployed via the new Git pipeline with zero manual Cloudflare steps — first fix in this platform's history to do so.
+4. **Knowledge base — real export and audit, for the first time.** Built `vakaviti-kb-inspect`, a diagnostic Worker bound to `vakaviti-kb`, and pulled the actual content: 578 `knowledge_items`, 95 `kb_chunks`. Found and deleted 32 rows containing real customer PII (names, emails, a phone number) that the self-learning loop had captured from live conversations — this was actively feeding into Lagi's answers to other travelers, not just a publishing risk. Carefully distinguished from 47 false-positive flags (legitimate partner contact details) which were correctly left alone.
+5. **Lagi Knowledge Hub — launched.** 3 real, schema-rich, zero-PII pages built from verified-clean content and added to `vakaviti.ai`: `/fiji-visa-money-guide`, `/fiji-culture-kava-language-guide`, `/fiji-weather-best-time-guide`. All submitted to GSC, sitemap confirmed reading correctly same-day.
+6. **`vakaviti-join-page` found not in GitHub at all** — added for the first time, with a missing meta description and canonical tag fixed in the same pass.
+7. **`mamanucaislandsguide` confirmed fully complete** — custom domain + Git connection verified via screenshot.
+8. **Real Cloudflare dashboard data pulled for the first time** — Domains list and Workers & Pages list (75 total projects) reviewed directly, confirming real traffic numbers across the network (`vakaviti.ai` 10.6k, `fijitourtransfers.com` 21.6k, etc.) instead of relying on session-history assumptions.
+
+**Critical findings, not yet actioned (carried to Section 3 as P1-P4 next session):**
+- Worker GitHub backup confirmed still stale (512 lines vs live 1,874) — directly verified via repo check, unresolved 19 sessions running.
+- A likely-unresolved checkout failure error on `fijitourtransfers.com` found in `sentinel_errors`, dated a month ago, never confirmed fixed.
+- `999999` master OTP bypass code, flagged Session 5, still never confirmed removed.
+- `domain_compliance` notes for `vakaviti.ai` claimed "fully complete" while every structured flag read 0 — a direct example of exactly the kind of untracked drift that let the redirect bug persist for months.
+
+**Key learning:** Almost every recurring problem this session traced back to one root cause — Cloudflare Pages single-file uploads silently replacing complete file sets, with no version control to catch it. The Git pipeline isn't one fix among many; it's the fix that prevents this entire category of failure from recurring. Properties still on manual upload (`lagi.vakaviti.ai`, ~68 unaudited Workers & Pages projects) remain exposed to the same risk.
+
 ### Session 44 — 2026-06-19 — CLOSED
 **What we built:**
 1. **5 single-intent GEO microsites** built and deployed to Cloudflare Pages — familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, honeymoonfijiguide, divingfijiguide. Full detail in Section 19.
@@ -457,10 +535,10 @@ ORDER BY l.score DESC, l.created_at DESC
 3. **Google Search Console** — all 5 verified, all 5 sitemaps submitted.
 4. **Bing IndexNow** — 1 of 5 confirmed pinged; 4 remaining with James.
 5. **Mid-session quality fixes across all 5 guides** — corrected stale 2025 dating to 2026 throughout, added missing dateModified schema, fixed mobile nav overflow risk, added table horizontal-scroll, added tablet breakpoint, added contextual Ask-Lagi prompts at peak-intent moments without adding more outbound partner links (deliberate strategy call).
-6. **Bug found, not fixed:** Lagi widget on all 5 new guides 404s — site_id `op_vakaviti_guides_001` not in D1 partners table. Needs James decision before fix. → Section 3 P1.
-7. **Link audit started, not completed** on vakaviti.ai/nadi-airport-transfers-guide, /fiji-accommodation-guide, guidefiji.com, bestfijitours.com. → Section 3 P2.
+6. **Bug found, not fixed (Session 45 fixed it):** Lagi widget on all 5 new guides 404s — site_id `op_vakaviti_guides_001` not in D1 partners table.
+7. **Link audit started, not completed (Session 45 found the real cause):** vakaviti.ai/nadi-airport-transfers-guide, /fiji-accommodation-guide, guidefiji.com, bestfijitours.com.
 
-**Key learning:** Cloudflare Pages "upload assets" always deploys a complete file set, never a patch — every iteration this session required a full zip rebuild. Build the AI-visibility file set into the initial deploy next time, not as a second pass.
+**Key learning:** Cloudflare Pages "upload assets" always deploys a complete file set, never a patch — every iteration this session required a full zip rebuild. Build the AI-visibility file set into the initial deploy next time, not as a second pass. **(This exact issue is what caused the Session 45 redirect bug — should have been treated as a platform-wide risk, not a microsite-specific lesson.)**
 
 **Strategic decision logged:** GEO microsites optimise for routing qualified leads into Lagi → D1 partner referral engine, not for maximising outbound link count to named operators. Partner onboarding kept off these pages by design.
 
@@ -487,21 +565,23 @@ Worker v57 — WhatsApp dual-notify fixed. 140 vectors pushed (~440 total). What
 Worker v56 — D1-driven routing, WhatsApp notify, Fiji heat signals. Lead flow tested end-to-end.
 
 ### Sessions 1-39
-Full platform built: D1 + Vectorize + Worker architecture, commercial engine, partner widgets, 118 referral routes, 440 knowledge vectors, 3 GEO pages live, reviews system, error sentinel, meta bridge.
+Full platform built: D1 + Vectorize + Worker architecture, commercial engine, partner widgets, 118 referral routes, knowledge base foundation, 3 GEO pages live, reviews system, error sentinel, meta bridge. **Note (Session 45): this period also includes the Session 18 vakaviti.ai redirect decision and the Session 31 real-homepage build that later conflicted — see Session 45 entry above for how that was resolved.**
 
 ---
 
-## 19. GEO MICROSITES — BUILT SESSION 44
+## 19. GEO MICROSITES — BUILT SESSION 44, MIGRATED TO CUSTOM DOMAINS + GIT SESSION 45
 
-**Pattern:** Single-intent Cloudflare Pages subdomains, canonicalising to vakaviti.ai paths, embedding Lagi widget, cross-linking to each other + fijitourtransfers.com.
+**Pattern:** Single-intent sites on custom `vakaviti.ai` subdomains (not `.pages.dev`, as of Session 45), Git-connected for auto-deploy, embedding Lagi widget (`site_id=lagi_public` as of Session 45 — fixed from the dead `op_vakaviti_guides_001`), cross-linking to each other + fijitourtransfers.com.
 
-| Pages Project | Live URL | Canonical Target | Topic |
+| Pages Project | Live URL (Session 45) | Canonical Target | Topic |
 |---|---|---|---|
-| familyresortsfiji | familyresortsfiji.pages.dev | vakaviti.ai/fiji-family-resorts-guide | Family resorts, kids clubs |
-| yasawaislandsguide | yasawaislandsguide.pages.dev | vakaviti.ai/yasawa-islands-guide | Yasawa Islands, Blue Lagoon |
-| mamanucaislandsguide | mamanucaislandsguide.pages.dev | vakaviti.ai/mamanuca-islands-guide | Mamanuca day trips, Cloud 9 |
-| honeymoonfijiguide | honeymoonfijiguide.pages.dev | vakaviti.ai/fiji-honeymoon-guide | Honeymoon resorts, overwater bures |
-| divingfijiguide | divingfijiguide.pages.dev | vakaviti.ai/fiji-diving-guide | Dive sites, Beqa Lagoon, Rainbow Reef |
+| familyresortsfiji | familyresorts.vakaviti.ai | vakaviti.ai/fiji-family-resorts-guide | Family resorts, kids clubs |
+| yasawaislandsguide | yasawa.vakaviti.ai | vakaviti.ai/yasawa-islands-guide | Yasawa Islands, Blue Lagoon |
+| mamanucaislandsguide | mamanuca.vakaviti.ai | vakaviti.ai/mamanuca-islands-guide | Mamanuca day trips, Cloud 9 |
+| honeymoonfijiguide | honeymoon.vakaviti.ai | vakaviti.ai/fiji-honeymoon-guide | Honeymoon resorts, overwater bures |
+| divingfijiguide | diving.vakaviti.ai | vakaviti.ai/fiji-diving-guide | Dive sites, Beqa Lagoon, Rainbow Reef |
+
+**Session 45 fixes applied to all 5:** custom domain + Git connection (replacing direct-upload `.pages.dev`-only deployment), Lagi widget `site_id` changed to `lagi_public` (was 404ing on the dead `op_vakaviti_guides_001`), cross-links between all 5 sites updated to reference each other's new custom domains instead of `.pages.dev`, and a self-referencing bug in each site's own `llms.txt` "Related Guides" section (each guide was listing itself) found and removed from all 5.
 
 **Each microsite ships 5 files per deployment:**
 - `index.html` — full page, Article + FAQPage JSON-LD schema, mobile-responsive
@@ -528,9 +608,9 @@ Full platform built: D1 + Vectorize + Worker architecture, commercial engine, pa
 - Bing IndexNow: 1 of 5 confirmed pinged (familyresortsfiji). 4 remaining given to James — not confirmed fired by session close.
 - Bing Webmaster Tools full property/reporting: explicitly deferred — IndexNow ping only for now, by James's choice.
 
-**Open bug, not yet fixed:** Lagi widget on all 5 pages calls `site_id=op_vakaviti_guides_001`, confirmed absent from D1 partners table (cross-checked against Section 11's 29 partner IDs). 404 on `/config` endpoint. See Section 3, P1.
+**RESOLVED Session 45:** Lagi widget on all 5 pages previously called `site_id=op_vakaviti_guides_001`, confirmed absent from D1 partners table. Fixed by switching to `lagi_public`, a confirmed-working public site_id. Auto-deployed via the new Git pipeline.
 
-**Open item, not yet completed:** link audit on vakaviti.ai/nadi-airport-transfers-guide, /fiji-accommodation-guide, guidefiji.com, bestfijitours.com — James started checking mid-session, did not report results. See Section 3, P2.
+**RESOLVED Session 45 (root cause found):** the link audit on vakaviti.ai/nadi-airport-transfers-guide and /fiji-accommodation-guide was never completed because those pages were being swallowed by a wildcard redirect on the vakaviti.ai root domain — not a broken-link issue at all. The redirect was found, root-caused (single-file deploy history), and removed. Both pages now serve correctly. `guidefiji.com` and `bestfijitours.com` links were extracted and listed but not independently verified live — still worth a manual click-through.
 
 ---
 
