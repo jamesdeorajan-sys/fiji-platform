@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 46 CLOSED — 2026-06-23
+# Last updated: Session 47 CLOSED — 2026-06-26
 
 ---
 
@@ -21,9 +21,21 @@
 
 ---
 
-## 2. PLATFORM STATE — CURRENT AS OF SESSION 46
+## 2. PLATFORM STATE — CURRENT AS OF SESSION 47
 
-### 🔴 TOP FINDING THIS SESSION — Lagi has no page-level awareness
+### 🆕 NEW THIS SESSION — DiscoverFiji.ai launched as a separate front-end initiative
+James brought a vision doc for "DiscoverFiji.ai" — originally specced as a fully separate Next.js/Supabase/OpenAI platform with its own AI brain, own vector DB, own booking flow. Confirmed with James: real separate build, new stack, new brand — but the AI brain stays Lagi, not a second one. Built and shipped same-day:
+- **Stack:** Next.js 15 + Tailwind v4, deployed on Vercel, repo at github.com/jamesdeorajan-sys/discoverfiji
+- **Domain:** discoverfiji.ai (James owns it) — not yet DNS-connected to Vercel as of session close, currently live at discoverfiji.vercel.app
+- **Design:** original visual identity, NOT a Vakaviti.ai clone — bathymetric/navigation-chart aesthetic (deep chart-ink navy, aged paper tones, coral accent), grounded in Fiji's traditional wayfinding heritage rather than generic tropical-AI-startup look
+- **Critical architecture decision: no separate AI brain.** DiscoverFiji.ai's chat proxies server-side to the existing Lagi Worker (fiji-chat-widget) in public mode (site_id: 'lagi_public') — inherits RAG search, heat scoring, D1 lead capture, partner routing, and WhatsApp/email notify automatically, zero rebuilt logic. Rejected the spec's original "own OpenAI chatbot + own vector DB" approach after confirming Cloudflare Vectorize has 10M-vector headroom (Jan 2026 increase) — a second brain would only fragment the same learning signal Lagi already compounds across 29+ partners, not accelerate it.
+- **Real bug found and fixed during build:** the Worker's `isAllowedOrigin` check (inside `handleChat`) isn't real browser CORS — it's a manual origin allow-list checked first thing, and it rejects requests with no Origin header at all, which is what a bare server-side `fetch()` sends by default. First live test returned a swallowed 403. Fixed by explicitly setting `Origin: https://vakaviti.ai` on the proxy's server-side fetch call (accurate, not a spoof — DiscoverFiji.ai is part of that network now). **Verified end-to-end with a real conversation:** honeymoon query correctly routed to Blue Lagoon Beach Resort with real live pricing, correct Fijian voice, and the lead-capture flow firing as designed.
+- **Booking model:** no separate payment processing — quotes/itineraries hand off to fijitourtransfers.com's existing WooCommerce checkout, same pattern as Lagi's referral buttons elsewhere.
+- **Strategic implication:** the Lagi page-awareness bug (top finding, Session 46) is now more urgent, not less — DiscoverFiji.ai shares the exact same brain, so that bug now risks two public-facing surfaces instead of one.
+- **Not yet done:** Supabase/OpenAI accounts (James hasn't set these up yet — needed for the content tables: destinations, tours, resorts, reviews, blog_articles, NOT needed for chat, which already works with zero keys), domain DNS connection, the actual 500 destination pages, and the `/knowledge-add` content-ingestion pipeline (with a recommended human-review step before ingestion, since that endpoint has no auth and feeds the same authoritative knowledge base every partner relies on).
+- Full detail in Section 21.
+
+### 🔴 TOP FINDING SESSION 46 (still unresolved) — Lagi has no page-level awareness
 Live-tested Lagi on a real fijitourtransfers.com tour page (Sawa-I-Lau Caves). Asked "Is this suitable for kids?" — Lagi answered confidently and in detail about the **Cultural Night Tour** (fire dance, lovo feast, specific pricing) — a completely different tour. Root cause confirmed by reading the live Worker source: the embed widget only ever sends `site_id` (identifies the whole site/partner) and never any tour- or page-level identifier. The system prompt has no mechanism to know which of the ~108 tour pages a visitor is actually viewing — it falls back to whatever scores highest in RAG vector search, regardless of page context. **This is a real customer-trust risk, not a cosmetic issue** — a family could book expecting a fire dance and get a cave swim, or vice versa. Fix requires changes to both the embed snippet (pass a page/tour identifier) and the Worker's system-prompt logic (ground answers in that identifier). This is a Vakaviti.ai platform fix, not a WordPress fix. **Top priority for Session 47.**
 
 ### 🟢 RESOLVED THIS SESSION — Worker GitHub backup (P1, 19 sessions unresolved)
@@ -78,53 +90,63 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 ---
 
-## 3. TOP PRIORITIES — SESSION 47
+## 3. TOP PRIORITIES — SESSION 48
 
 > Claude: read this section first. ONE task at a time.
 
 **P1 — Lagi has no page/tour-level awareness — gives confidently wrong answers**
-- Confirmed via live test: asked about Sawa-I-Lau Caves tour suitability for kids, Lagi answered in detail about the unrelated Cultural Night Tour instead.
+- Confirmed via live test (Session 46): asked about Sawa-I-Lau Caves tour suitability for kids, Lagi answered in detail about the unrelated Cultural Night Tour instead.
 - Root cause confirmed in Worker source: only `site_id` is ever sent; no page/tour identifier exists anywhere in the request pipeline.
 - Fix needs: (1) embed snippet change to detect and pass current page/tour context, (2) Worker system-prompt logic to ground answers in that context instead of falling back to generic RAG search.
-- This is the single highest-impact fix available — it affects every one of the ~108 tour pages on fijitourtransfers.com and any other partner site using per-page content.
+- **Even more urgent after Session 47:** DiscoverFiji.ai now also calls this same brain in public mode — this bug risks two public surfaces, not one. Still the single highest-impact fix available.
 
-**P2 — Find the source of the wrong Organization schema address**
+**P2 — Connect discoverfiji.ai domain + get Supabase/OpenAI accounts set up**
+- Domain is owned but not yet DNS-connected to Vercel (still on the temporary discoverfiji.vercel.app URL).
+- Supabase and OpenAI signups not done yet — blocks the content tables (destinations, tours, resorts, reviews, blog_articles). Chat already works without them.
+
+**P3 — Revoke stale GitHub tokens**
+- Three fine-grained PATs issued across Sessions 46–47 (fiji-platform, claude-discoverfiji, and a second discoverfiji one) — confirm all revoked once no longer needed. Basic hygiene, several recommended this session, unclear if actioned.
+
+**P4 — Find the source of the wrong Organization schema address (fijitourtransfers.com)**
 - NSW postcode 2763 (real address is Rouse Hill NSW 2155), invalid country code format.
-- WooCommerce, Rank Math Local SEO, and the "Jason" snippet all ruled out this session.
+- WooCommerce, Rank Math Local SEO, and the "Jason" snippet all ruled out Session 46.
 - Likely another WPCode "Untitled Snippet" — there were 26 active snippets total, most unnamed.
 
-**P3 — Remove the 999999 master OTP bypass code**
-- Flagged Session 5 as "must remove before launch." Still never confirmed removed. 8 days to launch — now genuinely urgent.
+**P5 — Remove the 999999 master OTP bypass code**
+- Flagged Session 5 as "must remove before launch." Still never confirmed removed. Launch is imminent.
 
-**P4 — Cancel/refund the test booking created this session**
-- Real WooCommerce order created during the checkout test (Pravin Deorajan, $8, Nadi Airport to Aquarius Beach Resort). Confirm no real charge fired; cancel the order.
+**P6 — Cancel/refund the test booking from Session 46's checkout test**
+- Real WooCommerce order created (Pravin Deorajan, $8, Nadi Airport to Aquarius Beach Resort). Confirm no real charge fired; cancel the order. Unclear if actioned yet.
 
-**P5 — Confirm the Praveen "hidden text" brief was sent and validate within 24 hours**
-- Gmail draft created this session, addressed to madasanipraveen@gmail.com. James needs to actually send it. Follow up to confirm the homepage text section is converted to a visible accordion/FAQ and not just unhidden as a wall of text.
+**P7 — Confirm the Praveen "hidden text" brief was sent and validate within 24 hours**
+- Gmail draft created Session 46, addressed to madasanipraveen@gmail.com. Confirm James actually sent it, and that the fix (visible accordion/FAQ, not a wall of text) landed.
 
-**P6 — Resolve the cross-brand bleed pattern (Author field, Legal Name field)**
+**P8 — Resolve the cross-brand bleed pattern (Author field, Legal Name field)**
 - Confirmed sitewide on fijitourtransfers.com, not isolated. Decide: intentional shared-brand content pool, or needs separating for AI-citation clarity.
 
-**P7 — Confirm lagi.vakaviti.ai meta description deployed**
+**P9 — Confirm lagi.vakaviti.ai meta description deployed**
 - Carried from Session 45, still unconfirmed.
 
-**P8 — Re-verify the Local Business schema duplicate is actually gone**
-- "Jason" snippet deactivated this session but never re-tested via Rich Results Test afterward (got pulled into other findings). Quick re-check needed.
+**P10 — Re-verify the Local Business schema duplicate is actually gone (fijitourtransfers.com)**
+- "Jason" snippet deactivated Session 46 but never re-tested via Rich Results Test afterward.
 
-**P9 — WhatsApp permanent business number**
+**P11 — WhatsApp permanent business number**
 - Still on Meta test number. Must resolve before July 1 launch.
 
-**P10 — Continue the Lagi Knowledge Hub, partner agreement doc, Google Business Profile**
-- All carried unchanged from Session 45 — not touched this session.
+**P12 — Build the DiscoverFiji.ai destination/tour/resort pages + content-ingestion pipeline**
+- Core pages (Phase 3) once Supabase is set up. Each page written should also be pushed into Lagi's `/knowledge-add` endpoint — with a human review step first, since that endpoint has no auth and feeds the same knowledge base every partner relies on.
 
-**P11 — Verify the pricing outlier on fijitourtransfers.com**
+**P13 — Verify the pricing outlier on fijitourtransfers.com**
 - AU$61 Tanoa Hotel transfer vs AU$5–10 comparable routes — confirm correct or fix.
 
-**P12 — Minor fijitourtransfers.com cleanup (low urgency)**
+**P14 — Continue the Lagi Knowledge Hub, partner agreement doc, Google Business Profile**
+- Carried unchanged since Session 45.
+
+**P15 — Minor fijitourtransfers.com cleanup (low urgency)**
 - Dead "Blogs" footer link, duplicate code block in redirect snippet, Cloudflare email-obfuscation tradeoff decision.
 
-**P13 — Audit the remaining ~68 of 75 Workers & Pages projects**
-- Carried from Session 45, not touched this session.
+**P16 — Audit the remaining ~68 of 75 Workers & Pages projects**
+- Carried from Session 45, still not touched.
 
 ---
 
@@ -174,7 +196,11 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 | 46 | Did not attempt to fix the Lagi page-awareness bug same-session | It requires changes to both the embed snippet and Worker system-prompt logic across potentially every partner site, not just fijitourtransfers.com. Needed the GitHub backup fixed first so any Worker edit has a safe rollback path — sequencing risk-reduction before the actual fix. |
 | 46 | Fixed the Worker GitHub backup via mechanical escape-character correction only, not a rewrite | The pasted source had a real syntax bug (unescaped nested template-literal backticks) but the live Worker demonstrably works, so the bug was almost certainly a copy-paste artifact. Fixed only the escaping, verified with `node --check`, changed zero logic — minimizes risk of accidentally "fixing" something that wasn't actually broken in production. |
 | 46 | Recommended revoking the GitHub PAT after use rather than reusing the same token indefinitely | Token was shared via a WhatsApp screenshot into this chat — two extra exposure points beyond necessary. Standard credential hygiene, not a sign anything was compromised. |
-| 46 | Did not fix the cross-brand Author/Legal-Name bleed pattern, logged as a decision needed rather than a bug to silently correct | Could be intentional (shared content pool between two related brands run by the same person) rather than an error — needs James's call, not an assumption. |
+| 47 | Pursued DiscoverFiji.ai as a real separate build (new stack, new brand), not a fold-in to Vakaviti.ai or a parked idea | James's explicit call after reviewing the strategic-overlap analysis. Domain owned, no accounts existed yet — genuine greenfield. |
+| 47 | Rejected the original spec's "own OpenAI chatbot + own vector DB" in favor of proxying to the existing Lagi Worker | Verified Cloudflare Vectorize's actual capacity (10M vectors/index, Jan 2026) before deciding — confirmed no real scale ceiling existed to justify a second brain. A second system would fragment learning signal, not accelerate growth. James's framing: "Lagi is our main superpower" — extend it, don't duplicate it. |
+| 47 | Kept Supabase for content tables (destinations, tours, resorts, reviews, blog_articles) even though leads/quotes/conversations got removed | Content/CMS data is a legitimately different concern from the AI brain — no fragmentation risk there, just a database for page content. |
+| 47 | Booking handoff goes to fijitourtransfers.com's existing WooCommerce checkout, not a new Stripe/PayPal integration | James's explicit choice — avoids rebuilding a second payment system for no benefit. |
+| 47 | Set an explicit `Origin: https://vakaviti.ai` header on the server-side Lagi proxy call rather than modifying the Worker's ALLOWED_ORIGINS list | Unblocks DiscoverFiji.ai today with zero changes to the shared, live Worker. Adding `discoverfiji.ai` properly to ALLOWED_ORIGINS remains a cleaner long-term fix, noted as optional follow-up, not done this session. |
 
 ---
 
@@ -182,7 +208,12 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
-| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | **P1 — NEW Session 46** | Confirmed via live test. Platform-level fix needed. |
+| discoverfiji.ai DNS not connected to Vercel | P2 — NEW Session 47 | Domain owned, deploy live on temporary vercel.app URL only |
+| Supabase/OpenAI accounts not yet created for DiscoverFiji.ai | P2 — NEW Session 47 | Blocks content tables; chat already works without them |
+| Three GitHub PATs issued across Sessions 46–47, revocation status unclear | P3 — NEW Session 47 | Basic hygiene — confirm all revoked |
+| DiscoverFiji.ai's 500 destination pages + Lagi knowledge-ingestion pipeline not started | P3 — NEW Session 47 | Phase 3+ work, needs Supabase set up first |
+| Worker's `isAllowedOrigin` check has no real CORS enforcement, just a manual header check that silently 403s on missing Origin | P3 — NEW Session 47 | Not a bug exactly, but a sharp edge — any future server-side integration will hit this same trap unless documented. Now documented in discoverfiji repo's route.ts comments. |
+| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | **P1 — Session 46, now affects 2 surfaces** | Confirmed via live test. Platform-level fix needed. DiscoverFiji.ai sharing the same brain raises the stakes. |
 | 3rd Organization schema entity has wrong address (NSW 2763) | P2 | Source hunt continues — WooCommerce, Rank Math, "Jason" snippet all ruled out |
 | 999999 master OTP bypass code | P1 | Still not confirmed removed — flagged Session 5, now 41 sessions later |
 | Test booking created during checkout verification needs cancelling | P1 — NEW Session 46 | Real WooCommerce order, $8, needs James to confirm no real charge + cancel |
@@ -221,6 +252,25 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 ## 18. SESSION HISTORY
 
+### Session 47 — 2026-06-26 — CLOSED
+**DiscoverFiji.ai launched as a new, separate front-end initiative.**
+
+James brought a comprehensive vision doc for "DiscoverFiji.ai" — originally specced as a fully independent Next.js/Supabase/OpenAI platform with its own AI brain. Flagged the strategic overlap with the existing platform before building anything (same core business — "generate leads and bookings for Fiji Tour Transfers" — plus a redundant AI concierge, redundant itinerary builder, redundant lead-scoring system). James confirmed: pursue it as a real separate build, new stack, new brand — domain already owned (discoverfiji.ai), starting completely from scratch on accounts.
+
+**What got built and shipped same-day:**
+1. Next.js 15 + Tailwind v4 scaffold, with an original visual identity (bathymetric/navigation-chart design system — deliberately not a Vakaviti.ai clone, grounded in Fiji's traditional wayfinding heritage rather than generic tropical-AI-startup defaults).
+2. Supabase schema for content tables (destinations, tours, resorts, partners, reviews, blog articles).
+3. GitHub repo created (github.com/jamesdeorajan-sys/discoverfiji), Vercel project connected and deployed — live, working homepage confirmed via screenshot.
+4. **Key architectural correction, made before too much was built the wrong way:** the original spec called for a separate OpenAI-powered chatbot with its own vector database. Caught this as a direct conflict with "Lagi is our main superpower" — building a second brain would fragment learning signal across two disconnected pools instead of compounding into the one that already serves 29+ partners. Verified Cloudflare Vectorize's real capacity (10M vectors/index as of Jan 2026) to confirm there was no genuine scale justification for a separate system. James confirmed: route through Lagi instead.
+5. Built the actual integration: `src/app/api/chat/route.ts` proxies server-side to the live Lagi Worker in public mode. This means DiscoverFiji.ai inherits RAG search, heat scoring, D1 lead capture, partner routing, and WhatsApp/email notification automatically — none of it rebuilt.
+6. **Found and fixed a real bug during the first live test:** the Worker's `isAllowedOrigin` check isn't real browser CORS — it's a manual gate that rejects any request with no Origin header, which is what a bare server-side `fetch()` sends. First test silently 403'd, surfaced to the user as a generic "didn't catch that." Fixed by explicitly setting a trusted Origin header on the proxy call.
+7. **Verified end-to-end with a real conversation:** asked about a 5-day honeymoon, got back a correctly-routed recommendation (Blue Lagoon Beach Resort), real live pricing, authentic Fijian voice, and the lead-capture flow firing exactly as designed. Also fixed a markdown-rendering bug (literal asterisks instead of bold text) found during this same test.
+8. Removed the `leads`/`quotes`/`ai_conversations` tables from the Supabase schema once it became clear they'd be entirely redundant with what the Lagi proxy already provides for free.
+
+**Key learning:** the original vision doc, while well-structured, would have meant rebuilding — on different infrastructure, from zero — several things that already exist and work well (the AI concierge, the itinerary builder, the lead-scoring engine). Reading a spec doc literally without checking it against what's already built risks real wasted effort. The fix wasn't complicated once spotted: keep the new front-end and content strategy, route the actual intelligence through the existing brain.
+
+**Not yet done, explicitly carried to Session 48:** domain DNS connection, Supabase/OpenAI account setup, the 500 destination pages, the knowledge-ingestion pipeline (with review step), and GitHub token cleanup. None of the Session 46 priorities (Lagi page-awareness, OTP code, schema source hunt, etc.) were touched this session — they remain exactly as open as before, just now joined by DiscoverFiji.ai's own next steps.
+
 ### Session 46 — 2026-06-23 — CLOSED
 **What we found and fixed:**
 1. **Worker GitHub backup — root cause was worse than "stale," now genuinely fixed.** The GitHub copy was a completely different single-site draft Worker, not an old version of the real one. Pulled the live v57 source, found a real syntax bug (5 unescaped nested template-literal backticks, likely a copy-paste artifact), fixed mechanically with zero logic changes, verified with `node --check`, committed via fine-grained PAT, and independently re-fetched from GitHub to confirm the push actually landed correctly (1,875 lines, correct header, syntax-valid).
@@ -256,3 +306,24 @@ Unchanged from Session 45 — 5 microsites on custom vakaviti.ai subdomains, Git
 ## 20. JAMES'S SAFETY PROMPT SYSTEM
 
 Unchanged from Session 45. See prior BRAIN.md version for full prompt list (Checkpoint, Brain note, Close session, Verify first, Surgical only, Revenue test, North star check, Lagi impact?, Keep Lagi clean, Thinking out loud, Just ideas, Best practice?).
+
+---
+
+## 21. DISCOVERFIJI.AI — NEW INITIATIVE (Session 47)
+
+| Parameter | Value |
+|---|---|
+| Domain | discoverfiji.ai (owned, not yet DNS-connected) |
+| Live (temporary) | discoverfiji.vercel.app |
+| GitHub | github.com/jamesdeorajan-sys/discoverfiji |
+| Hosting | Vercel, auto-deploys on push to `main` |
+| Stack | Next.js 15, TypeScript, Tailwind v4, Supabase (content only), OpenAI (content-drafting only, NOT live chat) |
+| AI brain | **None of its own.** Proxies server-side to the live Lagi Worker (fiji-chat-widget) via `src/app/api/chat/route.ts`, site_id: `lagi_public` |
+| Booking | No own payment processing — hands off to fijitourtransfers.com's WooCommerce checkout |
+| Design identity | Bathymetric/navigation-chart aesthetic — deep chart-ink navy, aged-paper tones, coral accent, Space Grotesk + Source Sans 3 + IBM Plex Mono. Deliberately distinct from Vakaviti.ai's branding. |
+
+**Status: Phase 0/1 complete** (foundation + working, verified chat). Phases 2–5 (Supabase wiring, core pages, 500-page SEO scale-out, itinerary builder polish) not started.
+
+**Critical context for any future session touching this project:** do NOT rebuild a separate AI brain, lead-scoring system, or itinerary builder for this site. The whole point of the Session 47 architecture decision was routing through Lagi instead of duplicating it. If asked to "improve the AI" on DiscoverFiji.ai, the fix almost certainly belongs in the shared Lagi Worker (benefiting every partner site), not in this repo.
+
+**Content pipeline plan (not yet built):** the 500 destination pages, once written, should be pushed into Lagi's `/knowledge-add` endpoint after a human review pass — not auto-ingested, since that endpoint has no auth and feeds the same knowledge base every partner relies on.
