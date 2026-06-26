@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 47 CLOSED — 2026-06-26
+# Last updated: Session 48 CLOSED — 2026-06-26
 
 ---
 
@@ -10,7 +10,7 @@
 
 **Company:** Vakaviti.ai — Fiji's AI Tourism Partner Network
 **Mission:** Build Fiji's most powerful AI tourism platform
-**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 8 days remaining.
+**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 5 days remaining.
 **Founded by:** James Richardson — CEO
 **WhatsApp:** +61 478 886 145
 **Email:** helpronline@gmail.com
@@ -21,13 +21,35 @@
 
 ---
 
-## 2. PLATFORM STATE — CURRENT AS OF SESSION 47
+## 2. PLATFORM STATE — CURRENT AS OF SESSION 48
 
-### 🆕 NEW THIS SESSION — DiscoverFiji.ai launched as a separate front-end initiative
-James brought a vision doc for "DiscoverFiji.ai" — originally specced as a fully separate Next.js/Supabase/OpenAI platform with its own AI brain, own vector DB, own booking flow. Confirmed with James: real separate build, new stack, new brand — but the AI brain stays Lagi, not a second one. Built and shipped same-day:
-- **Stack:** Next.js 15 + Tailwind v4, deployed on Vercel, repo at github.com/jamesdeorajan-sys/discoverfiji
-- **Domain:** discoverfiji.ai (James owns it) — not yet DNS-connected to Vercel as of session close, currently live at discoverfiji.vercel.app
-- **Design:** original visual identity, NOT a Vakaviti.ai clone — bathymetric/navigation-chart aesthetic (deep chart-ink navy, aged paper tones, coral accent), grounded in Fiji's traditional wayfinding heritage rather than generic tropical-AI-startup look
+### 🆕 NEW THIS SESSION — DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem, AI-visibility infrastructure built, content scaling started
+
+**Biggest decision of the session:** discovered that "DiscoverFiji.ai" / "Discover Fiji" is a genuinely contested name — it collides with Tourism Fiji's own government tagline, with Rosie Travel Group's discoverfiji.com (a 50-year incumbent, airport-distributed printed guide since 2019, relaunched as a full booking platform Sept 2025), and with at least two other unrelated operators (Discover My Fiji, discoverfiji.com.au). Decided to fold the whole initiative into the Vakaviti.ai/Lagi brand instead of fighting for a name that's structurally hard to ever own. This was the right call given Vakaviti.ai already has zero naming collisions and is the established platform brand.
+
+**What changed as a result:**
+- New domain: **discover.vakaviti.ai** (subdomain, CNAME in Cloudflare DNS, "DNS only"/grey cloud since it points to Vercel) — added to the existing Vercel project alongside `discoverfiji.vercel.app`. Confirmed: `discoverfiji.ai` itself was **never actually connected** to the Vercel project at all (only ever existed as the default `.vercel.app` URL) — so there's nothing live to redirect away from yet; if James registers/reconnects `discoverfiji.ai` later, a 301/308 redirect to `discover.vakaviti.ai` via Vercel's Domains "Redirect to Another Domain" option is the next step (NOT YET DONE).
+- All on-page "DiscoverFiji.ai" branding removed from the codebase — homepage footer/heading, destination page back-link/footer/meta-title fallback, layout.tsx metadata. Now reads "Lagi by Vakaviti.ai" / "Lagi — Fiji's AI travel guide" / "Powered by Vakaviti.ai" throughout. Canonical domain set to discover.vakaviti.ai.
+- **Dropped Supabase + OpenAI entirely**, migrated to a dedicated Cloudflare D1 database: **discoverfiji-content** (ID `2414dae8-f76f-4e18-877e-031a9d42fca4`). Deliberately a *separate* D1 database from `vakaviti-kb` — keeps this site's content fully isolated from the live, revenue-critical partner/lead data, while staying 100% Cloudflare (no new vendor). Schema: destinations, tours, resorts, partners, reviews, blog_articles (6 tables). Since Vercel can't use D1's native Worker bindings, built `src/lib/d1.ts` — a server-only client that calls D1's REST API over `fetch()`, the same pattern the Lagi chat proxy already uses.
+- **Built the first real destination page template** (`/destinations/[slug]`) — proven end-to-end with Yasawa Islands + the real, live Sawa-I-Lau Caves tour. This one template now serves every future destination page.
+- **Built full AI-visibility infrastructure from scratch** — this app had none of it before this session, unlike the rest of the platform: `robots.ts` (AI crawler allow-list matching fijitourtransfers.com/GEO microsites — GPTBot, ClaudeBot, Claude-SearchBot, PerplexityBot, Bingbot, Google-Extended, FacebookBot, meta-externalagent, Applebot), `sitemap.ts` (dynamic, queries D1 for every published destination — scales automatically, zero per-page maintenance), `llms.txt` route. Added JSON-LD schema directly into the destination template (`buildSchema()`): TouristDestination + Product/Offer per tour + BreadcrumbList.
+- **Found and fixed a real bug**: D1's `datetime('now')` produces SQLite's native format (space-separated, no timezone), which isn't valid ISO 8601 for a sitemap's `<lastmod>` tag. Google Search Console correctly flagged "Invalid date" on first submission. Fixed via a `toIsoDate()` conversion in `sitemap.ts`.
+- **Submitted to Google Search Console and Bing Webmaster Tools.** GSC: confirmed `vakaviti.ai`'s existing Domain property auto-covers the new subdomain (no new verification needed), sitemap submitted. Bing: imported from GSC in one step, zero errors, IndexNow available in the same dashboard but **not yet configured** (key file not built/pushed).
+- **Content build started**: 6 destinations live (Yasawa Islands, Nadi, Natadola Beach, Sigatoka, Coral Coast, Port Denarau), 18 real tours total, all pulled from the live fijitourtransfers.com catalogue (real prices, durations, booking URLs — none invented). Nadi alone now has 12 tours/transfers, a genuinely comprehensive hub. Real seed SQL committed to `d1/seed/` in the discoverfiji repo (batches 1 and 2 pushed; **batches 3 and 4 seed files built locally but not yet pushed to GitHub** — data is live in D1, just missing from repo history, low-priority cleanup).
+- **Hit a real data-availability wall**: fijitourtransfers.com's tour search/listing widget is JavaScript/AJAX-rendered — neither paginated archive URLs (`/tours/page/2/`, etc., which return page 1's content regardless of page number) nor location taxonomy archives (`/st_location/suva/`, which return zero tour cards) can be scraped for the remaining ~90 of 108 real tours. **Recommended path: James exports the full product list from WooCommerce admin (Products → Export → CSV) — not yet done.** Until then, further content growth is incremental/manual (homepage tour cards are the only server-rendered source found).
+- **Learned a D1 console quirk (twice)**: the Cloudflare dashboard's D1 Console query box is genuinely single-line input — pasting SQL containing literal embedded newlines (e.g. multi-paragraph body text) breaks it ("Requests without any query are not supported"). Fix: use `char(10) || char(10)` concatenation for paragraph breaks instead of literal line breaks, and always verify generated SQL is truly one physical line before handing it to James to paste. Documented in seed file comments for future sessions.
+
+### 🟡 SCOPED BUT NOT STARTED — agentic upgrade for Lagi
+James raised that "agentic AI" is the current industry conversation and felt Lagi was falling behind. Did a real scoping pass rather than rushing a build: defined agentic AI precisely (goal-directed, decomposition, real actions, error recovery, persistent memory, knows its limits), assessed Lagi honestly against it (currently a single-shot RAG concierge — strong, but not agentic by any of those six properties), and scoped a bounded, low-risk upgrade: one new tool (`lookup_tours`-style structured query, not vector search) plus a capped tool-call loop (max ~3 iterations) so Lagi can verify real data instead of trusting semantic similarity, and can chain several lookups together for multi-day itinerary requests. **Deliberately deferred building this** — it touches the live Worker serving 29 partners and deserves a focused session, not split attention with content work. Investigated `vakaviti-kb`'s actual schema (via `sqlite_master` query) to find ground truth: **confirmed there is no dedicated `tours` table** — closest structured data is the `deals` table (real price/currency/category/deal_url/valid_until/active, but scoped to promotional deals, not a full catalogue). Recommended the tool query `discoverfiji-content`'s `tours` table instead (cleaner schema, reached via D1 REST API so no Worker binding/redeploy risk) — but flagged that **breadth is the real bottleneck regardless of data source**, since neither table has more than ~20 rows yet. Conclusion: keep growing destination/tour content first (serves this AND the long-term vision below); build the tool-call loop once there's real breadth to query. **Nothing built yet — this is a clean starting brief for next session.**
+
+### 🎯 LONG-TERM VISION (stated explicitly this session)
+James's framing: **"Become the Tripadvisor + Expedia + ChatGPT of Fiji."** Answer every possible Fiji travel question, generate personalized itineraries, convert visitors into transfer/tour bookings for Fiji Tour Transfers. Targets: #1 ranking Fiji tourism website globally, #1 AI travel platform for Fiji, thousands of monthly bookings.
+Honest breakdown given to James:
+- **Tripadvisor (breadth/trust):** needs hundreds of real pages — months-to-years of genuine content work, no shortcut. Reviews system already exists from earlier sessions; needs volume.
+- **Expedia (booking conversion):** already structurally in place (direct booking links, zero commission) — explicitly **not** recommended to chase the literal Expedia marketplace/aggregator model, since that would dilute the zero-commission differentiator. This is a conversion-rate problem now, not a build problem.
+- **ChatGPT (comprehensive AI):** strongest near-term lever — compounds fastest of the three, directly served by the agentic upgrade scoped above plus continued knowledge growth.
+**Key insight:** content breadth (the same `tours`/`destinations` table) is the lever that serves all three pillars simultaneously — this is now the explicit shared priority across DiscoverFiji.ai content work and the future Lagi agentic upgrade.
+
 - **Critical architecture decision: no separate AI brain.** DiscoverFiji.ai's chat proxies server-side to the existing Lagi Worker (fiji-chat-widget) in public mode (site_id: 'lagi_public') — inherits RAG search, heat scoring, D1 lead capture, partner routing, and WhatsApp/email notify automatically, zero rebuilt logic. Rejected the spec's original "own OpenAI chatbot + own vector DB" approach after confirming Cloudflare Vectorize has 10M-vector headroom (Jan 2026 increase) — a second brain would only fragment the same learning signal Lagi already compounds across 29+ partners, not accelerate it.
 - **Real bug found and fixed during build:** the Worker's `isAllowedOrigin` check (inside `handleChat`) isn't real browser CORS — it's a manual origin allow-list checked first thing, and it rejects requests with no Origin header at all, which is what a bare server-side `fetch()` sends by default. First live test returned a swallowed 403. Fixed by explicitly setting `Origin: https://vakaviti.ai` on the proxy's server-side fetch call (accurate, not a spoof — DiscoverFiji.ai is part of that network now). **Verified end-to-end with a real conversation:** honeymoon query correctly routed to Blue Lagoon Beach Resort with real live pricing, correct Fijian voice, and the lead-capture flow firing as designed.
 - **Booking model:** no separate payment processing — quotes/itineraries hand off to fijitourtransfers.com's existing WooCommerce checkout, same pattern as Lagi's referral buttons elsewhere.
@@ -90,7 +112,7 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 ---
 
-## 3. TOP PRIORITIES — SESSION 48
+## 3. TOP PRIORITIES — SESSION 49
 
 > Claude: read this section first. ONE task at a time.
 
@@ -98,54 +120,68 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 - Confirmed via live test (Session 46): asked about Sawa-I-Lau Caves tour suitability for kids, Lagi answered in detail about the unrelated Cultural Night Tour instead.
 - Root cause confirmed in Worker source: only `site_id` is ever sent; no page/tour identifier exists anywhere in the request pipeline.
 - Fix needs: (1) embed snippet change to detect and pass current page/tour context, (2) Worker system-prompt logic to ground answers in that context instead of falling back to generic RAG search.
-- **Even more urgent after Session 47:** DiscoverFiji.ai now also calls this same brain in public mode — this bug risks two public surfaces, not one. Still the single highest-impact fix available.
+- **Still the single highest-impact fix available** — now affects three public surfaces (29 partner sites, lagi.vakaviti.ai, discover.vakaviti.ai), not two. James explicitly deferred this in Session 48 in favor of scoping the agentic upgrade (P2 below) — both fixes are related and could reasonably be tackled together.
 
-**P2 — Connect discoverfiji.ai domain + get Supabase/OpenAI accounts set up**
-- Domain is owned but not yet DNS-connected to Vercel (still on the temporary discoverfiji.vercel.app URL).
-- Supabase and OpenAI signups not done yet — blocks the content tables (destinations, tours, resorts, reviews, blog_articles). Chat already works without them.
+**P2 — Build the scoped Lagi agentic tool-call loop (fully scoped in Session 48, zero code written yet)**
+- Design: one new tool (structured lookup against `discoverfiji-content`'s `tours` table via D1 REST API, not vector search), capped at ~3 tool-call iterations per turn, graceful fallback to normal RAG-grounded answer when the lookup returns nothing.
+- Confirmed `vakaviti-kb` has no dedicated `tours` table — closest is `deals` (real but scoped to promotional offers only). Recommended querying `discoverfiji-content` instead since it has the cleaner schema and avoids touching the live Worker's D1 bindings (REST API call instead).
+- **Real constraint: breadth.** Both candidate tables are still small (`discoverfiji-content` has 18 tours as of Session 48). The tool's answers will only be as good as the data underneath it — keep growing content (P3) in parallel, don't expect this to feel transformative until breadth grows past a handful of tours per destination.
+- This touches the live Worker (v57, 29 partners) — build and test in isolation before flipping the main endpoint over. Worth doing alongside or right after P1 since both involve the same request-handling code path.
 
-**P3 — Revoke stale GitHub tokens**
-- Three fine-grained PATs issued across Sessions 46–47 (fiji-platform, claude-discoverfiji, and a second discoverfiji one) — confirm all revoked once no longer needed. Basic hygiene, several recommended this session, unclear if actioned.
+**P3 — Get the WooCommerce CSV export from James, grow discover.vakaviti.ai content**
+- fijitourtransfers.com has 108 real tours; only 18 are in `discoverfiji-content` so far (6 destinations: Yasawa Islands, Nadi, Natadola Beach, Sigatoka, Coral Coast, Port Denarau).
+- Confirmed in Session 48: the site's tour search/listing widget is JS/AJAX-rendered — neither paginated archive URLs nor location taxonomy pages (`/st_location/...`) can be scraped for the rest. The homepage's hardcoded tour cards were the only server-rendered source found, and that's now exhausted.
+- **Ask James for: WordPress admin → Products → Export → CSV** (name, price, location/category, permalink at minimum). This is the only realistic path to the remaining ~90 tours.
+- This is the highest-leverage lever across the whole long-term vision (Tripadvisor breadth + ChatGPT ground truth + Expedia-style conversion surface all depend on the same table growing) — see Section 4 update below.
 
-**P4 — Find the source of the wrong Organization schema address (fijitourtransfers.com)**
-- NSW postcode 2763 (real address is Rouse Hill NSW 2155), invalid country code format.
-- WooCommerce, Rank Math Local SEO, and the "Jason" snippet all ruled out Session 46.
-- Likely another WPCode "Untitled Snippet" — there were 26 active snippets total, most unnamed.
+**P4 — Connect discoverfiji.ai → discover.vakaviti.ai redirect**
+- Confirmed in Session 48: `discoverfiji.ai` was never actually added as a domain to the Vercel project at all (only existed as the default `.vercel.app` URL). Nothing to redirect away from yet.
+- If/when James reconnects `discoverfiji.ai`, add it in Vercel Domains → Edit → "Redirect to Another Domain" → `discover.vakaviti.ai` → Permanent (308). Low urgency since the domain currently sends no traffic anywhere.
 
-**P5 — Remove the 999999 master OTP bypass code**
-- Flagged Session 5 as "must remove before launch." Still never confirmed removed. Launch is imminent.
+**P5 — Set up IndexNow for discover.vakaviti.ai**
+- Discussed in Session 48 — Bing Webmaster Tools has IndexNow available in the same dashboard already used to import/submit the sitemap. Not yet configured (key file not built or pushed).
+- Worth doing once more content batches land, since IndexNow's value is in instant-notifying Bing/Copilot/ChatGPT-via-Bing of *new* pages rather than waiting on crawl cycles — more valuable at higher publishing frequency.
 
-**P6 — Cancel/refund the test booking from Session 46's checkout test**
+**P6 — Push batch 3 + 4 seed SQL files to the discoverfiji GitHub repo**
+- `d1/seed/004_batch3_port_denarau_plus_depth.sql` and `005_batch4_nadi_airport_transfers.sql` were built locally and the SQL was run directly in the D1 console (data is live), but the files themselves were never committed/pushed. Low priority — doesn't affect functionality, just repo documentation completeness.
+
+**P7 — Revoke stale GitHub tokens**
+- Multiple fine-grained PATs issued across Sessions 46–48 for the discoverfiji repo, each used once per the established hygiene pattern (one token, one push, then revoke). James was reminded after each push this session — confirm none are still sitting active from carelessness, but this is lower-risk than earlier sessions since the one-token-per-push discipline held throughout Session 48.
+
+**P8 — Remove the 999999 master OTP bypass code**
+- Flagged Session 5 as "must remove before launch." Still never confirmed removed. Launch is in 5 days.
+
+**P9 — Cancel/refund the test booking from Session 46's checkout test**
 - Real WooCommerce order created (Pravin Deorajan, $8, Nadi Airport to Aquarius Beach Resort). Confirm no real charge fired; cancel the order. Unclear if actioned yet.
 
-**P7 — Confirm the Praveen "hidden text" brief was sent and validate within 24 hours**
+**P10 — Find the source of the wrong Organization schema address (fijitourtransfers.com)**
+- NSW postcode 2763 (real address is Rouse Hill NSW 2155), invalid country code format. WooCommerce, Rank Math Local SEO, and the "Jason" snippet all ruled out Session 46. Likely another WPCode "Untitled Snippet."
+
+**P11 — Confirm the Praveen "hidden text" brief was sent and validate within 24 hours**
 - Gmail draft created Session 46, addressed to madasanipraveen@gmail.com. Confirm James actually sent it, and that the fix (visible accordion/FAQ, not a wall of text) landed.
 
-**P8 — Resolve the cross-brand bleed pattern (Author field, Legal Name field)**
+**P12 — Resolve the cross-brand bleed pattern (Author field, Legal Name field)**
 - Confirmed sitewide on fijitourtransfers.com, not isolated. Decide: intentional shared-brand content pool, or needs separating for AI-citation clarity.
 
-**P9 — Confirm lagi.vakaviti.ai meta description deployed**
+**P13 — Confirm lagi.vakaviti.ai meta description deployed**
 - Carried from Session 45, still unconfirmed.
 
-**P10 — Re-verify the Local Business schema duplicate is actually gone (fijitourtransfers.com)**
+**P14 — Re-verify the Local Business schema duplicate is actually gone (fijitourtransfers.com)**
 - "Jason" snippet deactivated Session 46 but never re-tested via Rich Results Test afterward.
 
-**P11 — WhatsApp permanent business number**
+**P15 — WhatsApp permanent business number**
 - Still on Meta test number. Must resolve before July 1 launch.
 
-**P12 — Build the DiscoverFiji.ai destination/tour/resort pages + content-ingestion pipeline**
-- Core pages (Phase 3) once Supabase is set up. Each page written should also be pushed into Lagi's `/knowledge-add` endpoint — with a human review step first, since that endpoint has no auth and feeds the same knowledge base every partner relies on.
-
-**P13 — Verify the pricing outlier on fijitourtransfers.com**
+**P16 — Verify the pricing outlier on fijitourtransfers.com**
 - AU$61 Tanoa Hotel transfer vs AU$5–10 comparable routes — confirm correct or fix.
 
-**P14 — Continue the Lagi Knowledge Hub, partner agreement doc, Google Business Profile**
+**P17 — Continue the Lagi Knowledge Hub, partner agreement doc, Google Business Profile**
 - Carried unchanged since Session 45.
 
-**P15 — Minor fijitourtransfers.com cleanup (low urgency)**
+**P18 — Minor fijitourtransfers.com cleanup (low urgency)**
 - Dead "Blogs" footer link, duplicate code block in redirect snippet, Cloudflare email-obfuscation tradeoff decision.
 
-**P16 — Audit the remaining ~68 of 75 Workers & Pages projects**
+**P19 — Audit the remaining ~68 of 75 Workers & Pages projects**
 - Carried from Session 45, still not touched.
 
 ---
@@ -201,6 +237,12 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 | 47 | Kept Supabase for content tables (destinations, tours, resorts, reviews, blog_articles) even though leads/quotes/conversations got removed | Content/CMS data is a legitimately different concern from the AI brain — no fragmentation risk there, just a database for page content. |
 | 47 | Booking handoff goes to fijitourtransfers.com's existing WooCommerce checkout, not a new Stripe/PayPal integration | James's explicit choice — avoids rebuilding a second payment system for no benefit. |
 | 47 | Set an explicit `Origin: https://vakaviti.ai` header on the server-side Lagi proxy call rather than modifying the Worker's ALLOWED_ORIGINS list | Unblocks DiscoverFiji.ai today with zero changes to the shared, live Worker. Adding `discoverfiji.ai` properly to ALLOWED_ORIGINS remains a cleaner long-term fix, noted as optional follow-up, not done this session. |
+| 48 | Abandoned "DiscoverFiji.ai" / "Discover Fiji" as the consumer brand, folded the initiative into Vakaviti.ai/Lagi instead | Research surfaced that "Discover Fiji" collides with Tourism Fiji's own government tagline and a 50-year incumbent (Rosie Travel Group's discoverfiji.com, airport-distributed since 2019). Vakaviti.ai has zero such collisions and is already the established platform brand — fighting for a structurally hard-to-own name made no sense once the alternative was this clean. |
+| 48 | Used a subdomain (discover.vakaviti.ai) rather than a path-based route (vakaviti.ai/discover) for the migrated site | Path-based routing would need a Cloudflare Worker reverse-proxying every request to Vercel (vakaviti.ai root is a separate Cloudflare Pages deployment) — real infrastructure to build. A subdomain gets nearly the same domain-authority consolidation via a single CNAME, using the exact pattern already proven on lagi.vakaviti.ai and join.vakaviti.ai. |
+| 48 | Dropped Supabase + OpenAI in favor of a dedicated D1 database (discoverfiji-content), reached via D1's REST API rather than a native Worker binding | Keeps the whole platform on Cloudflare (no new vendor) without touching the live Worker's bindings/config — Vercel can't use native D1 bindings anyway, so the REST API was already the only path. A *separate* database from vakaviti-kb (not the same one) keeps this site's content fully isolated from live revenue-critical partner/lead data. |
+| 48 | Built all four AI-visibility pieces (robots.txt, sitemap.xml, llms.txt, JSON-LD schema) before scaling content, not after | All four apply automatically to every future page via the shared destination-page template — building them now is far cheaper than retrofitting hundreds of pages later. Matches the lesson from auditing fijitourtransfers.com in Session 46 (AI-visibility infra should be foundational, not bolted on). |
+| 48 | Deferred building the Lagi agentic tool-call loop despite scoping it fully | It touches the live Worker serving 29 partners and deserves a focused session, not split attention alongside content work. Also genuinely blocked on breadth — confirmed via schema inspection that neither candidate data source (`deals` in vakaviti-kb, `tours` in discoverfiji-content) has enough rows yet for the tool to meaningfully outperform RAG. Building the plumbing before the data existed would have been premature. |
+| 48 | Recommended against pursuing a literal Expedia-style marketplace/aggregator model, even though James's stated long-term vision explicitly named Expedia | The real differentiator already in place is direct-to-operator, zero-commission booking — Expedia's actual model (aggregating competitors, taking a 15–25% cut) would dilute that, not strengthen it. Reframed the goal as "best direct booking conversion," not "build a comparison marketplace." |
 
 ---
 
@@ -208,26 +250,28 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
-| discoverfiji.ai DNS not connected to Vercel | P2 — NEW Session 47 | Domain owned, deploy live on temporary vercel.app URL only |
-| Supabase/OpenAI accounts not yet created for DiscoverFiji.ai | P2 — NEW Session 47 | Blocks content tables; chat already works without them |
-| Three GitHub PATs issued across Sessions 46–47, revocation status unclear | P3 — NEW Session 47 | Basic hygiene — confirm all revoked |
-| DiscoverFiji.ai's 500 destination pages + Lagi knowledge-ingestion pipeline not started | P3 — NEW Session 47 | Phase 3+ work, needs Supabase set up first |
-| Worker's `isAllowedOrigin` check has no real CORS enforcement, just a manual header check that silently 403s on missing Origin | P3 — NEW Session 47 | Not a bug exactly, but a sharp edge — any future server-side integration will hit this same trap unless documented. Now documented in discoverfiji repo's route.ts comments. |
-| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | **P1 — Session 46, now affects 2 surfaces** | Confirmed via live test. Platform-level fix needed. DiscoverFiji.ai sharing the same brain raises the stakes. |
+| discoverfiji.ai DNS not connected to Vercel | ~~P2~~ **SUPERSEDED Session 48** | discoverfiji.ai was never actually added to the Vercel project at all (only existed as default vercel.app URL). Live domain is now discover.vakaviti.ai (subdomain, connected and working). discoverfiji.ai redirect is now P4 (Section 3), low urgency since nothing currently points there. |
+| Supabase/OpenAI accounts not yet created for DiscoverFiji.ai | ~~P2~~ **RESOLVED Session 48 (dropped, not built)** | Migrated to a dedicated D1 database (discoverfiji-content) instead, reached via D1 REST API. No Supabase/OpenAI accounts needed — neither vendor is used anywhere in this codebase anymore. |
+| DiscoverFiji.ai's 500 destination pages + Lagi knowledge-ingestion pipeline not started | **IN PROGRESS Session 48** | 6 of ~500 destination pages live (18 real tours), template proven and AI-visibility infrastructure complete. Knowledge-ingestion pipeline into Lagi's `/knowledge-add` still not started — needs the human-review step designed first. |
+| Worker's `isAllowedOrigin` check has no real CORS enforcement, just a manual header check that silently 403s on missing Origin | P3 — Session 47 | Not a bug exactly, but a sharp edge — any future server-side integration will hit this same trap unless documented. Now documented in discoverfiji repo's route.ts comments. |
+| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | **P1 — Session 46, now affects 3 surfaces** | Confirmed via live test. Platform-level fix needed. Now also live on discover.vakaviti.ai in addition to lagi.vakaviti.ai and 29 partner sites — three public surfaces share this blind spot. James explicitly deferred fixing this in Session 48 in favor of scoping the agentic upgrade (related, possibly worth tackling together — see Section 3 P1/P2). |
+| Lagi is not agentic — single-shot RAG only, no tool-calling, no persistent memory | **NEW Session 48, scoped not built** | Full scoping done: one bounded tool-call loop (max ~3 iterations) against structured ground truth. Confirmed vakaviti-kb has no dedicated tours table (closest is `deals`, deals-only). Blocked on content breadth more than engineering effort — see Section 3 P2. |
+| fijitourtransfers.com's tour catalogue can't be scraped beyond the homepage's hardcoded cards | **NEW Session 48** | Confirmed: tour search/listing widget is JS/AJAX-rendered. Paginated archive URLs return page-1 content regardless of page number; location taxonomy pages return zero tour cards. Only path to the remaining ~90 of 108 real tours is a WooCommerce CSV export from James — see Section 3 P3. |
+| discoverfiji repo seed files (batches 3 and 4) not pushed to GitHub | **NEW Session 48, low priority** | Data is live in discoverfiji-content D1 (run directly via console), but `004_batch3...` and `005_batch4...` seed SQL files only exist locally — never committed. See Section 3 P6. |
 | 3rd Organization schema entity has wrong address (NSW 2763) | P2 | Source hunt continues — WooCommerce, Rank Math, "Jason" snippet all ruled out |
-| 999999 master OTP bypass code | P1 | Still not confirmed removed — flagged Session 5, now 41 sessions later |
-| Test booking created during checkout verification needs cancelling | P1 — NEW Session 46 | Real WooCommerce order, $8, needs James to confirm no real charge + cancel |
-| Praveen "hidden text" brief sent — needs confirmation + 24hr follow-up | P1 — NEW Session 46 | Gmail draft created, not confirmed sent yet |
-| Cross-brand Author/Legal-Name bleed (Tour Fiji Tours ↔ Fiji Tour Transfers) | P2 — NEW Session 46 | Confirmed sitewide pattern, needs a decision not just a fix |
-| Local Business schema duplicate fix not re-verified | P2 — NEW Session 46 | "Jason" snippet deactivated but Rich Results Test not re-run after |
+| 999999 master OTP bypass code | P1 | Still not confirmed removed — flagged Session 5, now 42 sessions later |
+| Test booking created during checkout verification needs cancelling | P1 — Session 46 | Real WooCommerce order, $8, needs James to confirm no real charge + cancel |
+| Praveen "hidden text" brief sent — needs confirmation + 24hr follow-up | P1 — Session 46 | Gmail draft created, not confirmed sent yet |
+| Cross-brand Author/Legal-Name bleed (Tour Fiji Tours ↔ Fiji Tour Transfers) | P2 — Session 46 | Confirmed sitewide pattern, needs a decision not just a fix |
+| Local Business schema duplicate fix not re-verified | P2 — Session 46 | "Jason" snippet deactivated but Rich Results Test not re-run after |
 | Worker GitHub backup stale/wrong | ~~P1~~ **RESOLVED Session 46** | Was a different single-site draft Worker entirely, not just old. Fixed, verified. |
 | Checkout failure on fijitourtransfers.com | ~~P1~~ **RESOLVED Session 46** | Tested live, working. Real test order needs cleanup (see above). |
 | fijitourtransfers.com llms.txt/schema "missing" | ~~P2~~ **RESOLVED Session 46 (was already done, just unconfirmed)** | Praveen had completed this; BRAIN.md notes were simply never updated to reflect it |
 | WhatsApp permanent business number | P1 | Still on Meta test number, unresolved |
 | lagi.vakaviti.ai meta description | P2 | Still unconfirmed deployed, carried multiple sessions |
-| Pricing outlier — Tanoa Hotel transfer AU$61 | P2 — NEW Session 46 | Not confirmed wrong, needs a manual check |
-| Dead "Blogs" footer link on fijitourtransfers.com | P3 — NEW Session 46 | Cosmetic |
-| Cloudflare email obfuscation hides contact email from all AI/crawlers sitewide | P3 — NEW Session 46 | Informational — may be intentional tradeoff |
+| Pricing outlier — Tanoa Hotel transfer AU$61 | P2 — Session 46 | Not confirmed wrong, needs a manual check |
+| Dead "Blogs" footer link on fijitourtransfers.com | P3 — Session 46 | Cosmetic |
+| Cloudflare email obfuscation hides contact email from all AI/crawlers sitewide | P3 — Session 46 | Informational — may be intentional tradeoff |
 | nadiairporttransfers.com app.js brand/phone bug | P2 | Unresolved since Session 22 |
 | No partner agreements | P2 | Unchanged from Session 45 |
 | ~68 of 75 Workers & Pages projects unaudited | P2 | Unchanged from Session 45 |
@@ -251,6 +295,32 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 48 — 2026-06-26 — CLOSED
+**DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem; AI-visibility infrastructure built from scratch; content build started; Lagi agentic upgrade fully scoped.**
+
+Opened reviewing the live discoverfiji.vercel.app site James asked about boosting fijitourtransfers.com's revenue. Found the homepage's nav was almost entirely broken — 9 of 11 clickable elements (every category tile, both "Start Planning" CTAs, "Book Airport Transfer") 404'd, since the internal pages they pointed to (Phase 2+) were never built last session. Fixed immediately with a stop-gap: routed dead links to real fijitourtransfers.com/nadiairporttransfers.com pages, or to the working chat via a `#planner` anchor.
+
+**The bigger thread — brand collision research, triggered by a domain question:** James asked whether `discoverfijiisland.com` would help. Research surfaced that "Discover Fiji" is genuinely contested — Tourism Fiji's own government tagline, Rosie Travel Group's discoverfiji.com (50-year incumbent, airport-distributed printed guide since 2019, relaunched Sept 2025 as a full booking platform), plus two more unrelated operators. Reframed the real question from "best domain" to "should this even be a separate brand" — James's own reminder ("we already have Vakaviti.ai") settled it. Decision: fold DiscoverFiji.ai into Vakaviti.ai/Lagi entirely rather than fight for a structurally hard-to-own name.
+
+**Executed the fold-in:**
+1. Added `discover.vakaviti.ai` as a new subdomain (CNAME in Cloudflare DNS) on the existing Vercel project — same pattern as lagi.vakaviti.ai/join.vakaviti.ai, avoiding the heavier path-based-routing-via-Worker-proxy alternative. Confirmed `discoverfiji.ai` itself was never actually connected to Vercel at all.
+2. Stripped all "DiscoverFiji.ai" branding from the codebase — footer, headings, back-links, meta-title fallbacks — replaced with "Lagi by Vakaviti.ai" / "Powered by Vakaviti.ai." Canonical domain set to discover.vakaviti.ai.
+3. **Dropped Supabase + OpenAI entirely**, replaced with a dedicated D1 database `discoverfiji-content` (kept separate from `vakaviti-kb` deliberately — isolates this site's content from live revenue-critical partner/lead data). Built `src/lib/d1.ts`, a server-only client calling D1's REST API (Vercel can't use native D1 bindings).
+4. Built the first real destination page template (`/destinations/[slug]`), proven with Yasawa Islands + the real Sawa-I-Lau Caves tour.
+5. **Built complete AI-visibility infrastructure from zero** — this app had none before today, unlike the rest of the platform: `robots.ts` (AI crawler allow-list matching the rest of the platform), dynamic `sitemap.ts` (queries D1, auto-scales), `llms.txt`, and JSON-LD schema (TouristDestination + Product/Offer + BreadcrumbList) built into the page template itself.
+6. **Found and fixed a real bug**: D1's `datetime('now')` isn't valid ISO 8601 for a sitemap's `<lastmod>` — Google Search Console correctly flagged it on first submission. Fixed with a format-conversion helper.
+7. Submitted to GSC (confirmed the existing vakaviti.ai Domain property auto-covers the new subdomain) and Bing Webmaster Tools (one-click import from GSC, zero errors). IndexNow discussed, not yet configured.
+8. **Grew real content across four batches**: Yasawa Islands → Nadi/Natadola Beach/Sigatoka/Coral Coast → Port Denarau + deeper Nadi/Sigatoka/Natadola inventory → 6 more Nadi airport-transfer tours found in already-gathered data. Ended the session at **6 destinations, 18 real tours**, all pulled from the live fijitourtransfers.com catalogue, none invented.
+9. **Hit a real wall**: fijitourtransfers.com's tour listing widget is JS/AJAX-rendered. Neither paginated archive URLs nor location taxonomy pages (`/st_location/...`) serve tour cards to a static fetch — confirmed by testing both directly. The only server-rendered source found was the homepage's hardcoded cards, now exhausted. Recommended a WooCommerce CSV export as the real path to the remaining ~90 of 108 tours — not yet done.
+
+**Agentic AI scoping (no code written, by design):** James raised that "agentic AI" was the current industry conversation and felt Lagi was behind. Did a precise scoping pass rather than rushing: defined the term against six concrete properties, assessed Lagi honestly (single-shot RAG concierge, agentic on none of the six), and designed a bounded upgrade — one structured-lookup tool, capped tool-call loop (~3 iterations max), graceful fallback to normal RAG when the lookup returns nothing. Investigated `vakaviti-kb`'s real schema via `sqlite_master` and confirmed there's no dedicated `tours` table (closest is `deals`, promotional-only). Concluded the real blocker is content breadth, not engineering effort — recommended growing destination/tour content first, building the tool-call loop once there's real data to query. Deliberately did not touch the live Worker this session.
+
+**Long-term vision stated explicitly:** James: "Become the Tripadvisor + Expedia + ChatGPT of Fiji." Broke into three honest pillars (breadth/trust, booking conversion, comprehensive AI) with realistic timelines for each — flagged that chasing the literal Expedia marketplace model would dilute the existing zero-commission differentiator rather than strengthen it. Landed on: content breadth is the lever that serves all three pillars at once, now the explicit shared priority.
+
+**Key learning:** the D1 dashboard console's query box is genuinely single-line input — pasting multi-paragraph text with literal line breaks silently breaks it ("Requests without any query are not supported"). Fix (char(10) concatenation instead of literal newlines) now documented in every seed file for future sessions. Also: always verify a generated SQL statement is truly one physical line (caught one's own mistake mid-session where a Python-generated file had accidental line breaks between VALUES tuples) before handing it to James to paste.
+
+**Not yet done, explicitly carried to Session 49:** the Lagi page-awareness fix (P1, still open), the agentic tool-call loop (scoped, zero code), the WooCommerce CSV export, IndexNow setup, the discoverfiji.ai→discover.vakaviti.ai redirect (nothing to redirect from yet), pushing batch 3/4 seed files to GitHub, and all carried fijitourtransfers.com cleanup items from prior sessions.
 
 ### Session 47 — 2026-06-26 — CLOSED
 **DiscoverFiji.ai launched as a new, separate front-end initiative.**
@@ -309,21 +379,35 @@ Unchanged from Session 45. See prior BRAIN.md version for full prompt list (Chec
 
 ---
 
-## 21. DISCOVERFIJI.AI — NEW INITIATIVE (Session 47)
+## 21. DISCOVER.VAKAVITI.AI — FOLDED INTO THE VAKAVITI.AI/LAGI ECOSYSTEM (Session 48)
+
+> Was "DiscoverFiji.ai," a separate brand. Renamed and re-architected in Session 48 — see Section 2 and the Session 48 decisions log for why.
 
 | Parameter | Value |
 |---|---|
-| Domain | discoverfiji.ai (owned, not yet DNS-connected) |
-| Live (temporary) | discoverfiji.vercel.app |
-| GitHub | github.com/jamesdeorajan-sys/discoverfiji |
+| Domain | **discover.vakaviti.ai** (subdomain, live and working) |
+| discoverfiji.ai | Owned but was never connected to the Vercel project at all (only ever existed as the default vercel.app URL). No redirect needed yet since nothing currently points there — see Section 3 P4 if James reconnects it later. |
+| GitHub | github.com/jamesdeorajan-sys/discoverfiji (repo name unchanged, only the live domain/branding changed) |
 | Hosting | Vercel, auto-deploys on push to `main` |
-| Stack | Next.js 15, TypeScript, Tailwind v4, Supabase (content only), OpenAI (content-drafting only, NOT live chat) |
-| AI brain | **None of its own.** Proxies server-side to the live Lagi Worker (fiji-chat-widget) via `src/app/api/chat/route.ts`, site_id: `lagi_public` |
+| Stack | Next.js 15/16, TypeScript, Tailwind v4. **No Supabase, no OpenAI** — both dropped Session 48. |
+| Database | **discoverfiji-content** — a dedicated Cloudflare D1 database (ID `2414dae8-f76f-4e18-877e-031a9d42fca4`), deliberately separate from `vakaviti-kb` to isolate this site's content from live revenue-critical partner/lead data. Reached via D1's REST API (`src/lib/d1.ts`, server-only) since Vercel can't use D1's native Worker bindings. 6 tables: destinations, tours, resorts, partners, reviews, blog_articles. |
+| AI brain | **None of its own.** Proxies server-side to the live Lagi Worker (fiji-chat-widget) via `src/app/api/chat/route.ts`, site_id: `lagi_public` — unchanged from Session 47. |
 | Booking | No own payment processing — hands off to fijitourtransfers.com's WooCommerce checkout |
-| Design identity | Bathymetric/navigation-chart aesthetic — deep chart-ink navy, aged-paper tones, coral accent, Space Grotesk + Source Sans 3 + IBM Plex Mono. Deliberately distinct from Vakaviti.ai's branding. |
+| Branding | "Lagi by Vakaviti.ai" / "Lagi — Fiji's AI travel guide" / "Powered by Vakaviti.ai" throughout — all "DiscoverFiji.ai" references removed from on-page copy and metadata Session 48. Canonical domain set to discover.vakaviti.ai. |
+| Design identity | Unchanged — bathymetric/navigation-chart aesthetic, deep chart-ink navy, aged-paper tones, coral accent, Space Grotesk + Source Sans 3 + IBM Plex Mono. |
+| AI-visibility infrastructure | **Built from zero Session 48.** `robots.ts` (AI crawler allow-list matching rest of platform), dynamic `sitemap.ts` (queries D1, auto-scales with content), `llms.txt` route, JSON-LD schema (TouristDestination + Product/Offer + BreadcrumbList) built into the destination page template. Submitted to GSC (auto-covered by vakaviti.ai's existing Domain property) and Bing Webmaster Tools (imported from GSC, zero errors). |
+| Content built | **6 destinations, 18 real tours** as of Session 48 close: Yasawa Islands, Nadi (12 tours/transfers — the deepest), Natadola Beach, Sigatoka, Coral Coast, Port Denarau. All pulled from the live fijitourtransfers.com catalogue — real prices, durations, booking URLs, none invented. |
 
-**Status: Phase 0/1 complete** (foundation + working, verified chat). Phases 2–5 (Supabase wiring, core pages, 500-page SEO scale-out, itinerary builder polish) not started.
+**Status:** Foundation + chat + content engine all proven and live. ~482 of ~500 planned destination pages still to build — blocked on getting the rest of fijitourtransfers.com's 108-tour catalogue (see below), not on infrastructure.
 
-**Critical context for any future session touching this project:** do NOT rebuild a separate AI brain, lead-scoring system, or itinerary builder for this site. The whole point of the Session 47 architecture decision was routing through Lagi instead of duplicating it. If asked to "improve the AI" on DiscoverFiji.ai, the fix almost certainly belongs in the shared Lagi Worker (benefiting every partner site), not in this repo.
+**Critical context for any future session touching this project:**
+- Do NOT rebuild a separate AI brain, lead-scoring system, or itinerary builder for this site. The whole point of the Session 47 architecture decision was routing through Lagi instead of duplicating it. If asked to "improve the AI" here, the fix almost certainly belongs in the shared Lagi Worker (benefiting every partner site), not in this repo.
+- Do NOT reintroduce "DiscoverFiji" branding anywhere user-facing — this was a deliberate Session 48 fix for a real brand-collision problem (see decisions log). Internal identifiers (the `discoverfiji-content` D1 database name, the GitHub repo name, session_id prefixes in code) were left as-is since they're not user-facing and renaming them carries real risk for no benefit.
+- The D1 console's query box is single-line input — any seed SQL with literal multi-line text (e.g. paragraph breaks) will silently fail to execute. Use `char(10) || char(10)` concatenation instead, and always verify generated SQL is genuinely one physical line before handing it to James.
 
-**Content pipeline plan (not yet built):** the 500 destination pages, once written, should be pushed into Lagi's `/knowledge-add` endpoint after a human review pass — not auto-ingested, since that endpoint has no auth and feeds the same knowledge base every partner relies on.
+**fijitourtransfers.com's tour catalogue is harder to scrape than expected.** Confirmed Session 48: the site's tour search/listing widget is JavaScript/AJAX-rendered. Paginated archive URLs (`/tours/page/2/`, etc.) return page-1's content regardless of page number; location taxonomy archive pages (`/st_location/suva/`, etc.) return zero tour cards at all in a static fetch. The only server-rendered tour data found anywhere on the site is a handful of cards hardcoded into the homepage — already fully used. **The real path to the remaining ~90 of 108 tours is a WooCommerce CSV export from James** (WordPress admin → Products → Export). Not yet done — see Section 3 P3.
+
+**Content pipeline plan (not yet built):** once there's real breadth, push destination/tour pages into Lagi's `/knowledge-add` endpoint after a human review pass — not auto-ingested, since that endpoint has no auth and feeds the same knowledge base every partner relies on.
+
+**Agentic upgrade for Lagi (Section 2/3 detail) is logically tied to this project's growth:** the recommended data source for the scoped tool-call loop is `discoverfiji-content`'s `tours` table specifically (cleaner schema than `vakaviti-kb`'s `deals` table, reached via REST API so no Worker-binding risk) — meaning every destination/tour batch added here also directly improves the eventual agentic Lagi upgrade, not just this site's own pages.
+
