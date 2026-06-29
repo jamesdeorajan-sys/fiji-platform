@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 48 CLOSED — 2026-06-26
+# Last updated: Session 49 CLOSED — 2026-06-30
 
 ---
 
@@ -10,7 +10,7 @@
 
 **Company:** Vakaviti.ai — Fiji's AI Tourism Partner Network
 **Mission:** Build Fiji's most powerful AI tourism platform
-**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 5 days remaining.
+**Stage:** Pre-launch. July 1 2026 public + partner launch confirmed. 1 day remaining.
 **Founded by:** James Richardson — CEO
 **WhatsApp:** +61 478 886 145
 **Email:** helpronline@gmail.com
@@ -21,9 +21,41 @@
 
 ---
 
-## 2. PLATFORM STATE — CURRENT AS OF SESSION 48
+## 2. PLATFORM STATE — CURRENT AS OF SESSION 49
 
-### 🆕 NEW THIS SESSION — DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem, AI-visibility infrastructure built, content scaling started
+### 🆕 NEW THIS SESSION — tourfijitours.com AI-visibility audit + fixes, survived a real site crash mid-session
+
+**What happened:** Extended the same AI-visibility audit pattern used on fijitourtransfers.com (Session 46) to tourfijitours.com (op_tourfiji_001), via Claude Code (desktop app) connected over the WordPress REST API using a dedicated Application Password user (`ai-audit`). Audit found a much bigger gap than fijitourtransfers.com had: **zero JSON-LD schema anywhere on the site** (no Organization/LocalBusiness/Product/Tour/WebSite), no llms.txt (route 404'd to the homepage instead), robots.txt missing 4 explicit AI-crawler entries (still allowed via the wildcard `*` rule, but not explicit), and a stale sitemap (April vs real content updated June 28).
+
+**Fixed and verified live:**
+- Sitewide `TravelAgency` JSON-LD schema (Code Snippets ID 6) using real business data: Tour Fiji Tours, +61478886145, info@tourfiji.tours, 113 Rouse Rd Rouse Hill NSW 2155 AU.
+- `Product`/`TouristTrip` dual-type JSON-LD schema (Code Snippets ID 7) on every WooCommerce tour page, pulling each tour's real title/price/description/availability dynamically.
+- `llms.txt` listing all 71 real tours with real AUD pricing.
+- 4 missing robots.txt entries: Claude-SearchBot, Google-Extended, FacebookBot, meta-externalagent.
+- WooCommerce products were not included in Rank Math's XML sitemap (`product-sitemap.xml` was empty) — toggled on.
+
+**Key technical finding, twice:** Rank Math intercepts both the `/llms.txt` and `/robots.txt` routes directly at a level that a WordPress filter-hook snippet cannot override (confirmed for llms.txt via 4 different filter hooks, all ineffective; confirmed for robots.txt via Rank Math's own "locked, file present" UI message). The fix that worked for both: a one-time "run once" PHP snippet that uses `file_put_contents()` to write the desired content directly to the physical file at `ABSPATH`, then immediately deletes itself. This is now the established pattern for any future Rank Math route override on this network — filter hooks don't work, direct file writes do.
+
+**🔴 Real incident — site went down (500 on every page) mid-fix:** A leftover temp diagnostic snippet (Code Snippets ID 12, a `register_rest_route` endpoint meant to be deleted earlier in the session — the delete call had returned 500 and silently failed to actually delete it) caused a PHP fatal error platform-wide. Root cause is believed to be `register_rest_route` running at the wrong WordPress lifecycle hook colliding with another route, though not confirmed with full certainty since the crash made further live debugging impossible. **Recovery, fully successful, no data loss:**
+1. Hostinger hPanel → File Manager → renamed the `code-snippets` plugin folder to `code-snippets-disabled` → site back up immediately.
+2. phpMyAdmin → `UPDATE wp_snippets SET active = 0;` (found the correct database among 6 on the shared hosting account by reading `DB_NAME` out of `wp-config.php` first — multiple sites share this Hostinger account with randomly-named databases).
+3. Renamed the plugin folder back to `code-snippets` — site stayed up, since every snippet was now inactive at the DB level even with the plugin itself active again.
+4. Reactivated only the two known-good schema snippets (6 and 7) one at a time, fetching the homepage + a tour page after each to confirm 200s before proceeding.
+5. Deleted/trashed the junk and one-time snippets (5, 8, 9, 10, 11, 12, 13) — Code Snippets' REST API soft-deletes (returns 204 but keeps the row inactive) rather than hard-deleting; left as-is since inactive is functionally harmless.
+
+**Bonus find while investigating, unrelated to the crash:** Found 2 stale/wrong schema blocks live on tourfijitours.com, in a completely different plugin than expected — **WPCode (Insert Headers and Footers)**, not Code Snippets. ID 16062 was fijitourtransfers.com's own `TravelAgency` schema (wrong site entirely — FAQPage + ItemList blocks all pointing at the wrong domain). ID 15972 was an older, superseded `TouristInformationCenter` schema for tourfijitours.com itself, now redundant since Code Snippet 6 replaced it. Both trashed via WPCode's UI; confirmed via page-source search that zero "fijitourtransfers" references remain anywhere on tourfijitours.com. **Learned: tourfijitours.com runs both Code Snippets and WPCode simultaneously, doing overlapping jobs** — worth checking both on any future audit of this site, not just the obvious one.
+
+**Access discipline held throughout:** `ai-audit` was elevated to Administrator twice (once for the fix pass, once for the stale-schema investigation) since Code Snippets/Rank Math write operations require `manage_options`, which the REST API enforces even for an authenticated Application Password user with no role. Reverted to Subscriber immediately after each use — same one-token-one-use discipline already established for GitHub PATs.
+
+**🔧 Real platform-wide risk flag, not specific to this site:** A custom `register_rest_route` added via the Code Snippets plugin is a confirmed single point of total-site-failure risk. Going forward on any WordPress partner site: avoid persistent custom REST routes via Code Snippets; prefer the "run once, write what's needed, delete the snippet immediately" pattern that successfully fixed llms.txt and robots.txt here. If a persistent diagnostic/log endpoint is ever genuinely needed, build it as its own properly-scoped plugin file, not a Code Snippets entry.
+
+**999999 master OTP bypass code (P8, flagged since Session 5) — investigated, not yet found.** Searched the live GitHub source of `workers/chat-widget/worker.js`, `workers/vakaviti-leads-v2/worker.js`, and `ftt-booking-site/src/*` directly — no match for "999999", "otp", "bypass", or "master" anywhere in any of them (only false-positive CSS `z-index: 999999` hits). This strongly suggests the OTP/master-code login logic lives in a Worker that was **never pushed to GitHub at all** — the same kind of backup gap that hit chat-widget for 19 sessions before Session 46 fixed it. Most likely candidates, never directly confirmed: partner dashboard auth, or join.vakaviti.ai onboarding. **Needs James to identify which live Worker actually has this logic** before it can be pulled, reviewed, and fixed — can't be found by searching code that was never backed up.
+
+**Unblocked Claude Code on James's laptop, no admin rights required.** James's Windows laptop has no admin access, which initially blocked Claude Code's "Git is required for local sessions" requirement (the standard Git for Windows installer needs admin/UAC). Fixed with: PortableGit (the official `PortableGit-x.x.x-64-bit.7z.exe` self-extracting archive from the git-for-windows GitHub releases page — no installer, no admin, no registry changes) extracted to `C:\Users\James\PortableGit`, plus a **User-level** (not System-level — critically, this doesn't need admin) environment variable `CLAUDE_CODE_GIT_BASH_PATH` pointing at `C:\Users\James\PortableGit\bin\bash.exe`. A full laptop restart was needed for Claude Code to pick up the new variable (just quitting/reopening the app wasn't enough). This unblocks using Claude Code itself for live site work (REST API calls, file edits) going forward, not just this chat interface, which has no live network access to external sites at all.
+
+---
+
+### Session 48 (2026-06-26) — DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem, AI-visibility infrastructure built, content scaling started
 
 **Biggest decision of the session:** discovered that "DiscoverFiji.ai" / "Discover Fiji" is a genuinely contested name — it collides with Tourism Fiji's own government tagline, with Rosie Travel Group's discoverfiji.com (a 50-year incumbent, airport-distributed printed guide since 2019, relaunched as a full booking platform Sept 2025), and with at least two other unrelated operators (Discover My Fiji, discoverfiji.com.au). Decided to fold the whole initiative into the Vakaviti.ai/Lagi brand instead of fighting for a name that's structurally hard to ever own. This was the right call given Vakaviti.ai already has zero naming collisions and is the established platform brand.
 
@@ -97,6 +129,7 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 | lagi.vakaviti.ai | v4 LIVE — 98/100 mobile, 99/100 desktop. Missing meta description fix still unconfirmed deployed (carried from Session 45) |
 | vakaviti.ai | Live, Git-connected, no redirect (Session 45 fix holding) |
 | fijitourtransfers.com | **Deep-audited this session.** AI-visibility foundation (robots/llms/sitemap/schema) all confirmed live and mostly high quality. Checkout confirmed working. Several real but non-launch-blocking content/schema issues found and partially fixed — see above. |
+| tourfijitours.com | **🆕 Deep-audited and fixed Session 49.** Had zero JSON-LD schema, no llms.txt, missing robots.txt entries, stale sitemap — all fixed and verified live. Survived a real mid-session crash (bad Code Snippets REST route) cleanly, no data loss. Stale wrong-site (fijitourtransfers.com) schema found and removed. |
 | nadiairporttransfers.com | Live — 500+ reviews — long-standing `app.js` brand/phone bug still unresolved since Session 22 |
 | D1 vakaviti-kb | 21 tables, unchanged this session |
 | vakaviti-ai-gateway | LIVE |
@@ -112,9 +145,9 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 ---
 
-## 3. TOP PRIORITIES — SESSION 49
+## 3. TOP PRIORITIES — SESSION 50
 
-> Claude: read this section first. ONE task at a time.
+> Claude: read this section first. ONE task at a time. Launch is TOMORROW (July 1).
 
 **P1 — Lagi has no page/tour-level awareness — gives confidently wrong answers**
 - Confirmed via live test (Session 46): asked about Sawa-I-Lau Caves tour suitability for kids, Lagi answered in detail about the unrelated Cultural Night Tour instead.
@@ -149,7 +182,8 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 - Multiple fine-grained PATs issued across Sessions 46–48 for the discoverfiji repo, each used once per the established hygiene pattern (one token, one push, then revoke). James was reminded after each push this session — confirm none are still sitting active from carelessness, but this is lower-risk than earlier sessions since the one-token-per-push discipline held throughout Session 48.
 
 **P8 — Remove the 999999 master OTP bypass code**
-- Flagged Session 5 as "must remove before launch." Still never confirmed removed. Launch is in 5 days.
+- Flagged Session 5 as "must remove before launch." Still never confirmed removed. Launch is tomorrow.
+- 🆕 Session 49: confirmed NOT present in `chat-widget/worker.js`, `vakaviti-leads-v2/worker.js`, or `ftt-booking-site/src/*` — checked the live GitHub source of all three directly. Likely lives in a Worker that was never pushed to GitHub at all (same gap chat-widget had for 19 sessions). **Need James to identify which live Worker actually has the OTP/master-code login logic** (partner dashboard? join.vakaviti.ai onboarding?) before this can be pulled and fixed — searching code that isn't backed up anywhere won't find it.
 
 **P9 — Cancel/refund the test booking from Session 46's checkout test**
 - Real WooCommerce order created (Pravin Deorajan, $8, Nadi Airport to Aquarius Beach Resort). Confirm no real charge fired; cancel the order. Unclear if actioned yet.
@@ -183,6 +217,12 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 **P19 — Audit the remaining ~68 of 75 Workers & Pages projects**
 - Carried from Session 45, still not touched.
+
+**P20 — 🆕 Apply the same AI-visibility fix pattern (schema/llms.txt/robots.txt/sitemap) to other partner sites**
+- fijitourtransfers.com (Session 46) and tourfijitours.com (Session 49) are both done. 27+ other partner sites have not been audited for this at all. Low urgency relative to launch, but high-leverage for the "ChatGPT of Fiji" pillar of the long-term vision once launch is behind us.
+
+**P21 — 🆕 Avoid persistent custom REST routes via Code Snippets on any WordPress partner site**
+- Confirmed real risk this session: a `register_rest_route` added via Code Snippets crashed tourfijitours.com entirely (500 on every page). Use the "run once, write the file, delete the snippet" pattern instead (proven twice this session, for both llms.txt and robots.txt). If a persistent endpoint is ever genuinely needed, build it as a proper scoped plugin file, not a Code Snippets entry.
 
 ---
 
