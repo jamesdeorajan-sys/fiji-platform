@@ -367,3 +367,18 @@ Hotels saying no is not a threat. The 5-pillar public domination strategy:
 **Repo:** both `workers/chat-widget/worker.js` and `pages/vakaviti-widget/widget.js` updated and committed.
 
 **Next up (not started):** Phase 2 — structured tours table once the WooCommerce CSV export (P3) lands, then Phase 3 — the scoped agentic tool-call loop.
+
+---
+
+## Session 51 (continued) — Deep-revise pass on Phase 1 — 5 July 2026
+
+Asked to go back and deep-revise everything built this session against the actual "does this work for 50+ partners" standard, not just "did it work once." Found two real bugs in the Phase 1 harvesting code that hadn't shown up in earlier testing because earlier tests happened to avoid triggering them:
+
+1. **`innerText` → `textContent`.** FAQ accordions load collapsed by default (`display:none` on the answer until clicked) on essentially every tourism site tested, including every page used earlier this session. `innerText` returns empty for hidden elements, so the harvest was capturing FAQ *questions* but silently dropping every *answer* — a bug that would have quietly degraded results across the whole network without ever throwing an error. Proved it was real with a mock collapsed-accordion test (old logic returned empty, new logic correctly captured the hidden answer), then confirmed live on the Nadi Cultural Night Tour page with a genuinely untouched, still-collapsed FAQ item.
+2. **Cached page context once per page load** instead of re-scanning the DOM (up to 30 headings + 6 JSON-LD scripts) on every single message in a conversation — real but lower-stakes performance fix.
+
+**Verified live:** Nadi Cultural Night Tour page, "is this safe for kids" — Lagi surfaced evening timing, safety/supervision details, and pricing pulled from a FAQ answer that was collapsed and never clicked, proving the hidden-content fix works in production, not just in the mock test.
+
+**Repo:** both `workers/chat-widget/worker.js` and `pages/vakaviti-widget/widget.js` updated and committed.
+
+**Lesson for future sessions:** "verified on one real page" is not the same as "verified at scale" — the failure modes that matter across 50+ partners (hidden/collapsed content, repeated DOM work, theme variation) don't show up unless you specifically go looking for them after the happy-path test passes.
