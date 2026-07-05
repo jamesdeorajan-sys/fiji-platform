@@ -349,3 +349,21 @@ Hotels saying no is not a threat. The 5-pillar public domination strategy:
 - `pages/vakaviti-widget/widget.js` — **new**, first-ever tracked copy of what `widget.vakaviti.ai` actually serves
 
 *Handoff created: 5 July 2026 · Next session: decide vakaviti-widget routing fix, continue WooCommerce CSV export for tours table*
+
+---
+
+## Session 51 (continued) — Phase 1 superpowers upgrade — 5 July 2026
+
+**Built and verified live:** Lagi now harvests real on-page content (FAQ sections, Highlights, Included/Excluded lists) and feeds it into the same page-grounding block from earlier this session, with instructions to treat it as authoritative rather than falling back to "I don't have those details."
+
+**Harvesting order:** (1) FAQPage JSON-LD if present, (2) heading-based scan for FAQ/Highlights/Included/Excluded/Itinerary sections, (3) meta description as a cheap always-available fallback. Capped at 2000 characters total to control token cost across 50+ partners.
+
+**Two real bugs caught during build, both found by testing against the actual live page rather than trusting syntax checks:**
+1. First version only scanned `h2/h3/h4` headings — missed the real page's FAQ questions, which are `h5` elements. Broadened to scan all heading levels `h1`–`h6`.
+2. First fix then stopped scanning at *any* heading, which broke immediately since the FAQ section's first question heading is the very next sibling after the "FAQs" section heading. Fixed to only stop at a heading of equal-or-higher level than the section anchor, so nested question headings are treated as content, not a stop signal. Verified via a mock-DOM simulation built from the actual live page's real structure (confirmed via direct fetch) before redeploying — not just `node --check`.
+
+**Verified live** on fijitourtransfers.com's Sawa-I-Lau Caves page: the same "is this suitable for kids?" question that started this whole investigation now gets a specific, accurate answer (swimming ability required for the underwater passage, open-water crossings can get choppy for kids prone to seasickness) instead of the honest-but-generic fallback from the first grounding fix.
+
+**Repo:** both `workers/chat-widget/worker.js` and `pages/vakaviti-widget/widget.js` updated and committed.
+
+**Next up (not started):** Phase 2 — structured tours table once the WooCommerce CSV export (P3) lands, then Phase 3 — the scoped agentic tool-call loop.
