@@ -32,15 +32,66 @@
       document.querySelector('script[data-site-id]');
     return script ? (script.getAttribute('data-site-id') || null) : null;
   }
+  function extractPageDetail() {
+    try {
+      let detail = '';
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (let i = 0; i < scripts.length && i < 6; i++) {
+        let data;
+        try { data = JSON.parse(scripts[i].textContent); } catch (e) { continue; }
+        const nodes = Array.isArray(data) ? data : (data['@graph'] || [data]);
+        for (const node of nodes) {
+          if (!node) continue;
+          const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type']];
+          if (types.includes('FAQPage')) {
+            const entities = node.mainEntity || [];
+            for (const q of entities) {
+              const question = q.name || '';
+              const answer = (q.acceptedAnswer && q.acceptedAnswer.text) || '';
+              if (question && answer) {
+                detail += 'Q: ' + question + '\nA: ' + answer.replace(/<[^>]+>/g,' ').trim() + '\n\n';
+              }
+            }
+          }
+        }
+        if (detail) break;
+      }
+      if (!detail) {
+        const headingRe = /faq|frequently asked|highlight|includ|exclud|itinerary/i;
+        const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        for (let i = 0; i < headings.length && i < 30 && detail.length < 1600; i++) {
+          const h = headings[i];
+          if (headingRe.test(h.innerText || '')) {
+            const anchorLevel = parseInt((h.tagName||'H6').replace(/[^0-9]/g,''),10) || 6;
+            let sib = h.nextElementSibling;
+            let grabbed = 0;
+            while (sib && grabbed < 12 && detail.length < 1600) {
+              const tag = (sib.tagName || '').toUpperCase();
+              const hLevel = /^H[1-6]$/.test(tag) ? parseInt(tag.slice(1),10) : null;
+              if (hLevel !== null && hLevel <= anchorLevel) break;
+              const txt = (sib.innerText || '').trim();
+              if (txt) { detail += txt.slice(0, 400) + '\n\n'; grabbed++; }
+              sib = sib.nextElementSibling;
+            }
+          }
+        }
+      }
+      const metaDesc = document.querySelector('meta[name="description"]')?.content ||
+                        document.querySelector('meta[property="og:description"]')?.content || '';
+      if (metaDesc && detail.length < 1500) detail = metaDesc.trim().slice(0,300) + '\n\n' + detail;
+      return detail.trim().slice(0, 2000) || null;
+    } catch (e) { return null; }
+  }
   function getPageContext() {
     try {
       const h1 = document.querySelector('h1');
       return {
         page_url: (window.location.href || '').split('?')[0].split('#')[0].slice(0, 300),
         page_title: (document.title || '').trim().slice(0, 200) || null,
-        page_heading: h1 && h1.innerText ? h1.innerText.trim().slice(0, 200) : null
+        page_heading: h1 && h1.innerText ? h1.innerText.trim().slice(0, 200) : null,
+        page_detail: extractPageDetail()
       };
-    } catch (e) { return { page_url: null, page_title: null, page_heading: null }; }
+    } catch (e) { return { page_url: null, page_title: null, page_heading: null, page_detail: null }; }
   }
   async function fetchConfig(siteId) {
     try {
@@ -271,7 +322,7 @@
     isLoading = true; setSendDisabled(true); showLoading();
     try {
       const pageCtx = getPageContext();
-      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading }) });
+      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading, page_detail: pageCtx.page_detail }) });
       const data = await response.json().catch(()=>null);
       hideLoading();
       if (!response.ok || !data) { renderMessage('ai', 'Sorry, I\'m having trouble right now. Please WhatsApp us at ' + config.whatsappUrl); return; }
