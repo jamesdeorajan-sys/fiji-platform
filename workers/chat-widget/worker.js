@@ -68,9 +68,19 @@ const WIDGET_V2_JS = `
       document.querySelector('script[data-site-id]');
     return script ? (script.getAttribute('data-site-id') || null) : null;
   }
+  function getPageContext() {
+    try {
+      const h1 = document.querySelector('h1');
+      return {
+        page_url: (window.location.href || '').split('?')[0].split('#')[0].slice(0, 300),
+        page_title: (document.title || '').trim().slice(0, 200) || null,
+        page_heading: h1 && h1.innerText ? h1.innerText.trim().slice(0, 200) : null
+      };
+    } catch (e) { return { page_url: null, page_title: null, page_heading: null }; }
+  }
   async function fetchConfig(siteId) {
     try {
-      const res = await fetch(\`${PHASE2_WORKER_URL}config?site_id=${encodeURIComponent(siteId)}\`, { method: 'GET', headers: { 'Accept': 'application/json' } });
+      const res = await fetch(\`\${PHASE2_WORKER_URL}config?site_id=\${encodeURIComponent(siteId)}\`, { method: 'GET', headers: { 'Accept': 'application/json' } });
       if (!res.ok) return null;
       const data = await res.json();
       return { siteId, partnerId: data.partner_id || null, brandName: data.brand_name || 'Vakaviti', workerUrl: PHASE2_WORKER_URL, whatsappUrl: data.whatsapp_url || LEGACY_DEFAULTS.whatsappUrl, whatsappNumber: data.whatsapp_number || '', themeColor: data.theme_color || '#0d4d6e', greetingText: data.greeting_text || null, allowedIntents: data.allowed_intents || null, primaryIntent: data.primary_intent || null, contactEmail: data.contact_email || null, isLegacy: false };
@@ -81,7 +91,7 @@ const WIDGET_V2_JS = `
     const tc = config.themeColor;
     const tcDeep = darken(tc, 0.15);
     const styles = \`
-      #vk-chat-widget { --vk-ocean: ${tc}; --vk-ocean-deep: ${tcDeep}; --vk-sunset: #d97540; --vk-coral: #c83e3e; --vk-paper: #faf6f0; --vk-paper-card: #fffdf8; --vk-paper-warm: #f5ede0; --vk-ai-tint: #eef4f7; --vk-ink: #1a1a1a; --vk-ink-soft: #4a4a4a; --vk-ink-quiet: #8a8580; --vk-line: #d8d0c2; --vk-line-soft: #ebe5d6; --vk-shadow: 0 8px 32px rgba(8,51,74,0.18), 0 2px 8px rgba(8,51,74,0.08); position: fixed; bottom: 20px; right: 20px; z-index: 999999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: var(--vk-ink); }
+      #vk-chat-widget { --vk-ocean: \${tc}; --vk-ocean-deep: \${tcDeep}; --vk-sunset: #d97540; --vk-coral: #c83e3e; --vk-paper: #faf6f0; --vk-paper-card: #fffdf8; --vk-paper-warm: #f5ede0; --vk-ai-tint: #eef4f7; --vk-ink: #1a1a1a; --vk-ink-soft: #4a4a4a; --vk-ink-quiet: #8a8580; --vk-line: #d8d0c2; --vk-line-soft: #ebe5d6; --vk-shadow: 0 8px 32px rgba(8,51,74,0.18), 0 2px 8px rgba(8,51,74,0.08); position: fixed; bottom: 20px; right: 20px; z-index: 999999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: var(--vk-ink); }
       #vk-chat-widget * { box-sizing: border-box; margin: 0; padding: 0; }
       #vk-chat-launcher { width: 60px; height: 60px; border-radius: 50%; background: var(--vk-ocean); color: var(--vk-paper); border: none; cursor: pointer; box-shadow: var(--vk-shadow); display: flex; align-items: center; justify-content: center; transition: transform 0.2s, background 0.2s; position: relative; }
       #vk-chat-launcher:hover { background: var(--vk-ocean-deep); transform: scale(1.05); }
@@ -135,7 +145,7 @@ const WIDGET_V2_JS = `
       <div id="vk-chat-panel" role="dialog">
         <div id="vk-chat-header">
           <div style="flex:1">
-            <div id="vk-chat-header-title">${escHtml(config.brandName)}</div>
+            <div id="vk-chat-header-title">\${escHtml(config.brandName)}</div>
             <div id="vk-chat-header-subtitle">Quick answers · tours, transfers, anything Fiji</div>
           </div>
           <button id="vk-chat-close" aria-label="Close chat">
@@ -150,7 +160,7 @@ const WIDGET_V2_JS = `
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
-          <a href="${escHtml(config.whatsappUrl)}" id="vk-chat-whatsapp" target="_blank" rel="noopener">
+          <a href="\${escHtml(config.whatsappUrl)}" id="vk-chat-whatsapp" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
             Continue on WhatsApp
           </a>
@@ -163,7 +173,7 @@ const WIDGET_V2_JS = `
   function escHtml(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function renderMarkdown(text) {
     let html = escHtml(text);
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
     let result = '';
     let remaining = html;
     while (remaining.length > 0) {
@@ -188,7 +198,7 @@ const WIDGET_V2_JS = `
       remaining = remaining.slice(rp + 1);
     }
     html = result || html;
-    html = html.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+    html = html.replace(/\\n\\n/g, '</p><p>').replace(/\\n/g, '<br>');
     if (!html.startsWith('<')) html = '<p>' + html + '</p>';
     return html;
   }
@@ -225,7 +235,7 @@ const WIDGET_V2_JS = `
     const messages = document.getElementById('vk-chat-messages');
     const form = document.createElement('div'); form.id = 'vk-chat-lead-form';
     form.style.cssText = 'margin-top:8px;padding:10px 12px;background:#f5ede0;border-radius:10px;border:1px solid #d8d0c2;';
-    form.innerHTML = '<p style="font-size:13px;color:#4a4a4a;margin-bottom:6px;">Want us to follow up? Leave your name and we\'ll reach out.</p><div style="display:flex;gap:6px;margin-bottom:6px;"><input style="flex:1;border:1px solid #d8d0c2;border-radius:8px;padding:7px 10px;font-size:13px;" id="vk-lead-name" placeholder="Your name" /><input style="flex:1;border:1px solid #d8d0c2;border-radius:8px;padding:7px 10px;font-size:13px;" id="vk-lead-email" placeholder="Email or WhatsApp" /></div><div style="display:flex;gap:6px;"><button onclick="window._vkSubmitLead()" style="background:#0d4d6e;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;">Send to team</button><button onclick="document.getElementById(\'vk-chat-lead-form\').remove()" style="background:none;border:none;color:#8a8580;font-size:12px;cursor:pointer;text-decoration:underline;">Skip</button></div>';
+    form.innerHTML = '<p style="font-size:13px;color:#4a4a4a;margin-bottom:6px;">Want us to follow up? Leave your name and we\\'ll reach out.</p><div style="display:flex;gap:6px;margin-bottom:6px;"><input style="flex:1;border:1px solid #d8d0c2;border-radius:8px;padding:7px 10px;font-size:13px;" id="vk-lead-name" placeholder="Your name" /><input style="flex:1;border:1px solid #d8d0c2;border-radius:8px;padding:7px 10px;font-size:13px;" id="vk-lead-email" placeholder="Email or WhatsApp" /></div><div style="display:flex;gap:6px;"><button onclick="window._vkSubmitLead()" style="background:#0d4d6e;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;">Send to team</button><button onclick="document.getElementById(\\'vk-chat-lead-form\\').remove()" style="background:none;border:none;color:#8a8580;font-size:12px;cursor:pointer;text-decoration:underline;">Skip</button></div>';
     messages.appendChild(form);
     requestAnimationFrame(() => { messages.scrollTop = messages.scrollHeight; });
   }
@@ -255,9 +265,9 @@ const WIDGET_V2_JS = `
     if (!hasGreeted) {
       hasGreeted = true;
       const greetingText = config.greetingText ||
-        'Bula! I\'m Lagi \uD83C\uDF3A \u2014 your Fiji insider.\n\n' +
-        'I live and breathe Fiji. Every resort deal, island transfer, hidden beach and current special \u2014 I know it all, right now.\n\n' +
-        'Tell me where you\'re headed and when, and I\'ll give you the honest local\'s plan most travel agents won\'t.';
+        'Bula! I\\'m Lagi \uD83C\uDF3A \u2014 your Fiji insider.\\n\\n' +
+        'I live and breathe Fiji. Every resort deal, island transfer, hidden beach and current special \u2014 I know it all, right now.\\n\\n' +
+        'Tell me where you\\'re headed and when, and I\\'ll give you the honest local\\'s plan most travel agents won\\'t.';
       renderMessage('ai', greetingText);
       const messages = document.getElementById('vk-chat-messages');
       const btnWrap = document.createElement('div');
@@ -296,10 +306,11 @@ const WIDGET_V2_JS = `
     conversation.push({role:'user',content:text}); messageCount++;
     isLoading = true; setSendDisabled(true); showLoading();
     try {
-      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId }) });
+      const pageCtx = getPageContext();
+      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading }) });
       const data = await response.json().catch(()=>null);
       hideLoading();
-      if (!response.ok || !data) { renderMessage('ai', 'Sorry, I\'m having trouble right now. Please WhatsApp us at ' + config.whatsappUrl); return; }
+      if (!response.ok || !data) { renderMessage('ai', 'Sorry, I\\'m having trouble right now. Please WhatsApp us at ' + config.whatsappUrl); return; }
       const replyText = data.message || "Sorry, I didn't catch that.";
       renderMessage('ai', replyText);
       if (data.type==='reply') { conversation.push({role:'assistant',content:replyText}); trackEvent('message',{intent:data.intent}); }
@@ -762,6 +773,12 @@ async function handleChat(request, env, cors, isAllowedOrigin, origin, ctx) {
   const sessionId = body.session_id || null;
   const isPublic  = !siteId || siteId === 'lagi_public';
 
+  // ── P1 fix: page/tour awareness — ground answers to the exact page the visitor is on ──
+  const pageTitle   = typeof body.page_title   === 'string' ? sanitiseInput(body.page_title, 200)   : null;
+  const pageHeading = typeof body.page_heading === 'string' ? sanitiseInput(body.page_heading, 200) : null;
+  const pageUrl     = typeof body.page_url     === 'string' ? body.page_url.slice(0, 300)            : null;
+  const pageContextBlock = buildPageContextBlock(pageTitle, pageHeading, pageUrl);
+
   const latestUserMsg = [...body.messages].reverse().find(m => m.role === 'user');
   const rawUserText   = latestUserMsg?.content || '';
   const userText      = sanitiseInput(rawUserText, 2000);
@@ -860,9 +877,9 @@ async function handleChat(request, env, cors, isAllowedOrigin, origin, ctx) {
   // ── v54: Build system prompt with review stats injected ─────────────────
   let systemPrompt;
   if (isPublic) {
-    systemPrompt = buildPublicSystemPrompt(ragResults, intent, liveDeals, heatData, top3, currency, groupSz, reviewStats, reviewStatsPartnerId);
+    systemPrompt = buildPublicSystemPrompt(ragResults, intent, liveDeals, heatData, top3, currency, groupSz, reviewStats, reviewStatsPartnerId, pageContextBlock);
   } else if (siteId && partnerInfo) {
-    systemPrompt = buildPhase2SystemPrompt(partnerInfo, ragResults, intent, referralPartner, liveDeals, heatData, reviewStats);
+    systemPrompt = buildPhase2SystemPrompt(partnerInfo, ragResults, intent, referralPartner, liveDeals, heatData, reviewStats, pageContextBlock);
   } else {
     systemPrompt = SYSTEM_PROMPT_LEGACY;
   }
@@ -1160,7 +1177,18 @@ async function handleChat(request, env, cors, isAllowedOrigin, origin, ctx) {
 // SYSTEM PROMPTS — v54: review stats injected into both prompts
 // ═══════════════════════════════════════════════════════════════
 
-function buildPhase2SystemPrompt(partner, ragResults, intent, referralPartner, liveDeals, heatData, reviewStats) {
+function buildPageContextBlock(pageTitle, pageHeading, pageUrl) {
+  const label = pageHeading || pageTitle;
+  if (!label) return '';
+  return `
+// CURRENT PAGE — CRITICAL GROUNDING RULE (do not skip this)
+The visitor is right now looking at a page titled: "${label}"${pageUrl ? ` (${pageUrl})` : ''}
+If they say "this tour", "this trip", "this package", "this one", or ask a question without naming a different tour, answer about THIS EXACT page — never substitute a different tour from your knowledge just because it scores higher as a match.
+If the retrieved knowledge below does not clearly describe a page titled "${label}", say honestly that you don't have the exact details for that specific page yet and offer to check with the team — do NOT guess or borrow details from another tour.
+`;
+}
+
+function buildPhase2SystemPrompt(partner, ragResults, intent, referralPartner, liveDeals, heatData, reviewStats, pageContextBlock = '') {
   const waNumber    = partner.whatsapp_number || '61478886145';
   const waUrl       = `https://wa.me/${waNumber.replace(/[^0-9]/g, '')}`;
   const waPreFilled = `${waUrl}?text=${encodeURIComponent(`Hi ${partner.name} team, I found you via Vakaviti.ai and would like to enquire about your services.`)}`;
@@ -1198,6 +1226,7 @@ ${partner.description ? `About: ${partner.description}` : ''}
 Contact: [Contact ${partner.name} on WhatsApp](${waPreFilled})
 Current intent: ${intent || 'general enquiry'}
 ${reviewSection}
+${pageContextBlock}
 
 // LAYER 3 — NETWORK INTELLIGENCE
 ${referralSection}
@@ -1218,7 +1247,7 @@ RESPONSE STYLE: Plain text only. No markdown. No asterisks for bold. No bullet p
 `;
 }
 
-function buildPublicSystemPrompt(ragResults, intent, liveDeals, heatData, top3, currency='AUD', groupSize=null, reviewStats=null, reviewPartnerId=null) {
+function buildPublicSystemPrompt(ragResults, intent, liveDeals, heatData, top3, currency='AUD', groupSize=null, reviewStats=null, reviewPartnerId=null, pageContextBlock = '') {
   const dictSection = ragResults.dictWords.length > 0
     ? '\nFIJIAN DICTIONARY MATCHES:\n' + ragResults.dictWords.map(w => `• **${w.word}** (say: ${w.phonetic}) — ${w.englishDef}`).join('\n')
     : '';
@@ -1264,6 +1293,7 @@ PARTNER DIRECTORY:
 ROUTING: Plane arrival -> Nadi Transfers. Denarau -> Palms. Yasawa -> Blue Lagoon. Day activities -> Tour Fiji. Evening Denarau -> Smugglers Cove.
 Families -> Palms primary + Blue Lagoon upgrade offer. Honeymoon -> Blue Lagoon primary.
 ${reviewSection}
+${pageContextBlock}
 
 // LAYER 3 — LEAD CONVERSION
 HEAT LEVEL: ${heatLevel} | Score: ${heatData ? heatData.score : 0}/100
