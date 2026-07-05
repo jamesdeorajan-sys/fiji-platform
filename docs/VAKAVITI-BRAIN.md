@@ -204,6 +204,12 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 - Present since at least the Session 46 "verified restorable" GitHub backup, never introduced by Session 51's changes. Never caught because verification only ever used `node --check` (validates parseability, not execution). Broke: config-fetch URL construction, theme-color CSS injection, brand/WhatsApp link rendering, the bold-markdown formatter (misparsed by browsers as a JSDoc comment — ate a function call, threw on first render, caused a fully blank chat panel), and the lead-form/greeting apostrophes and line breaks.
 - **New standing rule:** any future edit touching `WIDGET_V2_JS` must be verified by actual execution (extract the served client string, run it standalone), not `node --check` alone.
 
+**P1d — 🆕 Phase 1 superpowers upgrade: harvest on-page FAQ/highlights content into grounding — RESOLVED Session 51**
+- Extends P1's page-title grounding with real published content: FAQPage JSON-LD if present, else a heading-based scan for FAQ/Highlights/Included-Excluded/Itinerary sections, else meta description. Capped at 2000 chars for token cost control across 50+ partners.
+- Two bugs caught by testing against the real live page rather than trusting syntax checks alone: (1) first version only scanned `h2/h3/h4`, missed the real page's `h5` FAQ questions — broadened to `h1`-`h6`; (2) the fix then stopped at *any* heading, breaking immediately since a question's own heading is the next sibling after the FAQ section heading — fixed to only stop at a heading of equal-or-higher level than the section anchor, verified via mock-DOM simulation of the actual page structure.
+- Verified live on the same Sawa-I-Lau page: the kids-suitability question now returns real, specific detail (swimming ability needed for the underwater passage, open-water crossings can get choppy) instead of the honest-but-generic fallback.
+- **Not yet spot-checked:** James should verify the synthesized answer's accuracy against what Fiji Tour Transfers actually publishes (e.g. any specific minimum age), since this is now synthesized rather than quoted verbatim.
+
 **P2 — Build the scoped Lagi agentic tool-call loop (fully scoped in Session 48, zero code written yet)**
 - Scoped: one new structured `lookup_tours` tool, max ~3-iteration loop, queries `discoverfiji-content` D1 tours table via REST API (no Worker binding/redeploy risk). Deliberately bounded upgrade.
 - Breadth bottleneck still applies — do the WooCommerce CSV export (P3) first so there's real data to query.
