@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 50 CLOSED — 2026-07-03
+# Last updated: Session 51 CLOSED — 2026-07-05
 
 ---
 
@@ -192,10 +192,17 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 > Claude: read this section first. Platform is now POST-LAUNCH (July 1 passed). Priorities shift from launch blockers to growth and open technical debt.
 
-**P1 — Lagi has no page/tour-level awareness — gives confidently wrong answers**
-- Still the single highest-impact unfixed bug. Affects 3 public surfaces: 29 partner sites, lagi.vakaviti.ai, discover.vakaviti.ai.
-- Root cause confirmed: widget only ever sends `site_id`, never a page/tour identifier. Fix requires a Worker surgical edit (never replace the whole file) and a frontend change to pass the current URL or tour ID in the payload.
-- James explicitly deferred in Session 48 in favour of scoping the agentic upgrade — those two are related and worth tackling together.
+**P1 — ~~Lagi has no page/tour-level awareness~~ RESOLVED Session 51, verified live**
+- Fixed: widget now sends `page_url`/`page_title`/`page_heading` with every message; Worker grounds the system prompt to the exact page. Verified live on fijitourtransfers.com/Sawa-I-Lau — Lagi now answers about the correct tour and honestly declines to guess on details it lacks, instead of describing an unrelated tour.
+- Still the prompt-level fix, not the structural one — once P3 (WooCommerce export) lands and a real tours table exists, upgrade to matching `page_url` directly against a tour record for higher precision.
+
+**P1b — 🆕 widget.vakaviti.ai was never routed to the fiji-chat-widget Worker — RESOLVED Session 51**
+- Root cause of why the page-awareness fix didn't reach production on first deploy attempt. `widget.vakaviti.ai` is a CNAME to a separate Cloudflare Pages project, `vakaviti-widget`, whose Git connection is disconnected (dashboard shows "Connect" not "Connected"). Last real deploy before Session 51: **25 May 2026**, six weeks stale. Fixed via manual direct-upload redeploy.
+- **Open follow-up:** decide whether to reconnect `vakaviti-widget`'s Git integration, or eliminate the duplication entirely by pointing `widget.vakaviti.ai` directly at the Worker's own `/widget.js` route — one source of truth instead of two.
+
+**P1c — 🆕 6 latent escaping bugs in the widget script — RESOLVED Session 51**
+- Present since at least the Session 46 "verified restorable" GitHub backup, never introduced by Session 51's changes. Never caught because verification only ever used `node --check` (validates parseability, not execution). Broke: config-fetch URL construction, theme-color CSS injection, brand/WhatsApp link rendering, the bold-markdown formatter (misparsed by browsers as a JSDoc comment — ate a function call, threw on first render, caused a fully blank chat panel), and the lead-form/greeting apostrophes and line breaks.
+- **New standing rule:** any future edit touching `WIDGET_V2_JS` must be verified by actual execution (extract the served client string, run it standalone), not `node --check` alone.
 
 **P2 — Build the scoped Lagi agentic tool-call loop (fully scoped in Session 48, zero code written yet)**
 - Scoped: one new structured `lookup_tours` tool, max ~3-iteration loop, queries `discoverfiji-content` D1 tours table via REST API (no Worker binding/redeploy risk). Deliberately bounded upgrade.
@@ -222,8 +229,8 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 **P9 — WhatsApp permanent business number**
 - Still on Meta test number. Needs real verified business number before serious partner/customer comms scale.
 
-**P10 — Cancel the test WooCommerce booking ($8, Praveen Deorajan)**
-- Live uncancelled from the Session 46 checkout verification test.
+**P10 — ~~Cancel the test WooCommerce booking~~ RESOLVED Session 51**
+- Confirmed cancelled by James.
 
 **P11 — Push Vakaviti Vanua source to GitHub**
 - 🆕 Session 50. Currently only in Cloudflare Pages deploy, not version-controlled. Add `docs/vanua/` subfolder in `fiji-platform` repo with both HTML files for backup and version history.
@@ -263,13 +270,14 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 | Parameter | Value |
 |---|---|
-| Worker | fiji-chat-widget **v57**, 1,875 lines |
-| GitHub backup | **FIXED Session 46** — genuine restorable copy, syntax-validated, independently re-verified |
+| Worker | fiji-chat-widget **v57**, 1,905 lines (was 1,875 — Session 51 P1 fix) |
+| GitHub backup | **FIXED Session 46, then found to still have 6 latent escaping bugs — all fixed Session 51** |
 | Lagi page | lagi-v4 — deployed 2026-06-17 |
 | Speed | 98/100 mobile · 99/100 desktop · Sydney |
 | Vectorize | ~440+ live vectors |
 | AI Gateway | vakaviti-ai-gateway — ACTIVE |
-| Page/tour awareness | **CONFIRMED ABSENT — see Section 2 top finding and Section 3 P1** |
+| Page/tour awareness | **FIXED Session 51, verified live — see Section 3 P1** |
+| Widget script source of truth | **fiji-platform repo now tracks BOTH `workers/chat-widget/worker.js` (Worker) AND `pages/vakaviti-widget/widget.js` (what widget.vakaviti.ai actually serves) — see Section 3 P1b** |
 
 **NEVER replace whole Worker file. Surgical edits only via find-and-replace.**
 
@@ -311,13 +319,15 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 | Supabase/OpenAI accounts not yet created for DiscoverFiji.ai | ~~P2~~ **RESOLVED Session 48 (dropped, not built)** | Migrated to a dedicated D1 database (discoverfiji-content) instead, reached via D1 REST API. No Supabase/OpenAI accounts needed — neither vendor is used anywhere in this codebase anymore. |
 | DiscoverFiji.ai's 500 destination pages + Lagi knowledge-ingestion pipeline not started | **IN PROGRESS Session 48** | 6 of ~500 destination pages live (18 real tours), template proven and AI-visibility infrastructure complete. Knowledge-ingestion pipeline into Lagi's `/knowledge-add` still not started — needs the human-review step designed first. |
 | Worker's `isAllowedOrigin` check has no real CORS enforcement, just a manual header check that silently 403s on missing Origin | P3 — Session 47 | Not a bug exactly, but a sharp edge — any future server-side integration will hit this same trap unless documented. Now documented in discoverfiji repo's route.ts comments. |
-| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | **P1 — Session 46, now affects 3 surfaces** | Confirmed via live test. Platform-level fix needed. Now also live on discover.vakaviti.ai in addition to lagi.vakaviti.ai and 29 partner sites — three public surfaces share this blind spot. James explicitly deferred fixing this in Session 48 in favor of scoping the agentic upgrade (related, possibly worth tackling together — see Section 3 P1/P2). |
+| Lagi has no page/tour-level awareness — gives wrong answers about specific tours | ~~P1~~ **RESOLVED Session 51** | Fixed and verified live on fijitourtransfers.com. See Section 3 P1. |
+| widget.vakaviti.ai was routed to a stale, Git-disconnected Pages project instead of the live Worker | ~~P1b~~ **RESOLVED Session 51** | 6 weeks stale (last deploy 25 May 2026). Fixed via manual redeploy. Open follow-up: fix routing permanently — see Section 3 P1b. |
+| 6 latent escaping bugs in the widget script (config-fetch, theme CSS, brand/WhatsApp rendering, bold-markdown regex, lead-form/greeting apostrophes) | ~~P1c~~ **RESOLVED Session 51** | Present since at least Session 46, never caught by `node --check`. See Section 3 P1c for the new standing verification rule. |
 | Lagi is not agentic — single-shot RAG only, no tool-calling, no persistent memory | **NEW Session 48, scoped not built** | Full scoping done: one bounded tool-call loop (max ~3 iterations) against structured ground truth. Confirmed vakaviti-kb has no dedicated tours table (closest is `deals`, deals-only). Blocked on content breadth more than engineering effort — see Section 3 P2. |
 | fijitourtransfers.com's tour catalogue can't be scraped beyond the homepage's hardcoded cards | **NEW Session 48** | Confirmed: tour search/listing widget is JS/AJAX-rendered. Paginated archive URLs return page-1 content regardless of page number; location taxonomy pages return zero tour cards. Only path to the remaining ~90 of 108 real tours is a WooCommerce CSV export from James — see Section 3 P3. |
 | discoverfiji repo seed files (batches 3 and 4) not pushed to GitHub | **NEW Session 48, low priority** | Data is live in discoverfiji-content D1 (run directly via console), but `004_batch3...` and `005_batch4...` seed SQL files only exist locally — never committed. See Section 3 P6. |
 | 3rd Organization schema entity has wrong address (NSW 2763) | P2 | Source hunt continues — WooCommerce, Rank Math, "Jason" snippet all ruled out |
 | 999999 master OTP bypass code | P1 | Still not confirmed removed — flagged Session 5, now 42 sessions later |
-| Test booking created during checkout verification needs cancelling | P1 — Session 46 | Real WooCommerce order, $8, needs James to confirm no real charge + cancel |
+| Test booking created during checkout verification needs cancelling | ~~P1~~ **RESOLVED Session 51** | Confirmed cancelled by James. |
 | Praveen "hidden text" brief sent — needs confirmation + 24hr follow-up | P1 — Session 46 | Gmail draft created, not confirmed sent yet |
 | Cross-brand Author/Legal-Name bleed (Tour Fiji Tours ↔ Fiji Tour Transfers) | P2 — Session 46 | Confirmed sitewide pattern, needs a decision not just a fix |
 | Local Business schema duplicate fix not re-verified | P2 — Session 46 | "Jason" snippet deactivated but Rich Results Test not re-run after |
@@ -352,6 +362,19 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 51 — 2026-07-05 — CLOSED
+**P1 (page/tour awareness) fixed and verified live; root-caused a 6-week-stale, Git-disconnected widget deployment; found and fixed 6 latent escaping bugs nobody had caught.**
+
+Built the P1 fix: widget now captures `page_url`/`page_title`/`page_heading` at message-send time and sends them to the Worker, which injects a grounding block into the system prompt tying the answer to the exact page the visitor is on, with an explicit instruction to admit uncertainty rather than borrow details from a different tour.
+
+First deploy attempt to the Worker threw `PHASE2_WORKER_URL is not defined` — traced this to a pre-existing bug, not something introduced this session: the Session 46 GitHub-backup fix had escaped the nested backticks in `WIDGET_V2_JS` but left the neighboring `${...}` interpolations unescaped, so the Worker tried to evaluate client-side-only variables at its own module-load time. `node --check` never caught this because it validates parsing, not execution. Found and fixed 6 separate instances of this bug class by actually executing the module and extracting the served client script for independent syntax-checking — a verification method now written up as a standing rule for any future edit to this file. One instance (the bold-markdown regex, `/\*\*.../`) was subtler: browsers parsed the malformed unescaped version as a JSDoc comment, silently eating a function call and throwing on the very first message render — this alone caused a fully blank chat panel on the first live retest.
+
+After fixing all of that and redeploying the Worker, the live retest still showed the original bug — leading to the real discovery of the session: `widget.vakaviti.ai` is a CNAME to a separate Cloudflare Pages project, `vakaviti-widget`, not routed to `fiji-chat-widget` at all. That Pages project's Git connection is currently disconnected, and its last real deployment was 25 May 2026 — six weeks before this session, meaning every partner site had been loading a stale widget the entire time regardless of any Worker-side fix. Fixed via manual direct-upload redeploy of the corrected script. Confirmed live and working on fijitourtransfers.com's Sawa-I-Lau Caves page: Lagi now answers about the correct tour and honestly says when it lacks specific details, instead of describing an unrelated tour.
+
+Also committed both files to GitHub for the first time in their corrected state — `workers/chat-widget/worker.js` (updated) and `pages/vakaviti-widget/widget.js` (new — first-ever tracked copy of what `widget.vakaviti.ai` actually serves, closing the exact kind of undocumented-drift gap that caused this whole detour).
+
+**Not yet done:** deciding permanently between reconnecting `vakaviti-widget`'s Git integration vs. eliminating it by routing `widget.vakaviti.ai` straight to the Worker; P2 (agentic tool-call loop), P3 (WooCommerce CSV export), P4 (Environment Minister confirmation for Vakaviti Vanua), and P8 (999999 OTP bypass code) all remain open and carried forward.
 
 ### Session 48 — 2026-06-26 — CLOSED
 **DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem; AI-visibility infrastructure built from scratch; content build started; Lagi agentic upgrade fully scoped.**
