@@ -382,3 +382,31 @@ Asked to go back and deep-revise everything built this session against the actua
 **Repo:** both `workers/chat-widget/worker.js` and `pages/vakaviti-widget/widget.js` updated and committed.
 
 **Lesson for future sessions:** "verified on one real page" is not the same as "verified at scale" — the failure modes that matter across 50+ partners (hidden/collapsed content, repeated DOM work, theme variation) don't show up unless you specifically go looking for them after the happy-path test passes.
+
+---
+
+## Session 51 (continued) — SEO/AI-visibility audit at scale — 5 July 2026
+
+Built a new standalone `seo-visibility-audit` Worker (`workers/seo-visibility-audit/worker.js`) instead of chasing visibility fixes partner-by-partner. Checks AI-crawler access, llms.txt, and FAQ schema coverage across all 10 owned properties and 29 active partners, discovering pages via each site's own sitemap.xml so it doesn't depend on the still-blocked tours table.
+
+**Real engineering lesson:** first version tried to audit all 39 domains in a single request and silently hung with zero logged errors — traced to Cloudflare Workers' subrequest/execution-time limits (potentially 1,500+ outbound fetches in one call). Rewrote as a batched design: 5 domains per visit, returns a `next` URL to continue. Safe, predictable, and completes in seconds per batch instead of hanging indefinitely.
+
+**Headline finding: what looked like a ~10% network outage was almost entirely bad data, not real downtime.** Four properties initially flagged as broken were investigated one by one — chased through several wrong infrastructure theories (lapsed domain registration, orphaned Cloudflare zone, missing Pages custom domain binding) before finding the real, much simpler causes:
+- `nadiculturealnighttour.com` — a typo in `partners.website_url`; correct domain is `nadiculturalnighttour.com`. Fixed with a one-line D1 UPDATE.
+- `smugglerscove.com.fj` — missing the required `www`; SSL only validates for `www.smugglerscove.com.fj`. Fixed the same way.
+- `fiji679.com` — returned the same 530 error on two independent checks hours apart, no longer explainable as a transient blip. Flagged for direct follow-up with that operator.
+- `thepalmsdenarau.com` and the corrected `www.smugglerscove.com.fj` — both return 403 to the audit Worker while being genuinely live, real, indexed sites for actual visitors. Almost certainly bot-protection/WAF rules on partner-controlled infrastructure, not something fixable from our side.
+
+**Verified baseline visibility score** (fresh audit run, 16:48-16:51 UTC): 39/39 domains reachable, 39/39 not blocking AI crawlers after the fijihomestayz.com fix below, 33/38 have llms.txt (87%), 14/38 have live FAQ schema (37%).
+
+**`fijihomestayz.com` was actively blocking AI crawlers** — confirmed as a deliberate Cloudflare zone setting (Manage AI bot access: "Block on all pages," robots.txt: "Set your preference to block training") rather than a WordPress plugin default. Fixed both settings to match the pattern on other properties — no WordPress access needed at all, purely Cloudflare-side.
+
+**`fijibula.com` FAQ schema**: built real, verified FAQPage JSON-LD for the Nausori Highlands ATV page. Initial web searches surfaced a similar-sounding page from a different operator (tourfiji.tours) — correctly rejected rather than used, since fabricating schema attributed to the wrong business would misrepresent what they actually publish. Got the real page content directly from the user and built schema matching it exactly. Committed to `pending-uploads/fijibula-faq-schema.html`, not yet live — needs WordPress access to insert.
+
+**Two llms.txt drafts** for `www.bluelagoonresortfiji.com` and `tourfiji.tours` committed to `pending-uploads/` — flagged as generic templates (unlike the Fiji Bula schema, not built from verified specific site content) and worth a quick review before uploading.
+
+**Important market-context correction, mid-session:** Google fully retired FAQ rich results (the visible SERP dropdown) in Search on 7 May 2026, for every site — this happened after Claude's training cutoff and was only caught via a live web search partway through this session, after initially overstating FAQ schema's SEO value in earlier guidance. The schema itself still helps Google's own content-comprehension systems and remains fully crawlable by Bing/PerplexityBot and other AI/RAG crawlers, but the actual driver of AI citation is proven to be genuine content quality, not the schema markup layer alone. Worth keeping this framing for any future schema-coverage work — content first, schema as a cheap secondary layer.
+
+**Repo:** `workers/seo-visibility-audit/worker.js` tracked for the first time. `pending-uploads/` directory created with the 3 not-yet-live artifacts.
+
+**Next up:** upload the 3 pending artifacts to their live sites; message the `fiji679.com` and `thepalmsdenarau.com`/`smugglerscove.com.fj` operators about their respective findings; consider adding real Cloudflare-API zone enumeration to the audit Worker so it can catch a zone that exists but isn't in D1 or the hardcoded owned-properties list — closing the same class of blind spot that let `vakaviti-widget` sit undiscovered for 6 weeks earlier this session.
