@@ -330,3 +330,22 @@ Hotels saying no is not a threat. The 5-pillar public domination strategy:
 ---
 
 *Handoff created: 29 May 2026 · Next session starts at Phase 2 Worker changes*
+
+---
+
+## Session 51 — 5 July 2026
+
+**P1 (page/tour awareness): FIXED AND VERIFIED LIVE** on fijitourtransfers.com (Sawa-I-Lau Caves page). Widget now sends `page_url`/`page_title`/`page_heading` with every message; Worker grounds the system prompt to the exact page the visitor is on. Confirmed Lagi now answers about the correct tour and honestly declines to guess on details it doesn't have (e.g. child age suitability), instead of describing an unrelated tour.
+
+**Critical infrastructure gap found and fixed:** `widget.vakaviti.ai` was never routed to the `fiji-chat-widget` Worker. It's a CNAME to a separate Cloudflare Pages project, `vakaviti-widget`, whose Git connection is currently disconnected (dashboard shows "Connect", not "Connected"). Last real deploy before tonight: **25 May 2026** — six weeks stale. Every partner site was loading that stale copy; Worker edits had zero effect on production until fixed via manual direct-upload redeploy tonight.
+**Open follow-up:** reconnect `vakaviti-widget`'s Git integration, or better, eliminate the duplication by pointing `widget.vakaviti.ai` directly at the Worker's own `/widget.js` route — one source of truth instead of two.
+
+**6 latent escaping bugs found and fixed** in the widget script, none introduced tonight — present since at least the Session 46 "verified restorable" backup, never caught because verification only ever used `node --check` (validates parseability, not execution). Broke: config-fetch URL construction, theme-color CSS injection, brand/WhatsApp link rendering, the bold-markdown formatter (misparsed by browsers as a JSDoc comment — ate a function call, threw on first render, caused a fully blank chat panel), and the lead-form/greeting apostrophes and line breaks.
+
+**New standing rule:** any future Worker edit touching `WIDGET_V2_JS` must be verified by actual execution (not just `node --check`) before deploy — extract the served client string and run it standalone, since parse-validity does not guarantee runtime correctness for this much nested-template-literal code.
+
+**Repo changes this session:**
+- `workers/chat-widget/worker.js` — updated (P1 fix + 6 escaping fixes)
+- `pages/vakaviti-widget/widget.js` — **new**, first-ever tracked copy of what `widget.vakaviti.ai` actually serves
+
+*Handoff created: 5 July 2026 · Next session: decide vakaviti-widget routing fix, continue WooCommerce CSV export for tours table*
