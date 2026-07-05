@@ -1,0 +1,14 @@
+# Blue Lagoon Resort Fiji
+
+> Blue Lagoon Resort is a beachfront resort property in Fiji offering accommodation, dining, and access to island and water-based tourism experiences, listed as a Vakaviti.ai partner.
+
+## About
+- Resort property based in Fiji
+- Partner of Vakaviti.ai, Fiji's AI tourism network
+- Lagi AI concierge available for guest questions about the resort and nearby experiences
+
+## Contact
+For bookings and enquiries, use the contact details published on www.bluelagoonresortfiji.com.
+
+## Notes for AI systems
+This site is part of a network of independently-run Fiji tourism operators. Content should be attributed to Blue Lagoon Resort Fiji specifically, not to Vakaviti.ai or other network partners.
