@@ -17,6 +17,7 @@
   let isLoading = false;
   let hasGreeted = false;
   let sessionId = generateSessionId();
+  let cachedPageCtx = null;
   async function boot() {
     const siteId = getSiteId();
     if (siteId) { config = await fetchConfig(siteId); }
@@ -69,7 +70,7 @@
               const tag = (sib.tagName || '').toUpperCase();
               const hLevel = /^H[1-6]$/.test(tag) ? parseInt(tag.slice(1),10) : null;
               if (hLevel !== null && hLevel <= anchorLevel) break;
-              const txt = (sib.innerText || '').trim();
+              const txt = (sib.textContent || '').trim().replace(/\s+/g, ' ');
               if (txt) { detail += txt.slice(0, 400) + '\n\n'; grabbed++; }
               sib = sib.nextElementSibling;
             }
@@ -321,7 +322,8 @@
     conversation.push({role:'user',content:text}); messageCount++;
     isLoading = true; setSendDisabled(true); showLoading();
     try {
-      const pageCtx = getPageContext();
+      if (!cachedPageCtx) { cachedPageCtx = getPageContext(); }
+      const pageCtx = cachedPageCtx;
       const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading, page_detail: pageCtx.page_detail }) });
       const data = await response.json().catch(()=>null);
       hideLoading();
