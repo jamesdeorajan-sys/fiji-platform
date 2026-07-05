@@ -68,15 +68,66 @@ const WIDGET_V2_JS = `
       document.querySelector('script[data-site-id]');
     return script ? (script.getAttribute('data-site-id') || null) : null;
   }
+  function extractPageDetail() {
+    try {
+      let detail = '';
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (let i = 0; i < scripts.length && i < 6; i++) {
+        let data;
+        try { data = JSON.parse(scripts[i].textContent); } catch (e) { continue; }
+        const nodes = Array.isArray(data) ? data : (data['@graph'] || [data]);
+        for (const node of nodes) {
+          if (!node) continue;
+          const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type']];
+          if (types.includes('FAQPage')) {
+            const entities = node.mainEntity || [];
+            for (const q of entities) {
+              const question = q.name || '';
+              const answer = (q.acceptedAnswer && q.acceptedAnswer.text) || '';
+              if (question && answer) {
+                detail += 'Q: ' + question + '\\nA: ' + answer.replace(/<[^>]+>/g,' ').trim() + '\\n\\n';
+              }
+            }
+          }
+        }
+        if (detail) break;
+      }
+      if (!detail) {
+        const headingRe = /faq|frequently asked|highlight|includ|exclud|itinerary/i;
+        const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        for (let i = 0; i < headings.length && i < 30 && detail.length < 1600; i++) {
+          const h = headings[i];
+          if (headingRe.test(h.innerText || '')) {
+            const anchorLevel = parseInt((h.tagName||'H6').replace(/[^0-9]/g,''),10) || 6;
+            let sib = h.nextElementSibling;
+            let grabbed = 0;
+            while (sib && grabbed < 12 && detail.length < 1600) {
+              const tag = (sib.tagName || '').toUpperCase();
+              const hLevel = /^H[1-6]$/.test(tag) ? parseInt(tag.slice(1),10) : null;
+              if (hLevel !== null && hLevel <= anchorLevel) break;
+              const txt = (sib.innerText || '').trim();
+              if (txt) { detail += txt.slice(0, 400) + '\\n\\n'; grabbed++; }
+              sib = sib.nextElementSibling;
+            }
+          }
+        }
+      }
+      const metaDesc = document.querySelector('meta[name="description"]')?.content ||
+                        document.querySelector('meta[property="og:description"]')?.content || '';
+      if (metaDesc && detail.length < 1500) detail = metaDesc.trim().slice(0,300) + '\\n\\n' + detail;
+      return detail.trim().slice(0, 2000) || null;
+    } catch (e) { return null; }
+  }
   function getPageContext() {
     try {
       const h1 = document.querySelector('h1');
       return {
         page_url: (window.location.href || '').split('?')[0].split('#')[0].slice(0, 300),
         page_title: (document.title || '').trim().slice(0, 200) || null,
-        page_heading: h1 && h1.innerText ? h1.innerText.trim().slice(0, 200) : null
+        page_heading: h1 && h1.innerText ? h1.innerText.trim().slice(0, 200) : null,
+        page_detail: extractPageDetail()
       };
-    } catch (e) { return { page_url: null, page_title: null, page_heading: null }; }
+    } catch (e) { return { page_url: null, page_title: null, page_heading: null, page_detail: null }; }
   }
   async function fetchConfig(siteId) {
     try {
@@ -307,7 +358,7 @@ const WIDGET_V2_JS = `
     isLoading = true; setSendDisabled(true); showLoading();
     try {
       const pageCtx = getPageContext();
-      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading }) });
+      const response = await fetch(config.workerUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: conversation, site_id: config.siteId, partner_id: config.partnerId, session_id: sessionId, page_url: pageCtx.page_url, page_title: pageCtx.page_title, page_heading: pageCtx.page_heading, page_detail: pageCtx.page_detail }) });
       const data = await response.json().catch(()=>null);
       hideLoading();
       if (!response.ok || !data) { renderMessage('ai', 'Sorry, I\\'m having trouble right now. Please WhatsApp us at ' + config.whatsappUrl); return; }
@@ -777,7 +828,8 @@ async function handleChat(request, env, cors, isAllowedOrigin, origin, ctx) {
   const pageTitle   = typeof body.page_title   === 'string' ? sanitiseInput(body.page_title, 200)   : null;
   const pageHeading = typeof body.page_heading === 'string' ? sanitiseInput(body.page_heading, 200) : null;
   const pageUrl     = typeof body.page_url     === 'string' ? body.page_url.slice(0, 300)            : null;
-  const pageContextBlock = buildPageContextBlock(pageTitle, pageHeading, pageUrl);
+  const pageDetail  = typeof body.page_detail  === 'string' ? sanitiseInput(body.page_detail, 2000)  : null;
+  const pageContextBlock = buildPageContextBlock(pageTitle, pageHeading, pageUrl, pageDetail);
 
   const latestUserMsg = [...body.messages].reverse().find(m => m.role === 'user');
   const rawUserText   = latestUserMsg?.content || '';
@@ -1177,15 +1229,26 @@ async function handleChat(request, env, cors, isAllowedOrigin, origin, ctx) {
 // SYSTEM PROMPTS — v54: review stats injected into both prompts
 // ═══════════════════════════════════════════════════════════════
 
-function buildPageContextBlock(pageTitle, pageHeading, pageUrl) {
+function buildPageContextBlock(pageTitle, pageHeading, pageUrl, pageDetail) {
   const label = pageHeading || pageTitle;
   if (!label) return '';
-  return `
+  let block = `
 // CURRENT PAGE — CRITICAL GROUNDING RULE (do not skip this)
 The visitor is right now looking at a page titled: "${label}"${pageUrl ? ` (${pageUrl})` : ''}
 If they say "this tour", "this trip", "this package", "this one", or ask a question without naming a different tour, answer about THIS EXACT page — never substitute a different tour from your knowledge just because it scores higher as a match.
-If the retrieved knowledge below does not clearly describe a page titled "${label}", say honestly that you don't have the exact details for that specific page yet and offer to check with the team — do NOT guess or borrow details from another tour.
 `;
+  if (pageDetail) {
+    block += `
+This page's own published content includes the following — treat it as the authoritative answer whenever it's relevant, and use it directly instead of guessing or saying you lack details:
+"""
+${pageDetail}
+"""
+`;
+  }
+  block += `
+If neither the retrieved knowledge below nor the page content above clearly describes a page titled "${label}", say honestly that you don't have the exact details for that specific page yet and offer to check with the team — do NOT guess or borrow details from another tour.
+`;
+  return block;
 }
 
 function buildPhase2SystemPrompt(partner, ragResults, intent, referralPartner, liveDeals, heatData, reviewStats, pageContextBlock = '') {
