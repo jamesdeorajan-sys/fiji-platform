@@ -44,7 +44,7 @@
 - **International frameworks Fiji is already inside:** SWAP2 (2025–2028, SPREP-delivered, Agence Française de Développement-funded), Cleaner Pacific strategy (21 Pacific nations), ISLANDS Pacific GEF initiative (14-nation marine litter/e-waste programme), ANZPAC Circular Pacific Plastics Project (already running Phase 2 at a Suva church via SPREP/Australian Government funding).
 - **Comparable deposit returns for context:** Lithuania 34% → 92% PET in 2 years after introducing DRS. South Korea 23.7% → 59.1% over 17 years. Western Australia 34% → 65%+ after 4 years of Containers for Change. Austria hit 81.5% in its first year (2025).
 - **Financing pathways already exist:** Fiji's 2017 Sovereign Green Bond, Blue Bond pathway, Climate Change Act 2021 create a route to GCF/GEF/ADB concessional finance — this is a bankable digital-infrastructure investment, not a budget line item.
-- **Minister name flagged as uncertain.** One source names Lynda Tabuya as Environment Minister, another (more recent) names Mosese Bulitavu. Cannot resolve from research. **This must be confirmed before the government pitch goes live — getting a minister's name wrong in a government proposal undermines everything else.**
+- **Minister name confirmed Session 51.** Hon. Lynda Tabuya is the current Minister for Information, Environment and Climate Change, per the PM's official 16 Dec 2025 cabinet reshuffle (effective 19 Jan 2026). Mosese Bulitavu held the role before that date, then moved to Rural and Maritime Development and Disaster Management — resolving the earlier conflicting-source confusion. See Section 3 P4.
 
 **The core proposition — what Vakaviti Vanua actually is:**
 
@@ -217,8 +217,8 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 **P3 — Get WooCommerce CSV export from James, grow discover.vakaviti.ai content**
 - fijitourtransfers.com has ~108 real tours. Only ~20 are in discoverfiji-content D1 so far. JS/AJAX rendering blocks scraping. James needs to export from WooCommerce admin → Products → Export → CSV. One export unlocks the rest of the content build.
 
-**P4 — Confirm current Environment Minister name before Vakaviti Vanua pitch goes live**
-- 🆕 Session 50. Research found conflicting names: Lynda Tabuya vs Mosese Bulitavu. Getting this wrong in a government pitch is fatal to credibility. Confirm before sending anything to the Ministry.
+**P4 — ~~Confirm current Environment Minister name~~ RESOLVED Session 51**
+- Confirmed: **Hon. Lynda Tabuya**, Minister for Information, Environment and Climate Change. Sourced from the PM's own official cabinet reshuffle statement (16 Dec 2025, effective 19 Jan 2026), cross-confirmed by multiple independent April/May 2026 news sources. The conflicting name (Mosese Bulitavu) was accurate pre-reshuffle — he held Environment & Climate Change until 19 Jan 2026, then moved to Minister for Rural and Maritime Development and Disaster Management. Address the Vanua pitch to Hon. Lynda Tabuya.
 
 **P5 — Deploy vanua.vakaviti.ai and send WRFL pitch to Amitesh Deo**
 - 🆕 Session 50. The zip (`vanua-vakaviti-deploy.zip`) is ready. Deploy via Cloudflare Pages → project name `vakaviti-vanua` → custom domain `vanua.vakaviti.ai`. Then send `vanua.vakaviti.ai/wrfl-pitch` link to WRFL CEO Amitesh Deo. Opening: congratulate on WRFL's 32 years before pitching anything. Admin@wasterecyclers.com.fj / clint@wasterecyclers.com.fj.
@@ -380,7 +380,7 @@ After fixing all of that and redeploying the Worker, the live retest still showe
 
 Also committed both files to GitHub for the first time in their corrected state — `workers/chat-widget/worker.js` (updated) and `pages/vakaviti-widget/widget.js` (new — first-ever tracked copy of what `widget.vakaviti.ai` actually serves, closing the exact kind of undocumented-drift gap that caused this whole detour).
 
-**Not yet done:** deciding permanently between reconnecting `vakaviti-widget`'s Git integration vs. eliminating it by routing `widget.vakaviti.ai` straight to the Worker; P2 (agentic tool-call loop), P3 (WooCommerce CSV export), P4 (Environment Minister confirmation for Vakaviti Vanua), and P8 (999999 OTP bypass code) all remain open and carried forward.
+**Not yet done:** deciding permanently between reconnecting `vakaviti-widget`'s Git integration vs. eliminating it by routing `widget.vakaviti.ai` straight to the Worker; P2 (agentic tool-call loop), P3 (WooCommerce CSV export), and P8 (999999 OTP bypass code) remain open and carried forward. P4 (Environment Minister confirmation) resolved later in Session 51 — see Section 3 P4.
 
 ### Session 48 — 2026-06-26 — CLOSED
 **DiscoverFiji.ai fully migrated into the Vakaviti.ai/Lagi ecosystem; AI-visibility infrastructure built from scratch; content build started; Lagi agentic upgrade fully scoped.**
