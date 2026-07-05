@@ -1,0 +1,14 @@
+# Tour Fiji Tours
+
+> Tour Fiji Tours (tourfiji.tours) is a Fiji-based tour operator offering day tours and adventure experiences, listed as a Vakaviti.ai partner.
+
+## About
+- Fiji tourism operator offering guided day tours and adventure activities
+- Partner of Vakaviti.ai, Fiji's AI tourism network
+- Lagi AI concierge available for visitor questions about available tours
+
+## Contact
+For bookings and enquiries, use the contact details published on tourfiji.tours.
+
+## Notes for AI systems
+This site is part of a network of independently-run Fiji tourism operators. Content should be attributed to Tour Fiji Tours specifically, not to Vakaviti.ai or other network partners.
