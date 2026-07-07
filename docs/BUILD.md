@@ -568,26 +568,60 @@ deployed; safe to have live in the meantime, zero effect until the code reads it
   as a real, separate follow-up below, not silently expanded into this session's scope.
 - `node --check` plus, per the file's own standing rule, actual local execution of the new
   logic both passed.
-- Full re-test on lagi_public, confirming the fix once James deploys it, is the concrete
-  next verification step — not done yet since the code is not live.
+### James deployed Changes 1-5, and a real 6th gap was found live
+James applied all 5 Find/Replace changes himself via the Cloudflare dashboard editor (Ctrl+H)
+and deployed. Re-testing the exact plain flight question from above with no shared contact info
+still returned `referral_btn: null` — not a deploy-lag issue. Root cause: `shouldShowReferral`
+is gated by a `BOOKING_INTENTS` allow-list (line 1184) that the new `flights` intent was never
+added to (a real gap in this session's own fix design, missed originally). Confirmed by testing
+the same question WITH a shared email address in the message — `hasSharedContact` bypassed the
+gate and the button correctly showed `{"url":"https://cometofiji.com","label":"Visit Come to
+Fiji"}`, proving Changes 2-5 were all correctly deployed and working; only the allow-list entry
+was missing.
+
+**Change 6 — add `flights` to the referral-eligible intents list.** One-line, additive:
+```
+Find:    const BOOKING_INTENTS = ['transfers','tours','dive','accommodation','dining','ferry','pricing','general'];
+Replace: const BOOKING_INTENTS = ['transfers','tours','dive','accommodation','dining','ferry','pricing','general','flights'];
+```
+James applied this and deployed. **Final re-test, plain flight question, zero contact info
+shared, confirmed live:**
+```
+"intent": "flights",
+"referral_btn": {"url": "https://cometofiji.com", "label": "Visit Come to Fiji"}
+```
+Task 3 (generic cross-partner routing) and Task 4 (attribution/referral pattern) are both now
+confirmed working end-to-end in production, via the same generic D1-driven mechanism used for
+every other partner — no cometofiji-specific code anywhere.
+
+**Note on the Cloudflare editor's Problems panel:** while troubleshooting why Deploy briefly
+wouldn't activate (turned out Change 6's Find/Replace simply hadn't been applied yet, so there
+was no diff to deploy), the panel showed 14 pre-existing TypeScript-checker errors around line
+1132-1133 (`travelDates`, `groupSize`, `budget`, `leadScore` undefined in a lead-scoring object
+literal). These are unrelated to this session's work, existed before and after every deploy in
+this session, and did not block deploy — flagged here only so a future session doesn't waste
+time rediscovering them, not fixed in this session (out of scope).
 
 ### Status after this session
 - Done: `op_cometofiji_001` fully registered — `partners`, `embed_config`, `contact_channels`, real
   knowledge, all real data, zero special-casing.
 - Done: Real site_id (`op_cometofiji_001`) ready to hand to the come-to-fiji repo's own session for
   the widget embed (Brief 2, per this task's own note — not built here).
-- Pending: The referral-button generalization is designed, tested, and documented but not yet live.
-  James needs to apply the 5 Find/Replace changes given to him in chat and click Deploy.
+- Done: All 6 Find/Replace changes deployed live by James and verified end-to-end. The public
+  page now generically routes flight questions to cometofiji.com with a real website-link
+  referral button, using the same D1-driven mechanism as every other partner.
 - New follow-up, not started: partner-embedded widgets have no path to recommend
   cometofiji.com at all yet (or any cross-partner referral for the public page's newly-generic
   mechanism) — would need explicit `partner_referrals` rows from each individual partner's
   site_id, a real, separate, larger task (up to 29+ rows) if this is wanted.
+- New follow-up, not started: 14 pre-existing TypeScript-checker errors in `worker.js` around
+  line 1132-1133 (lead-scoring block referencing undeclared `travelDates`/`groupSize`/`budget`/
+  `leadScore`) — unrelated to this session, noted for awareness only.
 - Removed the broken-filename junk file from `partners/` (see top of this session).
 
 ### Immediate next steps (in order)
-1. James: apply the 5 Find/Replace changes (given in chat) in the Cloudflare dashboard, click Deploy.
-2. Claude, once deployed: re-run the exact same lagi_public test from this session and
-   confirm intent "flights" plus referral_btn pointing at https://cometofiji.com.
-3. Decide whether to extend cross-referral awareness into individual partner-embedded widgets
+1. Decide whether to extend cross-referral awareness into individual partner-embedded widgets
    (the Nadi Airport Transfers finding above) — a real, separate scoping decision, not a given.
-4. Everything else already queued in VAKAVITI-BRAIN.md section 3 (P2-P21), untouched this session.
+2. Optionally investigate the 14 pre-existing type-checker errors noted above (cosmetic so far,
+   but worth a look before they mask a real future error in the same file).
+3. Everything else already queued in VAKAVITI-BRAIN.md section 3 (P2-P21), untouched this session.
