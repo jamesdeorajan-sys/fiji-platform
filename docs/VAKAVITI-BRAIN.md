@@ -33,6 +33,15 @@
 
 **Why this matters to Vakaviti:** same partner network, same operator (James), same Anthropic/Claude-assisted build pattern — worth checking in on periodically from this side, since its health directly affects `fijitourtransfers.com` booking volume.
 
+**Registered in the Vakaviti network as a real partner (7 July 2026, Session 52 of this repo):** cometofiji.com is no longer just "related" — it is now partner #51+ in the same `partners`/`embed_config`/`knowledge_items` system every other operator uses, with real D1 rows, no cometofiji-specific special-casing anywhere in the Worker.
+
+- **`partner_id` = `site_id` = `op_cometofiji_001`** — the exact value the come-to-fiji Next.js app should use for its own widget embed: `<script src="https://widget.vakaviti.ai/widget.js" data-site-id="op_cometofiji_001" defer></script>`. This is the value to hand to the come-to-fiji repo's own Claude Code session for Brief 2 (the embed side, built in that repo, not this one).
+- Contact on file: AJ Group Enterprises Pty Ltd, `helpronline@gmail.com` (same operating entity as `op_fijitourtransfers_001`). No WhatsApp number — self-serve website, contact channel is email only.
+- 6 `knowledge_items` seeded (AI itinerary planning, live flight comparison, Budget/Best Value/Premium trip-cost tiers) — verified live via `/knowledge-list`.
+- A new `flights` intent was added to Lagi's `detectIntent()` specifically so this partner has a collision-free routing category (existing `pricing`/`booking` intents were too broad and shared by every partner).
+- Found and is fixing a real pre-existing gap: the public `lagi.vakaviti.ai` page's referral button was hardcoded to 5 partner names (not D1-driven), and zero `partner_referrals` rows existed for the public page at all. A generalized, tested fix (D1 lookup first, hardcoded fallback unchanged, plus a website-link button type for partners without WhatsApp) is documented in `docs/BUILD.md` Session 52 — pending James applying it manually in the Cloudflare dashboard.
+- Known follow-up, not yet done: individual partner-embedded widgets (e.g. Nadi Airport Transfers) still have no cross-referral path to cometofiji.com — would need explicit `partner_referrals` rows from each partner's own `site_id`, a separate larger task.
+
 
 ---
 

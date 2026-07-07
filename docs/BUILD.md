@@ -410,3 +410,184 @@ Built a new standalone `seo-visibility-audit` Worker (`workers/seo-visibility-au
 **Repo:** `workers/seo-visibility-audit/worker.js` tracked for the first time. `pending-uploads/` directory created with the 3 not-yet-live artifacts.
 
 **Next up:** upload the 3 pending artifacts to their live sites; message the `fiji679.com` and `thepalmsdenarau.com`/`smugglerscove.com.fj` operators about their respective findings; consider adding real Cloudflare-API zone enumeration to the audit Worker so it can catch a zone that exists but isn't in D1 or the hardcoded owned-properties list — closing the same class of blind spot that let `vakaviti-widget` sit undiscovered for 6 weeks earlier this session.
+
+---
+
+## Session 52 — 7 July 2026 — Registered cometofiji.com as a real network partner, found and fixed a real generic-routing gap
+
+### Also fixed this session, unrelated to the main task
+`fiji-platform` had one file with a genuinely invalid Windows filename committed to it —
+literally `partners/| op_sofitel_001 | Sofitel Fiji Resort & Spa | ... |` (an empty file, real
+content lives properly elsewhere in `docs/HOTEL_DATABASE.md` etc.) — almost certainly a past
+session accidentally pasting a markdown table row into a "new file name" field instead of the
+content field. This completely blocks a normal `git clone`/checkout on Windows (Windows
+rejects `|`/`:` in filenames at the OS level, before Git's own sparse-checkout filtering can
+even apply) — confirmed by hitting it directly this session. Worked around locally via
+`git checkout HEAD --pathspec-from-file=<everything except that one path>` rather than a
+destructive fix, and removed the empty junk file in this session's commit. Future Windows
+clones of this repo should now work cleanly.
+
+### Task — Register cometofiji.com (github.com/jamesdeorajan-sys/come-to-fiji) as a standard
+### network partner, generically, no cometofiji-specific special-casing
+
+**Real assigned identifiers for handoff to the come-to-fiji repo's own session:**
+- **`partner_id` = `site_id` = `op_cometofiji_001`** — this is the value the come-to-fiji
+  Next.js app needs to embed the widget (`data-site-id="op_cometofiji_001"`), matching the
+  standard `<script src="https://widget.vakaviti.ai/widget.js" data-site-id="..." defer></script>`
+  pattern used across the network.
+
+### 1. Registered in D1 (`partners` + `embed_config` + `contact_channels`)
+Read the real live schema first (`sqlite_master`, not guessed) before inserting anything.
+Used the real `op_fijitourtransfers_001` row (same operator, AJ Group Enterprises Pty Ltd) as
+a template for field style/depth. All facts entered are real, pulled from come-to-fiji's own
+`BUILD.md` (9 build sessions read directly from that repo) — not fabricated:
+- `category`: `flights` (new value, but `partners.category` is free text, not an enum — other
+  rows already have inconsistent casing like `Tours`/`tours`, confirming this).
+- `whatsapp_number`: NULL — cometofiji.com is a self-serve website, not an operator with
+  its own WhatsApp inbox (unlike every existing partner). This is the reason Task 4 below was
+  necessary — the network's referral-button logic had never had to handle a partner without one.
+- `contact_email`: `helpronline@gmail.com` (real, confirmed — same as `op_fijitourtransfers_001`,
+  same operating entity, AJ Group Enterprises Pty Ltd, per `VAKAVITI-BRAIN.md` section 1).
+- `contact_channels`: one `email` row (priority 1, since there is no WhatsApp alternative) —
+  without this, `notifyPartner()` would silently no-op for any lead routed here (confirmed by
+  reading that function directly).
+- `embed_config`: `primary_intent: pricing`, theme colour `#0f766e` (matches come-to-fiji's
+  own Tailwind teal-700 brand colour), a real greeting describing what it actually does.
+
+### 2. Seeded 6 real `knowledge_items` — same Layer 4 pattern as any partner, no special path
+Found the network already has a live, working endpoint for exactly this
+(`POST /knowledge-add` on `fiji-chat-widget`, same one referenced in Session 51's
+"lagi-knowledge-push-92.html" note) — it computes the embedding, upserts to Vectorize, and
+writes both `knowledge_queue` and `knowledge_items` in one call. Used it directly rather than
+reimplementing embedding logic — genuinely the same path any partner's knowledge goes through,
+zero cometofiji-specific code. 6 real Q&A pairs written from a traveller's likely phrasing,
+covering AI itinerary planning, live Duffel flight comparison, and the Budget/Best Value/Premium
+package tiers (facts confirmed real from come-to-fiji's own BUILD.md, not invented). Verified
+live via `GET /knowledge-list?partner_id=op_cometofiji_001` — all 6 present.
+
+### 3. Verified the generic cross-partner recommendation framework against the actual live code
+The exact "all-to-James to shadow-routing to direct-to-partner three-phase graduation
+framework" named in this task's brief does not exist anywhere in this repo — searched
+`docs/VAKAVITI-BRAIN.md`, `docs/BUILD.md`, and the whole repo by grep for that terminology and
+close variants; nothing matches. Flagging this directly rather than assuming it was built in a
+session that predates this repo's history.
+
+What does exist, confirmed by reading `workers/chat-widget/worker.js` directly (not
+docs) — two separate mechanisms, only one of which was actually generic:
+1. Lead attribution/notification (`partner_referrals` + `contact_channels`, joined by
+   intent) — genuinely D1-driven, works for all 29+ partners without special-casing. This part
+   is real and correctly generic.
+2. The visible "Chat with X on WhatsApp" referral button shown in the widget — hardcoded
+   to exactly 5 partner names/WhatsApp numbers directly in if/else JS on the public
+   `lagi.vakaviti.ai` page. Not reading from D1 at all. cometofiji.com could never have appeared
+   here without a real code change — and it has no WhatsApp number anyway, so the button itself
+   needed a second type (website link), not just a data-source fix.
+
+A second real gap found while verifying #1 more closely: all 118 `partner_referrals` rows
+in the live database are scoped to individual partner-embedded widget site_ids (each
+partner's own widget cross-referring to others) — zero rows exist for `site_id = lagi_public`,
+the standalone public concierge page. The "generic, D1-driven" mechanism was real code that had
+simply never been given any public-page data to route with — every public-page referral to date
+has been running on the hardcoded 5-name fallback or keyword-matching, not the D1 path, despite
+that path existing and working correctly once given rows to find.
+
+A third finding, specific to a partner literally named "Come to Fiji": the D1 lookup's own
+keyword-matching fallback (used when no explicit `partner_referrals` row exists) matches partner
+name-words against conversation text — for this partner, that includes the bare word "fiji",
+which appears in nearly every message on a Fiji-only platform. Raised this with James directly;
+his call was to add explicit `partner_referrals` rows (avoiding the fallback being hit at all
+for this partner) rather than patching the shared keyword-matcher itself.
+
+No `flights` intent existed in `detectIntent()` at all — the closest matches, `pricing` and
+`booking`, are both far too broad (shared by every partner's own pricing/booking questions,
+resort pricing included). Adding cometofiji.com's `partner_referrals` row under either of those
+would have hijacked routing for unrelated questions across the whole network. Added a real
+`flights` intent (new regex branch, purely additive, verified it does not change any existing
+intent's classification — see verification below) so cometofiji.com could be referenced by a
+precise, collision-free intent instead.
+
+### 4. Generalized the referral-button pattern (Task 3 hardening + Task 4 attribution)
+James's explicit direction, asked directly rather than assumed: generalize the button now,
+not defer it — this is what Task 4 was actually asking for. Designed as 5 small, additive,
+surgical changes (matching the file's own standing rule: surgical edits only via
+find-and-replace, verified by actual execution, not `node --check` alone):
+1. `detectIntent()` — new `flights` branch, inserted before the existing `transfers` check.
+2. The partner-embedded referral SELECT query — added `p.website_url` to the existing column list.
+3. The public-page `routedPartner` logic — tries a real D1 lookup (`partner_referrals` scoped to
+   `site_id = lagi_public`) first; only falls through to the existing hardcoded 5-name
+   chain, completely unchanged, if D1 has no match for that intent. Zero regression risk for the
+   5 existing hardcoded partners.
+4. and 5. Both button-construction sites (public and partner-embedded) — generalized to emit a
+   website-link button (url + "Visit X" label) when a matched partner has no WhatsApp number,
+   alongside the existing WhatsApp-link button for partners that do.
+
+Verified all 5 changes by actual local Node execution (mirroring the file's own real code
+exactly, saved at `test_referral_logic.js` in this session's scratchpad) before touching the
+live Worker — every existing hardcoded partner's routing behaviour reproduced unchanged, the
+new `flights` intent classified correctly without disturbing any existing intent's precedence,
+and both new website-link button paths produced the correct output shape.
+
+NOT YET DEPLOYED — needs James to apply manually. Attempted the live edit via Claude's own
+browser automation in the Cloudflare dashboard editor first; hit a near-miss where a stray
+keypress sequence briefly lost editor focus and triggered the dashboard's own global keyboard
+shortcuts (opened a "Keyboard Shortcuts" modal, navigated away from the editor) rather than
+typing into the code. No damage occurred — confirmed the live Worker version (4b34daf6) was
+unchanged before and after, since nothing was ever clicked Deploy. Given this is a live Worker
+serving 29+ partners and this repo's own history documents real incidents from risky Worker
+edits, judged that continuing to force browser automation on a genuinely fragile editor surface
+was the wrong call versus this project's own proven-safe pattern: give James exact Find and
+Replace text to paste himself via the Cloudflare dashboard editor's own Ctrl+H. The 5 exact
+Find/Replace blocks were provided to James directly in chat this session (not duplicated here to
+avoid drift between two copies) — apply via Cloudflare dashboard, Workers and Pages,
+fiji-chat-widget, Edit code, Ctrl+H, paste each pair, Replace, repeat five times, then Deploy.
+
+### Added `partner_referrals` row (Task 3/4 data side)
+`site_id = lagi_public`, `intent_category = flights`, `referred_partner_id =
+op_cometofiji_001`, `priority = 1`, `active = 1` — the first-ever row scoped to the public
+page for any partner (see the gap found above). Inert until the code changes above are
+deployed; safe to have live in the meantime, zero effect until the code reads it.
+
+### Verification performed
+- All 6 `knowledge_items` confirmed live via `GET /knowledge-list?partner_id=op_cometofiji_001`.
+- Live end-to-end test on the public page, before the code fix: asked about comparing flight
+  prices to Fiji alongside total trip cost with tours included. Lagi's natural-language reply
+  correctly and specifically described cometofiji.com using the real facts just seeded (live
+  flight comparison, cheapest-dates calendar, total-trip-cost view, Budget/Best Value/Premium
+  tiers) — proving the knowledge/RAG layer works with zero special-casing. But `intent` came
+  back "tours" (no `flights` intent existed yet) and `referral_btn` showed "Chat with Tour Fiji
+  Tours on WhatsApp" — the old hardcoded fallback, not cometofiji.com — a live, reproduced,
+  concrete proof of exactly the gap described above.
+- Live test on an actual partner-embedded widget (Nadi Airport Transfers, site_id
+  op_nadi_001): asked about comparing flight prices before booking a transfer. Result was
+  worse than the public page — Lagi recommended Google Flights, Skyscanner, and Kayak
+  (external competitors, outside the network entirely), referral_btn null. Partner-embedded
+  widgets use a narrower system prompt scoped to that one partner plus its single cross-referred
+  partner (via `partner_referrals` keyed to that specific site_id) — cometofiji.com has no
+  row linking from op_nadi_001 (or any other individual partner) to it, so this session's
+  fix does not extend cross-referral awareness into individual partner-embedded widgets. Flagged
+  as a real, separate follow-up below, not silently expanded into this session's scope.
+- `node --check` plus, per the file's own standing rule, actual local execution of the new
+  logic both passed.
+- Full re-test on lagi_public, confirming the fix once James deploys it, is the concrete
+  next verification step — not done yet since the code is not live.
+
+### Status after this session
+- Done: `op_cometofiji_001` fully registered — `partners`, `embed_config`, `contact_channels`, real
+  knowledge, all real data, zero special-casing.
+- Done: Real site_id (`op_cometofiji_001`) ready to hand to the come-to-fiji repo's own session for
+  the widget embed (Brief 2, per this task's own note — not built here).
+- Pending: The referral-button generalization is designed, tested, and documented but not yet live.
+  James needs to apply the 5 Find/Replace changes given to him in chat and click Deploy.
+- New follow-up, not started: partner-embedded widgets have no path to recommend
+  cometofiji.com at all yet (or any cross-partner referral for the public page's newly-generic
+  mechanism) — would need explicit `partner_referrals` rows from each individual partner's
+  site_id, a real, separate, larger task (up to 29+ rows) if this is wanted.
+- Removed the broken-filename junk file from `partners/` (see top of this session).
+
+### Immediate next steps (in order)
+1. James: apply the 5 Find/Replace changes (given in chat) in the Cloudflare dashboard, click Deploy.
+2. Claude, once deployed: re-run the exact same lagi_public test from this session and
+   confirm intent "flights" plus referral_btn pointing at https://cometofiji.com.
+3. Decide whether to extend cross-referral awareness into individual partner-embedded widgets
+   (the Nadi Airport Transfers finding above) — a real, separate scoping decision, not a given.
+4. Everything else already queued in VAKAVITI-BRAIN.md section 3 (P2-P21), untouched this session.
