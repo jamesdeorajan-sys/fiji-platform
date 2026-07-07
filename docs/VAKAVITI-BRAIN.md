@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 51 CLOSED — 2026-07-05
+# Last updated: Session 51 CLOSED — 2026-07-05 (cross-reference note added 2026-07-07)
 
 ---
 
@@ -18,6 +18,21 @@
 **Cloudflare Account ID:** 595101df2c562b3c65595420d43f9fe1
 **Operating entity:** AJ Group Enterprises Pty Ltd
 **Ground ops:** Ben (Fiji) — company registration for Fiji Tourism Guide Ltd
+
+---
+
+## 1.5 RELATED PROJECT — Come to Fiji (separate repo)
+
+**Repo:** github.com/jamesdeorajan-sys/come-to-fiji (private) — own `BUILD.md` in that repo is the source of truth for this project specifically, not this file.
+
+**What it is:** Standalone Next.js flight-search + trip-planner site at `cometofiji.com`. Not part of the core Lagi/Worker platform, but part of the same revenue funnel — it funnels tour/transfer bookings directly into `fijitourtransfers.com`, one of this network's own 50+ partner sites.
+
+**Status as of 2026-07-07 (9 build sessions):** Live, SSL, custom domain connected. Fixed a critical bug where all 14 API routes were dead code (built as classic Cloudflare Pages Functions but the site builds via `@cloudflare/next-on-pages`, which ignores that convention entirely — converted all 14 to real Next.js Route Handlers). Real tour/transfer inventory (51 tours, 20 transfers) synced from `fijitourtransfers.com`'s WooCommerce Store API. Real live flight pricing via Duffel, with correct multi-passenger pricing (adults/children/infants) verified across flights, tours, and transfers. Full AI-visibility infrastructure built and submitted to Google Search Console + Bing (llms.txt, robots.txt, server-rendered JSON-LD schema, real D1-backed sitemap) — same pattern as this network's other 39 properties.
+
+**Known open items (non-blocking):** hotel pricing has no provider (Hotellook was shut down by Travelpayouts); no flight-booking checkout flow yet (Duffel Links exists but costs A$149/mo — deferred, plan is to deep-link out to a booking site instead since flights aren't the margin driver here, tours/transfers are); a couple of small DNS/linking cleanups queued.
+
+**Why this matters to Vakaviti:** same partner network, same operator (James), same Anthropic/Claude-assisted build pattern — worth checking in on periodically from this side, since its health directly affects `fijitourtransfers.com` booking volume.
+
 
 ---
 
