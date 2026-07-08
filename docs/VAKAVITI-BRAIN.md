@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 51 CLOSED — 2026-07-05 (cross-reference note added 2026-07-07)
+# Last updated: Session 52 CLOSED — 2026-07-07/08
 
 ---
 
@@ -291,6 +291,16 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 ---
 
+**P23 — 🆕 Expand cometofiji.com partner-referral to the other 29+ partner-embedded widgets**
+- Session 52 registered cometofiji.com as a real generic partner and verified the referral path works from the *public* lagi.vakaviti.ai page. The 29+ partner-embedded widgets (Nadi Airport Transfers, etc.) don't yet have this route — needs an explicit `partner_referrals` row per partner's own `site_id`.
+- Deliberately deferred rather than expanded same-session as the first working case (Session 52 rule: verify the mechanism on one real case with small blast radius before scaling to every live partner). Now that it's verified end-to-end, this is ready to pick up.
+- While doing this, also fix the underlying keyword-matching fallback fragility if scope allows (see Known Issues) — not required to complete P23, but the natural moment to address it since you'll already be in this code.
+
+**P24 — 🆕 `/config` endpoint missing `contact_email` in its SELECT**
+- One-line SQL fix. Network-wide — affects every partner's widget, not just one. Missing button (Email quick-action), not a broken function — low urgency, easy win whenever picked up.
+
+---
+
 ## 4. STRATEGIC BETS
 
 **The big bet:** Vakaviti.ai — Fiji's AI tourism intelligence network. Zero commission entry strategy.
@@ -358,6 +368,9 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
+| `/config` endpoint never SELECTs `contact_email` from D1 | **NEW Session 52** | Network-wide gap, not partner-specific — no partner's widget can show its "Email" quick-action button even when a real email is on file. One-line SQL fix, low urgency (missing button, not broken function). See Section 3 P24. |
+| Keyword-matching fallback in cross-partner referral routing can misattribute leads for any partner whose name contains a common conversational word (e.g. "fiji") | **NEW Session 52, flagged not fixed** | Only avoided for cometofiji.com specifically by giving it explicit `partner_referrals` rows (Step 1 lookup, never falls through to the fragile fallback). The underlying fallback logic itself is unchanged and shared by all 29+ partners. See Section 3 P23. |
+| Other 29+ partner-embedded widgets (e.g. Nadi Airport Transfers) have no cross-referral path to cometofiji.com | **NEW Session 52** | Only the public lagi.vakaviti.ai page routes to cometofiji.com so far. Needs explicit `partner_referrals` rows per partner's own site_id — deliberately deferred to its own session rather than expanding same-session as the first working case. See Section 3 P23. |
 | discoverfiji.ai DNS not connected to Vercel | ~~P2~~ **SUPERSEDED Session 48** | discoverfiji.ai was never actually added to the Vercel project at all (only existed as default vercel.app URL). Live domain is now discover.vakaviti.ai (subdomain, connected and working). discoverfiji.ai redirect is now P4 (Section 3), low urgency since nothing currently points there. |
 | Supabase/OpenAI accounts not yet created for DiscoverFiji.ai | ~~P2~~ **RESOLVED Session 48 (dropped, not built)** | Migrated to a dedicated D1 database (discoverfiji-content) instead, reached via D1 REST API. No Supabase/OpenAI accounts needed — neither vendor is used anywhere in this codebase anymore. |
 | DiscoverFiji.ai's 500 destination pages + Lagi knowledge-ingestion pipeline not started | **IN PROGRESS Session 48** | 6 of ~500 destination pages live (18 real tours), template proven and AI-visibility infrastructure complete. Knowledge-ingestion pipeline into Lagi's `/knowledge-add` still not started — needs the human-review step designed first. |
@@ -405,6 +418,31 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 52 — 2026-07-07/08 — CLOSED
+**Registered cometofiji.com as a real, generic Vakaviti partner; made Lagi the centralized concierge for it in both directions; found and fixed three separate real bugs along the way.**
+
+**Context:** James's `come-to-fiji` project (separate repo, own D1, cometofiji.com — a flight-search/AI-itinerary site funneling bookings into fijitourtransfers.com) had spent this same overall session going from broken (dead API routes, $0 pricing everywhere) to genuinely functional (real tour/transfer sync, real Duffel flight pricing, full AI-visibility stack). Once that was solid, James raised a bigger strategic idea — a "Fiji Brain™" concept — which correctly resolved to: this belongs at the Lagi/platform level, not duplicated inside one funnel site, since Lagi already has the real infrastructure (self-learning RAG loop, knowledge-gap detection, per-partner scoping) this concept needs. That reframing is what produced this session's actual scope: make cometofiji.com a first-class partner in the existing system, both as something Lagi can recommend outward, and as a site that has Lagi embedded on it.
+
+**Validated Lagi's real capabilities directly from `workers/chat-widget/worker.js` before building anything** (not from BUILD.md's summary of them) — confirmed real RAG retrieval via Vectorize, a genuine Layer 4 self-learning loop (every conversation's Q&A gets embedded into Vectorize AND written to a `knowledge_items` D1 table), a `knowledge_queue` gap-detection mechanism (`avg_rag_score`, `asked_count`), and per-partner `coverage_score`/`use_count` tracking. Also confirmed directly: **Come to Fiji and Lagi were, until this session, two fully separate systems** — different D1 databases, zero data flow either direction — despite sharing an owner.
+
+**What got built, registered, and verified live:**
+1. `cometofiji.com` registered as partner `op_cometofiji_001` in the real `partners`/`embed_config`/`contact_channels` tables (schema read first, not guessed) — no special-casing anywhere in the Worker, same generic mechanism every other operator uses.
+2. 6 real `knowledge_items` seeded describing what it does and when to recommend it (flight price comparison, full AI itinerary planning, budget/value/premium trip-cost tiers) — verified present via `/knowledge-list`.
+3. A new `flights` intent added to `detectIntent()` — existing `pricing`/`booking` intents were too broad and already shared by every partner, would have caused collisions.
+4. **Found and fixed a real pre-existing gap** (not introduced this session): the public lagi.vakaviti.ai page's referral button was hardcoded to 5 specific partner names/numbers directly in JS, not D1-driven, and had zero `partner_referrals` rows at all. Generalized it: D1 lookup first (works for any partner, any button type — including a new website-link type for partners without WhatsApp, like this one), hardcoded 5-name logic left untouched as the fallback only when no D1 row exists. James deployed the fix live via the Cloudflare dashboard (Ctrl+H find/replace, since this touches a live Worker serving 29+ real partners) after explicit confirmation, then a 6th fix was found and needed — a missed `BOOKING_INTENTS` allow-list entry — before `intent: "flights"` correctly routed end-to-end.
+5. **Found and fixed a second real gap while implementing #4**: the keyword-matching fallback used when no explicit `partner_referrals` row exists matches partner name-words against conversation text — for a partner literally named "Fiji" content, on a Fiji-only platform, "fiji" appears in nearly every conversation, which would have caused broad misattribution. Fixed by giving cometofiji.com explicit `partner_referrals` rows so it's always found via the reliable Step 1 D1 lookup, never falling through to that fallback. **The underlying fallback logic itself is unchanged and still shared by all 29+ partners** — flagged as a distinct follow-up (P23/Known Issues) since "fiji" is very unlikely to be the only partner name capable of colliding with common conversation words as the network grows.
+6. Verified end-to-end, not just claimed: a plain flight-price question on the public page correctly returns `referral_btn: {"url":"https://cometofiji.com","label":"Visit Come to Fiji"}`.
+7. **On the come-to-fiji side:** removed the site's old homegrown `ChatWidget.tsx`/`/api/chat` (calling OpenAI directly) and replaced it with the standard Lagi embed in `src/app/layout.tsx`, using site_id `op_cometofiji_001` — matching the exact pattern every other partner site uses. **This also fixed a live, real bug as a side effect**: that old widget's `OPENAI_API_KEY` had never been set, so it was leaking the literal error text `"OPENAI_API_KEY not set..."` directly to any real visitor who clicked it. Verified in a real browser (not just curl) that Lagi now renders, greets, and holds a grounded conversation referencing Come to Fiji's actual features.
+8. **Found and fixed a third real gap during that same verification**: `cometofiji.com` wasn't in the chat Worker's CORS allow-list — would have made the widget look fully deployed while being completely non-functional for real visitors. Fixed live in the Cloudflare dashboard, re-verified immediately.
+
+**Not yet done, explicitly carried forward:**
+- P23 — expand the now-verified `partner_referrals` mechanism to the other 29+ partner-embedded widgets (only the public page routes to cometofiji.com so far), and ideally harden the keyword-fallback fragility at the same time.
+- P24 — `/config` endpoint never selects `contact_email`, so no partner's widget can show its Email quick-action button network-wide, even when a real email is on file. One-line SQL fix.
+- 14 pre-existing, unrelated TypeScript-checker warnings around worker.js line 1132-1133 (lead-scoring block) — cosmetic, noted, not touched.
+- On the come-to-fiji side specifically (own repo/BUILD.md, summarized here for cross-reference only): `www.cometofiji.com` DNS still resolves to a stale Namecheap parking page; the "Select Flight" button has no destination yet (Duffel Links' A$149/mo cost was declined, plan is to deep-link to an external booking site instead — not yet built); hotel pricing has no vendor (Hotellook was shut down by Travelpayouts); 2 of 51 tours (cruise-ship excursions) link to a 404 URL format; tour/transfer pricing now correctly scales by party size but no tours are yet tagged "romantic" for the honeymoon planner.
+
+**Key learning, worth carrying into any future partner-onboarding work:** two of this session's three real bugs (the keyword-fallback collision risk, the CORS allow-list gap) were the kind that would have looked completely fine on inspection — code runs, no error thrown — while silently failing or misbehaving for real visitors. Both were only caught by asking "does this actually still work for the existing 5 partners" and "does this actually render in a real browser," not by reading the diff. Worth treating as a standing verification habit for any future generic-mechanism change touching the live Worker.
 
 ### Session 51 (continued) — SEO/AI-visibility audit — 2026-07-05
 Asked to find fast, scalable solutions to grow AI search visibility beyond the 3 hand-built Knowledge Hub pages. Built a new standalone `seo-visibility-audit` Worker rather than working partner-by-partner manually — reuses the same "check don't guess" discipline from earlier in the session. First version tried to scan all 39 domains in one request and silently hung (no logged errors) — root-caused to Cloudflare's per-request subrequest/time limits given ~1,500 potential outbound fetches, and rebuilt as a safe 5-domains-per-batch design with a `next` URL to continue.
