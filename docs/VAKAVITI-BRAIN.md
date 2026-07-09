@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 53 CLOSED — 2026-07-09
+# Last updated: Session 54 (research/planning) — 2026-07-09
 
 ---
 
@@ -227,6 +227,19 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 **P27 — Decide Yasawa Islands region-taxonomy gap**
 - Quick decision, not urgent. See Known Issues.
 
+**P28 — 🆕 WhatsApp Catalog integration for partners**
+- Real finding from a deep strategic cross-check (Session 54, before committing to further build): WhatsApp Business's native Catalog feature (up to 500 products/services, images, price, description, browsable directly inside a chat thread) requires ZERO payment integration — fits the "we will not take any payments" decision exactly, while giving travelers structured browsing instead of unstructured chat-only discovery. Real data: businesses moving from chat-only to structured catalog browsing see meaningfully higher conversion; 70-80% of customers abandon when forced to leave the chat entirely. Low effort, no new infrastructure risk, genuinely strengthens the WhatsApp-centralization vision. Should be built alongside P25, not after it — the same partner data schema work unlocks both.
+- Confirms two earlier decisions were right for reasons not fully visible at the time: native WhatsApp Pay only operates in India/Brazil/Mexico/Indonesia — not Fiji — so "no payments" wasn't just a policy choice, in-chat native payment literally isn't available in this market yet regardless.
+
+**P29 — 🆕 Realistic "Revenue Agent": intent-based lead detection**
+- From reviewing an external "AI operating system" proposal (Session 54) — most of that document specs enterprise multi-agent architecture (Chief Orchestrator, formal Agent Registry) that's a genuine mismatch for a solo-founder + session-based build cadence, and was NOT adopted. But one idea from it is genuinely valuable in realistic form: extend Lagi's existing `intent` field/detection logic (already real in worker.js) to specifically flag transfer/booking intent, log it to a simple table, and send James a daily digest of hot leads. Not a new "agent" — a small extension of what already exists. Directly operationalizes revenue-bias CTA logic (own properties prioritized where honestly applicable) discussed in the same session.
+
+**Known-good AEO/schema findings to apply to any future Answer Engine work (P26/Group Intelligence Phase 3), from Session 54 research:**
+- Four-layer schema stack (foundation: Organization/WebSite/WebPage/BreadcrumbList; content: Article/FAQPage/HowTo; authority: Person/AggregateRating/Review; business: LocalBusiness/Service/Offer) shows meaningfully higher AI-citation rates than FAQPage schema alone — current AI-visibility work across the network only used the content layer, missing authority and business layers entirely.
+- Explicitly allow `OAI-SearchBot` in robots.txt (distinct from `GPTBot` — easy to miss, matters specifically for ChatGPT Search citation).
+- Set realistic expectations: ~93% of AI search sessions end without a click — value is mostly brand-authority/citation, not raw traffic. Measure by citation rate and conversion quality of what traffic does arrive, not volume.
+- Content-generation safety rule (from reviewing the same external proposal): AI-drafted answer content should be reviewed by a human before publishing, at least initially — auto-published thin content actively hurts AI citation rates per current research, not just a stylistic preference.
+
 **P1 — ~~Lagi has no page/tour-level awareness~~ RESOLVED Session 51, verified live**
 - Fixed: widget now sends `page_url`/`page_title`/`page_heading` with every message; Worker grounds the system prompt to the exact page. Verified live on fijitourtransfers.com/Sawa-I-Lau — Lagi now answers about the correct tour and honestly declines to guess on details it lacks, instead of describing an unrelated tour.
 - Still the prompt-level fix, not the structural one — once P3 (WooCommerce export) lands and a real tours table exists, upgrade to matching `page_url` directly against a tour record for higher precision.
@@ -379,6 +392,8 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
+| WhatsApp is rolling out usernames + a business-scoped user ID (BSUID) in 2026 to eventually replace phone numbers as the customer identifier | **NEW Session 54, forward-looking, not urgent yet** | If Lagi's attribution/lead-tracking currently keys off phone number as the primary identifier, this will silently break for any customer who adopts a username (webhook payloads won't always include a phone number). Fix: store BSUID alongside phone number now, before rollout is widespread — cheap now, expensive to retrofit later. |
+| Unconfirmed: does Lagi's WhatsApp flow disclose to customers that they're chatting with an automated assistant? | **NEW Session 54, needs verification, not confirmed either way** | Meta's WhatsApp Business Platform terms require this disclosure. Genuinely don't know current state — check before assuming compliant. |
 | lagi.vakaviti.ai's entire listings directory (Hot Deals, Partner Offers, Fiji Experiences, DEAL_TRIGGERS keyword array) is 100% hardcoded HTML/JS | **NEW Session 53** | No D1 or partner-API call exists anywhere on this page — same shape as the Session 52 `partner_referrals` gap. Adding partner #10+ still means editing this HTML by hand. This is the real blocker to "maximum partners, fast" — see Section 3 P25. |
 | Blue Lagoon Beach Resort is tagged "Yasawa Islands," which isn't in the agreed region taxonomy (7 primary + 8 secondary) | **NEW Session 53, flagged not resolved** | Added as an honest extra chip rather than mis-tagged under a nearby mainland region. Needs a decision: formally extend the taxonomy, or fold under an existing region. |
 | Cloudflare Web Analytics beacon on lagi.vakaviti.ai has a literal placeholder token (`"token": "REPLACE_WITH_CF_ANALYTICS_TOKEN"`) | **NEW Session 53** | Found during PWA source review. Means zero analytics have ever been collected on this page. Needs a real token from the Cloudflare Web Analytics dashboard — can't be fixed by Claude Code alone. |
@@ -432,6 +447,15 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 54 — 2026-07-09 — Strategic review/research, no code changes
+**Deep cross-check of "what's the best way forward for Lagi" before committing to further build — deliberately a research/planning session, not a build session, at James's explicit request to verify all better AI-driven approaches were considered first.**
+
+Reviewed three separate strategic proposals in sequence: (1) applying the Gojek/Grab super-app pattern to Fiji (concluded: apply the *pattern*, not the *product* — Lagi shouldn't compete with existing local ride-hailing incumbents like CANGO, and James explicitly reversed an earlier payment-layer direction — "we will not take any payments"); (2) a "Group Intelligence System" proposal (Question Database → Demand Dashboard → Answer Engine → Fiji Brain) — found to be ~60-70% already built as Lagi's existing Layer 4 self-learning loop (`knowledge_queue`/`knowledge_items`), verified against the real schema rather than assumed; (3) an external "AI Destination Operating System" document proposing 10 build priorities including a formal Agent Registry and Chief Orchestrator Agent — assessed as architecturally premature for a solo-founder + session-based build cadence, with only one idea (a realistic "Revenue Agent" via intent detection) adopted in simplified form.
+
+**Additional research performed specifically to answer "have all better AI-driven approaches been considered" before finalizing:** current (2026) Answer Engine Optimization / Generative Engine Optimization best practice (validated the existing Phase 3 answer-page structure, added the missing schema layers — see Section 3); single-destination/small-island AI tourism platform landscape (found no direct comparable exists — combined with industry data showing 72% of destination professionals feel ill-equipped to adopt AI tools at all, confirms Lagi is genuinely ahead of the field, not behind an established playbook); WhatsApp Business commerce capabilities specifically (found WhatsApp Catalog — native, free, zero payment integration required — as a genuinely new, high-value, low-effort addition; confirmed native WhatsApp Pay doesn't operate in Fiji's market at all, meaning the "no payments" decision was also technically correct, not just a policy choice; found a real forward-looking risk in WhatsApp's 2026 username/BSUID rollout worth noting now — see Known Issues).
+
+**Net result:** the priority sequence from Session 53 (P25 self-serve onboarding → P26 D1 migration → Group Intelligence phases) holds, with three additions — P28 (WhatsApp Catalog, build alongside P25), P29 (realistic Revenue Agent via intent detection), and a documented AEO schema/safety checklist for whenever Phase 3 (Answer Engine) work actually starts. No code was touched this session — purely research and priority-setting, correctly kept separate from execution.
 
 ### Session 53 — 2026-07-09 — CLOSED
 **Closed a real standing gap (lagi.vakaviti.ai had zero Git history, ever), then built and shipped a genuine installable PWA rebuild of lagi.vakaviti.ai — verified live, then honestly scorecarded against the Gojek/Grab strategic review from earlier this session.**
