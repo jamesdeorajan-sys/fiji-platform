@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 52 CLOSED — 2026-07-07/08
+# Last updated: Session 53 CLOSED — 2026-07-09
 
 ---
 
@@ -216,6 +216,17 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 > Claude: read this section first. Platform is now POST-LAUNCH (July 1 passed). Priorities shift from launch blockers to growth and open technical debt.
 
+**P25 — 🆕 Highest priority: self-serve partner onboarding for lagi.vakaviti.ai**
+- The real bottleneck identified this session: registering one partner (cometofiji.com, Session 52) took a full Claude Code session — manual D1 schema checks, hand-written rows. That does not scale to "maximum partners, fast" in a small market. Needs a simple form (business name, WhatsApp number, category, region, description) writing directly to D1 — no code session per partner, ever again.
+- This also unblocks P23 (expanding partner_referrals to the other 29+ partners) and the Session 53 hardcoded-listings gap (P26) — genuinely the critical path for everything else in the Gojek/Grab-pattern roadmap.
+
+**P26 — 🆕 Migrate lagi.vakaviti.ai's hardcoded directory to real D1 data**
+- Session 53's PWA rebuild correctly kept the existing hardcoded listings rather than inventing a fake data layer, but flagged this clearly: no D1/API call exists anywhere on this page. Once P25 (self-serve onboarding) exists, this becomes the natural next step — wire the new region × category directory UI to read real partner rows instead of a hand-maintained `LISTINGS` array.
+- Related cleanup once a real data source exists: unify `LISTINGS` and the protected `DEAL_TRIGGERS` array, which were deliberately kept duplicated this session as a safety tradeoff (see Session 53 writeup).
+
+**P27 — Decide Yasawa Islands region-taxonomy gap**
+- Quick decision, not urgent. See Known Issues.
+
 **P1 — ~~Lagi has no page/tour-level awareness~~ RESOLVED Session 51, verified live**
 - Fixed: widget now sends `page_url`/`page_title`/`page_heading` with every message; Worker grounds the system prompt to the exact page. Verified live on fijitourtransfers.com/Sawa-I-Lau — Lagi now answers about the correct tour and honestly declines to guess on details it lacks, instead of describing an unrelated tour.
 - Still the prompt-level fix, not the structural one — once P3 (WooCommerce export) lands and a real tours table exists, upgrade to matching `page_url` directly against a tour record for higher precision.
@@ -368,6 +379,9 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
+| lagi.vakaviti.ai's entire listings directory (Hot Deals, Partner Offers, Fiji Experiences, DEAL_TRIGGERS keyword array) is 100% hardcoded HTML/JS | **NEW Session 53** | No D1 or partner-API call exists anywhere on this page — same shape as the Session 52 `partner_referrals` gap. Adding partner #10+ still means editing this HTML by hand. This is the real blocker to "maximum partners, fast" — see Section 3 P25. |
+| Blue Lagoon Beach Resort is tagged "Yasawa Islands," which isn't in the agreed region taxonomy (7 primary + 8 secondary) | **NEW Session 53, flagged not resolved** | Added as an honest extra chip rather than mis-tagged under a nearby mainland region. Needs a decision: formally extend the taxonomy, or fold under an existing region. |
+| Cloudflare Web Analytics beacon on lagi.vakaviti.ai has a literal placeholder token (`"token": "REPLACE_WITH_CF_ANALYTICS_TOKEN"`) | **NEW Session 53** | Found during PWA source review. Means zero analytics have ever been collected on this page. Needs a real token from the Cloudflare Web Analytics dashboard — can't be fixed by Claude Code alone. |
 | `/config` endpoint never SELECTs `contact_email` from D1 | **NEW Session 52** | Network-wide gap, not partner-specific — no partner's widget can show its "Email" quick-action button even when a real email is on file. One-line SQL fix, low urgency (missing button, not broken function). See Section 3 P24. |
 | Keyword-matching fallback in cross-partner referral routing can misattribute leads for any partner whose name contains a common conversational word (e.g. "fiji") | **NEW Session 52, flagged not fixed** | Only avoided for cometofiji.com specifically by giving it explicit `partner_referrals` rows (Step 1 lookup, never falls through to the fragile fallback). The underlying fallback logic itself is unchanged and shared by all 29+ partners. See Section 3 P23. |
 | Other 29+ partner-embedded widgets (e.g. Nadi Airport Transfers) have no cross-referral path to cometofiji.com | **NEW Session 52** | Only the public lagi.vakaviti.ai page routes to cometofiji.com so far. Needs explicit `partner_referrals` rows per partner's own site_id — deliberately deferred to its own session rather than expanding same-session as the first working case. See Section 3 P23. |
@@ -418,6 +432,19 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 53 — 2026-07-09 — CLOSED
+**Closed a real standing gap (lagi.vakaviti.ai had zero Git history, ever), then built and shipped a genuine installable PWA rebuild of lagi.vakaviti.ai — verified live, then honestly scorecarded against the Gojek/Grab strategic review from earlier this session.**
+
+**Part 1 — Git pipeline for lagi.vakaviti.ai, finally.** `vakaviti-lagi-public` (the Cloudflare Pages project behind `lagi.vakaviti.ai`) had never been connected to any repo — every prior change was a manual dashboard upload, meaning no version history existed for this page at all. Fixed properly, not shortcut: fetched the real raw served HTML directly via curl (not a rendered/stripped summary), checked it against a full content checklist from an independent fetch, committed it as `docs/lagi-public-live-backup/index.html` with a `.gitattributes` LF pin (Windows `autocrlf` would otherwise silently drift future checkouts from the original bytes), then connected the Cloudflare Pages project to this repo via the dashboard. Verified end-to-end post-connect: byte-identical content, full interactive re-test (chat, WhatsApp button, external partner links), and a real device check on James's phone for mobile layout (tool-based viewport resizing proved unreliable — flagged honestly rather than faked, same discipline as Session 10's come-to-fiji work).
+
+**Part 2 — Full PWA/app-shell rebuild, on a branch, safely.** Since Part 1 now means any push to `main` auto-deploys to production instantly (previously a manual, deliberate step), all rebuild work happened on a `pwa-rebuild` branch with its own Cloudflare Pages preview URL — confirmed production was never touched mid-build by diffing it against the preview. Delivered: real PWA fundamentals (manifest, service worker, installable icon set), a persistent bottom-nav app shell (Home/Categories/Ask Lagi/Saved), a region × category directory replacing the old single scrolling feed, in-app detail screens that demote the external "Book direct" link to a secondary action, and all six supporting features agreed earlier (WhatsApp handoff status text, honest non-fabricated ratings, party-size stepper, opt-in geolocation, honestly-detected push support, non-monetary visitor stamps). Protected Worker code and nearly all existing JS functions verified byte-identical via direct diff — only `heroAsk`/`heroSearch` were adapted, and only to call the new view-switcher instead of `scrollIntoView`.
+
+**Real findings surfaced, not silently patched:** (1) the entire listings directory is 100% hardcoded HTML/JS — no D1 or partner-API call exists anywhere on this page, the same shape as Session 52's `partner_referrals` gap, and the real reason partner #10 still can't be added without a code session; (2) Blue Lagoon Beach Resort sits in the Yasawa Islands, outside the agreed region taxonomy — added as an honest extra chip rather than mis-tagged; (3) the Cloudflare Analytics beacon has sat with a literal placeholder token this whole time — zero analytics ever collected on this page, found incidentally during source review.
+
+**Merged and verified live**, with one genuinely useful process note: post-merge, an independent re-fetch (via a different tool than the one used to verify the merge itself) showed stale pre-PWA content twice in a row, while Claude Code's own fresh `curl` showed the new content correctly with exact byte/line evidence. Rather than trust either tool blindly, the tie-break was a fresh incognito load on James's actual phone — confirmed the new app shell was genuinely live, and the conflicting fetch was a caching artifact of the *verification* tool, not a real deployment problem. Worth remembering: when two verification methods disagree, a real device beats both.
+
+**Honest scorecard against the Gojek/Grab strategic review (same session, earlier):** most individual front-end features from that review shipped (directory, detail screens, party-size filtering, location-aware discovery, ratings, non-monetary loyalty, push, status tracking). Correctly NOT built: any payment/wallet feature (James explicitly reversed this mid-session — "we will not take any payments"), CANGO ground-transport partnership (explicitly not the aim), food delivery/courier (out of scope from the start). **Not yet built, and the actual next critical-path item:** the centerpiece strategic goal itself — self-serve partner onboarding at scale, real D1-backed listings, and automated dispatch to partners. Tonight built the front door (the PWA experience); the engine room (P25/P26 above) is the next real session, and it's backend/data work, not front-end polish.
 
 ### Session 52 — 2026-07-07/08 — CLOSED
 **Registered cometofiji.com as a real, generic Vakaviti partner; made Lagi the centralized concierge for it in both directions; found and fixed three separate real bugs along the way.**
