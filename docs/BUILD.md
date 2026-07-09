@@ -625,3 +625,161 @@ time rediscovering them, not fixed in this session (out of scope).
 2. Optionally investigate the 14 pre-existing type-checker errors noted above (cosmetic so far,
    but worth a look before they mask a real future error in the same file).
 3. Everything else already queued in VAKAVITI-BRAIN.md section 3 (P2-P21), untouched this session.
+
+---
+
+## Session 53 — 9 July 2026 — First Git pipeline for lagi.vakaviti.ai, then a full PWA/app-shell rebuild on a preview branch
+
+### Part 1 — Closed a real standing gap: lagi.vakaviti.ai had never been in version control
+
+`vakaviti-lagi-public` (the Cloudflare Pages project behind `lagi.vakaviti.ai`) had no Git
+history at all — every prior change was a manual dashboard upload. Fixed in three verified steps:
+1. Fetched the raw served HTML directly (`curl`, literal bytes, not a rendered summary) and
+   confirmed every real content section against a live-fetch checklist (partner cards, tour
+   listings, Fiji Experiences panel, the "Lagi AI Powers" stats block — 440+ facts, 6 languages,
+   29 partner operators, zero commission). Committed as
+   `docs/lagi-public-live-backup/index.html` — the first-ever version-controlled copy of this
+   page. Added a `.gitattributes` rule (`text eol=lf`) pinning that file to LF so future Windows
+   checkouts stay byte-identical to the live fetch instead of drifting via `core.autocrlf`.
+2. James connected `vakaviti-lagi-public` to this repo via the dashboard's "Connect" button
+   (production branch `main`, build output directory `docs/lagi-public-live-backup`, no build
+   command — plain static HTML). Verified end-to-end: re-fetched `lagi.vakaviti.ai` post-connect,
+   byte-identical to the committed backup.
+3. Full interactive verification on the live Git-connected site: `heroAsk()`/`sendMessage()` fire
+   correctly (confirmed via `POST fiji-chat-widget.helpronline.workers.dev` → 200, real Lagi
+   reply), WhatsApp button resolves to the correct `api.whatsapp.com/send` redirect for
+   +61 478 886 145, and the Nadi Airport Transfers "Book direct" link correctly navigates to the
+   real partner site. Mobile-viewport layout could **not** be verified this pass — `claude-in-chrome`'s
+   `resize_window` reported success but never actually changed `window.innerWidth` (stuck at the
+   host's real screen resolution regardless of requested size or zoom-based workarounds) — flagged
+   as a tool limitation rather than faked. Confirmed via source inspection that the page ships real
+   responsive breakpoints (`max-width: 1040px/760px/480px`), so no reason to suspect regression, but
+   this was not live-verified.
+
+### Part 2 — PWA / app-shell rebuild, on branch `pwa-rebuild`, NOT merged to main
+
+Full scope from James's brief: installable PWA fundamentals, bottom-nav app shell, a region ×
+category directory, in-app detail screens, and six supporting features. Safety rule for this
+part: `vakaviti-lagi-public` now auto-deploys `main` straight to production with no review step
+(set up in Part 1), so all work happened on a branch with its own Cloudflare Pages preview URL —
+**production was never touched**, confirmed by diffing `lagi.vakaviti.ai` against the preview
+post-push (zero PWA markers on production, all present on the preview).
+
+**Real finding, flagged rather than silently fixed (frontend-only task, Worker protected):**
+every listing on this page — the 4 Hot Deals cards, 9 Partner Offers cards, 6 mobile chips, 5
+Fiji Experiences cards, and the 11-entry `DEAL_TRIGGERS` keyword array — is 100% hardcoded
+HTML/JS. No D1 or partner-API call exists anywhere on this page. Same shape as the
+`partner_referrals` gap found in Session 52. Worth its own backend session.
+
+**PWA fundamentals:**
+- Real PNG icon set (192/512, plus maskable 192/512 variants for Android adaptive icons)
+  rasterized from the existing 🌺 emoji / `#084d63` brand concept via Pillow — not a fabricated
+  new design, the same visual identity already live, just as real files instead of an inline SVG
+  data URI. `manifest.json` (name/short_name/theme_color `#084d63`/background_color/
+  `display: standalone`). `sw.js` — network-first for the page shell (so updates show up
+  immediately), cache-first for static assets, and **explicitly bypasses every non-GET and
+  every cross-origin request** so it can never intercept the chat Worker's POST contract,
+  WhatsApp links, or partner booking sites.
+- Installability: `beforeinstallprompt` captured, custom "📲 Install" button surfaces in the
+  topbar only when the browser actually fires that event (feature-detected, not assumed).
+
+**App shell:** persistent bottom nav — Home · Categories · Ask Lagi · Saved. `switchView()`
+toggles visibility, no page reloads. The chat panel physically moved out of the old mid-page
+scroll position into its own dominant, full-height "Ask Lagi" screen — `heroAsk()`/`heroSearch()`
+were adapted to call `switchView('chat')` instead of `scrollIntoView`, which is the only change
+to protected code this session. Verified byte-identical everywhere else (`sendMessage`,
+`checkSmartDeal`, `showSmartDeal`, `escHtml`, `renderMarkdown`, `appendMessage`,
+`appendReferralBtn`, `WORKER_URL`/`SITE_ID`/`PARTNER_ID`, the full `DEAL_TRIGGERS` array) via a
+direct diff against the Part 1 backup — zero unexpected changes.
+
+**Region × category directory:** all 9 real listings tagged with region + category into a new
+`LISTINGS` array (deliberately kept separate from `DEAL_TRIGGERS`, not derived from it, so the
+protected keyword-matching function's source stays untouched — a small data duplication traded
+for provable safety; worth unifying in a future cleanup pass). Real filter chips for the full
+agreed taxonomy (7 primary + 8 secondary regions, 11 categories) — chips render even for
+combinations with zero current listings (honest empty state, no fabricated content) rather than
+hiding untagged parts of the taxonomy. **One tagging gap found and flagged, not silently
+resolved:** Blue Lagoon Beach Resort is genuinely in the Yasawa Islands, which isn't in the
+agreed primary/secondary region list. Added as an extra "Yasawa Islands" chip rather than
+mis-tagging it under a nearby mainland region — James should decide whether to formally extend
+the taxonomy.
+
+**In-app detail screens:** tapping a listing opens a full-screen (mobile) / centered (desktop)
+modal built by extending `showSmartDeal()`'s data shape (`populateFields`-equivalent) into a
+richer view — region/category tags, price, description, party-size context, and two clearly
+separated actions: "💬 Ask Lagi about this" (primary) and "Book direct on partner site →"
+(secondary, plain link at the bottom, not a button) — satisfying the requirement that the
+external link stop being the primary tap target.
+
+**Supporting features, all six built:**
+1. WhatsApp handoff status text ("✓ Request sent → Typically responds in 15 min") — delegated
+   click listener on any `wa.me`/`.wa-btn` link, inserted after the link, doesn't block navigation.
+2. Structured ratings — only 2 of 9 listings had real review data in the original markup
+   (Natadola Horse Riding: 8 reviews; Zip Line: 10 reviews), formalized into a `rating:{stars,count}`
+   field and a sortable "Highest rated" option. The other 7 render no rating UI at all — nothing
+   fabricated.
+3. Adults/children party-size stepper at the top of Categories, persisted to `localStorage`,
+   threaded into the "Ask Lagi about this" question text and shown as context in the detail modal.
+4. Geolocation-aware default region — a real "📍 Show deals near me" button, fires
+   `getCurrentPosition()` only on that explicit tap (never auto-triggered), matches nearest
+   primary-region centroid via haversine distance. Silent no-op on denial — never nags.
+5. Push notification opt-in with **honest** support detection rather than a generic broken
+   toggle: detects iOS Safari specifically and tells the user push only works after adding Lagi
+   to the Home Screen first (a real Apple platform restriction, confirmed current), separately
+   detects general `Notification`/`PushManager` unavailability, and only shows the actual
+   opt-in button when genuinely supported. **Scope note:** this captures browser permission +
+   local preference only — there's no VAPID/push-subscription backend, since wiring one would
+   require Worker changes, which are protected this task.
+6. Non-monetary visitor stamps — a `localStorage` counter incremented once per `sendMessage()`
+   call, shown in the Saved tab ("🎫 N Lagi-assisted trip questions answered"). Implemented by
+   wrapping the global `sendMessage` reference (`const _orig = sendMessage; sendMessage = ...`)
+   rather than editing the protected function's body, so its source is provably unchanged.
+
+**Verification on the preview branch, not just locally:**
+- `git diff` of the protected JS block (`WORKER_URL` through the last `addEventListener` call)
+  against the Part 1 backup confirms only `heroAsk`/`heroSearch` changed — everything else is
+  byte-identical.
+- Pushed `pwa-rebuild`, confirmed the Cloudflare Pages branch preview auto-built at
+  `https://pwa-rebuild.vakaviti-lagi-public.pages.dev` (predictable `<branch>.<project>.pages.dev`
+  pattern, live within ~15s of push) — `manifest.json`, `sw.js`, and `icons/icon-512.png` all
+  confirmed 200 on the deployed URL, not just locally.
+- **Confirmed production `lagi.vakaviti.ai` was never touched** — grepped it post-push for PWA
+  markers (`bn-btn`, `manifest.json`, `view-categories`); zero matches, as expected for a
+  Git-connected project where only `main` deploys to production.
+- Real end-to-end Worker test against the actual preview origin (not localhost): sent a live
+  `POST` to `fiji-chat-widget.helpronline.workers.dev` with
+  `Origin: https://pwa-rebuild.vakaviti-lagi-public.pages.dev` — got a real 200 with a genuine
+  Lagi reply and a working `referral_btn`, confirming CORS (`Access-Control-Allow-Origin` echoes
+  the real requesting origin) will not block the chat once James reviews and merges.
+- Full local interactive pass via a static preview server: Home/Categories/Ask Lagi/Saved
+  navigation, listing detail modal, save/heart toggling, party-size stepper, and the WhatsApp
+  status text all verified working via real click events at desktop size.
+- **Mobile-viewport interaction testing — diagnosed a specific tool bug rather than settling for
+  an untested claim.** The Claude Preview tool's `preview_resize` genuinely changes
+  `window.innerWidth` (unlike `claude-in-chrome`'s `resize_window`, which never does, per Part 1
+  above) — but after resizing, `preview_click`'s synthetic click stopped reaching *any* element
+  on the page, reproducible on a fresh tab and independent of my code (confirmed by adding a bare
+  `onclick` attribute that also never fired). Isolated the fix: a manually dispatched
+  `new MouseEvent('click', {bubbles:true, clientX, clientY})` at the button's real
+  `getBoundingClientRect()` coordinates worked correctly at genuine 375×812 width — used this to
+  verify view-switching, the detail modal, and the party-size stepper all function correctly at
+  real mobile width. This is a more rigorous result than last session's mobile-testing gap: the
+  layout, the CSS breakpoints, and the interaction logic are all confirmed working at mobile
+  width, even though the specific `preview_click` tool call itself has a reproducible bug
+  post-resize worth flagging upstream.
+
+### Not done / explicitly out of scope this session
+- No payment/wallet feature, no native iOS/Android app, no automated partner dispatch — all
+  excluded per the brief.
+- The hardcoded-data → D1 migration (flagged above) — separate, bigger task.
+- `LISTINGS`/`DEAL_TRIGGERS` duplication — a deliberate safety tradeoff this session, worth
+  unifying later once there's a real single source of truth (ideally D1) to derive both from.
+- Push notifications have no real delivery backend yet (opt-in/permission capture only).
+
+### Next steps
+1. **James reviews the preview**: https://pwa-rebuild.vakaviti-lagi-public.pages.dev — merge to
+   `main` when satisfied (this is a genuine production deploy the moment it merges, per the
+   Git-connect safety rule established in Part 1).
+2. Decide on the Yasawa Islands region-taxonomy gap.
+3. Scope the hardcoded-listings → D1 migration as its own session.
+4. Consider unifying `LISTINGS`/`DEAL_TRIGGERS` once a real data source exists.
