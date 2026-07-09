@@ -815,3 +815,113 @@ partner dispatch. Tonight built the front door; the engine room is the next sess
 3. Scope the hardcoded-listings → D1 migration as its own session — see `VAKAVITI-BRAIN.md` P26,
    and note P25 (self-serve partner onboarding) is the real prerequisite/higher priority.
 4. Consider unifying `LISTINGS`/`DEAL_TRIGGERS` once a real data source exists.
+
+---
+
+## Session 55 — 9-10 July 2026 — P25 self-serve onboarding was already 80% built and silently broken; found, diagnosed, and fixed it. WhatsApp Catalog (P28) researched, blocked on a real Meta setup step.
+
+### Task 1 — Self-serve partner onboarding (P25)
+
+**The brief assumed nothing existed yet ("needs a simple form... no code session per partner,
+ever again") — that assumption was wrong, and worth correcting rather than silently building a
+duplicate.** `join.vakaviti.ai` has had a real, live onboarding form since Session 28 (24 May),
+posting to a standalone `vakaviti-onboard` Worker — 6+ weeks old, completely unknown to P25's own
+authors, and never tracked in this repo (source only ever lived in the Cloudflare dashboard).
+
+**Decision on web form vs. conversational onboarding, as the brief asked to make explicitly:**
+web form — not a fresh judgment call, a form already existed and worked partially, so completing
+it was strictly better than building a parallel conversational flow from zero.
+
+**Verified end-to-end with a real dummy submission, not assumed:** `POST /onboard` returned
+`{"ok":true, partner_id, site_id}` — looked complete — but checking that partner against the
+protected Worker's `/config` endpoint returned `404 "Site not found or inactive"`. Ruled out
+tester error by confirming a known-real, live partner (`op_bluelagoon_001`, embed code pulled
+directly from `vakaviti-bluelagoon.pages.dev`) resolves correctly via the same endpoint — so the
+gap was real, not a bad test.
+
+**Root-caused precisely, from the actual Worker source** (James pasted it from the Cloudflare
+editor after a first attempt at the wrong dashboard page — see full source now committed at
+`workers/vakaviti-onboard/worker.js`, tracked in Git for the first time):
+1. New partners insert with `status = 'pending'` by design — a reasonable moderation gate, not a
+   bug — but the *only* documented activation path was "go write raw SQL in the D1 console,"
+   which fails "no code session, ever again" in spirit even though it's not literally a Claude
+   Code session.
+2. **A real, separate gap:** the Worker never inserted a `contact_channels` row at all. The
+   protected Worker's `notifyPartner()` queries that table to route lead notifications — with
+   zero rows, it silently no-ops. Same failure shape Session 52 already found and fixed for
+   `cometofiji.com`, but this Worker predates that fix and never got it.
+
+**Fixed, surgically, additive-only — did not touch the protected `chat-widget` Worker at all,**
+per this session's explicit safety rule:
+- Added `contact_channels` inserts (WhatsApp always, email when provided), wrapped in their own
+  try/catch so a schema surprise there can't break the already-working `partners`/`embed_config`
+  inserts.
+- Added `GET /activate?partner_id=&token=` — a one-click link, included in the notification email
+  to James, that flips a pending partner to active with a friendly HTML confirmation page. Turns
+  "write SQL" into "click a link." Requires one new secret, `ADMIN_TOKEN` (James added it via the
+  dashboard this session).
+- `/health` bumped to version 3 so future sessions can confirm which code is actually live at a
+  glance.
+
+**Verified live, in production, after James deployed it — three real dummy submissions, not
+one, because the first two verification attempts genuinely needed correcting rather than
+declaring success early:**
+1. First dummy partner (pre-fix) confirmed the original bug.
+2. Second dummy partner, post-deploy: submitted → confirmed still `pending` via `/config` → hit
+   the real `/activate` link (constructed with the real `ADMIN_TOKEN`, same code path a clicked
+   email link would use) → got the friendly confirmation page → **`/config` now returns a full
+   200 with correct brand/category/region/WhatsApp data.** Also POSTed a real `/lead` for this
+   partner (`score: 85`) to exercise the new `contact_channels` path.
+3. Checked Cloudflare Observability logs to confirm the `contact_channels` insert succeeded (no
+   direct D1 read access available this session) — first two attempts to check the logs pointed
+   at the wrong request (an old pre-fix test, identified by matching its `cf-ray` ID against the
+   original curl response header) — corrected by running a **third**, precisely-timestamped
+   dummy submission and having James search the log viewer by its exact `cf-ray` ID instead of by
+   eyeballing timestamps. That entry's `scriptVersion` ID was confirmed to match the actual
+   deployed version, `status: 200`, and — critically — no `contact_channels insert failed` line
+   anywhere in the full log dump. Passed.
+
+**Left for James:** delete the 3 test partner rows from D1 (SQL provided in-chat, copy-paste into
+the D1 console — not run yet as of this writeup).
+
+**Real remaining gap, explicitly not this session's job:** `join.vakaviti.ai`'s form doesn't
+currently show applicants *why* activation takes up to 48 hours, and there's no partner-facing
+status page — minor UX polish, not a functional gap, fine to leave for later.
+
+### Task 2 — WhatsApp Catalog integration (P28) — researched, implementation blocked on a real Meta setup step
+
+Researched current (2026) requirements directly rather than from training data, since this is a
+fast-moving platform area:
+- Needs a Meta Commerce Manager catalog linked to the existing WhatsApp Business Account, a
+  product data feed (catalog API push, matching this network's existing partner data model), and
+  Meta's display-name business verification (2-14 days, outside anyone's control once submitted).
+- Required per-item fields: `id, title, description, availability, price, currency, link,
+  image_link, brand`. Hard caps: 500 products per catalog, 1 catalog per WABA.
+- Sending format is a real Cloud API message type (`interactive.type: "catalog_message"`) —
+  confirmed genuinely zero payment integration, matching the standing "no payments" decision
+  exactly (not just policy-aligned — WhatsApp Pay doesn't operate in Fiji's market at all, so
+  there's no native payment path to accidentally trigger even if wanted).
+- **Correctly deferred, not silently built anyway:** actual catalog population requires the same
+  structured partner/listing data this session's Task 1 work depends on — now real and working
+  (`partners`/`embed_config`/`contact_channels`), but the *listings* themselves (tours, transfer
+  prices, etc. — see P26, still 100% hardcoded HTML/JS on lagi.vakaviti.ai) aren't yet a real
+  per-partner data source to sync from. Building Catalog sync against still-hardcoded listings
+  would mean hand-maintaining the catalog too — the exact anti-pattern P25/P26 exist to fix.
+- **Blocked on a step only James can do:** Meta Business verification and Commerce Manager
+  catalog creation both require Meta Business Suite access under the real WhatsApp Business
+  Account — no API/CLI path exists for this from a coding session, same shape as the Cloudflare
+  Pages "Connect" button from Session 53.
+
+**Not started this session, correctly:** any actual Catalog API integration code. Building it
+against a still-partially-hardcoded listings data source, before P26 lands, would create exactly
+the kind of parallel-data-entry problem this whole session was about eliminating.
+
+### Next steps
+1. James: run the D1 cleanup SQL for the 3 test partners (provided in-chat).
+2. James: complete Meta Business verification + create the Commerce Manager catalog — genuinely
+   needs to happen before any Catalog code gets written.
+3. P26 (hardcoded listings → real D1 data) is now the honest next priority — it unblocks both a
+   real lagi.vakaviti.ai directory *and* WhatsApp Catalog sync from the same data source, rather
+   than building either against hand-maintained HTML.
+4. Once P26 exists: build the actual Catalog sync (partner listings → Commerce Manager catalog
+   items), reusing the same data model rather than parallel entry, as the brief required.

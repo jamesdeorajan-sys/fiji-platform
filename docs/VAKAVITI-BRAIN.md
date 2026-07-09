@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 54 (research/planning) — 2026-07-09
+# Last updated: Session 55 — 2026-07-09/10
 
 ---
 
@@ -216,9 +216,9 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 > Claude: read this section first. Platform is now POST-LAUNCH (July 1 passed). Priorities shift from launch blockers to growth and open technical debt.
 
-**P25 — 🆕 Highest priority: self-serve partner onboarding for lagi.vakaviti.ai**
-- The real bottleneck identified this session: registering one partner (cometofiji.com, Session 52) took a full Claude Code session — manual D1 schema checks, hand-written rows. That does not scale to "maximum partners, fast" in a small market. Needs a simple form (business name, WhatsApp number, category, region, description) writing directly to D1 — no code session per partner, ever again.
-- This also unblocks P23 (expanding partner_referrals to the other 29+ partners) and the Session 53 hardcoded-listings gap (P26) — genuinely the critical path for everything else in the Gojek/Grab-pattern roadmap.
+**P25 — ✅ RESOLVED Session 55 — self-serve partner onboarding for lagi.vakaviti.ai**
+- Turned out to already be ~80% built and unknown to this priority list: `join.vakaviti.ai` → `vakaviti-onboard` Worker has existed since Session 28 (24 May), never tracked in Git, never verified end-to-end. Verified with a real dummy submission that it silently failed — new partners inserted as `status='pending'` with no non-technical activation path, and never got a `contact_channels` row at all (same gap Session 52 fixed for cometofiji.com, this Worker predates that fix). Root-caused from the real source (now tracked at `workers/vakaviti-onboard/worker.js`) and fixed: added `contact_channels` inserts, added a one-click `GET /activate` link (email → click → live, no SQL). Verified live in production with three real dummy submissions and a real lead POST. Full writeup: BUILD.md Session 55.
+- This unblocks P23 (expanding partner_referrals to the other 29+ partners) and P26 (hardcoded-listings gap) — genuinely the critical path item, now actually clear.
 
 **P26 — 🆕 Migrate lagi.vakaviti.ai's hardcoded directory to real D1 data**
 - Session 53's PWA rebuild correctly kept the existing hardcoded listings rather than inventing a fake data layer, but flagged this clearly: no D1/API call exists anywhere on this page. Once P25 (self-serve onboarding) exists, this becomes the natural next step — wire the new region × category directory UI to read real partner rows instead of a hand-maintained `LISTINGS` array.
@@ -227,9 +227,10 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 **P27 — Decide Yasawa Islands region-taxonomy gap**
 - Quick decision, not urgent. See Known Issues.
 
-**P28 — 🆕 WhatsApp Catalog integration for partners**
-- Real finding from a deep strategic cross-check (Session 54, before committing to further build): WhatsApp Business's native Catalog feature (up to 500 products/services, images, price, description, browsable directly inside a chat thread) requires ZERO payment integration — fits the "we will not take any payments" decision exactly, while giving travelers structured browsing instead of unstructured chat-only discovery. Real data: businesses moving from chat-only to structured catalog browsing see meaningfully higher conversion; 70-80% of customers abandon when forced to leave the chat entirely. Low effort, no new infrastructure risk, genuinely strengthens the WhatsApp-centralization vision. Should be built alongside P25, not after it — the same partner data schema work unlocks both.
-- Confirms two earlier decisions were right for reasons not fully visible at the time: native WhatsApp Pay only operates in India/Brazil/Mexico/Indonesia — not Fiji — so "no payments" wasn't just a policy choice, in-chat native payment literally isn't available in this market yet regardless.
+**P28 — 🟡 Researched Session 54, requirements confirmed Session 55 — WhatsApp Catalog integration for partners**
+- WhatsApp Business's native Catalog feature (up to 500 products/services, images, price, description, browsable directly inside a chat thread) requires ZERO payment integration — fits the "we will not take any payments" decision exactly. Confirms two earlier decisions were right for reasons not fully visible at the time: native WhatsApp Pay only operates in India/Brazil/Mexico/Indonesia — not Fiji — so "no payments" wasn't just a policy choice, in-chat native payment literally isn't available in this market yet regardless.
+- Session 55 confirmed exact technical requirements: Meta Commerce Manager catalog linked to the WABA, a product feed (id/title/description/availability/price/currency/link/image_link/brand per item), Meta display-name business verification (2-14 days). Correctly did NOT start writing sync code — the real listings data (P26) is still hardcoded HTML, so a catalog sync would just be a second hand-maintained data source, the exact anti-pattern P25/P26 exist to eliminate.
+- **Blocked on a real, non-code step:** Meta Business verification + Commerce Manager catalog creation both need James's direct access to Meta Business Suite — no API/CLI path from a coding session, same shape as the Session 53 Cloudflare Pages "Connect" button.
 
 **P29 — 🆕 Realistic "Revenue Agent": intent-based lead detection**
 - From reviewing an external "AI operating system" proposal (Session 54) — most of that document specs enterprise multi-agent architecture (Chief Orchestrator, formal Agent Registry) that's a genuine mismatch for a solo-founder + session-based build cadence, and was NOT adopted. But one idea from it is genuinely valuable in realistic form: extend Lagi's existing `intent` field/detection logic (already real in worker.js) to specifically flag transfer/booking intent, log it to a simple table, and send James a daily digest of hot leads. Not a new "agent" — a small extension of what already exists. Directly operationalizes revenue-bias CTA logic (own properties prioritized where honestly applicable) discussed in the same session.
@@ -394,7 +395,8 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 |---|---|---|
 | WhatsApp is rolling out usernames + a business-scoped user ID (BSUID) in 2026 to eventually replace phone numbers as the customer identifier | **NEW Session 54, forward-looking, not urgent yet** | If Lagi's attribution/lead-tracking currently keys off phone number as the primary identifier, this will silently break for any customer who adopts a username (webhook payloads won't always include a phone number). Fix: store BSUID alongside phone number now, before rollout is widespread — cheap now, expensive to retrofit later. |
 | Unconfirmed: does Lagi's WhatsApp flow disclose to customers that they're chatting with an automated assistant? | **NEW Session 54, needs verification, not confirmed either way** | Meta's WhatsApp Business Platform terms require this disclosure. Genuinely don't know current state — check before assuming compliant. |
-| lagi.vakaviti.ai's entire listings directory (Hot Deals, Partner Offers, Fiji Experiences, DEAL_TRIGGERS keyword array) is 100% hardcoded HTML/JS | **NEW Session 53** | No D1 or partner-API call exists anywhere on this page — same shape as the Session 52 `partner_referrals` gap. Adding partner #10+ still means editing this HTML by hand. This is the real blocker to "maximum partners, fast" — see Section 3 P25. |
+| lagi.vakaviti.ai's entire listings directory (Hot Deals, Partner Offers, Fiji Experiences, DEAL_TRIGGERS keyword array) is 100% hardcoded HTML/JS | **Session 53, now the real remaining blocker as of Session 55** | No D1 or partner-API call exists anywhere on this page — same shape as the Session 52 `partner_referrals` gap. Now that P25 (self-serve onboarding) is fixed and partners can actually be created/activated, this — see Section 3 P26 — is the real remaining blocker to "maximum partners, fast": new partners can join, but still won't appear anywhere on the actual page until this migrates. |
+| `vakaviti-onboard` Worker existed for 6+ weeks (since Session 28) completely unknown to this priority list, untracked in Git, and silently non-functional (new partners never activated, never got lead-notification channels) | **RESOLVED Session 55** | Root-caused and fixed — see Section 3 P25, BUILD.md Session 55. Worth remembering as a process lesson: always check for existing untracked infrastructure (`docs/BUILD (2).md`'s old Worker registry table caught this) before assuming something needs building from scratch. |
 | Blue Lagoon Beach Resort is tagged "Yasawa Islands," which isn't in the agreed region taxonomy (7 primary + 8 secondary) | **NEW Session 53, flagged not resolved** | Added as an honest extra chip rather than mis-tagged under a nearby mainland region. Needs a decision: formally extend the taxonomy, or fold under an existing region. |
 | Cloudflare Web Analytics beacon on lagi.vakaviti.ai has a literal placeholder token (`"token": "REPLACE_WITH_CF_ANALYTICS_TOKEN"`) | **NEW Session 53** | Found during PWA source review. Means zero analytics have ever been collected on this page. Needs a real token from the Cloudflare Web Analytics dashboard — can't be fixed by Claude Code alone. |
 | `/config` endpoint never SELECTs `contact_email` from D1 | **NEW Session 52** | Network-wide gap, not partner-specific — no partner's widget can show its "Email" quick-action button even when a real email is on file. One-line SQL fix, low urgency (missing button, not broken function). See Section 3 P24. |
@@ -447,6 +449,45 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 55 — 2026-07-09/10 — Found P25 (self-serve onboarding) was already half-built and silently broken; fixed it. P28 (WhatsApp Catalog) researched, correctly not built yet.
+
+**Task 1 brief assumed self-serve partner onboarding needed building from scratch — checked first,
+found otherwise.** `join.vakaviti.ai` → `vakaviti-onboard` Worker had existed since Session 28
+(6+ weeks), unknown to P25, untracked in Git. Verified with a real dummy submission that it
+silently failed end-to-end: new partners inserted as `status='pending'` with no non-technical
+activation path, and no `contact_channels` row at all (the same lead-notification gap Session 52
+already fixed once for cometofiji.com — this Worker predates that fix). Got the real source from
+James (first attempt pulled the wrong dashboard page — a Pages project, not the Worker — corrected
+by asking for the specific Workers editor path), root-caused precisely, and shipped a surgical,
+additive-only fix: `contact_channels` inserts (own try/catch, can't break the working parts), and
+a one-click `GET /activate` link in the notification email so activation is "click a link," not
+"write SQL." Required one new secret (`ADMIN_TOKEN`), which James added via the dashboard.
+
+**Verified live in production, not just claimed** — three real dummy submissions were needed
+because the first two verification attempts were honestly wrong and corrected rather than
+glossed over: submission 1 (pre-fix) confirmed the original bug; submission 2 (post-deploy) proved
+the fix works (`pending` → real `/activate` link → `/config` now returns full partner data) and
+exercised a real `/lead` POST; checking whether `contact_channels` itself wrote correctly required
+Cloudflare Observability log inspection, and the first two attempts at that pointed at the wrong
+log row (an old pre-fix request, caught by cross-checking its `cf-ray` ID against the original
+curl response) — resolved by running a third, precisely `cf-ray`-tagged submission instead of
+relying on eyeballed timestamps. Confirmed clean: correct deployed `scriptVersion`, `200` status,
+no error logged.
+
+**Task 2 (WhatsApp Catalog, P28) researched, correctly not implemented yet.** Confirmed exact 2026
+requirements (Commerce Manager catalog, product feed schema, Meta business verification) — zero
+payment integration, matching the "no payments" decision exactly, and confirming WhatsApp Pay
+doesn't operate in Fiji regardless. Did not write sync code: doing so against still-hardcoded
+listings (P26, unresolved) would just create a second hand-maintained data source — the exact
+problem P25/P26 exist to solve. Also blocked on a real non-code step only James can do: Meta
+Business verification + Commerce Manager catalog creation.
+
+**Process lesson worth carrying forward:** `docs/BUILD (2).md` — an old, easy-to-overlook file —
+turned out to hold the only record of `vakaviti-onboard`'s existence. Worth a habit: grep old/
+stray docs for a Worker's name before assuming a priority-list gap means nothing was ever built.
+
+Full writeup: BUILD.md Session 55.
 
 ### Session 54 — 2026-07-09 — Strategic review/research, no code changes
 **Deep cross-check of "what's the best way forward for Lagi" before committing to further build — deliberately a research/planning session, not a build session, at James's explicit request to verify all better AI-driven approaches were considered first.**
