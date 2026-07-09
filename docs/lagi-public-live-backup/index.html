@@ -14,16 +14,19 @@
 <link rel="dns-prefetch" href="//fiji-chat-widget.helpronline.workers.dev">
 <link rel="dns-prefetch" href="//wa.me">
 <link rel="preconnect" href="https://fiji-chat-widget.helpronline.workers.dev" crossorigin>
-<!-- Mobile PWA meta -->
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#084d63">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lagi">
 <!-- Cloudflare Web Analytics — real user metrics, no cookies, free -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "REPLACE_WITH_CF_ANALYTICS_TOKEN"}'></script>
 
-<!-- FAVICON — inline SVG as data URI -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23084d63'/><text y='24' x='4' font-size='22'>🌺</text></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23084d63'/><text y='24' x='4' font-size='22'>🌺</text></svg>">
+<!-- ICONS — real PNG set, generated from the same 🌺 flower / #084d63 concept -->
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
 
 <!-- AI VISIBILITY: FAQPage + TouristDestination + TravelAgency Schema -->
 <script type="application/ld+json">
@@ -123,9 +126,6 @@
 }
 </script>
 
-<!-- Preconnect to eliminate DNS lookup delay -->
-
-
 <!-- Async font load — page renders immediately, font swaps in -->
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
@@ -147,6 +147,7 @@ html,body{
   color:var(--ink);
   overflow-x:hidden
 }
+body{padding-bottom:64px}
 
 /* TOPBAR */
 .topbar{background:var(--ocean-deep);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -158,6 +159,7 @@ html,body{
 .topbar-ai-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(18,160,200,.2);border:1px solid rgba(18,160,200,.35);border-radius:100px;font-size:10px;font-weight:600;color:#7dd8f0;letter-spacing:.05em}
 .topbar-ai-dot{width:6px;height:6px;background:#4ade80;border-radius:50%;animation:pulse-dot 2s infinite}
 .topbar-join{padding:6px 14px;background:var(--coral);color:#fff;font-size:11px;font-weight:600;border-radius:100px;text-decoration:none;white-space:nowrap}
+.install-btn{display:none;padding:5px 12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:11px;font-weight:600;border-radius:100px;cursor:pointer;font-family:'Sora',sans-serif}
 
 /* HERO */
 .hero{background:linear-gradient(160deg,var(--ocean-deep) 0%,#0a5f7a 50%,#0e7a96 100%);padding:28px 16px 24px;position:relative;overflow:hidden}
@@ -346,6 +348,80 @@ html,body{
 .mob-chip.c-ocean .mob-chip-price{color:var(--ocean)}
 .mob-chip.c-purple .mob-chip-price{color:var(--purple)}
 
+/* ══ APP SHELL ══ */
+.app-view.hidden{display:none}
+
+/* BOTTOM NAV */
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;height:60px;background:#fff;border-top:1px solid var(--line);display:flex;z-index:300;box-shadow:0 -2px 12px rgba(0,0,0,.06)}
+.bn-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;font-family:'Sora',sans-serif;font-size:10px;font-weight:600;color:var(--ink-quiet);cursor:pointer}
+.bn-btn .bn-icon{font-size:19px;line-height:1}
+.bn-btn.active{color:var(--ocean-deep)}
+.bn-saved-badge{color:var(--coral);font-weight:800;margin-left:2px}
+
+/* VIEW HEADER */
+.view-header{padding:16px 16px 4px;max-width:1360px;margin:0 auto}
+.view-title{font-size:20px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.view-sub{font-size:12px;color:var(--ink-soft)}
+
+/* PARTY SIZE */
+.party-size{display:flex;align-items:center;gap:20px;background:#fff;border-radius:12px;padding:10px 16px;box-shadow:var(--shadow-sm);margin:12px 16px;flex-wrap:wrap}
+.ps-group{display:flex;align-items:center;gap:8px}
+.ps-label{font-size:12px;font-weight:600;color:var(--ink)}
+.ps-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);background:#fff;color:var(--ocean-deep);font-weight:700;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif}
+.ps-btn:hover{background:var(--ai-bg)}
+.ps-count{min-width:18px;text-align:center;font-weight:700;font-size:13px}
+
+/* CHIPS */
+.chip-row{display:flex;gap:7px;overflow-x:auto;padding:2px 16px 10px;scrollbar-width:none}
+.chip-row::-webkit-scrollbar{display:none}
+.chip{flex-shrink:0;padding:7px 14px;border-radius:100px;border:1.5px solid var(--line);background:#fff;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;white-space:nowrap;font-family:'Sora',sans-serif}
+.chip.active{background:var(--ocean);border-color:var(--ocean);color:#fff}
+
+.sort-row{display:flex;justify-content:flex-end;padding:0 16px 10px;max-width:1360px;margin:0 auto}
+.sort-select{border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;font-family:'Sora',sans-serif;color:var(--ink);background:#fff}
+
+.geo-btn{margin:0 16px 4px;padding:8px 14px;background:#fff;border:1.5px dashed var(--ocean);border-radius:100px;font-size:12px;font-weight:600;color:var(--ocean);cursor:pointer;font-family:'Sora',sans-serif}
+
+/* DIRECTORY GRID (reuses .sc card styling) */
+.directory-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:12px 16px 24px;max-width:1360px;margin:0 auto}
+.listing-card{border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm)}
+.directory-empty,.saved-empty{grid-column:1/-1;padding:32px 16px;text-align:center;color:var(--ink-quiet);font-size:13px}
+.listing-rating{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gold-deep);margin-bottom:4px}
+.save-heart{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px}
+
+/* DOMINANT CHAT VIEW */
+#view-chat{max-width:700px;margin:0 auto;padding:12px}
+.chat-wrap.dominant{height:calc(100vh - 116px)}
+.chat-wrap.dominant .chat-msgs{flex:1;max-height:none}
+.chat-wrap.dominant{display:flex;flex-direction:column}
+
+/* DETAIL MODAL */
+.detail-modal-backdrop{position:fixed;inset:0;background:rgba(15,31,46,.55);z-index:400;display:flex;align-items:flex-end;justify-content:center}
+.detail-modal{background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;position:relative}
+@media(min-width:760px){.detail-modal-backdrop{align-items:center}.detail-modal{border-radius:20px;max-height:80vh}}
+.dm-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.85);border:none;font-size:16px;cursor:pointer;z-index:2}
+.dm-head{padding:20px;background:linear-gradient(135deg,var(--ocean-deep),var(--ocean));color:#fff}
+.dm-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.dm-tag{font-size:10px;font-weight:700;padding:3px 9px;border-radius:100px;background:rgba(255,255,255,.18)}
+.dm-title{font-size:18px;font-weight:800}
+.dm-partner{font-size:11px;opacity:.75;margin-top:2px}
+.dm-body{padding:18px 20px}
+.dm-price{font-size:20px;font-weight:800;color:var(--coral);margin-bottom:4px}
+.dm-was{font-size:12px;color:var(--ink-quiet);text-decoration:line-through;margin-bottom:8px}
+.dm-desc{font-size:14px;line-height:1.6;color:var(--ink-soft);margin-bottom:14px}
+.dm-primary{display:block;width:100%;padding:13px;background:var(--ocean);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif;margin-bottom:10px}
+.dm-secondary{display:block;width:100%;padding:11px;background:none;color:var(--ink-soft);border:1.5px solid var(--line);border-radius:10px;font-size:12px;font-weight:600;text-align:center;text-decoration:none}
+
+/* WHATSAPP HANDOFF STATUS */
+.wa-status{font-size:11px;color:var(--green);font-weight:600;margin-top:4px;display:block}
+
+/* VISITOR STAMPS + PUSH CARD */
+.stamps-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--ai-bg);border:1px solid var(--ai-border);border-radius:100px;font-size:12px;font-weight:600;color:var(--ocean-deep);margin:0 16px 14px}
+.push-card{margin:0 16px 14px;padding:14px;background:#fff;border-radius:12px;box-shadow:var(--shadow-sm)}
+.push-card-title{font-size:13px;font-weight:700;margin-bottom:4px}
+.push-card-desc{font-size:11px;color:var(--ink-soft);margin-bottom:8px;line-height:1.5}
+.push-btn{padding:8px 16px;background:var(--ocean);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif}
+
 /* RESPONSIVE */
 @media(max-width:1040px){.layout{grid-template-columns:240px 1fr}.panel:last-child{display:none}}
 @media(max-width:760px){.layout{grid-template-columns:1fr;padding:10px}.panel{display:none}.mob-deals{display:block}.chat-msgs{max-height:360px}.specials-grid{grid-template-columns:1fr 1fr}.topbar-ai-badge{display:none}.ai-powers{flex-wrap:wrap}}
@@ -364,10 +440,14 @@ html,body{
     </div>
   </a>
   <div class="topbar-right">
+    <button class="install-btn" id="install-btn">📲 Install</button>
     <div class="topbar-ai-badge"><div class="topbar-ai-dot"></div>AI Live</div>
     <a href="https://join.vakaviti.ai" class="topbar-join">Partner with us</a>
   </div>
 </header>
+
+<!-- ══════════ VIEW: HOME ══════════ -->
+<main id="view-home" class="app-view">
 
 <!-- HERO -->
 <section class="hero">
@@ -520,75 +600,6 @@ html,body{
 
   <!-- CENTRE COLUMN -->
   <div class="chat-col">
-
-    <!-- CHAT -->
-    <div class="chat-wrap">
-      <div class="chat-head">
-        <div class="chat-avatar">🌺</div>
-        <div>
-          <div class="chat-head-name">Lagi — Fiji AI Travel Guide</div>
-          <div class="chat-head-status"><div class="status-dot"></div>Online · answers in seconds</div>
-        </div>
-        <div class="chat-head-langs">🌏 6 languages<br>日本語 · Deutsch · 中文</div>
-      </div>
-
-      <div class="chat-msgs" id="chat-messages">
-        <div class="msg msg-ai">Bula! I'm Lagi 🌺 — your Fiji insider.<br><br>Most people spend weeks researching Fiji and still get it wrong. I'll give you the honest local answer in 30 seconds — free, instant, no sales pitch.</div>
-        <div style="display:flex;gap:8px;margin:4px 0 8px;padding:0 2px">
-          <a href="https://wa.me/61478886145?text=Bula!%20I%20found%20you%20on%20lagi.vakaviti.ai%20and%20would%20love%20help%20planning%20my%20Fiji%20trip." target="_blank" rel="noopener" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
-            WhatsApp Us
-          </a>
-          <a href="/cdn-cgi/l/email-protection#a1c9c4cdd1d3cecfcdc8cfc4e1c6ccc0c8cd8fc2cecc9ed2d4c3cbc4c2d59ce7c8cbc8849391f5d3c8d1849391e4cfd0d4c8d3d887c3cec5d89ce3d4cdc080849391e8849391c7ced4cfc5849391d8ced4849391d5c9d3ced4c6c9849391edc0c6c8849391cecf849391cdc0c6c88fd7c0cac0d7c8d5c88fc0c88f" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;background:#fff;color:#1a1a1a;border:1.5px solid #d0d8e0;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-            Send Email
-          </a>
-        </div>
-        <div style="text-align:center;padding:20px 16px 6px;opacity:.4">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
-            <div style="display:flex;gap:6px">
-              <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out infinite"></div>
-              <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out .3s infinite"></div>
-              <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out .6s infinite"></div>
-            </div>
-            <span style="font-size:11px;color:#4a4a4a;letter-spacing:.3px">Your conversation will appear here</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- SMART DEAL POPUP — shown when conversation matches a deal -->
-      <div class="smart-deal-popup" id="smart-deal-popup">
-        <div class="sdp-label">⚡ <span id="sdp-label-text">Lagi found a matching deal</span></div>
-        <div class="sc-partner" id="sdp-partner"></div>
-        <div class="sdp-title" id="sdp-title"></div>
-        <div class="sdp-price" id="sdp-price"></div>
-        <div class="sdp-desc" id="sdp-desc"></div>
-        <div class="sdp-actions">
-          <a class="sdp-book" id="sdp-book-link" href="#" target="_blank" rel="noopener">Book direct →</a>
-          <button class="sdp-dismiss" onclick="document.getElementById('smart-deal-popup').style.display='none'">Dismiss</button>
-        </div>
-      </div>
-
-      <div class="msg-loading" id="loading-indicator"><span></span><span></span><span></span></div>
-
-      <div class="suggestions" id="suggestions">
-        <button class="sug-btn" onclick="heroAsk('Best resort in Fiji for families?')">Best family resort?</button>
-        <button class="sug-btn" onclick="heroAsk('What deals are available in Fiji right now?')">🔥 Current deals</button>
-        <button class="sug-btn" onclick="heroAsk('How much is a transfer from Nadi Airport to Denarau?')">Airport transfer?</button>
-        <button class="sug-btn" onclick="heroAsk('We are on our honeymoon in Fiji')">Honeymoon 🌺</button>
-        <button class="sug-btn" onclick="heroAsk('What does bula mean?')">What is bula?</button>
-      </div>
-
-      <div class="chat-input-area">
-        <div class="chat-input-row">
-          <textarea class="chat-input" id="chat-input" placeholder="Ask anything about Fiji..." rows="1"></textarea>
-          <button class="chat-send" id="send-btn" onclick="sendMessage()">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-          </button>
-        </div>
-        <div class="chat-footer">Powered by <a href="https://vakaviti.ai">Vakaviti.ai</a> · Fiji's AI Tourism Network · <a href="https://vosavakaviti.com">Learn Fijian</a></div>
-      </div>
-    </div>
 
     <!-- MONTHLY SPECIALS -->
     <div class="specials">
@@ -799,6 +810,158 @@ html,body{
   </aside>
 
 </div>
+</main>
+
+<!-- ══════════ VIEW: CATEGORIES (region × category directory) ══════════ -->
+<main id="view-categories" class="app-view hidden">
+  <div class="view-header">
+    <div class="view-title">🗂 Discover Fiji</div>
+    <div class="view-sub">Real partner listings, filterable by region and category. Zero commission, direct booking.</div>
+  </div>
+
+  <div class="party-size">
+    <div class="ps-group">
+      <span class="ps-label">Adults</span>
+      <button class="ps-btn" onclick="adjustParty('adults',-1)">−</button>
+      <span class="ps-count" id="ps-adults-count">2</span>
+      <button class="ps-btn" onclick="adjustParty('adults',1)">+</button>
+    </div>
+    <div class="ps-group">
+      <span class="ps-label">Children</span>
+      <button class="ps-btn" onclick="adjustParty('children',-1)">−</button>
+      <span class="ps-count" id="ps-children-count">0</span>
+      <button class="ps-btn" onclick="adjustParty('children',1)">+</button>
+    </div>
+  </div>
+
+  <button class="geo-btn" id="geo-btn">📍 Show deals near me</button>
+
+  <div class="chip-row" id="region-chips"></div>
+  <div class="chip-row" id="category-chips"></div>
+  <div class="sort-row">
+    <select class="sort-select" id="sort-select">
+      <option value="featured">Sort: Featured</option>
+      <option value="rating">Sort: Highest rated</option>
+    </select>
+  </div>
+  <div class="directory-grid" id="directory-grid"></div>
+</main>
+
+<!-- ══════════ VIEW: ASK LAGI (dominant chat destination) ══════════ -->
+<main id="view-chat" class="app-view hidden">
+  <!-- CHAT — moved here from the old mid-page position so it's a permanent, dominant destination -->
+  <div class="chat-wrap dominant">
+    <div class="chat-head">
+      <div class="chat-avatar">🌺</div>
+      <div>
+        <div class="chat-head-name">Lagi — Fiji AI Travel Guide</div>
+        <div class="chat-head-status"><div class="status-dot"></div>Online · answers in seconds</div>
+      </div>
+      <div class="chat-head-langs">🌏 6 languages<br>日本語 · Deutsch · 中文</div>
+    </div>
+
+    <div class="chat-msgs" id="chat-messages">
+      <div class="msg msg-ai">Bula! I'm Lagi 🌺 — your Fiji insider.<br><br>Most people spend weeks researching Fiji and still get it wrong. I'll give you the honest local answer in 30 seconds — free, instant, no sales pitch.</div>
+      <div style="display:flex;gap:8px;margin:4px 0 8px;padding:0 2px">
+        <a href="https://wa.me/61478886145?text=Bula!%20I%20found%20you%20on%20lagi.vakaviti.ai%20and%20would%20love%20help%20planning%20my%20Fiji%20trip." target="_blank" rel="noopener" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
+          WhatsApp Us
+        </a>
+        <a href="/cdn-cgi/l/email-protection#a1c9c4cdd1d3cecfcdc8cfc4e1c6ccc0c8cd8fc2cecc9ed2d4c3cbc4c2d59ce7c8cbc8849391f5d3c8d1849391e4cfd0d4c8d3d887c3cec5d89ce3d4cdc080849391e8849391c7ced4cfc5849391d8ced4849391d5c9d3ced4c6c9849391edc0c6c8849391cecf849391cdc0c6c88fd7c0cac0d7c8d5c88fc0c88f" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 12px;background:#fff;color:#1a1a1a;border:1.5px solid #d0d8e0;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          Send Email
+        </a>
+      </div>
+      <div style="text-align:center;padding:20px 16px 6px;opacity:.4">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+          <div style="display:flex;gap:6px">
+            <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out infinite"></div>
+            <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out .3s infinite"></div>
+            <div style="width:8px;height:8px;border-radius:50%;background:#0d4d6e;animation:blink 1.8s ease-in-out .6s infinite"></div>
+          </div>
+          <span style="font-size:11px;color:#4a4a4a;letter-spacing:.3px">Your conversation will appear here</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SMART DEAL POPUP — shown when conversation matches a deal -->
+    <div class="smart-deal-popup" id="smart-deal-popup">
+      <div class="sdp-label">⚡ <span id="sdp-label-text">Lagi found a matching deal</span></div>
+      <div class="sc-partner" id="sdp-partner"></div>
+      <div class="sdp-title" id="sdp-title"></div>
+      <div class="sdp-price" id="sdp-price"></div>
+      <div class="sdp-desc" id="sdp-desc"></div>
+      <div class="sdp-actions">
+        <a class="sdp-book" id="sdp-book-link" href="#" target="_blank" rel="noopener">Book direct →</a>
+        <button class="sdp-dismiss" onclick="document.getElementById('smart-deal-popup').style.display='none'">Dismiss</button>
+      </div>
+    </div>
+
+    <div class="msg-loading" id="loading-indicator"><span></span><span></span><span></span></div>
+
+    <div class="suggestions" id="suggestions">
+      <button class="sug-btn" onclick="heroAsk('Best resort in Fiji for families?')">Best family resort?</button>
+      <button class="sug-btn" onclick="heroAsk('What deals are available in Fiji right now?')">🔥 Current deals</button>
+      <button class="sug-btn" onclick="heroAsk('How much is a transfer from Nadi Airport to Denarau?')">Airport transfer?</button>
+      <button class="sug-btn" onclick="heroAsk('We are on our honeymoon in Fiji')">Honeymoon 🌺</button>
+      <button class="sug-btn" onclick="heroAsk('What does bula mean?')">What is bula?</button>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chat-input" placeholder="Ask anything about Fiji..." rows="1"></textarea>
+        <button class="chat-send" id="send-btn" onclick="sendMessage()">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+      <div class="chat-footer">Powered by <a href="https://vakaviti.ai">Vakaviti.ai</a> · Fiji's AI Tourism Network · <a href="https://vosavakaviti.com">Learn Fijian</a></div>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════ VIEW: SAVED ══════════ -->
+<main id="view-saved" class="app-view hidden">
+  <div class="view-header">
+    <div class="view-title">❤️ Saved</div>
+    <div class="view-sub">Listings you've saved for later.</div>
+  </div>
+  <div class="stamps-badge">🎫 <span id="stamps-count">0</span> Lagi-assisted trip questions answered</div>
+  <div class="push-card">
+    <div class="push-card-title">🔔 Deal alerts</div>
+    <div id="push-card-body"></div>
+  </div>
+  <div class="directory-grid" id="saved-grid"></div>
+</main>
+
+<!-- DETAIL MODAL — extends the smart-deal-popup pattern into a full in-app detail screen -->
+<div id="listing-detail-modal" class="detail-modal-backdrop" style="display:none" onclick="if(event.target===this)closeDetail()">
+  <div class="detail-modal">
+    <button class="dm-close" onclick="closeDetail()">✕</button>
+    <div class="dm-head">
+      <div class="dm-tags" id="dm-tags"></div>
+      <div class="dm-title" id="dm-title"></div>
+      <div class="dm-partner" id="dm-partner"></div>
+    </div>
+    <div class="dm-body">
+      <div id="dm-rating"></div>
+      <div class="dm-price" id="dm-price"></div>
+      <div class="dm-was" id="dm-was" style="display:none"></div>
+      <div class="dm-desc" id="dm-desc"></div>
+      <div class="dm-desc" id="dm-party" style="font-size:12px;color:var(--ink-quiet)"></div>
+      <button class="dm-primary" onclick="detailAskLagi()">💬 Ask Lagi about this</button>
+      <button class="dm-primary" id="dm-save-btn" style="background:#fff;color:var(--ocean);border:1.5px solid var(--ocean)" onclick="detailToggleSave()">🤍 Save</button>
+      <a class="dm-secondary" id="dm-book-link" href="#" target="_blank" rel="noopener">Book direct on partner site →</a>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="bn-btn active" data-view="home"><span class="bn-icon">🏠</span><span>Home</span></button>
+  <button class="bn-btn" data-view="categories"><span class="bn-icon">🗂</span><span>Categories</span></button>
+  <button class="bn-btn" data-view="chat"><span class="bn-icon">🌺</span><span>Ask Lagi</span></button>
+  <button class="bn-btn" data-view="saved"><span class="bn-icon">🤍</span><span>Saved<span class="bn-saved-badge" id="saved-count-badge"></span></span></button>
+</nav>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const WORKER_URL='https://fiji-chat-widget.helpronline.workers.dev/';
@@ -1036,26 +1199,374 @@ async function sendMessage(customText){
 }
 
 function heroAsk(text){
-  const chatWrap=document.querySelector('.chat-wrap');
-  if(window.innerWidth<760){
-    chatWrap.scrollIntoView({behavior:'smooth',block:'start'});
-    setTimeout(()=>sendMessage(text),350);
-  }else{sendMessage(text)}
+  switchView('chat');
+  sendMessage(text);
 }
 
 function heroSearch(){
   const val=document.getElementById('hero-input').value.trim();
   if(!val)return;
   document.getElementById('hero-input').value='';
-  if(window.innerWidth<760){
-    document.querySelector('.chat-wrap').scrollIntoView({behavior:'smooth',block:'start'});
-    setTimeout(()=>sendMessage(val),350);
-  }else{sendMessage(val)}
+  switchView('chat');
+  sendMessage(val);
 }
 
 document.getElementById('hero-input').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();heroSearch()}});
 inputEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}});
 inputEl.addEventListener('input',function(){inputEl.style.height='auto';inputEl.style.height=Math.min(inputEl.scrollHeight,100)+'px'});
+
+// ═══════════════════════════════════════════════════════════════
+// APP SHELL — everything below is additive. Nothing above this
+// line was changed in behavior; heroAsk()/heroSearch() were only
+// adapted to switch to the dominant chat tab instead of scrolling
+// to a mid-page element, per this session's brief. sendMessage(),
+// checkSmartDeal(), showSmartDeal() and the Worker POST contract
+// are untouched.
+// ═══════════════════════════════════════════════════════════════
+
+// ── VIEW SWITCHING ──
+const VIEWS=['home','categories','chat','saved'];
+function switchView(name){
+  VIEWS.forEach(v=>{
+    document.getElementById('view-'+v).classList.toggle('hidden',v!==name);
+  });
+  document.querySelectorAll('.bn-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.view===name);
+  });
+  if(name==='chat'){setTimeout(()=>{inputEl&&inputEl.focus()},50)}
+  if(name==='categories'){renderDirectory()}
+  if(name==='saved'){renderSaved()}
+}
+document.querySelectorAll('.bn-btn').forEach(b=>{
+  b.addEventListener('click',()=>switchView(b.dataset.view));
+});
+
+// ── REGION × CATEGORY TAXONOMY ──
+const PRIMARY_REGIONS=['Nadi/Denarau','Coral Coast/Sigatoka','Pacific Harbour','Suva/Nausori','Lautoka','Savusavu','Taveuni'];
+const SECONDARY_REGIONS=['Labasa','Ba','Tavua','Rakiraki','Levuka','Lami','Nasinu','Kadavu'];
+// Blue Lagoon Beach Resort is a real listing in the Yasawa Islands, which
+// isn't in the agreed primary/secondary region list — flagged to James
+// rather than mistagged under a nearby mainland region.
+const OTHER_REGIONS=['Yasawa Islands'];
+const CATEGORIES=['Airport & Ground Transfers','Day Tours & Island Trips','Water Sports & Diving','Accommodation','Dining','Car Rental','Wellness & Spa','Cultural Experiences','Shopping & Errands','Medical/Pharmacy','Events & Weddings'];
+
+// Same real partner content as the DEAL_TRIGGERS array and the specials
+// grid above — kept as its own array (not derived from DEAL_TRIGGERS) so
+// checkSmartDeal()'s protected keyword-matching logic stays untouched.
+// All price/desc/url values are copied verbatim from the existing hardcoded
+// markup; category/region/rating are this session's added tags.
+const LISTINGS=[
+  {id:'nadi-transfers',partner:'Nadi Airport Transfers',title:'Private Airport Transfer · 110+ Destinations',price:'From FJ$49 to Denarau',was:null,desc:'Meet & greet in arrivals hall. Real-time flight tracking — driver waits free. Free supermarket stop. 24/7 including 2am arrivals. Coral Coast FJ$129 · Pacific Harbour FJ$199 · Suva FJ$319.',url:'https://nadiairporttransfers.com',category:'Airport & Ground Transfers',region:'Nadi/Denarau',badge:'✈ OUR SITE',badgeClass:'b-own',ownSite:true,rating:null,ask:'How much does an airport transfer from Nadi cost? I need to get to Denarau.'},
+  {id:'atv',partner:'Fiji Tour Transfers',title:'ATV Off-Road Adventure Day Tour',price:'AU$69 pp',was:'AU$99',desc:'5-hour quad bike through jungle trails, sugarcane fields and hilltop views over Mamanuca Islands. Daily 8am & 1pm from Nadi. Hotel transfers included.',url:'https://fijitourtransfers.com/st_tour/nadi-off-road-atv-bike-adventure-day-tour-fiji/',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🏍 30% OFF',badgeClass:'b-sale',ownSite:true,rating:null,ask:'Tell me about the ATV off-road adventure in Fiji — what is included and how long is it?'},
+  {id:'horse-riding',partner:'Fiji Tour Transfers',title:'Natadola Beach Horse Riding',price:'AU$76 pp',was:'AU$190',desc:"Ride along Natadola Beach — rated Fiji's most beautiful. 50 minutes. All levels welcome including beginners. Free hotel transfers from Nadi and Denarau.",url:'https://fijitourtransfers.com/st_tour/natadola-beach-horse-riding-fiji-au95/',category:'Day Tours & Island Trips',region:'Coral Coast/Sigatoka',badge:'🐴 60% OFF',badgeClass:'b-sale',ownSite:true,rating:{stars:5,count:8},ask:'Tell me about horse riding on Natadola Beach — is it suitable for beginners and how far is it from Nadi?'},
+  {id:'zipline',partner:'Fiji Tour Transfers',title:'Nadi Zip Line Tour',price:'AU$221 pp',was:'AU$245',desc:"Thrilling 3-hour canopy zip line experience through Fiji's jungle. One of Fiji's most exciting adventure activities. Daily departures from Nadi.",url:'https://fijitourtransfers.com/st_tour/nadi-zip-line-tour-fiji-2026/',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🪂 10% OFF',badgeClass:'b-sale',ownSite:true,rating:{stars:5,count:10},ask:'Tell me about the Nadi zip line tour — how thrilling is it and who can do it?'},
+  {id:'cultural-night',partner:'Nadi Cultural Night Tour',title:'Warrior Welcome + Lovo Feast',price:'AU$118 adult · AU$70 child',was:null,desc:'Kava ceremony, meke dancing, fire dance, lovo underground feast. Family AU$335 (2A+2C). 15% cheaper than Viator. Personal WhatsApp host on day of tour.',url:'https://nadiculturealnighttour.com',category:'Cultural Experiences',region:'Nadi/Denarau',badge:'✨ FIJIAN-OWNED',badgeClass:'b-new',ownSite:false,rating:null,ask:'Tell me about the Nadi Cultural Night Tour — warrior welcome, kava and lovo feast — is it authentic?'},
+  {id:'blue-lagoon',partner:'Blue Lagoon Beach Resort',title:'7-Night Dive Free Package',price:'NZD $3,850 pp',was:null,desc:'All meals + unlimited diving after PADI course. Nacula Island, Yasawa Islands. Remote, exclusive, clearest water in Fiji. Tumba Kids Club available.',url:'https://www.bluelagoonresortfiji.com',category:'Accommodation',region:'Yasawa Islands',badge:'🏝 HOT DEAL',badgeClass:'b-hot',ownSite:false,rating:null,ask:'Tell me about Blue Lagoon Beach Resort 7-night dive free package — what is included and how do I get there?'},
+  {id:'palms-denarau',partner:'The Palms Denarau',title:'Self-Contained Apartments',price:'From AUD$150/night',was:null,desc:'Only self-catering on Denarau Island. Full kitchen saves on food costs. Walk to Port Denarau ferry terminal. 1BR AUD$180 · 2BR AUD$220 · 3BR AUD$280.',url:'https://thepalmsdenarau.com',category:'Accommodation',region:'Nadi/Denarau',badge:'🏠 SELF-CATERING',badgeClass:'b-own',ownSite:false,rating:null,ask:'Tell me about The Palms Denarau — is it good value, what sizes available, how far to the ferry?'},
+  {id:'smugglers-cove',partner:'Smugglers Cove Resort',title:'Daily Sunset Cruise',price:'FJ$65 pp',was:null,desc:'Departs 5:30pm daily. BYO drinks & nibbles. Watch the sun melt into the Pacific from Wailoaloa Beach. 15 mins from Nadi Airport.',url:'https://smugglerscove.com.fj',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🌅 DAILY',badgeClass:'b-pop',ownSite:false,rating:null,ask:'Tell me about Smugglers Cove sunset cruise — how do I get there and what is included?'},
+  {id:'namosi-rafting',partner:'Namosi Adventure Tours',title:'Upper Navua River Rafting',price:'AU$220 pp',was:null,desc:'Dramatic volcanic canyon walls, multiple waterfalls. Most remote highland terrain on Viti Levu. Full day including transfers and lunch. Expert local guides from Namosi villages.',url:'https://namosiadventuretoursfiji.com',category:'Day Tours & Island Trips',region:'Pacific Harbour',badge:'🏔 REMOTE',badgeClass:'b-new',ownSite:false,rating:null,ask:'Tell me about Namosi Adventure Tours Upper Navua river rafting — what is the experience like and who is it for?'}
+];
+
+let activeRegion='All',activeCategory='All',sortMode='featured';
+
+// ── PARTY SIZE (adults/children) ──
+let partySize={adults:2,children:0};
+try{const s=JSON.parse(localStorage.getItem('lagi_party_size'));if(s)partySize=s}catch(e){}
+function savePartySize(){try{localStorage.setItem('lagi_party_size',JSON.stringify(partySize))}catch(e){}}
+function adjustParty(field,delta){
+  const min=field==='adults'?1:0;
+  partySize[field]=Math.max(min,Math.min(9,partySize[field]+delta));
+  savePartySize();
+  renderPartySize();
+}
+function renderPartySize(){
+  const a=document.getElementById('ps-adults-count'),c=document.getElementById('ps-children-count');
+  if(a)a.textContent=partySize.adults;
+  if(c)c.textContent=partySize.children;
+}
+function partySizeText(){
+  let t=partySize.adults+' adult'+(partySize.adults!==1?'s':'');
+  if(partySize.children>0)t+=', '+partySize.children+' child'+(partySize.children!==1?'ren':'');
+  return t;
+}
+
+// ── SAVED (localStorage, non-monetary) ──
+function getSavedIds(){try{return JSON.parse(localStorage.getItem('lagi_saved'))||[]}catch(e){return[]}}
+function setSavedIds(ids){try{localStorage.setItem('lagi_saved',JSON.stringify(ids))}catch(e){}}
+function isSaved(id){return getSavedIds().includes(id)}
+function toggleSaved(id,btnEl){
+  let ids=getSavedIds();
+  if(ids.includes(id)){ids=ids.filter(x=>x!==id)}else{ids.push(id)}
+  setSavedIds(ids);
+  if(btnEl)btnEl.textContent=ids.includes(id)?'❤️':'🤍';
+  updateSavedBadge();
+}
+function updateSavedBadge(){
+  const n=getSavedIds().length;
+  const el=document.getElementById('saved-count-badge');
+  if(el)el.textContent=n>0?' '+n:'';
+}
+
+// ── RATING (structured; only rendered when real data exists — never fabricated) ──
+function renderRatingHtml(rating){
+  if(!rating)return '';
+  return '<div class="listing-rating">'+'⭐'.repeat(rating.stars)+' <span>('+rating.count+' reviews)</span></div>';
+}
+
+// ── LISTING CARD (reuses .sc / .sc-badge / .sc-actions styling from the specials grid) ──
+function listingCardHtml(l){
+  const wasHtml=l.was?'<div class="sc-was">Was '+escHtml(l.was)+'</div>':'';
+  return '<div class="sc listing-card" data-id="'+l.id+'">'+
+    '<button class="save-heart" data-action="save" data-id="'+l.id+'">'+(isSaved(l.id)?'❤️':'🤍')+'</button>'+
+    '<div class="sc-badge '+l.badgeClass+'">'+escHtml(l.badge)+'</div>'+
+    '<div class="sc-partner">'+escHtml(l.partner)+' · '+escHtml(l.region)+'</div>'+
+    '<div class="sc-title">'+escHtml(l.title)+'</div>'+
+    renderRatingHtml(l.rating)+
+    '<div class="sc-price">'+escHtml(l.price)+'</div>'+
+    wasHtml+
+    '<div class="sc-desc">'+escHtml(l.desc)+'</div>'+
+    '<div class="sc-actions">'+
+      '<button class="sc-book '+(l.ownSite?'own':'')+'" data-action="detail" data-id="'+l.id+'" style="border:none;cursor:pointer;font-family:\'Sora\',sans-serif">View details →</button>'+
+      '<button class="sc-ask" data-action="ask" data-id="'+l.id+'">Ask Lagi</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function directoryClickHandler(e){
+  const actionBtn=e.target.closest('[data-action]');
+  if(actionBtn){
+    const id=actionBtn.dataset.id;
+    const listing=LISTINGS.find(x=>x.id===id);
+    if(!listing)return;
+    if(actionBtn.dataset.action==='save'){toggleSaved(id,actionBtn)}
+    else if(actionBtn.dataset.action==='detail'){openDetail(id)}
+    else if(actionBtn.dataset.action==='ask'){heroAsk(listing.ask)}
+    return;
+  }
+  const card=e.target.closest('.listing-card');
+  if(card)openDetail(card.dataset.id);
+}
+document.getElementById('directory-grid').addEventListener('click',directoryClickHandler);
+document.getElementById('saved-grid').addEventListener('click',directoryClickHandler);
+
+// ── FILTER / SORT / RENDER DIRECTORY ──
+function filteredListings(){
+  let list=LISTINGS.filter(l=>{
+    const regionOk=activeRegion==='All'||l.region===activeRegion;
+    const catOk=activeCategory==='All'||l.category===activeCategory;
+    return regionOk&&catOk;
+  });
+  if(sortMode==='rating'){
+    list=list.slice().sort((a,b)=>{
+      const ar=a.rating?a.rating.stars*1000+a.rating.count:-1;
+      const br=b.rating?b.rating.stars*1000+b.rating.count:-1;
+      return br-ar;
+    });
+  }
+  return list;
+}
+function renderDirectory(){
+  const grid=document.getElementById('directory-grid');
+  const list=filteredListings();
+  grid.innerHTML=list.length===0
+    ? '<div class="directory-empty">No listings yet for this region/category combination — the network is growing. Try "All" or check back soon.</div>'
+    : list.map(listingCardHtml).join('');
+}
+function setRegion(r){activeRegion=r;renderChips();renderDirectory()}
+function setCategory(c){activeCategory=c;renderChips();renderDirectory()}
+function setSort(v){sortMode=v;renderDirectory()}
+function renderChips(){
+  const rc=document.getElementById('region-chips');
+  const cc=document.getElementById('category-chips');
+  const regions=['All',...PRIMARY_REGIONS,...OTHER_REGIONS,...SECONDARY_REGIONS];
+  rc.innerHTML=regions.map(r=>'<button class="chip'+(activeRegion===r?' active':'')+'" data-region="'+escHtml(r)+'">'+escHtml(r)+'</button>').join('');
+  const cats=['All',...CATEGORIES];
+  cc.innerHTML=cats.map(c=>'<button class="chip'+(activeCategory===c?' active':'')+'" data-category="'+escHtml(c)+'">'+escHtml(c)+'</button>').join('');
+}
+document.getElementById('region-chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)setRegion(b.dataset.region)});
+document.getElementById('category-chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)setCategory(b.dataset.category)});
+document.getElementById('sort-select').addEventListener('change',e=>setSort(e.target.value));
+renderChips();
+
+// ── SAVED VIEW ──
+function renderSaved(){
+  const grid=document.getElementById('saved-grid');
+  const ids=getSavedIds();
+  const list=LISTINGS.filter(l=>ids.includes(l.id));
+  grid.innerHTML=list.length===0
+    ? '<div class="saved-empty">Nothing saved yet. Tap 🤍 on any listing in Categories to save it here.</div>'
+    : list.map(listingCardHtml).join('');
+  renderStamps();
+  renderPushCard();
+}
+
+// ── IN-APP DETAIL SCREEN — extends showSmartDeal()'s data shape into a full screen ──
+let currentDetailId=null;
+function openDetail(id){
+  const l=LISTINGS.find(x=>x.id===id);
+  if(!l)return;
+  currentDetailId=id;
+  document.getElementById('dm-tags').innerHTML='<span class="dm-tag">'+escHtml(l.category)+'</span><span class="dm-tag">'+escHtml(l.region)+'</span>';
+  document.getElementById('dm-title').textContent=l.title;
+  document.getElementById('dm-partner').textContent=l.partner;
+  document.getElementById('dm-price').textContent=l.price;
+  const wasEl=document.getElementById('dm-was');
+  wasEl.style.display=l.was?'block':'none';
+  wasEl.textContent=l.was?'Was '+l.was:'';
+  document.getElementById('dm-rating').innerHTML=renderRatingHtml(l.rating);
+  document.getElementById('dm-desc').textContent=l.desc;
+  document.getElementById('dm-party').textContent='Pricing shown is per person, for your selected party of '+partySizeText()+'.';
+  document.getElementById('dm-book-link').href=l.url;
+  document.getElementById('dm-save-btn').textContent=isSaved(id)?'❤️ Saved':'🤍 Save';
+  document.getElementById('listing-detail-modal').style.display='flex';
+}
+function closeDetail(){
+  document.getElementById('listing-detail-modal').style.display='none';
+  currentDetailId=null;
+}
+function detailAskLagi(){
+  const l=LISTINGS.find(x=>x.id===currentDetailId);
+  if(!l)return;
+  closeDetail();
+  heroAsk(l.ask+' We are '+partySizeText()+'.');
+}
+function detailToggleSave(){
+  if(!currentDetailId)return;
+  toggleSaved(currentDetailId,null);
+  document.getElementById('dm-save-btn').textContent=isSaved(currentDetailId)?'❤️ Saved':'🤍 Save';
+  const heart=document.querySelector('.listing-card[data-id="'+currentDetailId+'"] .save-heart');
+  if(heart)heart.textContent=isSaved(currentDetailId)?'❤️':'🤍';
+}
+updateSavedBadge();
+
+// ── WHATSAPP HANDOFF STATUS TEXT ──
+document.addEventListener('click',function(e){
+  const a=e.target.closest('a[href*="wa.me"], a.wa-btn');
+  if(!a)return;
+  let status=a.parentElement&&a.parentElement.querySelector('.wa-status');
+  if(!status){
+    status=document.createElement('div');
+    status.className='wa-status';
+    status.textContent='✓ Request sent → Typically responds in 15 min';
+    a.insertAdjacentElement('afterend',status);
+  }
+});
+
+// ── VISITOR STAMPS (non-monetary count of Lagi-assisted requests) ──
+// Wraps the global sendMessage reference rather than editing its body,
+// so the protected function's source is untouched.
+function incrementStamp(){
+  try{localStorage.setItem('lagi_stamps',String((parseInt(localStorage.getItem('lagi_stamps')||'0',10))+1))}catch(e){}
+}
+function renderStamps(){
+  const el=document.getElementById('stamps-count');
+  if(!el)return;
+  let n=0;
+  try{n=parseInt(localStorage.getItem('lagi_stamps')||'0',10)}catch(e){}
+  el.textContent=n;
+}
+const _origSendMessage=sendMessage;
+sendMessage=function(customText){
+  incrementStamp();
+  return _origSendMessage(customText);
+};
+
+// ── GEOLOCATION-AWARE DEFAULT REGION (only on explicit user tap — never forced) ──
+const REGION_COORDS={
+  'Nadi/Denarau':[-17.7765,177.4356],
+  'Coral Coast/Sigatoka':[-18.1416,177.5088],
+  'Pacific Harbour':[-18.2500,178.0833],
+  'Suva/Nausori':[-18.1416,178.4419],
+  'Lautoka':[-17.6169,177.4514],
+  'Savusavu':[-16.7783,179.3400],
+  'Taveuni':[-16.8500,179.9667]
+};
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+const geoBtn=document.getElementById('geo-btn');
+if(geoBtn){
+  geoBtn.addEventListener('click',function(){
+    if(!('geolocation' in navigator))return;
+    geoBtn.textContent='📍 Locating…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      const{latitude,longitude}=pos.coords;
+      let best=null,bestDist=Infinity;
+      for(const r in REGION_COORDS){
+        const[lat,lon]=REGION_COORDS[r];
+        const d=haversine(latitude,longitude,lat,lon);
+        if(d<bestDist){bestDist=d;best=r}
+      }
+      geoBtn.textContent='📍 Show deals near me';
+      if(best)setRegion(best);
+    },function(){geoBtn.textContent='📍 Show deals near me'},{timeout:8000});
+  });
+}
+
+// ── PUSH NOTIFICATION OPT-IN (honest support detection, no fake backend claims) ──
+function pushSupportStatus(){
+  const ua=navigator.userAgent;
+  const isIOS=/iPad|iPhone|iPod/.test(ua)&&!window.MSStream;
+  const isStandalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+  if(isIOS&&!isStandalone){
+    return{supported:false,reason:'iOS requires adding Lagi to your Home Screen first (Share → Add to Home Screen) — push notifications only work inside the installed app on iOS. This is an Apple platform restriction, not a Lagi limitation.'};
+  }
+  if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
+    return{supported:false,reason:'Push notifications are not supported in this browser.'};
+  }
+  return{supported:true,reason:null};
+}
+function renderPushCard(){
+  const el=document.getElementById('push-card-body');
+  if(!el)return;
+  const status=pushSupportStatus();
+  if(!status.supported){
+    el.innerHTML='<div class="push-card-desc">🔕 '+escHtml(status.reason)+'</div>';
+    return;
+  }
+  const perm=Notification.permission;
+  if(perm==='granted'){
+    el.innerHTML='<div class="push-card-desc">✅ Deal notifications enabled on this device.</div>';
+  }else if(perm==='denied'){
+    el.innerHTML='<div class="push-card-desc">Notifications are blocked in your browser settings.</div>';
+  }else{
+    el.innerHTML='<div class="push-card-desc">Get notified when new Fiji deals go live — no spam, unsubscribe anytime.</div><button class="push-btn" id="push-optin-btn">🔔 Enable deal alerts</button>';
+    const btn=document.getElementById('push-optin-btn');
+    if(btn)btn.addEventListener('click',async function(){
+      try{await Notification.requestPermission()}catch(e){}
+      renderPushCard();
+    });
+  }
+}
+
+// ── PWA INSTALLABILITY ──
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',function(e){
+  e.preventDefault();
+  deferredInstallPrompt=e;
+  const btn=document.getElementById('install-btn');
+  if(btn)btn.style.display='inline-block';
+});
+const installBtn=document.getElementById('install-btn');
+if(installBtn)installBtn.addEventListener('click',async function(){
+  if(!deferredInstallPrompt)return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt=null;
+  installBtn.style.display='none';
+});
+window.addEventListener('appinstalled',function(){
+  if(installBtn)installBtn.style.display='none';
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
+
+renderPartySize();
 </script>
 
 </body>
