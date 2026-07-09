@@ -776,10 +776,42 @@ external link stop being the primary tap target.
   unifying later once there's a real single source of truth (ideally D1) to derive both from.
 - Push notifications have no real delivery backend yet (opt-in/permission capture only).
 
+### Part 3 — Reviewed, merged, and verified live (addendum, written after the above)
+
+James reviewed the preview on his own phone, approved it, and Claude Code merged `pwa-rebuild` →
+`main` (commit `f09f31d`). Cloudflare Pages auto-deployed within ~15 seconds. Post-merge
+verification produced a genuinely useful process note rather than a clean confirmation:
+
+An independent re-fetch of `lagi.vakaviti.ai` (via a separate tool from the one used for the
+merge's own verification) showed the **old pre-PWA content** — twice in a row, several minutes
+apart — while Claude Code's fresh `curl` in the same window showed the new PWA content correctly,
+with exact evidence (96,930 bytes vs. the pre-PWA 66,317, `<nav class="bottom-nav">` at line 959,
+all four `data-view` attributes present in the raw response). Two verification tools disagreeing
+about the same live URL at the same time, both claiming certainty.
+
+Rather than trust either tool over the other, the tie-break was a fresh incognito load on James's
+actual phone: **the new app shell was there** — confirmed by screenshot, bottom nav visible and
+correct. The conflicting fetch was a caching artifact specific to the *verification* tool being
+used to check, not a real deployment or merge problem. `lagi.vakaviti.ai` is genuinely, confirmedly
+live with the full PWA rebuild.
+
+**Worth remembering for future sessions:** when two independent verification methods disagree
+about live production state, and neither can definitively explain why, a real device is the
+actual tie-break — not further back-and-forth between tools that both claim certainty.
+
+### Honest scorecard against the Gojek/Grab strategic review (same overall session, earlier)
+
+Full detail in `VAKAVITI-BRAIN.md` Session 53 entry. Summary: most individual front-end features
+from that review shipped this session (directory, detail screens, party-size filtering,
+location-aware discovery, ratings, non-monetary loyalty, push opt-in, WhatsApp status text).
+Correctly absent: payment/wallet (explicitly reversed mid-session), CANGO partnership (explicitly
+not the aim), food delivery (out of scope from the start). **Not yet built — and the actual
+critical path:** self-serve partner onboarding at scale, real D1-backed listings, automated
+partner dispatch. Tonight built the front door; the engine room is the next session.
+
 ### Next steps
-1. **James reviews the preview**: https://pwa-rebuild.vakaviti-lagi-public.pages.dev — merge to
-   `main` when satisfied (this is a genuine production deploy the moment it merges, per the
-   Git-connect safety rule established in Part 1).
+1. ~~James reviews the preview~~ — DONE, merged and verified live (see Part 3 above).
 2. Decide on the Yasawa Islands region-taxonomy gap.
-3. Scope the hardcoded-listings → D1 migration as its own session.
+3. Scope the hardcoded-listings → D1 migration as its own session — see `VAKAVITI-BRAIN.md` P26,
+   and note P25 (self-serve partner onboarding) is the real prerequisite/higher priority.
 4. Consider unifying `LISTINGS`/`DEAL_TRIGGERS` once a real data source exists.
