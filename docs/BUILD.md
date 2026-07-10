@@ -994,9 +994,10 @@ worth recording honestly rather than glossing over:**
 **Real bug found independent of anything built this session:** the original Session 53 hardcoded
 Cultural Night Tour URL (`nadiculturealnighttour.com`, extra "a") has been a dead link in
 production this whole time — confirmed via direct DNS resolution failure. The real partner record
-has the correct domain (`nadiculturalnighttour.com`, resolves fine). The new data-driven directory
-fixes this automatically, since it reads the correct `partners.website_url` instead of the
-hardcoded typo.
+has the correct domain (`nadiculturalnighttour.com`, resolves fine). The new Categories-tab directory reads the
+correct `partners.website_url` — **note: this claim was later found to be imprecise as originally
+stated here; see the Addendum below for the corrected, scope-limited version (Categories tab only,
+Home page unaffected).**
 
 **Data hygiene, verified rather than assumed:** before deploying, checked whether Session 55's 3
 test partners had ever been cleaned up — one (`op_test_verify_v3_delete_me_mrdme5f4`) was
@@ -1076,6 +1077,10 @@ branch had already been through. Not fixed this session. See Known Issues.
   backfilled deals present with correct data, all 9 original listings represented correctly.
 - Real browser check against `https://lagi.vakaviti.ai` itself (not the preview): Categories tab
   renders all real listings correctly — badges, prices, ratings — zero console errors.
+- **A second, fully independent verification** (separate from the above, performed directly by
+  Claude/James in the planning conversation, not by this Claude Code session) re-fetched production
+  fresh afterward and confirmed the same result set independently — belt-and-suspenders given how
+  many claims in this branch needed correction before merge.
 
 ### Real design/data notes for a future session, recorded explicitly per James's request
 
