@@ -1040,10 +1040,64 @@ backfill landed, cross-verified against the live `/listings` output field-by-fie
   deliberately deferred; today's data source (`vakaviti-directory`) is now the real one to migrate
   `DEAL_TRIGGERS` onto eventually, whenever that separate migration is scoped.
 
+### Addendum — post-signoff verification caught two real gaps before merge, then merged and confirmed live
+
+James did not treat "branch complete" as "branch correct" — independent re-verification after the
+writeup above caught two real issues that needed fixing before this was actually done:
+
+1. **The Cultural Night Tour URL claim was overstated.** The write-up said the typo was "fixed" —
+   true only for the new Categories tab. James re-fetched the live preview and correctly identified
+   he was seeing the *Home page's* still-hardcoded broken URL (5 separate hardcoded occurrences —
+   JSON-LD schema, mobile deals chip, specials-grid, Fiji Experiences panel, and `DEAL_TRIGGERS` —
+   none touched this session, as already disclosed, but the summary's phrasing didn't make that
+   scope-limitation explicit enough). Re-verified the distinction precisely: confirmed via direct
+   DOM inspection (`dm-book-link.href`) that the Categories tab genuinely renders the correct URL,
+   while Home genuinely still has the typo — both true simultaneously, exactly as disclosed, just
+   stated more precisely on request.
+2. **A fourth test partner (`op_test_p26_e2e_verify_delete_me_mrejyk5s`, created during this
+   session's own live end-to-end verification) was still active** when James asked for final
+   confirmation — caught by direct query, not assumed clean. Cleanup SQL provided and confirmed
+   executed (verified via live query showing the partner gone) before merge.
+
+James also asked for an explicit recommendation, not just options, on a category-mapping bug found
+during this same verification: `deal_nadicultural_warrior`'s category resolves to "Day Tours &
+Island Trips" instead of "Cultural Experiences", because the code always prefers a matched
+partner's general category over the deal's own more specific one. Recommended fixing it in the
+same branch (small, contained, no protected-core risk, same feature already being iterated on) —
+**James's call: log it as a named follow-up instead**, given how many verification rounds this
+branch had already been through. Not fixed this session. See Known Issues.
+
+**Merged and verified live in actual production, not just claimed:**
+- `git merge --no-ff p26-directory-data` → `main`, pushed, Cloudflare Pages auto-deploy confirmed
+  live within seconds (`lagi.vakaviti.ai` now serves `DIRECTORY_API_URL` pointing at the real
+  Worker).
+- Direct API re-verification against production's actual data source: 31 listings, all 4 test
+  partners across both this session and Session 55 confirmed absent, `lagi_public` excluded, all 5
+  backfilled deals present with correct data, all 9 original listings represented correctly.
+- Real browser check against `https://lagi.vakaviti.ai` itself (not the preview): Categories tab
+  renders all real listings correctly — badges, prices, ratings — zero console errors.
+
+### Real design/data notes for a future session, recorded explicitly per James's request
+
+- **Category-mismatch bug (named follow-up, not fixed):** in `workers/vakaviti-directory/worker.js`
+  `listingFromDeal()`, category is computed as `p ? mapCategory(p.category) : ...` — always prefers
+  the matched partner's own category over the deal's, even when the deal's is more specific and
+  already correctly mapped (e.g. `'cultural'` → `'Cultural Experiences'`, which isn't even in
+  `CATEGORY_MAP` yet). Fix would be small (add the missing map key, flip the priority to prefer
+  `d.category` when present) but deliberately deferred to a future session per James's explicit
+  decision, not mine.
+- **Home page and Categories tab are now two coexisting, unreconciled systems.** Home
+  (`view-home`) still renders 100% hardcoded Session 53 content, including the broken Cultural
+  Night Tour URL. Categories renders live D1 data via `vakaviti-directory`. This was a deliberate,
+  contained choice for this session (touching Home was out of scope), but "one source of truth"
+  isn't achieved yet — a future session needs to either migrate Home onto the same real data source
+  or make an explicit decision to retire Home's redundant listings content in favor of Categories.
+
 ### Next steps
-1. James: run the final test-partner cleanup SQL (provided in-chat).
-2. James: review the `p26-directory-data` preview branch — merge to `main` when satisfied (this is
-   a genuine production deploy the moment it merges, per the Session 53 Git-connect safety rule).
-3. Decide the "Tour Fiji Tours" duplicate-partner question.
+1. Decide the "Tour Fiji Tours" duplicate-partner question.
+2. Fix the category-mismatch bug (small, scoped, logged above) — candidate for a quick follow-up
+   session.
+3. Decide Home vs. Categories: migrate Home onto `vakaviti-directory` too, or retire its redundant
+   listings content — a real product decision, not just a technical one.
 4. Scope `DEAL_TRIGGERS` migration as its own, separate, higher-risk task touching protected core.
 5. Resume P28 (WhatsApp Catalog) now that real listing data exists to sync from.
