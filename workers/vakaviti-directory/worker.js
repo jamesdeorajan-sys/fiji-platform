@@ -124,18 +124,24 @@ async function handleListings(request, env, cors) {
     const deals     = dealsResult.results || [];
     const stats     = statsResult.results || [];
 
-    // Grouped by name, not a single value — some legacy partner names are
-    // shared by more than one deal (or, separately, by more than one
-    // partner row — a pre-existing data duplicate this Worker doesn't try
-    // to resolve). A plain Map<name, deal> would silently drop every deal
-    // but the last one written for a shared name; popping from an array
-    // instead means each matching partner claims a distinct deal when more
-    // than one exists, and none are lost.
+    // partner_id is the reliable match when a deal has one set — it's the
+    // only thing that correctly resolves cases like two real partner rows
+    // sharing the exact same name ("Tour Fiji Tours" appears twice in the
+    // live data). Deals without a partner_id (legacy rows entered before
+    // this column was consistently populated) fall back to name matching.
+    // Both are grouped into arrays, not single values, so two deals
+    // sharing an id/name don't silently drop one of them.
+    const dealsById = new Map();
     const dealsByName = new Map();
     for (const d of deals) {
-      const key = normalizeName(d.partner_name);
-      if (!dealsByName.has(key)) dealsByName.set(key, []);
-      dealsByName.get(key).push(d);
+      if (d.partner_id) {
+        if (!dealsById.has(d.partner_id)) dealsById.set(d.partner_id, []);
+        dealsById.get(d.partner_id).push(d);
+      } else {
+        const key = normalizeName(d.partner_name);
+        if (!dealsByName.has(key)) dealsByName.set(key, []);
+        dealsByName.get(key).push(d);
+      }
     }
 
     const statsById = new Map();
@@ -144,8 +150,11 @@ async function handleListings(request, env, cors) {
     const matchedDealIds = new Set();
 
     const listings = partners.map(p => {
-      const group  = dealsByName.get(normalizeName(p.name));
-      const deal   = group && group.length ? group.shift() : null;
+      const idGroup   = dealsById.get(p.id);
+      const nameGroup = dealsByName.get(normalizeName(p.name));
+      const deal = (idGroup && idGroup.length) ? idGroup.shift()
+                 : (nameGroup && nameGroup.length) ? nameGroup.shift()
+                 : null;
       if (deal) matchedDealIds.add(deal.id);
       const rating = statsById.get(p.id) || null;
 
@@ -208,7 +217,7 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, worker: 'vakaviti-directory', version: 2 }, 200, cors);
+      return json({ ok: true, worker: 'vakaviti-directory', version: 3 }, 200, cors);
     }
 
     return json({ error: 'Not found.' }, 404, cors);
