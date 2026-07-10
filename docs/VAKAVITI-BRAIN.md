@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 55 — 2026-07-09/10
+# Last updated: Session 56 — 2026-07-09/10
 
 ---
 
@@ -220,9 +220,10 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 - Turned out to already be ~80% built and unknown to this priority list: `join.vakaviti.ai` → `vakaviti-onboard` Worker has existed since Session 28 (24 May), never tracked in Git, never verified end-to-end. Verified with a real dummy submission that it silently failed — new partners inserted as `status='pending'` with no non-technical activation path, and never got a `contact_channels` row at all (same gap Session 52 fixed for cometofiji.com, this Worker predates that fix). Root-caused from the real source (now tracked at `workers/vakaviti-onboard/worker.js`) and fixed: added `contact_channels` inserts, added a one-click `GET /activate` link (email → click → live, no SQL). Verified live in production with three real dummy submissions and a real lead POST. Full writeup: BUILD.md Session 55.
 - This unblocks P23 (expanding partner_referrals to the other 29+ partners) and P26 (hardcoded-listings gap) — genuinely the critical path item, now actually clear.
 
-**P26 — 🆕 Migrate lagi.vakaviti.ai's hardcoded directory to real D1 data**
-- Session 53's PWA rebuild correctly kept the existing hardcoded listings rather than inventing a fake data layer, but flagged this clearly: no D1/API call exists anywhere on this page. Once P25 (self-serve onboarding) exists, this becomes the natural next step — wire the new region × category directory UI to read real partner rows instead of a hand-maintained `LISTINGS` array.
-- Related cleanup once a real data source exists: unify `LISTINGS` and the protected `DEAL_TRIGGERS` array, which were deliberately kept duplicated this session as a safety tradeoff (see Session 53 writeup).
+**P26 — ✅ RESOLVED Session 56 (pending James's merge review) — migrate lagi.vakaviti.ai's hardcoded directory to real D1 data**
+- Built `workers/vakaviti-directory/worker.js` (new, standalone, read-only — never touches the protected Worker or `DEAL_TRIGGERS`), wired the PWA's Categories view to it, on branch `p26-directory-data`. Real design decision confirmed with James rather than picked silently: every active partner shows a simple card immediately; richer cards (price, featured badge) only when a real `deals` row exists, never fabricated; ratings only from real `partner_review_stats`. Four rounds of real bugs found by testing against the actual 29-partner dataset, not local mocks — see BUILD.md Session 56 for the full account (dropped deals on shared names, an uninformative generic "Other" bucket for legacy category/region values, `partner_id` never actually being used for matching despite existing, and a partner with 3 real deals losing 2 of them to a one-deal-per-partner cap). Verified live end-to-end: real self-serve signup → real one-click activate → confirmed appearing correctly in the real preview.
+- Related cleanup, still deferred: unify `LISTINGS` (frontend) and the protected `DEAL_TRIGGERS` array — `vakaviti-directory` is now the real data source either should eventually migrate onto, but that's a separate, higher-risk task since `DEAL_TRIGGERS` lives inside protected core.
+- Found and fixed a real, pre-existing bug independent of this task: the Nadi Cultural Night Tour URL hardcoded since Session 53 had a typo (`nadiculturealnighttour.com`) and has been a dead link in production — confirmed via DNS resolution failure. The new data-driven directory reads the correct domain from `partners.website_url` automatically.
 
 **P27 — Decide Yasawa Islands region-taxonomy gap**
 - Quick decision, not urgent. See Known Issues.
@@ -395,9 +396,11 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 |---|---|---|
 | WhatsApp is rolling out usernames + a business-scoped user ID (BSUID) in 2026 to eventually replace phone numbers as the customer identifier | **NEW Session 54, forward-looking, not urgent yet** | If Lagi's attribution/lead-tracking currently keys off phone number as the primary identifier, this will silently break for any customer who adopts a username (webhook payloads won't always include a phone number). Fix: store BSUID alongside phone number now, before rollout is widespread — cheap now, expensive to retrofit later. |
 | Unconfirmed: does Lagi's WhatsApp flow disclose to customers that they're chatting with an automated assistant? | **NEW Session 54, needs verification, not confirmed either way** | Meta's WhatsApp Business Platform terms require this disclosure. Genuinely don't know current state — check before assuming compliant. |
-| lagi.vakaviti.ai's entire listings directory (Hot Deals, Partner Offers, Fiji Experiences, DEAL_TRIGGERS keyword array) is 100% hardcoded HTML/JS | **Session 53, now the real remaining blocker as of Session 55** | No D1 or partner-API call exists anywhere on this page — same shape as the Session 52 `partner_referrals` gap. Now that P25 (self-serve onboarding) is fixed and partners can actually be created/activated, this — see Section 3 P26 — is the real remaining blocker to "maximum partners, fast": new partners can join, but still won't appear anywhere on the actual page until this migrates. |
+| lagi.vakaviti.ai's Categories directory was 100% hardcoded HTML/JS | **RESOLVED Session 56 (pending merge)** | Migrated to real D1 data via `vakaviti-directory` — see Section 3 P26, BUILD.md Session 56. The Home page's Hot Deals/Partner Offers/Fiji Experiences panels and the protected `DEAL_TRIGGERS` keyword array are still hardcoded — deliberately out of scope this session, see the new "Tour Fiji Tours duplicate" and "DEAL_TRIGGERS unification" rows below. |
+| Two real `partners` rows share the exact name "Tour Fiji Tours" (`op_tourfiji_001`, website tourfiji.tours; `op_tourfijitours_001`, website tourfijitours.com) | **NEW Session 56, flagged not resolved** | Found while building `vakaviti-directory` — a shared-name deal can only deterministically attach to one of them. Needs a decision from James: separate legitimate registrations, or an accidental duplicate from an earlier session. |
+| `DEAL_TRIGGERS` (protected Worker) and `LISTINGS`/the new `vakaviti-directory` data source are still three separate, unreconciled representations of partner listings | **Ongoing since Session 53, real data source now exists as of Session 56** | `vakaviti-directory` is now the real, live data source either should eventually migrate onto — but touching `DEAL_TRIGGERS` means editing protected core, so this is deliberately a separate, higher-risk task, not attempted this session per the explicit brief instruction. |
 | `vakaviti-onboard` Worker existed for 6+ weeks (since Session 28) completely unknown to this priority list, untracked in Git, and silently non-functional (new partners never activated, never got lead-notification channels) | **RESOLVED Session 55** | Root-caused and fixed — see Section 3 P25, BUILD.md Session 55. Worth remembering as a process lesson: always check for existing untracked infrastructure (`docs/BUILD (2).md`'s old Worker registry table caught this) before assuming something needs building from scratch. |
-| Blue Lagoon Beach Resort is tagged "Yasawa Islands," which isn't in the agreed region taxonomy (7 primary + 8 secondary) | **NEW Session 53, flagged not resolved** | Added as an honest extra chip rather than mis-tagged under a nearby mainland region. Needs a decision: formally extend the taxonomy, or fold under an existing region. |
+| Blue Lagoon Beach Resort is tagged "Yasawa Islands," which isn't in the agreed region taxonomy (7 primary + 8 secondary) | **Session 53, still flagged not formally resolved as of Session 56** | Still an honest extra chip. Session 56 found the onboarding form's own region dropdown already includes both "Yasawa Islands" and "Mamanuca Islands" as real options (neither in the agreed taxonomy either) — self-serve partners can already select them, so this gap is now backed by real, growing data, not just Blue Lagoon's one-off tag. Still needs James's decision: formally extend the taxonomy, or fold under an existing region. |
 | Cloudflare Web Analytics beacon on lagi.vakaviti.ai has a literal placeholder token (`"token": "REPLACE_WITH_CF_ANALYTICS_TOKEN"`) | **NEW Session 53** | Found during PWA source review. Means zero analytics have ever been collected on this page. Needs a real token from the Cloudflare Web Analytics dashboard — can't be fixed by Claude Code alone. |
 | `/config` endpoint never SELECTs `contact_email` from D1 | **NEW Session 52** | Network-wide gap, not partner-specific — no partner's widget can show its "Email" quick-action button even when a real email is on file. One-line SQL fix, low urgency (missing button, not broken function). See Section 3 P24. |
 | Keyword-matching fallback in cross-partner referral routing can misattribute leads for any partner whose name contains a common conversational word (e.g. "fiji") | **NEW Session 52, flagged not fixed** | Only avoided for cometofiji.com specifically by giving it explicit `partner_referrals` rows (Step 1 lookup, never falls through to the fragile fallback). The underlying fallback logic itself is unchanged and shared by all 29+ partners. See Section 3 P23. |
@@ -449,6 +452,46 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 56 — 2026-07-09/10 — P26: migrated lagi.vakaviti.ai's directory to real D1 data, on a preview branch, closing the loop Session 55 opened
+
+**Directly continues Session 55**: P25 made self-serve onboarding actually work, but new partners
+still had nowhere to appear — this session built that. Checked real schema completeness first
+(as instructed): confirmed `partners` has no price/badge/rating/image columns, found two more real
+pre-existing data sources not previously tracked (`deals` — hand-curated marketing content, only
+5 rows; `partner_review_stats` — real ratings, fed by a separate untracked `vakaviti-reviews`
+Worker). Presented the real design choice to James rather than picking silently: simple cards for
+every active partner immediately, richer cards only when a real `deals` row exists, ratings only
+when real reviews exist — confirmed, not assumed.
+
+Built `workers/vakaviti-directory/worker.js` (new, standalone, read-only, never touches protected
+core), wired the PWA's Categories view to it. **Four rounds of real bugs, each found by testing
+against the actual production dataset rather than trusting the code because it ran without
+errors**: deals silently dropped when two shared a partner name; most of the 29 real partners
+falling into an uninformative "Other" category/region bucket; `partner_id` existing in the schema
+but never actually used for matching (a real, confirmed data duplicate — two partner rows both
+named "Tour Fiji Tours" — needed it); and a partner with 3 real deals losing 2 of them to a
+one-deal-per-partner design cap, fixed by moving to one-listing-per-deal, which turned out to
+match the *original* Session 53 design more faithfully than the intermediate versions did.
+
+James caught two real gaps in the backfill/cleanup process directly: a `partner_id = NULL`
+oversight on deals where the real ID was already known, and — critically — asked for an explicit,
+audited confirmation (not just a re-paste) of every D1 table three test partners could have
+touched before running cleanup, which surfaced one genuinely missed table (`knowledge_queue`,
+written by `/knowledge-add` alongside `knowledge_items`, missed in the first pass).
+
+**Verified live, full loop, not claimed**: real `POST /onboard` submission → real one-click
+`/activate` → confirmed correctly rendering in the actual PWA preview, filtered under the right
+region chip, zero console errors, DOM count matching fetched data exactly. Confirmed no regression
+across all 9 previously-hardcoded listings once the backfill landed. Found and fixed one more real,
+pre-existing bug along the way: the Session 53 hardcoded Cultural Night Tour URL had a typo and has
+been a dead link in production this whole time — the new data-driven directory fixes this
+automatically by reading the correct `partners.website_url`.
+
+**Correctly not touched**: `DEAL_TRIGGERS` (protected core) — flagged only, per the brief's
+explicit instruction. Not merged to `main` yet — on branch `p26-directory-data`, awaiting James's
+review, same safety rule as Session 53 (production auto-deploys on merge). Full writeup: BUILD.md
+Session 56.
 
 ### Session 55 — 2026-07-09/10 — Found P25 (self-serve onboarding) was already half-built and silently broken; fixed it. P28 (WhatsApp Catalog) researched, correctly not built yet.
 

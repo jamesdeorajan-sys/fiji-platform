@@ -925,3 +925,125 @@ the kind of parallel-data-entry problem this whole session was about eliminating
    than building either against hand-maintained HTML.
 4. Once P26 exists: build the actual Catalog sync (partner listings → Commerce Manager catalog
    items), reusing the same data model rather than parallel entry, as the brief required.
+
+---
+
+## Session 56 — 9-10 July 2026 — P26: migrated lagi.vakaviti.ai's directory from hardcoded JS to real D1 data, on a preview branch — three real bugs found and fixed by testing against production data, not local mocks
+
+### Task 1 — Data-completeness check before writing any code
+
+Read the real, live `partners` schema by auditing every actual SQL statement across the protected
+Worker and `vakaviti-onboard` (no direct D1 access this session either) rather than guessing:
+confirmed `partners` has `id, name, slug, category, region, description, website_url,
+whatsapp_number, status, created_at` — no price, badge, rating, or image column anywhere. Also
+found two more real, pre-existing data sources not previously accounted for: a `deals` table
+(hand-curated marketing content — price, title, description — only 5 rows existed at session
+start, never connected to onboarding) and `partner_review_stats` (real ratings, only populated
+once actual reviews exist, fed by a separate untracked `vakaviti-reviews` Worker).
+
+**Cross-checked the 9 currently-live listings against `deals` by name and found only 3 of 9 had a
+matching row** — a strict real-data-only migration would have visibly regressed the other 6
+(ATV, Horse Riding, Zip Line, Cultural Night Tour, Palms Denarau, Namosi Rafting), which only ever
+existed as hardcoded JS.
+
+**Presented the real design choice to James rather than picking silently**, per the brief's
+explicit instruction: (a) extend the onboarding form to collect rich fields upfront, (b) a
+lightweight curation lane separate from bare partner-exists data, or (c) simpler cards for
+partners missing rich fields. James confirmed **(b) + (c) combined** — every active partner
+renders immediately as a simple card; richer cards (price, featured badge) only appear when a real
+`deals` row exists, populated by James later, never fabricated. Ratings only ever pulled from real
+`partner_review_stats`, never shown otherwise — not really a choice, the same "never fabricate"
+rule already hard-coded into the protected Worker's own review-grounding logic. James also
+confirmed backfilling real `deals` rows for the 6 currently-live listings that lacked one, to
+avoid the regression.
+
+### Task 2 — New `vakaviti-directory` Worker + PWA wiring, four rounds of real bugs found by testing against production
+
+Built a new standalone, read-only Worker (`workers/vakaviti-directory/worker.js`, never writes to
+D1, never touches the protected Worker or `DEAL_TRIGGERS`) exposing `GET /listings`. Wired
+`docs/lagi-public-live-backup/index.html`'s Categories view to fetch from it, replacing the
+Session 53 hardcoded `LISTINGS` array — protected JS block (`WORKER_URL` through the last
+`addEventListener`) verified **byte-identical** to `main`, this session touched nothing in that
+range at all, not even `heroAsk`/`heroSearch`.
+
+**Every round of "looks done" was wrong until tested against the real, full 29-partner dataset —
+worth recording honestly rather than glossing over:**
+
+1. **v1 → v2:** first live check against real data (not the 9-listing subset) found `dealsByName`
+   was a single-value Map — two real deals sharing a partner name silently dropped one; the
+   category/region mapping only covered the onboarding form's own vocabulary, so most of the 29
+   pre-existing partners (which predate that form) fell into an uninformative generic "Other"
+   bucket instead of showing their real value; and the platform's own internal `lagi_public`
+   record was appearing in the directory as if it were a bookable business.
+2. **v2 → v3:** James caught that the backfill SQL left `partner_id = NULL` on deals where a real
+   `partner_id` was already known and available from the same investigation — a plain oversight,
+   not a deliberate interim tier. Exposed a deeper issue: the Worker never used `partner_id` for
+   matching at all, only name — the one thing that actually resolves a real, confirmed data
+   duplicate found in production (two distinct `partners` rows both named "Tour Fiji Tours").
+   Fixed to prefer `partner_id` matching, falling back to name only when a deal genuinely has
+   none.
+3. **v3 → v4:** deploying v3 against the just-backfilled data immediately surfaced the deepest
+   bug: Fiji Tour Transfers has 3 real deals (ATV, Horse Riding, Zip Line), but the design capped
+   display at one deal per partner — the other 2 silently mis-filed as "unmatched legacy" content.
+   Restructured to one listing per deal, not per partner (a partner with 3 deals becomes 3
+   separate bookable listings) plus exactly one bare listing per partner with zero deals — this
+   actually matches the *original* Session 53 design more faithfully than the earlier versions did,
+   since ATV/Horse Riding/Zip Line were always 3 separate cards there too, despite being one
+   business.
+
+**Real bug found independent of anything built this session:** the original Session 53 hardcoded
+Cultural Night Tour URL (`nadiculturealnighttour.com`, extra "a") has been a dead link in
+production this whole time — confirmed via direct DNS resolution failure. The real partner record
+has the correct domain (`nadiculturalnighttour.com`, resolves fine). The new data-driven directory
+fixes this automatically, since it reads the correct `partners.website_url` instead of the
+hardcoded typo.
+
+**Data hygiene, verified rather than assumed:** before deploying, checked whether Session 55's 3
+test partners had ever been cleaned up — one (`op_test_verify_v3_delete_me_mrdme5f4`) was
+confirmed still active and would have appeared as a real listing. James asked for an explicit,
+audited confirmation of every table touched (not just a re-paste of the same list) before running
+cleanup — full audit of every `INSERT`/`UPDATE` across all three relevant Worker files found one
+real gap (`/knowledge-add` also writes to `knowledge_queue`, not just `knowledge_items` — missed
+in the first pass) and confirmed `partner_referrals`/`deals` have no write path anywhere in this
+codebase, so genuinely couldn't have been touched.
+
+### Verified live, full loop — not just claimed
+
+Real self-serve submission via the actual `POST /onboard` endpoint → confirmed `pending` via
+`/config` → real one-click `/activate` link → confirmed active and correctly mapped via
+`/listings` → **confirmed rendering correctly in the actual PWA preview branch**, filtered
+correctly under the right region chip, detail modal rendering real data, zero console errors,
+DOM card count matching the fetched data exactly (32 = 31 real listings + the test one). Test
+partner then flagged for cleanup, same discipline as Session 55.
+
+Confirmed no regression: all 9 previously-hardcoded listings still present and correct once the
+backfill landed, cross-verified against the live `/listings` output field-by-field, not eyeballed.
+
+### Known, disclosed limitations — not fixed this session, flagged not hidden
+
+- Two real `partners` rows share the exact name "Tour Fiji Tours" (`op_tourfiji_001` and
+  `op_tourfijitours_001`) — a genuine pre-existing data question for James (separate registrations
+  vs. accidental duplicate), not resolved by this Worker.
+- The onboarding form's region dropdown has no options for Pacific Harbour, Lautoka, or any
+  secondary region (Labasa/Ba/Tavua/Rakiraki/Levuka/Lami/Nasinu/Kadavu) — those can never be
+  populated via self-serve today. A form change, not a Worker change.
+- Category/region values for legacy partners that don't match the onboarding form's vocabulary are
+  shown as their own reasonably-formatted label rather than a generic "Other" — informative, but
+  means the directory's fixed chip list won't have a dedicated filter chip for every possible value
+  that can appear.
+
+### Not started this session, correctly
+
+- Task 3 (`DEAL_TRIGGERS`, protected core) — flagged only, per the brief's explicit instruction not
+  to touch it without a clearly safe path confirmed with James first. Not attempted.
+- `LISTINGS`/`DEAL_TRIGGERS` unification, noted as a future cleanup back in Session 53 — still
+  deliberately deferred; today's data source (`vakaviti-directory`) is now the real one to migrate
+  `DEAL_TRIGGERS` onto eventually, whenever that separate migration is scoped.
+
+### Next steps
+1. James: run the final test-partner cleanup SQL (provided in-chat).
+2. James: review the `p26-directory-data` preview branch — merge to `main` when satisfied (this is
+   a genuine production deploy the moment it merges, per the Session 53 Git-connect safety rule).
+3. Decide the "Tour Fiji Tours" duplicate-partner question.
+4. Scope `DEAL_TRIGGERS` migration as its own, separate, higher-risk task touching protected core.
+5. Resume P28 (WhatsApp Catalog) now that real listing data exists to sync from.
