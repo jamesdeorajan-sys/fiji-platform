@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 56 — 2026-07-09/10
+# Last updated: Session 56 CLOSED — 2026-07-09/10
 
 ---
 
@@ -457,7 +457,7 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 ## 18. SESSION HISTORY
 
-### Session 56 — 2026-07-09/10 — P26: migrated lagi.vakaviti.ai's directory to real D1 data, on a preview branch, closing the loop Session 55 opened
+### Session 56 CLOSED — 2026-07-09/10 — P26: migrated lagi.vakaviti.ai's directory to real D1 data, on a preview branch, closing the loop Session 55 opened
 
 **Directly continues Session 55**: P25 made self-serve onboarding actually work, but new partners
 still had nowhere to appear — this session built that. Checked real schema completeness first
@@ -489,13 +489,33 @@ written by `/knowledge-add` alongside `knowledge_items`, missed in the first pas
 region chip, zero console errors, DOM count matching fetched data exactly. Confirmed no regression
 across all 9 previously-hardcoded listings once the backfill landed. Found and fixed one more real,
 pre-existing bug along the way: the Session 53 hardcoded Cultural Night Tour URL had a typo and has
-been a dead link in production this whole time — the new data-driven directory fixes this
-automatically by reading the correct `partners.website_url`.
+been a dead link in production this whole time — the new Categories-tab directory fixes this by
+reading the correct `partners.website_url`, but NOT automatically for the whole site: an initial
+claim that this was fully fixed was corrected only after James asked for the literal before/after
+URL strings and then independently re-fetched the live page himself. The Home page's hardcoded
+content (main ticker and the "Fiji Experiences" panel) still shows the broken
+`nadiculturealnighttour.com` URL, unchanged — this is the same Home/Categories dual-source gap
+noted below, not a separate issue.
 
 **Correctly not touched**: `DEAL_TRIGGERS` (protected core) — flagged only, per the brief's
-explicit instruction. Not merged to `main` yet — on branch `p26-directory-data`, awaiting James's
-review, same safety rule as Session 53 (production auto-deploys on merge). Full writeup: BUILD.md
-Session 56.
+explicit instruction.
+
+**Two further real catches during James's pre-merge review, beyond the process already described
+above**: (1) the Cultural Night Tour "fix" claim was initially stated without the Categories-only
+qualifier — corrected only after James asked for the literal before/after URL strings and then
+independently re-fetched the live preview himself, finding the old URL still present on the
+default Home view (the explanation above is the corrected, accurate version); (2) a **fourth** test
+partner (`op_test_p26_e2e_verify_delete_me_mrejyk5s`, created during this session's own live-signup
+verification, distinct from the three Session 55 test partners) was confirmed cleaned up only after
+James asked for actual execution proof rather than accepting "standing by" as done — it was still
+fully live and would have shipped to production otherwise.
+
+**Merged to `main` (commit `a9154bd`) and independently verified live in production twice** — once
+by Claude Code via direct fetch immediately post-merge, and once more by James/Claude
+independently re-fetching `lagi.vakaviti.ai` fresh afterward. Both confirm: all 5 backfilled deals
+present and correctly attributed, all 4 test partners (this session's one plus Session 55's three)
+absent, all original 9 listings unregressed, zero console errors. P26 is genuinely closed, not just
+merged. Full writeup: BUILD.md Session 56.
 
 ### Session 55 — 2026-07-09/10 — Found P25 (self-serve onboarding) was already half-built and silently broken; fixed it. P28 (WhatsApp Catalog) researched, correctly not built yet.
 
