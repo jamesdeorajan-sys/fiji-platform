@@ -1244,28 +1244,42 @@ document.querySelectorAll('.bn-btn').forEach(b=>{
 // ── REGION × CATEGORY TAXONOMY ──
 const PRIMARY_REGIONS=['Nadi/Denarau','Coral Coast/Sigatoka','Pacific Harbour','Suva/Nausori','Lautoka','Savusavu','Taveuni'];
 const SECONDARY_REGIONS=['Labasa','Ba','Tavua','Rakiraki','Levuka','Lami','Nasinu','Kadavu'];
-// Blue Lagoon Beach Resort is a real listing in the Yasawa Islands, which
-// isn't in the agreed primary/secondary region list — flagged to James
-// rather than mistagged under a nearby mainland region.
-const OTHER_REGIONS=['Yasawa Islands'];
-const CATEGORIES=['Airport & Ground Transfers','Day Tours & Island Trips','Water Sports & Diving','Accommodation','Dining','Car Rental','Wellness & Spa','Cultural Experiences','Shopping & Errands','Medical/Pharmacy','Events & Weddings'];
+// Blue Lagoon Beach Resort is a real listing in the Yasawa Islands, and
+// Mamanuca Islands is a real onboarding-form region value — neither is in
+// the agreed primary/secondary region list, so both render as honest
+// extra chips rather than mistagged under a nearby mainland region.
+const OTHER_REGIONS=['Yasawa Islands','Mamanuca Islands'];
+const CATEGORIES=['Airport & Ground Transfers','Day Tours & Island Trips','Water Sports & Diving','Accommodation','Dining','Car Rental','Wellness & Spa','Cultural Experiences','Shopping & Errands','Medical/Pharmacy','Events & Weddings','Other'];
 
-// Same real partner content as the DEAL_TRIGGERS array and the specials
-// grid above — kept as its own array (not derived from DEAL_TRIGGERS) so
-// checkSmartDeal()'s protected keyword-matching logic stays untouched.
-// All price/desc/url values are copied verbatim from the existing hardcoded
-// markup; category/region/rating are this session's added tags.
-const LISTINGS=[
-  {id:'nadi-transfers',partner:'Nadi Airport Transfers',title:'Private Airport Transfer · 110+ Destinations',price:'From FJ$49 to Denarau',was:null,desc:'Meet & greet in arrivals hall. Real-time flight tracking — driver waits free. Free supermarket stop. 24/7 including 2am arrivals. Coral Coast FJ$129 · Pacific Harbour FJ$199 · Suva FJ$319.',url:'https://nadiairporttransfers.com',category:'Airport & Ground Transfers',region:'Nadi/Denarau',badge:'✈ OUR SITE',badgeClass:'b-own',ownSite:true,rating:null,ask:'How much does an airport transfer from Nadi cost? I need to get to Denarau.'},
-  {id:'atv',partner:'Fiji Tour Transfers',title:'ATV Off-Road Adventure Day Tour',price:'AU$69 pp',was:'AU$99',desc:'5-hour quad bike through jungle trails, sugarcane fields and hilltop views over Mamanuca Islands. Daily 8am & 1pm from Nadi. Hotel transfers included.',url:'https://fijitourtransfers.com/st_tour/nadi-off-road-atv-bike-adventure-day-tour-fiji/',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🏍 30% OFF',badgeClass:'b-sale',ownSite:true,rating:null,ask:'Tell me about the ATV off-road adventure in Fiji — what is included and how long is it?'},
-  {id:'horse-riding',partner:'Fiji Tour Transfers',title:'Natadola Beach Horse Riding',price:'AU$76 pp',was:'AU$190',desc:"Ride along Natadola Beach — rated Fiji's most beautiful. 50 minutes. All levels welcome including beginners. Free hotel transfers from Nadi and Denarau.",url:'https://fijitourtransfers.com/st_tour/natadola-beach-horse-riding-fiji-au95/',category:'Day Tours & Island Trips',region:'Coral Coast/Sigatoka',badge:'🐴 60% OFF',badgeClass:'b-sale',ownSite:true,rating:{stars:5,count:8},ask:'Tell me about horse riding on Natadola Beach — is it suitable for beginners and how far is it from Nadi?'},
-  {id:'zipline',partner:'Fiji Tour Transfers',title:'Nadi Zip Line Tour',price:'AU$221 pp',was:'AU$245',desc:"Thrilling 3-hour canopy zip line experience through Fiji's jungle. One of Fiji's most exciting adventure activities. Daily departures from Nadi.",url:'https://fijitourtransfers.com/st_tour/nadi-zip-line-tour-fiji-2026/',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🪂 10% OFF',badgeClass:'b-sale',ownSite:true,rating:{stars:5,count:10},ask:'Tell me about the Nadi zip line tour — how thrilling is it and who can do it?'},
-  {id:'cultural-night',partner:'Nadi Cultural Night Tour',title:'Warrior Welcome + Lovo Feast',price:'AU$118 adult · AU$70 child',was:null,desc:'Kava ceremony, meke dancing, fire dance, lovo underground feast. Family AU$335 (2A+2C). 15% cheaper than Viator. Personal WhatsApp host on day of tour.',url:'https://nadiculturealnighttour.com',category:'Cultural Experiences',region:'Nadi/Denarau',badge:'✨ FIJIAN-OWNED',badgeClass:'b-new',ownSite:false,rating:null,ask:'Tell me about the Nadi Cultural Night Tour — warrior welcome, kava and lovo feast — is it authentic?'},
-  {id:'blue-lagoon',partner:'Blue Lagoon Beach Resort',title:'7-Night Dive Free Package',price:'NZD $3,850 pp',was:null,desc:'All meals + unlimited diving after PADI course. Nacula Island, Yasawa Islands. Remote, exclusive, clearest water in Fiji. Tumba Kids Club available.',url:'https://www.bluelagoonresortfiji.com',category:'Accommodation',region:'Yasawa Islands',badge:'🏝 HOT DEAL',badgeClass:'b-hot',ownSite:false,rating:null,ask:'Tell me about Blue Lagoon Beach Resort 7-night dive free package — what is included and how do I get there?'},
-  {id:'palms-denarau',partner:'The Palms Denarau',title:'Self-Contained Apartments',price:'From AUD$150/night',was:null,desc:'Only self-catering on Denarau Island. Full kitchen saves on food costs. Walk to Port Denarau ferry terminal. 1BR AUD$180 · 2BR AUD$220 · 3BR AUD$280.',url:'https://thepalmsdenarau.com',category:'Accommodation',region:'Nadi/Denarau',badge:'🏠 SELF-CATERING',badgeClass:'b-own',ownSite:false,rating:null,ask:'Tell me about The Palms Denarau — is it good value, what sizes available, how far to the ferry?'},
-  {id:'smugglers-cove',partner:'Smugglers Cove Resort',title:'Daily Sunset Cruise',price:'FJ$65 pp',was:null,desc:'Departs 5:30pm daily. BYO drinks & nibbles. Watch the sun melt into the Pacific from Wailoaloa Beach. 15 mins from Nadi Airport.',url:'https://smugglerscove.com.fj',category:'Day Tours & Island Trips',region:'Nadi/Denarau',badge:'🌅 DAILY',badgeClass:'b-pop',ownSite:false,rating:null,ask:'Tell me about Smugglers Cove sunset cruise — how do I get there and what is included?'},
-  {id:'namosi-rafting',partner:'Namosi Adventure Tours',title:'Upper Navua River Rafting',price:'AU$220 pp',was:null,desc:'Dramatic volcanic canyon walls, multiple waterfalls. Most remote highland terrain on Viti Levu. Full day including transfers and lunch. Expert local guides from Namosi villages.',url:'https://namosiadventuretoursfiji.com',category:'Day Tours & Island Trips',region:'Pacific Harbour',badge:'🏔 REMOTE',badgeClass:'b-new',ownSite:false,rating:null,ask:'Tell me about Namosi Adventure Tours Upper Navua river rafting — what is the experience like and who is it for?'}
-];
+// ── LISTINGS — now real D1 data (Session 56 / P26), not hardcoded ──
+// Fetched from the new, read-only vakaviti-directory Worker, which never
+// touches the protected chat-widget Worker or its DEAL_TRIGGERS array.
+// Starts empty; loadListings() populates it and re-renders whatever view
+// is currently visible.
+const DIRECTORY_API_URL='https://vakaviti-directory.helpronline.workers.dev/listings';
+let LISTINGS=[];
+let listingsState='loading'; // 'loading' | 'ready' | 'error'
+
+async function loadListings(){
+  listingsState='loading';
+  if(document.getElementById('view-categories') && !document.getElementById('view-categories').classList.contains('hidden'))renderDirectory();
+  try{
+    const res=await fetch(DIRECTORY_API_URL);
+    const data=await res.json();
+    LISTINGS=(data.listings||[]).map(l=>({
+      id:l.id, partner:l.partner, title:l.title, desc:l.desc||'',
+      price:l.price||null, category:l.category, region:l.region,
+      rating:l.rating||null, url:l.url||null, whatsapp:l.whatsapp||null,
+      hasDeal:!!l.hasDeal,
+    }));
+    listingsState='ready';
+  }catch(e){
+    console.error('loadListings failed:',e);
+    listingsState='error';
+  }
+  renderDirectory();
+  renderSaved();
+}
 
 let activeRegion='All',activeCategory='All',sortMode='featured';
 
@@ -1314,19 +1328,26 @@ function renderRatingHtml(rating){
 }
 
 // ── LISTING CARD (reuses .sc / .sc-badge / .sc-actions styling from the specials grid) ──
+// Real-data cards degrade honestly: a badge only appears when a listing
+// has a matching, hand-curated `deals` row (l.hasDeal) — plain partners
+// (the common case for a fresh self-onboarded signup) simply omit it
+// rather than showing a fabricated "NEW" or similar label.
+function askQuestionFor(l){
+  return 'Tell me about '+l.partner+' — '+l.title+'. What is included and how do I book?';
+}
 function listingCardHtml(l){
-  const wasHtml=l.was?'<div class="sc-was">Was '+escHtml(l.was)+'</div>':'';
+  const badgeHtml=l.hasDeal?'<div class="sc-badge b-new">⭐ FEATURED</div>':'';
+  const priceHtml=l.price?'<div class="sc-price">'+escHtml(l.price)+'</div>':'';
   return '<div class="sc listing-card" data-id="'+l.id+'">'+
     '<button class="save-heart" data-action="save" data-id="'+l.id+'">'+(isSaved(l.id)?'❤️':'🤍')+'</button>'+
-    '<div class="sc-badge '+l.badgeClass+'">'+escHtml(l.badge)+'</div>'+
+    badgeHtml+
     '<div class="sc-partner">'+escHtml(l.partner)+' · '+escHtml(l.region)+'</div>'+
     '<div class="sc-title">'+escHtml(l.title)+'</div>'+
     renderRatingHtml(l.rating)+
-    '<div class="sc-price">'+escHtml(l.price)+'</div>'+
-    wasHtml+
+    priceHtml+
     '<div class="sc-desc">'+escHtml(l.desc)+'</div>'+
     '<div class="sc-actions">'+
-      '<button class="sc-book '+(l.ownSite?'own':'')+'" data-action="detail" data-id="'+l.id+'" style="border:none;cursor:pointer;font-family:\'Sora\',sans-serif">View details →</button>'+
+      '<button class="sc-book" data-action="detail" data-id="'+l.id+'" style="border:none;cursor:pointer;font-family:\'Sora\',sans-serif">View details →</button>'+
       '<button class="sc-ask" data-action="ask" data-id="'+l.id+'">Ask Lagi</button>'+
     '</div>'+
   '</div>';
@@ -1340,7 +1361,7 @@ function directoryClickHandler(e){
     if(!listing)return;
     if(actionBtn.dataset.action==='save'){toggleSaved(id,actionBtn)}
     else if(actionBtn.dataset.action==='detail'){openDetail(id)}
-    else if(actionBtn.dataset.action==='ask'){heroAsk(listing.ask)}
+    else if(actionBtn.dataset.action==='ask'){heroAsk(askQuestionFor(listing))}
     return;
   }
   const card=e.target.closest('.listing-card');
@@ -1367,6 +1388,15 @@ function filteredListings(){
 }
 function renderDirectory(){
   const grid=document.getElementById('directory-grid');
+  if(!grid)return;
+  if(listingsState==='loading'&&LISTINGS.length===0){
+    grid.innerHTML='<div class="directory-empty">Loading real partner listings…</div>';
+    return;
+  }
+  if(listingsState==='error'&&LISTINGS.length===0){
+    grid.innerHTML='<div class="directory-empty">Could not load listings right now. <button onclick="loadListings()" style="background:none;border:none;color:var(--ocean);font-weight:700;cursor:pointer;text-decoration:underline;font-family:\'Sora\',sans-serif">Try again</button></div>';
+    return;
+  }
   const list=filteredListings();
   grid.innerHTML=list.length===0
     ? '<div class="directory-empty">No listings yet for this region/category combination — the network is growing. Try "All" or check back soon.</div>'
@@ -1409,14 +1439,25 @@ function openDetail(id){
   document.getElementById('dm-tags').innerHTML='<span class="dm-tag">'+escHtml(l.category)+'</span><span class="dm-tag">'+escHtml(l.region)+'</span>';
   document.getElementById('dm-title').textContent=l.title;
   document.getElementById('dm-partner').textContent=l.partner;
-  document.getElementById('dm-price').textContent=l.price;
-  const wasEl=document.getElementById('dm-was');
-  wasEl.style.display=l.was?'block':'none';
-  wasEl.textContent=l.was?'Was '+l.was:'';
+  const priceEl=document.getElementById('dm-price');
+  priceEl.textContent=l.price||'';
+  priceEl.style.display=l.price?'block':'none';
+  document.getElementById('dm-was').style.display='none'; // real data has no "was" field — never fabricated
   document.getElementById('dm-rating').innerHTML=renderRatingHtml(l.rating);
   document.getElementById('dm-desc').textContent=l.desc;
   document.getElementById('dm-party').textContent='Pricing shown is per person, for your selected party of '+partySizeText()+'.';
-  document.getElementById('dm-book-link').href=l.url;
+  const bookLink=document.getElementById('dm-book-link');
+  if(l.url){
+    bookLink.href=l.url;
+    bookLink.textContent='Book direct on partner site →';
+    bookLink.style.display='block';
+  }else if(l.whatsapp){
+    bookLink.href='https://wa.me/'+l.whatsapp.replace(/[^0-9]/g,'');
+    bookLink.textContent='Contact on WhatsApp →';
+    bookLink.style.display='block';
+  }else{
+    bookLink.style.display='none';
+  }
   document.getElementById('dm-save-btn').textContent=isSaved(id)?'❤️ Saved':'🤍 Save';
   document.getElementById('listing-detail-modal').style.display='flex';
 }
@@ -1428,7 +1469,7 @@ function detailAskLagi(){
   const l=LISTINGS.find(x=>x.id===currentDetailId);
   if(!l)return;
   closeDetail();
-  heroAsk(l.ask+' We are '+partySizeText()+'.');
+  heroAsk(askQuestionFor(l)+' We are '+partySizeText()+'.');
 }
 function detailToggleSave(){
   if(!currentDetailId)return;
@@ -1567,6 +1608,7 @@ if('serviceWorker' in navigator){
 }
 
 renderPartySize();
+loadListings();
 </script>
 
 </body>
