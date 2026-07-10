@@ -124,74 +124,72 @@ async function handleListings(request, env, cors) {
     const deals     = dealsResult.results || [];
     const stats     = statsResult.results || [];
 
-    // partner_id is the reliable match when a deal has one set — it's the
-    // only thing that correctly resolves cases like two real partner rows
-    // sharing the exact same name ("Tour Fiji Tours" appears twice in the
-    // live data). Deals without a partner_id (legacy rows entered before
-    // this column was consistently populated) fall back to name matching.
-    // Both are grouped into arrays, not single values, so two deals
-    // sharing an id/name don't silently drop one of them.
-    const dealsById = new Map();
-    const dealsByName = new Map();
-    for (const d of deals) {
-      if (d.partner_id) {
-        if (!dealsById.has(d.partner_id)) dealsById.set(d.partner_id, []);
-        dealsById.get(d.partner_id).push(d);
-      } else {
-        const key = normalizeName(d.partner_name);
-        if (!dealsByName.has(key)) dealsByName.set(key, []);
-        dealsByName.get(key).push(d);
-      }
+    const partnersById = new Map();
+    for (const p of partners) partnersById.set(p.id, p);
+    // First match wins for a name shared by more than one partner row (a
+    // real, pre-existing data duplicate — "Tour Fiji Tours" appears twice
+    // in production — not something this Worker resolves on its own).
+    const partnersByName = new Map();
+    for (const p of partners) {
+      const key = normalizeName(p.name);
+      if (!partnersByName.has(key)) partnersByName.set(key, p);
     }
 
     const statsById = new Map();
     for (const s of stats) statsById.set(s.partner_id, s);
 
-    const matchedDealIds = new Set();
-
-    const listings = partners.map(p => {
-      const idGroup   = dealsById.get(p.id);
-      const nameGroup = dealsByName.get(normalizeName(p.name));
-      const deal = (idGroup && idGroup.length) ? idGroup.shift()
-                 : (nameGroup && nameGroup.length) ? nameGroup.shift()
-                 : null;
-      if (deal) matchedDealIds.add(deal.id);
-      const rating = statsById.get(p.id) || null;
-
+    function listingFromDeal(d, p) {
+      const rating = p ? statsById.get(p.id) : null;
       return {
-        id: p.id,
-        partner: p.name,
-        category: mapCategory(p.category),
-        region: mapRegion(p.region),
-        title: deal ? deal.title : p.name,
-        desc: deal ? deal.description : (p.description || ''),
-        price: deal ? deal.price_from : null,
-        currency: deal ? deal.currency : null,
-        rating: rating ? { stars: Math.round(rating.avg_rating), count: rating.total_reviews } : null,
-        whatsapp: p.whatsapp_number || null,
-        url: p.website_url || null,
-        hasDeal: !!deal,
-      };
-    });
-
-    // Deals whose partner_name doesn't match any active partner row —
-    // legacy marketing content that predates the partners table. Still
-    // shown, so nothing currently live silently disappears.
-    for (const d of deals) {
-      if (matchedDealIds.has(d.id)) continue;
-      listings.push({
-        id: 'deal_' + d.id,
-        partner: d.partner_name,
-        category: mapCategory(d.category) === 'Other' ? (d.category || 'Other') : mapCategory(d.category),
-        region: 'Other',
+        id: d.id, // deal ids already carry a 'deal_' prefix by convention
+        partner: p ? p.name : d.partner_name,
+        category: p ? mapCategory(p.category) : (mapCategory(d.category) === 'Other' ? (d.category || 'Other') : mapCategory(d.category)),
+        region: p ? mapRegion(p.region) : 'Other',
         title: d.title,
         desc: d.description,
         price: d.price_from,
         currency: d.currency,
-        rating: null,
-        whatsapp: null,
-        url: null,
+        rating: rating ? { stars: Math.round(rating.avg_rating), count: rating.total_reviews } : null,
+        whatsapp: p ? (p.whatsapp_number || null) : null,
+        url: p ? (p.website_url || null) : null,
         hasDeal: true,
+      };
+    }
+
+    // One listing PER DEAL, not per partner — a partner with 3 real deals
+    // (Fiji Tour Transfers: ATV, Horse Riding, Zip Line) becomes 3 separate
+    // bookable listings, matching the original Session 53 design where
+    // those were always 3 cards despite being one business. An earlier
+    // version of this Worker capped it at one deal per partner and
+    // silently mis-filed the other 2 as "unmatched legacy" — caught by
+    // testing against the real backfilled data, not by local testing.
+    const listings = [];
+    const partnersWithADeal = new Set();
+
+    for (const d of deals) {
+      const p = d.partner_id ? partnersById.get(d.partner_id) : partnersByName.get(normalizeName(d.partner_name));
+      if (p) partnersWithADeal.add(p.id);
+      listings.push(listingFromDeal(d, p || null));
+    }
+
+    // Exactly one bare listing for every active partner with zero deals —
+    // the common case for a fresh self-onboarded signup.
+    for (const p of partners) {
+      if (partnersWithADeal.has(p.id)) continue;
+      const rating = statsById.get(p.id) || null;
+      listings.push({
+        id: p.id,
+        partner: p.name,
+        category: mapCategory(p.category),
+        region: mapRegion(p.region),
+        title: p.name,
+        desc: p.description || '',
+        price: null,
+        currency: null,
+        rating: rating ? { stars: Math.round(rating.avg_rating), count: rating.total_reviews } : null,
+        whatsapp: p.whatsapp_number || null,
+        url: p.website_url || null,
+        hasDeal: false,
       });
     }
 
@@ -217,7 +215,7 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, worker: 'vakaviti-directory', version: 3 }, 200, cors);
+      return json({ ok: true, worker: 'vakaviti-directory', version: 4 }, 200, cors);
     }
 
     return json({ error: 'Not found.' }, 404, cors);
