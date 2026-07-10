@@ -73,10 +73,31 @@ const REGION_MAP = {
   other:        'Other',
 };
 
-function mapCategory(raw) { return CATEGORY_MAP[raw] || 'Other'; }
-function mapRegion(raw)   { return REGION_MAP[raw] || 'Other'; }
+// Legacy partners (pre-dating the onboarding form, hand-entered across many
+// past sessions) don't reliably use the form's exact vocabulary — plurals,
+// different casing, or entirely different words. Rather than collapsing
+// every unmapped value into a generic, uninformative "Other" bucket, an
+// unmapped-but-present raw value is shown as its own reasonably-formatted
+// label. "Other" is reserved for genuinely empty/null values only.
+function titleCase(s) { return String(s).replace(/[_-]+/g,' ').trim().replace(/\b\w/g, c => c.toUpperCase()); }
+function mapCategory(raw) {
+  if (!raw) return 'Other';
+  const key = String(raw).trim().toLowerCase();
+  return CATEGORY_MAP[key] || titleCase(key);
+}
+function mapRegion(raw) {
+  if (!raw) return 'Other';
+  const key = String(raw).trim().toLowerCase();
+  return REGION_MAP[key] || titleCase(key);
+}
 
 function normalizeName(s) { return String(s || '').trim().toLowerCase(); }
+
+// Partner IDs that represent internal/platform records, not real bookable
+// businesses — excluded from the directory. 'lagi_public' is the SITE_ID
+// constant used throughout the codebase for lagi.vakaviti.ai's own config
+// row, not an operator.
+const EXCLUDED_IDS = new Set(['lagi_public']);
 
 // ── Main handler ──────────────────────────────────────────
 
@@ -99,12 +120,23 @@ async function handleListings(request, env, cors) {
       `).all().catch(() => ({ results: [] })), // table may not exist on every env — degrade gracefully, never fabricate
     ]);
 
-    const partners = partnersResult.results || [];
+    const partners = (partnersResult.results || []).filter(p => !EXCLUDED_IDS.has(p.id));
     const deals     = dealsResult.results || [];
     const stats     = statsResult.results || [];
 
+    // Grouped by name, not a single value — some legacy partner names are
+    // shared by more than one deal (or, separately, by more than one
+    // partner row — a pre-existing data duplicate this Worker doesn't try
+    // to resolve). A plain Map<name, deal> would silently drop every deal
+    // but the last one written for a shared name; popping from an array
+    // instead means each matching partner claims a distinct deal when more
+    // than one exists, and none are lost.
     const dealsByName = new Map();
-    for (const d of deals) dealsByName.set(normalizeName(d.partner_name), d);
+    for (const d of deals) {
+      const key = normalizeName(d.partner_name);
+      if (!dealsByName.has(key)) dealsByName.set(key, []);
+      dealsByName.get(key).push(d);
+    }
 
     const statsById = new Map();
     for (const s of stats) statsById.set(s.partner_id, s);
@@ -112,7 +144,8 @@ async function handleListings(request, env, cors) {
     const matchedDealIds = new Set();
 
     const listings = partners.map(p => {
-      const deal   = dealsByName.get(normalizeName(p.name)) || null;
+      const group  = dealsByName.get(normalizeName(p.name));
+      const deal   = group && group.length ? group.shift() : null;
       if (deal) matchedDealIds.add(deal.id);
       const rating = statsById.get(p.id) || null;
 
@@ -175,7 +208,7 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
-      return json({ ok: true, worker: 'vakaviti-directory', version: 1 }, 200, cors);
+      return json({ ok: true, worker: 'vakaviti-directory', version: 2 }, 200, cors);
     }
 
     return json({ error: 'Not found.' }, 404, cors);
