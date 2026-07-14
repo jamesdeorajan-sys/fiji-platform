@@ -1106,3 +1106,90 @@ branch had already been through. Not fixed this session. See Known Issues.
    listings content — a real product decision, not just a technical one.
 4. Scope `DEAL_TRIGGERS` migration as its own, separate, higher-risk task touching protected core.
 5. Resume P28 (WhatsApp Catalog) now that real listing data exists to sync from.
+
+---
+
+## Session 57 — 2026-07-10 — Full Lagi audit, no code changes
+
+James asked two direct questions in sequence: does every question asked to Lagi actually grow its
+knowledge base, and is Lagi more powerful than generic agentic AI. Both required going back into
+`workers/chat-widget/worker.js` fresh and tracing real code, not relying on prior session summaries.
+
+### Finding 1 — knowledge base growth is gated behind contact-capture, not universal
+
+Traced the exact brace nesting around `ingestConversationAsKnowledge()` line by line (counted
+opening/closing braces, not inferred from indentation). Confirmed: the call sits inside
+`if (phoneMatch || emailMatch) { if (env.DB) { ... } }` (worker.js, inside the auto-lead-capture
+block). Real knowledge-base learning (Vectorize + `knowledge_items`, i.e. what Lagi can actually
+retrieve and reuse in future answers) only happens when the visitor also shares a phone number or
+email in that conversation.
+
+Separately confirmed: `conversation_events` logs every single question unconditionally (site_id,
+question_text, intent_detected, rag_score, had_rag_match — no gating at all). This feeds
+`/knowledge-gaps` (demand-signal/analytics), but it is NOT retrievable knowledge — Lagi cannot use
+this table to answer a future question.
+
+**Net effect**: a visitor who asks ten genuinely good questions and shares no contact info teaches
+Lagi nothing retrievable from those ten conversations, even though all ten were logged for
+analytics. Likely a deliberate cost/quality-control decision (avoids embedding cost + noise on
+every message), not a bug — but the "every question improves the Fiji Brain" framing used elsewhere
+(site copy, strategic docs) is only true for a fraction of real traffic today.
+
+**Fix scope, discussed, NOT built this session** (see VAKAVITI-BRAIN.md P31):
+1. Gate auto-learning on RAG-confidence (reuse existing `hadRagMatch` 0.65 threshold) instead of
+   contact-capture — a confident answer is safe to reinforce regardless of whether a lead formed.
+2. Route low-confidence questions to human review via the already-built-but-unused
+   `/knowledge-gaps` → `/knowledge-add` pipeline, rather than auto-embedding possible hallucinations.
+3. Deduplicate before embedding — check Vectorize for a near-identical existing entry first,
+   increment `use_count` instead of creating near-duplicates. This also naturally produces a real
+   "Demand Score," which the Session 54 Group Intelligence proposal wanted as a separate feature.
+
+Two open decisions for James before building: exact confidence threshold, and whether
+`/knowledge-gaps` needs a real dashboard UI now or raw API access is fine for now.
+
+### Finding 2 — lead notification has real, active reliability gaps with zero monitoring
+
+The "is Lagi more powerful than agentic AI" question was answered by framing Lagi's real advantage
+as its local partner network and dispatch pipeline (not raw model capability) — which directly
+motivated auditing whether that pipeline is actually reliable. It surfaced real gaps, not
+theoretical ones, all confirmed by reading `notifyPartner()` and its helper functions directly:
+
+- **Silent total failure**: `if (!channels.results || channels.results.length === 0) return false;`
+  — if a partner has zero `contact_channels` rows, the lead saves to the `leads` table but the
+  partner is never notified, with no error, no alert, no fallback.
+- **False-positive success**: `sendEmailNotification()` returns `true` if `env.SENDGRID_API_KEY` is
+  unset — it just `console.log`s the message and reports success. `leads.notified` can show `1`
+  when nothing was actually sent.
+- **`min_lead_score` can silently exclude a partner** from a `contact_channels` row that does exist,
+  with no visibility this happened, if misconfigured.
+- **Zero monitoring exists anywhere in the platform for this failure class.** Checked
+  `vakaviti-error-sentinel` specifically since it sounded like it might cover this — it monitors JS
+  errors on partner *websites* (checkout/payment bugs via string-matching on ingested error
+  reports), a completely different failure surface. Nothing watches whether a generated lead
+  actually reaches a partner.
+
+**What's confirmed solid, worth recording**: `scoreConversationHeat()` (the lead-scoring model) is
+genuinely well-built — real, comprehensive Fiji-specific keyword signal coverage (urgency, explicit
+booking language, planning stage, dates, group size, budget, 30+ product/destination terms, contact
+sharing), not naive matching. The multi-channel firing logic in `notifyPartner()` is also correctly
+designed in principle — fires all qualifying channels, no break-on-first-success. The problems found
+are entirely in failure handling and monitoring, not in the core design.
+
+**Explicitly not known, flagged rather than guessed**: how many of the 29 live partners currently
+have zero `contact_channels` rows, and how many `leads` rows show `notified=0` historically. No
+session so far has had direct D1 read access (only the dashboard console) — this is the literal
+first step needed before anything else in this area.
+
+### Plan of attack agreed (see VAKAVITI-BRAIN.md P30 for full detail)
+
+1. Run a real D1 audit query first — `contact_channels` completeness across all 29 partners, and
+   historical `leads.notified=0` count. Determines whether this is an active revenue leak or a
+   theoretical risk before prioritizing further.
+2. Fix the SendGrid false-positive — one line, zero risk, do regardless of the rest of this scope.
+3. Build minimal failure alerting — an email to James when `notifyPartner()` returns `false`.
+   Doesn't need to be sophisticated to start.
+4. Backfill missing `contact_channels` rows, informed by step 1's real numbers.
+5. Then the knowledge-base gating fix (Finding 1 above) — lower urgency, since it's about future
+   knowledge growth quality, not leads already being generated today.
+
+No code changed this session — audit and planning only, same discipline as Session 54.
