@@ -1193,3 +1193,236 @@ first step needed before anything else in this area.
    knowledge growth quality, not leads already being generated today.
 
 No code changed this session — audit and planning only, same discipline as Session 54.
+
+## Session 58 — 2026-07-15 — P30 lead notification reliability fix built, tested, merged. Root-caused an active SendGrid billing failure and a broken WhatsApp token in the same session.
+
+Picked up directly from Session 57's audit and executed its plan of attack in order. Two genuinely
+new production issues were discovered as a direct result of testing the fix, not assumed at the
+start.
+
+**Correction note**: an earlier draft of this section conflated three different actors into a
+single false "Claude Code did X" narrative. The corrected version below distinguishes: (a) this
+chat session (Claude + James interactively — D1 console queries, live Lagi widget tests, the
+initial failed MCP-bridge attempt), (b) Claude Code (a separate agent James ran independently,
+reporting back into this chat — branch/push, the Workers API preview, the Meta API test, the two
+PR merges), and (c) James directly (generating credentials, clicking through Cloudflare/SendGrid
+dashboards, running SQL in the D1 console per this chat's instructions).
+
+### Step 1 — real D1 audit query (this chat session, not Code)
+
+An initial attempt, in this chat, to bridge Cloudflare's D1 access through an in-artifact Anthropic
+API call to the Cloudflare MCP connector failed with an unrecoverable browser-side `Failed to fetch`
+error (isolated with a 3-step diagnostic artifact: even a basic API call with no MCP server attached
+also failed, ruling out the MCP layer specifically as the cause — the whole bridge was unreachable
+from the artifact sandbox). Abandoned in favor of James running queries directly in the Cloudflare
+D1 console, guided step by step in this chat, with every result screenshotted and read back before
+proceeding to the next query.
+
+Real numbers confirmed this way:
+- 30 active partners (previous sessions carried "29" — use 30 going forward)
+- 0 active partners have zero `contact_channels` rows — config was never the actual gap
+- 22 of 93 leads historically show `notified=0` (24%)
+- Most recent failures dated July 11-13 2026 — days old at audit time, confirming an active leak,
+  not stale history
+- All relevant `contact_channels` rows had `min_lead_score=0`, `active=1` — not a scoring
+  misconfiguration either
+
+### Step 2 — code fix (worker.js, protected core) — this chat session
+
+Two patches, applied via `str_replace` against a locally-fetched copy of the live file:
+
+1. `sendEmailNotification()` (was line 1640): missing `env.SENDGRID_API_KEY` now returns `false`
+   with `console.error`, instead of `console.log` + fake `return true`.
+2. New `alertOpsFailure(env, { leadId, partnerId, reason })` function, added directly above
+   `sendEmailNotification()`. Emails `helpronline@gmail.com` via a direct SendGrid call (not reusing
+   `sendEmailNotification()`, to avoid a dependency loop if SendGrid itself is the failure).
+3. Three call sites wired into `notifyPartner()`: the zero-`contact_channels` early return, the
+   end-of-loop "all channels attempted, none succeeded" branch, and the outer `catch` block.
+
+Verified with `node --check` in this chat's own sandbox (which does have Node) plus a full manual
+diff review confirming nothing outside the intended 4 edits touched the 1,970-line protected file.
+This verification happened here, not in Code's environment — Code's own sandbox had no Node
+available for either fix (see Step 3).
+
+The diff was reviewed and approved by James before any branch was created. This chat session has no
+git push credentials, so the actual branch/commit/push was handed to Claude Code — a separate agent
+James ran independently — with a full written brief (repo, standing rules, the confirmed D1 numbers,
+the diff itself) so it wouldn't need to re-derive context already established here.
+
+### Step 3 — branch, push, real preview (Claude Code, reported back into this chat)
+
+Claude Code discovered `main` had no CI/CD wired to `workers/chat-widget` at all — no
+`.github/workflows`, no `wrangler.toml` for this Worker specifically (only `ftt-booking-site` has
+one). Branch-push does nothing on Cloudflare's side for this Worker. This corrected an assumption
+carried into the session from James's own standing rules — the "main auto-deploys to production on
+merge" risk applies to `vakaviti-lagi-public` (per Session 51's manual-redeploy notes), not
+`fiji-chat-widget`, which has always been deployed manually.
+
+With no Node/wrangler available in Code's own sandbox, and no CI pipeline to lean on, Code drove the
+Cloudflare Workers REST API directly:
+- James generated a scoped Cloudflare API token (Workers Scripts/Tail/Routes/Pages/Builds edit,
+  account-scoped, ~6-week TTL) via the "Edit Cloudflare Workers" template — given directly to Code,
+  never pasted into this chat.
+- Code uploaded the branch as a new **version** (not a new script) of the live `fiji-chat-widget`
+  Worker, using `bindings_inherit=strict` — inherited the real production `SENDGRID_API_KEY`,
+  `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, D1/KV/Vectorize/AI bindings by reference, never exposing
+  their values.
+- One real production setting was changed to make this possible: `previews_enabled` flipped from
+  `false` to `true` on the live Worker. This is a config toggle only (doesn't affect what's serving
+  traffic) but should have been surfaced to James *before* the change, not just reported after —
+  flagged explicitly as a process correction for future sessions.
+- Result: a genuine, verified-live preview URL
+  (`https://b8192cc1-fiji-chat-widget.helpronline.workers.dev`), confirmed serving the real patched
+  code via a direct fetch of `/v2.js` (`CF-RAY: a1b525e3ee445557-SYD`).
+- Production's live deployment (version `d6cc4d3a`) was confirmed unmoved before and after — the
+  versions API upload does not create a deployment.
+- Code created five Worker versions total across the session: 125 (the real P30 candidate build),
+  126 and 127 (diagnostic builds used to trace exact error detail), 128 (a WhatsApp-specific
+  diagnostic, used for the Meta API test), and 129 (the WhatsApp/P30b patch, syntax-checked via the
+  same version-upload substitute since Code's sandbox had no Node either). All five were later torn
+  down (`previews_enabled` returned to `false`), none were ever merged to git or made live.
+
+### Step 4 — the real test, and the actual root cause (this chat session, James in the D1 console)
+
+James refused to accept "SendGrid API returned 202" (reported by Code from its own diagnostic test)
+as proof of delivery and insisted on finding the actual email — this is what led to discovering the
+real root cause.
+
+To trigger `alertOpsFailure('no active contact_channels rows')`, a disposable test partner
+(`test_p30_verification_001`, zero `contact_channels` rows by construction) needed to exist in D1.
+James ran this directly in the Cloudflare D1 console, guided in this chat. The first `INSERT`
+attempt failed three times in a row on undiscovered `NOT NULL` constraints (`slug`, then
+`category`/`region`) before switching to `PRAGMA table_info(partners)` to get the full schema in one
+query instead of guessing column-by-column. Correct insert:
+```sql
+INSERT INTO partners (id, name, slug, category, region)
+VALUES ('test_p30_verification_001', 'P30 TEST - DELETE ME', 'test-p30-verification-001', 'other', 'other');
+```
+This row was created and torn down twice across the session — once for the initial
+`alertOpsFailure` test, deleted after; recreated identically for the later WhatsApp-threshold test,
+deleted again after. Every deletion was confirmed with a follow-up `SELECT` in the D1 console before
+moving on, not just trusted because the console reported "successfully executed" — this discipline
+caught the very first insert attempt silently not landing, before it wasted a test cycle.
+
+Once the row genuinely existed (confirmed via `SELECT`), James told Code to go ahead, and Code
+submitted the actual `/lead` POST against its own preview URL, which correctly triggered
+`alertOpsFailure`. Separately, Code's own diagnostic
+testing found SendGrid rejecting sends with `401 Maximum credits exceeded`.
+
+**Root cause: SendGrid's 60-day free trial expired 2026-07-11** — exact date match with when the
+real `notified=0` failures started in the D1 audit. This explains the 22-lead leak far more than the
+original code gap does; the code gap made the failure *silent*, but the trial expiry is what caused
+it in the first place.
+
+Fixed live, same session, by James directly in the SendGrid and Cloudflare dashboards (guided in
+this chat, not done by Code):
+1. Added payment info to the SendGrid account.
+2. Authenticated the `vakaviti.ai` sending domain — added 4 DNS records in Cloudflare (all
+   "DNS only", not proxied):
+   - `CNAME em5165.vakaviti.ai` → `u107260367.wl118.sendgrid.net`
+   - `CNAME s1._domainkey.vakaviti.ai` → `s1.domainkey.u107260367.wl118.sendgrid.net`
+   - `CNAME s2._domainkey.vakaviti.ai` → `s2.domainkey.u107260367.wl118.sendgrid.net`
+   - `TXT _dmarc.vakaviti.ai` → `v=DMARC1; p=none;`
+3. Upgraded to Essentials 50K plan — $19.95/month, 50,000 emails/month (49,985 remaining after
+   verification sends).
+
+### Verification, done twice, both with real evidence
+
+1. Re-ran the disposable-partner test against Code's preview. The `alertOpsFailure` email
+   (`Lead ID: lead_1784088981915_59eq3`, `Partner: test_p30_verification_001`, `Reason: no active
+   contact_channels rows`) was located and read directly by James in Gmail's own inbox UI — notably,
+   Code's own Gmail search tooling had failed to find either test email across five different query
+   attempts (exact subject, broad time-window, sender name, spam folder) despite confirming it had
+   the right mailbox via older, findable emails. Gmail's own UI, checked directly by James, was
+   treated as ground truth over the tool's negative result.
+2. **A real, live production test, done by James directly in this chat** (deliberately using the
+   still-unpatched, currently-deployed code — not Code's preview): James had a genuine conversation
+   through Fiji Tour Transfers' Lagi widget on fijitourtransfers.com, sharing real contact info
+   (`jamesdeorajan@gmail.com`), scored WARM (60/100). A correctly-formatted "New lead" notification
+   email arrived at `helpronline@gmail.com` within the expected window — proving the SendGrid
+   account fix alone had already restored the platform's primary notification path, independent of
+   whether the code fix ever gets deployed.
+
+### Finding 2 — WhatsApp is separately broken, found via the same live test pushed further
+
+James sent a second live message through the same Lagi widget, deliberately engineered to score
+HOT: explicit urgency ("need to book... urgently... confirm today"), a concrete date ("this
+Friday"), group size (6), a budget figure (FJ$300), and both phone and email shared. Scored 90/100.
+Email fired and delivered correctly. **WhatsApp never sent** — `channel_used` on the resulting lead
+row (checked by James in the D1 console) showed only `"email"`, with no `"whatsapp_logged"` trace
+either, which ruled out the "tokens simply unset" theory before even testing further (that fallback
+path, pre-fix, would have logged something).
+
+James gave Code the lead ID and asked it to investigate. Code confirmed via a direct, isolated test
+call to `sendWhatsAppNotification()`'s actual Meta endpoint — sent to Vakaviti's own support number
+(`+61 478 886 145`), never a real partner's number:
+```json
+{
+  "hasToken": true,
+  "hasPhoneId": true,
+  "metaUrl": "https://graph.facebook.com/v19.0/1134456946416024/messages",
+  "metaStatus": 401,
+  "metaOk": false,
+  "metaBody": "{\"error\":{\"message\":\"Authentication Error\",\"code\":190,\"type\":\"OAuthException\"}}"
+}
+```
+Meta error code 190 = invalid/expired access token. Both bindings are present and the request is
+well-formed — this is a token lifecycle issue, not a code bug. WhatsApp Cloud API tokens issued via
+Meta's short-lived/test flow commonly expire within 24 hours unless a permanent System User token
+was used; whoever originally generated `WHATSAPP_TOKEN` likely used the short-lived kind.
+
+### WhatsApp reliability fix (P30b) — same session, same discipline, Code building, James signing off
+
+Three changes, same branch → diff → James's sign-off → merge pattern as P30 itself:
+
+1. **WhatsApp trigger threshold changed from score ≥70 to score ≥40** — James's explicit product
+   decision, not a bug fix. WhatsApp now fires alongside email for every qualified lead, not just
+   HOT ones. Confirmed this doesn't touch the underlying no-break-on-success multi-channel firing
+   logic, which was already correct.
+2. `alertOpsFailure()` now covers WhatsApp send failures the same way it covers email — any non-ok
+   Meta response (including this 401 case) triggers a real alert instead of silently returning
+   `false` with only a `channel_used` omission as the trace.
+3. The missing-binding fallback (previously: `WHATSAPP_TOKEN`/`WHATSAPP_PHONE_ID` unset →
+   `console.log` + `channelResult = true` + `channelsUsed.push('whatsapp_logged')`) no longer
+   soft-succeeds. It still logs for visibility, but now calls `alertOpsFailure()` and correctly
+   counts as a failure — same false-positive shape as the original SendGrid bug, same fix pattern.
+
+Verified with the same version-upload syntax-check substitute as Step 3 (no Node in Code's sandbox
+— Code flagged explicitly, both times, that this isn't identical to `node --check`, just the
+closest available check) plus full manual diff/brace-balance review. Two design decisions confirmed
+explicitly with James before merge: dropping `whatsapp_logged` entirely rather than keeping it as a
+label (agreed — a label implying delivery when none happened is worse than no label), and the
+WhatsApp failure alert firing independently of whether email on the same lead succeeded (agreed —
+two separate delivery promises, no suppression).
+
+### Merge and deploy status
+
+Both fixes merged to `main`:
+- PR #1 (P30) → commit `29da21a`
+- PR #2 (WhatsApp/P30b) → commit `8b85e12`, merged immediately after, same session
+
+**Neither deployed to production.** Production's live deployment is still version `d6cc4d3a`,
+confirmed unmoved throughout the entire session, before and after every step. The deploy decision
+remains explicitly James's to make — consistent with the protected-core rule, and deliberately not
+defaulted into just because the code is proven.
+
+### Cleanup discipline
+
+Test artifacts, torn down before session close: one test partner ID (`test_p30_verification_001`),
+created and deleted twice across two separate test cycles; four test lead rows total; five temporary
+Worker versions (125, 126, 127, 128, 129), all uploaded via versions-API (never merged to git, never
+promoted live), all unreachable again once `previews_enabled` was flipped back to `false`. Every D1
+deletion was confirmed via a follow-up `SELECT` by James in the console, never just trusted because
+it said "successfully executed."
+
+### Still open at session close
+
+1. **Generate a permanent Meta System User `WHATSAPP_TOKEN`** (App ID `1700903951357623`) and
+   update the Worker secret in Cloudflare. James's action — not fixable from code. WhatsApp remains
+   broken in production until this is done, regardless of the code fix's deploy status.
+2. **Decide when to deploy** the two merged-but-undeployed fixes to production.
+3. Two minor, real data-quality bugs noticed in passing during live testing, not yet actioned or
+   scoped: Lagi occasionally misparses part of a visitor's own message as their name (one lead's
+   `Name` field showed literal "Looking", parsed from "I'm looking for..."); a clearly-stated date
+   ("this Friday") wasn't captured into the `Dates` field on another lead. Low priority — worth a
+   future session, not urgent.
