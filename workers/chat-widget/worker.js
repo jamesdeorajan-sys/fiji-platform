@@ -1595,7 +1595,10 @@ async function handleEvent(request, env, cors) {
 async function notifyPartner(env, { leadId, partnerId, site_id, name, contact, primaryIntent, allIntents, travelDates, groupSize, budget, score, scoreReason, snapshot, isCrossReferral, referredBySiteId, referredByPartnerName }) {
   try {
     const channels = await env.DB.prepare(`SELECT channel_type, destination, priority FROM contact_channels WHERE partner_id = ? AND active = 1 AND min_lead_score <= ? ORDER BY priority ASC LIMIT 3`).bind(partnerId, score).all();
-    if (!channels.results || channels.results.length === 0) return false;
+    if (!channels.results || channels.results.length === 0) {
+      await alertOpsFailure(env, { leadId, partnerId, reason: 'no active contact_channels rows' });
+      return false;
+    }
     const partnerRow  = await env.DB.prepare('SELECT name, whatsapp_number FROM partners WHERE id = ?').bind(partnerId).first();
     const scoreLabel  = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';
     const header      = isCrossReferral ? `Vakaviti cross-referral — ${scoreLabel} (${score}/100)` : `Vakaviti lead — ${scoreLabel} (${score}/100)`;
@@ -1631,13 +1634,35 @@ async function notifyPartner(env, { leadId, partnerId, site_id, name, contact, p
     const channelUsed = channelsUsed.join('+') || null;
     if (notified && channelUsed) {
       await env.DB.prepare('UPDATE leads SET notified=1, notified_at=unixepoch(), channel_used=? WHERE id=?').bind(channelUsed, leadId).run();
+    } else {
+      await alertOpsFailure(env, { leadId, partnerId, reason: 'all channels attempted, none succeeded' });
     }
     return notified;
-  } catch (err) { console.error('notifyPartner error:', err); return false; }
+  } catch (err) {
+    console.error('notifyPartner error:', err);
+    await alertOpsFailure(env, { leadId, partnerId, reason: `exception: ${err.message}` });
+    return false;
+  }
+}
+
+async function alertOpsFailure(env, { leadId, partnerId, reason }) {
+  try {
+    if (!env.SENDGRID_API_KEY) { console.error(`[OPS ALERT - no SendGrid key] Lead ${leadId} (${partnerId}) failed: ${reason}`); return; }
+    await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.SENDGRID_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: 'helpronline@gmail.com' }] }],
+        from: { email: 'helpronline@gmail.com', name: 'Vakaviti Alerts' },
+        subject: `⚠️ Lead notification failed — ${partnerId}`,
+        content: [{ type: 'text/plain', value: `Lead ID: ${leadId}\nPartner: ${partnerId}\nReason: ${reason}\n\nThis lead was saved to the leads table but NOT delivered.` }]
+      })
+    });
+  } catch (err) { console.error('alertOpsFailure itself failed:', err); }
 }
 
 async function sendEmailNotification(env, to, message, leadName) {
-  if (!env.SENDGRID_API_KEY) { console.log(`[Email Lead -> ${to}]\n${message}`); return true; }
+  if (!env.SENDGRID_API_KEY) { console.error(`[Email Lead FAILED - no SENDGRID_API_KEY] -> ${to}\n${message}`); return false; }
   try {
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', { method: 'POST', headers: { 'Authorization': `Bearer ${env.SENDGRID_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ personalizations: [{ to: [{ email: to }] }], from: { email: 'helpronline@gmail.com', name: 'Vakaviti Leads' }, subject: `New lead: ${leadName||'Visitor'} — vakaviti.ai`, content: [{ type: 'text/plain', value: message }] }) });
     return res.ok;
