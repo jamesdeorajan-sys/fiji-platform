@@ -1606,7 +1606,7 @@ async function notifyPartner(env, { leadId, partnerId, site_id, name, contact, p
     (snapshot||[]).slice(-4).forEach(m => { lines.push(`${m.role==='user'?'Visitor':'AI'}: ${(m.content||'').slice(0,120)}`); });
     const notifyText = lines.join('\n');
     // v57: Fire ALL channels that meet score threshold — no break-on-success
-    // Email always fires for score >= 40. WhatsApp fires additionally for score >= 70.
+    // Email and WhatsApp both fire for score >= 40.
     let notified = false;
     const channelsUsed = [];
     for (const channel of channels.results) {
@@ -1618,14 +1618,18 @@ async function notifyPartner(env, { leadId, partnerId, site_id, name, contact, p
         channelResult = await sendWebhookNotification(channel.destination, { lead_id: leadId, partner_id: partnerId, score, name, contact, intent: primaryIntent });
         if (channelResult) channelsUsed.push('webhook');
       } else if (channel.channel_type === 'whatsapp') {
-        // WhatsApp fires for score >= 70 — alongside email, not instead of it
-        if (score >= 70 && env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID) {
+        // WhatsApp fires for score >= 40 — alongside email, for every qualified lead
+        if (score >= 40 && env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID) {
           channelResult = await sendWhatsAppNotification(env, channel.destination, name, contact, primaryIntent, score, leadId, travelDates, groupSize);
-          if (channelResult) channelsUsed.push('whatsapp');
-        } else if (score >= 70) {
-          console.log('[WhatsApp HOT LEAD] Partner:', partnerId, '| Score:', score, '| Contact:', contact, '| Intent:', primaryIntent);
-          channelsUsed.push('whatsapp_logged');
-          channelResult = true;
+          if (channelResult) {
+            channelsUsed.push('whatsapp');
+          } else {
+            await alertOpsFailure(env, { leadId, partnerId, reason: 'WhatsApp send failed (Meta API rejected the message)' });
+          }
+        } else if (score >= 40) {
+          console.log('[WhatsApp not configured] Partner:', partnerId, '| Score:', score, '| Contact:', contact, '| Intent:', primaryIntent);
+          await alertOpsFailure(env, { leadId, partnerId, reason: 'WhatsApp not configured (missing token/phone ID)' });
+          channelResult = false;
         }
       }
       if (channelResult) notified = true;
