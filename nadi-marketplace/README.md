@@ -7,9 +7,9 @@ Staging build. See `Nadi_Airport_Phase1-Build-Spec.md` for the full Phase 1 spec
 | Resource | Name | ID | Notes |
 |---|---|---|---|
 | D1 database | `nadi-marketplace-db` | `0ec1cd84-fcda-4f7f-8337-0fb70fe1a512` | 11 tables (10 from spec Section 2 + `driver_login_tokens`, Milestone 2) |
-| Worker | `nadi-dispatch-api` | — | `worker/worker.js` |
-| Pages project | `nadi-marketplace-staging` | `466f9191-2a8c-474c-861f-d6433b8da2b9` | Created, content not yet deployed (see Milestone 2 notes) |
-| R2 bucket | `nadi-marketplace-driver-docs` | — | **Not yet created — blocked on R2 being enabled account-wide, see below** |
+| Worker | `nadi-dispatch-api` | — | `worker/worker.js`, bindings: `DB`, `DOCS` (R2), `ADMIN_TOKEN`, `DOC_SIGNING_SECRET` |
+| Pages project | `nadi-marketplace-staging` | `466f9191-2a8c-474c-861f-d6433b8da2b9` | Connected to Git (`nadi-marketplace-phase1-staging` branch, output dir `nadi-marketplace/staging-site`), auto-deploy on push |
+| R2 bucket | `nadi-marketplace-driver-docs` | — | Created, bound to `nadi-dispatch-api` as `DOCS`. Empty (test objects created and cleaned up during verification). |
 
 ## Isolation — confirmed, zero shared state with production
 
@@ -44,8 +44,7 @@ seeded (`fuel_auto_apply='false'`, `fuel_confirmed_accurate_count='0'`).
   (`"Document storage not available"`) rather than a confusing crash, verified live.
 - **`GET /admin/drivers?status=pending`** — admin-only (`Authorization: Bearer <ADMIN_TOKEN>`),
   lists drivers with signed, time-limited (1 hour) document URLs — not public bucket URLs. Verified
-  live: returns `401` with no/wrong token, `200` with the correct token (currently `[]`, no
-  submissions possible yet without R2).
+  live: returns `401` with no/wrong token, `200` with the correct token.
 - **`POST /admin/drivers/:id/approve`** and **`POST /admin/drivers/:id/reject`** — admin-only,
   update `drivers.status` to `verified`/`rejected`. Approve also creates a `wallets` row, generates
   a magic-link token in `driver_login_tokens`, and attempts a WhatsApp send.
@@ -66,15 +65,26 @@ dispatch/compliance, and the alternative (a placeholder value sitting in a produ
 column) is worse. Flagging this explicitly since it's a deviation from the literal spec field list,
 not a silent change.
 
-### Blocked: R2 bucket + end-to-end driver creation
+### End-to-end verification — real evidence, all independently re-checked via D1/R2 API (not just trusting endpoint responses)
 
-**R2 is not enabled on this Cloudflare account at all** — this is an account-level toggle, not a
-token permission gap (confirmed via a direct API call: `"Please enable R2 through the Cloudflare
-Dashboard."`). **James: Cloudflare dashboard → R2 (left sidebar) → accept the R2 terms/enable it**
-(free tier covers 10GB storage, unlikely to cost anything at this scale). Once done, tell Claude
-Code and the bucket creation + binding + full end-to-end driver-submission test (real form → real
-R2 objects → real `pending` D1 row) can happen immediately — everything else needed for it is
-already built and waiting.
+1. Submitted a real driver application (`POST /drivers`, real JPEG files) → `201`, `driver_id: 1`.
+2. Independently listed the R2 bucket directly — 3 real objects present (`vehicle.jpg`,
+   `license.jpg`, `insurance.jpg`, 1617 bytes each).
+3. Independently `SELECT`ed the `drivers` and `vehicles` rows — `status='pending'`, correct
+   `zones` JSON, correct R2 keys stored, `plate` correctly saved.
+4. Fetched a real signed doc URL from `GET /admin/drivers` — downloaded object is byte-identical to
+   the originally uploaded file. Confirmed a tampered signature and a missing signature both get a
+   real `403` — the bucket is not readable without a valid signed URL.
+5. Submitted a second application (`driver_id: 2`) to test Reject independently from Approve.
+6. `POST /admin/drivers/1/approve` → `200`. Independently `SELECT`ed: `status='verified'`, a
+   `wallets` row was created (`balance_fjd=0`), a `driver_login_tokens` row was created (7-day
+   expiry).
+7. `POST /admin/drivers/2/reject` → `200`. Independently `SELECT`ed: `status='rejected'`.
+8. Re-fetched `GET /admin/drivers?status=pending` — correctly empty, both records moved out of the
+   pending queue.
+9. **Cleanup**: both test driver/vehicle/wallet/token rows deleted, both sets of R2 test objects
+   deleted. Re-verified via `SELECT COUNT(*)` (all 4 tables at `0`) and a fresh R2 bucket listing
+   (empty) — not just trusted because the delete calls returned success.
 
 ### WhatsApp magic-link send — code-reviewed only, not live-tested (James's choice)
 
@@ -90,25 +100,14 @@ rather than crashing — verified this fallback path structurally, not via a liv
 nothing to attribute yet, since a real send was never attempted. Once the platform token is fixed,
 setting the same two secrets on this Worker and testing Approve is the natural next step.
 
-### Blocked: Pages content deployment needs a dashboard-only step
+### Pages Git connection — done by James via the dashboard OAuth flow
 
-Confirmed via a direct API test that a Direct-Upload Pages project's `source` cannot be changed to a
-GitHub connection via the API (`"You cannot update the source object in a Direct Uploads project."`)
-— this requires Cloudflare's OAuth-based GitHub App flow, dashboard-only, same pattern already used
-for `vakaviti-lagi-public` and `join.vakaviti.ai` elsewhere in this repo's history.
-
-**James: exact steps —**
-1. Cloudflare dashboard → Workers & Pages → `nadi-marketplace-staging`
-2. Settings → Builds & deployments → **Connect to Git**
-3. Authorize/select the `jamesdeorajan-sys/fiji-platform` GitHub repo (should already be
-   authorized, same App used for `vakaviti-lagi-public`)
-4. Production branch: **`nadi-marketplace-phase1-staging`** (not `main` — this is still a staging
-   branch, not reviewed/merged yet)
-5. Build output directory: **`nadi-marketplace/staging-site`**
-6. No build command needed — plain static HTML/JS.
-
-Once connected, every push to this branch will auto-deploy the join form and admin queue pages to
-`nadi-marketplace-staging.pages.dev`.
+Confirmed via a direct API test that a Direct-Upload project's `source` can't be switched to Git via
+the API alone (`"You cannot update the source object in a Direct Uploads project."`) — genuinely
+needed the dashboard OAuth step. James connected it: repo `fiji-platform`, branch
+`nadi-marketplace-phase1-staging`, output directory `nadi-marketplace/staging-site`, auto-deploy on
+push. This README update's push is the first commit since that connection — should trigger the
+first real deployment.
 
 ### Admin token
 
