@@ -100,3 +100,37 @@ CREATE TABLE wallet_transactions (
 
 INSERT INTO platform_settings (key, value) VALUES ('fuel_auto_apply', 'false');
 INSERT INTO platform_settings (key, value) VALUES ('fuel_confirmed_accurate_count', '0');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 2 additions — not part of spec Section 2, added for
+-- driver PWA magic-link login support (Section 3/4 dependency).
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE driver_login_tokens (
+  id INTEGER PRIMARY KEY,
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  token TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Zones seeded from the real, live ftt-booking-site/src/app.js ROUTES_DATA
+-- `area` field (16 distinct values, source-file order) — the actual data
+-- behind nadiairporttransfers.com's live routes table.
+INSERT INTO zones (name) VALUES ('Nadi');
+INSERT INTO zones (name) VALUES ('Nadi Airport');
+INSERT INTO zones (name) VALUES ('Wailoaloa');
+INSERT INTO zones (name) VALUES ('Denarau');
+INSERT INTO zones (name) VALUES ('Sonaisali');
+INSERT INTO zones (name) VALUES ('Vuda Point');
+INSERT INTO zones (name) VALUES ('Lautoka');
+INSERT INTO zones (name) VALUES ('Momi Bay');
+INSERT INTO zones (name) VALUES ('Natadola');
+INSERT INTO zones (name) VALUES ('Sigatoka');
+INSERT INTO zones (name) VALUES ('Coral Coast');
+INSERT INTO zones (name) VALUES ('Pacific Harbour');
+INSERT INTO zones (name) VALUES ('Ba');
+INSERT INTO zones (name) VALUES ('Rakiraki');
+INSERT INTO zones (name) VALUES ('Suva');
+INSERT INTO zones (name) VALUES ('Nausori');

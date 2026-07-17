@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nadi Marketplace — Driver Approval Queue</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gateErr { color: #c83e3e; font-size: 13px; margin-top: 8px; display: none; }
+  .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .name { font-weight: 700; font-size: 17px; }
+  .meta { font-size: 13px; color: #666; margin-top: 2px; }
+  .zones { margin-top: 8px; }
+  .zone-chip { display: inline-block; background: #eef4f7; color: var(--ocean); border-radius: 12px; padding: 3px 10px; font-size: 12px; margin: 2px 4px 2px 0; }
+  .docs { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .doc-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .doc-thumb img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #eee; }
+  .doc-thumb span { font-size: 11px; color: #888; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; }
+  .btn { border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-approve { background: #2e8b57; color: #fff; }
+  .btn-reject { background: #c83e3e; color: #fff; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .status-msg { font-size: 13px; margin-top: 8px; padding: 6px 10px; border-radius: 6px; display: none; }
+  .status-msg.ok { display: block; background: #e5f5ea; color: #1a5c34; }
+  .status-msg.err { display: block; background: #fdeaea; color: #8a1f1f; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter the admin token to view the driver approval queue.</p>
+  <input type="password" id="tokenInput" placeholder="Admin token">
+  <button id="gateBtn">Enter</button>
+  <div id="gateErr">Invalid token or connection error.</div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Driver Approval Queue</h1>
+  <p class="sub" id="subline">Loading...</p>
+  <div id="list"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadDrivers();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      document.getElementById('gateErr').style.display = 'block';
+    }
+  });
+
+  async function loadDrivers() {
+    try {
+      const res = await fetch(API_URL + '/admin/drivers?status=pending', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      renderDrivers(data.drivers || []);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderDrivers(drivers) {
+    const list = document.getElementById('list');
+    const subline = document.getElementById('subline');
+    subline.textContent = drivers.length + ' pending application' + (drivers.length === 1 ? '' : 's');
+
+    if (drivers.length === 0) {
+      list.innerHTML = '<div class="empty">No pending driver applications.</div>';
+      return;
+    }
+
+    list.innerHTML = drivers.map(d => `
+      <div class="card" data-id="${d.id}">
+        <div class="card-top">
+          <div>
+            <div class="name">${escHtml(d.name)}</div>
+            <div class="meta">${escHtml(d.phone)} · ${escHtml(d.vehicle.type || 'unknown vehicle')} · plate ${escHtml(d.vehicle.plate || '-')}</div>
+            <div class="meta">Applied ${escHtml(d.created_at)}</div>
+          </div>
+        </div>
+        <div class="zones">
+          ${d.zones.map(z => '<span class="zone-chip">' + escHtml(z) + '</span>').join('')}
+        </div>
+        <div class="docs">
+          ${docThumb(d.docs.vehicle_photo, 'Vehicle')}
+          ${docThumb(d.docs.license_photo, 'License')}
+          ${docThumb(d.docs.insurance_photo, 'Insurance')}
+        </div>
+        <div class="actions">
+          <button class="btn btn-approve" onclick="doAction(${d.id}, 'approve', this)">Approve</button>
+          <button class="btn btn-reject" onclick="doAction(${d.id}, 'reject', this)">Reject</button>
+        </div>
+        <div class="status-msg" id="status-${d.id}"></div>
+      </div>
+    `).join('');
+  }
+
+  function docThumb(url, label) {
+    if (!url) return '<div class="doc-thumb"><span>' + label + ' (missing)</span></div>';
+    return '<div class="doc-thumb"><img src="' + API_URL + url + '" alt="' + label + '"><span>' + label + '</span></div>';
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function doAction(id, action, btnEl) {
+    const card = btnEl.closest('.card');
+    const statusEl = card.querySelector('.status-msg');
+    card.querySelectorAll('.btn').forEach(b => b.disabled = true);
+    statusEl.className = 'status-msg';
+    statusEl.style.display = 'none';
+
+    try {
+      const res = await fetch(`${API_URL}/admin/drivers/${id}/${action}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json();
+
+      if (res.ok && data.ok) {
+        statusEl.className = 'status-msg ok';
+        let msg = action === 'approve' ? 'Approved.' : 'Rejected.';
+        if (action === 'approve' && data.whatsapp) {
+          if (data.whatsapp.attempted && data.whatsapp.ok) {
+            msg += ' WhatsApp magic link sent.';
+          } else if (data.whatsapp.attempted) {
+            msg += ' WhatsApp send failed (status ' + data.whatsapp.status + ') — see admin notes.';
+          } else {
+            msg += ' WhatsApp not sent: ' + data.whatsapp.reason;
+          }
+        }
+        statusEl.textContent = msg;
+        statusEl.style.display = 'block';
+        setTimeout(() => { card.remove(); refreshSubline(); }, 1500);
+      } else {
+        statusEl.className = 'status-msg err';
+        statusEl.textContent = data.error || 'Action failed.';
+        statusEl.style.display = 'block';
+        card.querySelectorAll('.btn').forEach(b => b.disabled = false);
+      }
+    } catch (e) {
+      statusEl.className = 'status-msg err';
+      statusEl.textContent = 'Connection error.';
+      statusEl.style.display = 'block';
+      card.querySelectorAll('.btn').forEach(b => b.disabled = false);
+    }
+  }
+
+  function refreshSubline() {
+    const remaining = document.querySelectorAll('.card').length;
+    document.getElementById('subline').textContent = remaining + ' pending application' + (remaining === 1 ? '' : 's');
+    if (remaining === 0) document.getElementById('list').innerHTML = '<div class="empty">No pending driver applications.</div>';
+  }
+
+  tryLoad();
+</script>
+</body>
+</html>
