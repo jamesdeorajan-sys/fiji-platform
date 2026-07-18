@@ -1678,32 +1678,42 @@ async function sendWebhookNotification(url, payload) {
 }
 
 async function sendWhatsAppNotification(env, toNumber, name, contact, intent, score, leadId, travelDates, groupSize) {
-  // v56: Meta Cloud API WhatsApp notify for HOT leads (score >= 70)
-  // Requires env.WHATSAPP_TOKEN and env.WHATSAPP_PHONE_ID Worker secrets
+  // v58: Meta Cloud API WhatsApp notify via approved template (vakaviti_lead_alert)
+  // Free-form text (v56) only delivers inside an open 24h customer-service window.
+  // Lead alerts are business-initiated with no such window open, so Meta silently
+  // dropped delivery while still returning 200 + a real WAMID - confirmed via a
+  // controlled test (same send failed with no window open, succeeded once James
+  // opened one by messaging first). Templates bypass the window entirely.
+  // Requires env.WHATSAPP_TOKEN and env.WHATSAPP_PHONE_ID Worker secrets, and the
+  // 'vakaviti_lead_alert' template approved in Meta Business Manager.
   try {
     const cleanNumber = (toNumber || '').replace(/[^0-9]/g, '');
     if (!cleanNumber || cleanNumber.length < 8) return false;
     const scoreLabel = score >= 80 ? 'BURNING HOT' : 'HOT';
-    const msgBody = [
-      '🔥 Vakaviti ' + scoreLabel + ' Lead (' + score + '/100)',
-      '',
-      'Name: ' + (name || 'not provided'),
-      'Contact: ' + (contact || 'not provided'),
-      'Service: ' + intent,
-      'Dates: ' + (travelDates || 'not mentioned'),
-      'Group: ' + (groupSize || 'not mentioned'),
-      '',
-      'Lead ID: ' + leadId,
-      'Dashboard: https://dashboard.vakaviti.ai',
-    ].join('\n');
     const res = await fetch('https://graph.facebook.com/v19.0/' + env.WHATSAPP_PHONE_ID + '/messages', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + env.WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         to: cleanNumber,
-        type: 'text',
-        text: { body: msgBody },
+        type: 'template',
+        template: {
+          name: 'vakaviti_lead_alert',
+          language: { code: 'en_US' },
+          components: [{
+            type: 'body',
+            parameters: [
+              { type: 'text', text: scoreLabel },
+              { type: 'text', text: String(score) },
+              { type: 'text', text: name || 'not provided' },
+              { type: 'text', text: contact || 'not provided' },
+              { type: 'text', text: intent },
+              { type: 'text', text: groupSize ? String(groupSize) : 'not mentioned' },
+              { type: 'text', text: leadId },
+              { type: 'text', text: 'https://dashboard.vakaviti.ai' },
+            ],
+          }],
+        },
       }),
     });
     if (!res.ok) { console.error('WhatsApp send failed:', res.status); return false; }
