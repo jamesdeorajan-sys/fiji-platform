@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nadi Marketplace — Driver App</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 0; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 80px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  input[type=tel] { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+  button { border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn-primary { background: var(--ocean); color: #fff; width: 100%; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  #loginMsg { margin-top: 10px; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
+  #loginMsg.ok { display: block; background: #e5f5ea; color: #1a5c34; }
+  #loginMsg.err { display: block; background: #fdeaea; color: #8a1f1f; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--ocean); color: #fff; }
+  .topbar .name { font-weight: 700; font-size: 15px; }
+  .toggle-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #fffdf8; border-bottom: 1px solid var(--line); }
+  .switch { position: relative; width: 46px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #ccc; border-radius: 26px; cursor: pointer; transition: 0.2s; }
+  .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  input:checked + .slider { background: var(--green); }
+  input:checked + .slider:before { transform: translateX(20px); }
+  .zones-panel { padding: 14px 16px; background: #fffdf8; border-bottom: 1px solid var(--line); display: none; }
+  .zones-panel.show { display: block; }
+  .zone-chip { display: inline-block; padding: 6px 12px; margin: 3px; border-radius: 14px; border: 1px solid var(--line); font-size: 13px; cursor: pointer; user-select: none; }
+  .zone-chip.selected { background: var(--ocean); color: #fff; border-color: var(--ocean); }
+  .apply-zones { margin-top: 10px; width: 100%; }
+
+  .job-card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 12px 16px; }
+  .job-route { font-weight: 700; font-size: 15px; }
+  .job-meta { font-size: 13px; color: #666; margin-top: 4px; }
+  .job-fare { font-size: 18px; font-weight: 700; color: var(--ocean); margin-top: 8px; }
+  .job-actions { margin-top: 10px; }
+  .btn-accept { background: var(--green); color: #fff; width: 100%; }
+  .empty-state { text-align: center; color: #888; padding: 40px 20px; font-size: 14px; }
+
+  .active-job { margin: 12px 16px; padding: 14px; border-radius: 10px; background: #eef4f7; border: 1px solid var(--ocean); }
+  .status-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-status { flex: 1; background: var(--ocean); color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="loginView" class="wrap">
+  <h1>Nadi Marketplace — Driver Login</h1>
+  <p class="sub">Enter your registered WhatsApp number to receive a login link.</p>
+  <input type="tel" id="phoneInput" placeholder="+679 XXX XXXX">
+  <button class="btn-primary" id="loginBtn">Send login link</button>
+  <div id="loginMsg"></div>
+</div>
+
+<div id="appView" style="display:none;">
+  <div class="topbar">
+    <div class="name" id="driverName">—</div>
+    <button id="logoutBtn" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 12px;font-size:12px;">Log out</button>
+  </div>
+  <div class="toggle-row">
+    <label class="switch">
+      <input type="checkbox" id="onlineToggle">
+      <span class="slider"></span>
+    </label>
+    <span id="onlineLabel">Offline</span>
+  </div>
+  <div class="zones-panel" id="zonesPanel">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Select zones to go online in:</div>
+    <div id="zoneChips"></div>
+    <button class="btn-primary apply-zones" id="applyZonesBtn">Go online</button>
+  </div>
+
+  <div id="activeJobWrap"></div>
+  <div id="jobFeed"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let sessionToken = localStorage.getItem('nadi_driver_token') || '';
+  let allZones = [];
+  let selectedZones = [];
+  let currentDriver = null;
+
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      sessionToken = tokenFromLink;
+      localStorage.setItem('nadi_driver_token', sessionToken);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    if (sessionToken) {
+      const ok = await loadDriver();
+      if (ok) { showApp(); return; }
+    }
+    showLogin();
+  }
+
+  function showLogin() {
+    document.getElementById('loginView').style.display = 'block';
+    document.getElementById('appView').style.display = 'none';
+  }
+
+  async function showApp() {
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('appView').style.display = 'block';
+    document.getElementById('driverName').textContent = currentDriver.name;
+    document.getElementById('onlineToggle').checked = currentDriver.online;
+    document.getElementById('onlineLabel').textContent = currentDriver.online ? 'Online' : 'Offline';
+    await loadZonesList();
+    selectedZones = currentDriver.zones || [];
+    renderZoneChips();
+    if (currentDriver.online) {
+      document.getElementById('zonesPanel').classList.remove('show');
+      loadJobs();
+    } else {
+      document.getElementById('jobFeed').innerHTML = '';
+    }
+  }
+
+  async function loadDriver() {
+    try {
+      const res = await fetch(API_URL + '/driver/me', { headers: { Authorization: 'Bearer ' + sessionToken } });
+      if (!res.ok) return false;
+      currentDriver = await res.json();
+      return true;
+    } catch { return false; }
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('loginMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/driver/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('nadi_driver_token');
+    sessionToken = '';
+    showLogin();
+  });
+
+  async function loadZonesList() {
+    if (allZones.length) return;
+    try {
+      const res = await fetch(API_URL + '/zones');
+      const data = await res.json();
+      allZones = (data.zones || []).map((z) => z.name);
+    } catch { allZones = []; }
+  }
+
+  function renderZoneChips() {
+    const el = document.getElementById('zoneChips');
+    el.innerHTML = allZones.map((z) => `<span class="zone-chip${selectedZones.includes(z) ? ' selected' : ''}" data-zone="${z}">${z}</span>`).join('');
+    el.querySelectorAll('.zone-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const z = chip.dataset.zone;
+        if (selectedZones.includes(z)) selectedZones = selectedZones.filter((x) => x !== z);
+        else selectedZones.push(z);
+        renderZoneChips();
+      });
+    });
+  }
+
+  document.getElementById('onlineToggle').addEventListener('change', async (e) => {
+    if (e.target.checked) {
+      document.getElementById('zonesPanel').classList.add('show');
+    } else {
+      await setOnline(false, []);
+      document.getElementById('zonesPanel').classList.remove('show');
+      document.getElementById('jobFeed').innerHTML = '';
+      document.getElementById('activeJobWrap').innerHTML = '';
+    }
+  });
+
+  document.getElementById('applyZonesBtn').addEventListener('click', async () => {
+    if (selectedZones.length === 0) { alert('Select at least one zone.'); return; }
+    await setOnline(true, selectedZones);
+    document.getElementById('zonesPanel').classList.remove('show');
+    loadJobs();
+  });
+
+  async function setOnline(online, zones) {
+    try {
+      const res = await fetch(API_URL + '/driver/online', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessionToken },
+        body: JSON.stringify({ online, zones }),
+      });
+      const data = await res.json();
+      document.getElementById('onlineToggle').checked = data.online;
+      document.getElementById('onlineLabel').textContent = data.online ? 'Online' : 'Offline';
+    } catch {}
+  }
+
+  async function loadJobs() {
+    try {
+      const res = await fetch(API_URL + '/driver/jobs', { headers: { Authorization: 'Bearer ' + sessionToken } });
+      const data = await res.json();
+      renderJobs(data.jobs || []);
+    } catch {}
+  }
+
+  function renderJobs(jobs) {
+    const el = document.getElementById('jobFeed');
+    if (jobs.length === 0) {
+      el.innerHTML = '<div class="empty-state">No jobs available right now.</div>';
+      return;
+    }
+    el.innerHTML = jobs.map((j) => `
+      <div class="job-card" data-id="${j.id}">
+        <div class="job-route">${j.pickup_zone} → ${j.destination_zone}</div>
+        <div class="job-meta">${j.vehicle_type} · ${j.distance_km ? j.distance_km + ' km' : ''} · ${j.payment_method}</div>
+        <div class="job-fare">${j.quoted_currency} ${j.quoted_amount}</div>
+        <div class="job-actions">
+          <button class="btn-accept" onclick="acceptJob(${j.id}, this)">Accept</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function acceptJob(id, btnEl) {
+    btnEl.disabled = true;
+    btnEl.textContent = 'Accepting...';
+    try {
+      const res = await fetch(`${API_URL}/driver/bookings/${id}/accept`, {
+        method: 'POST', headers: { Authorization: 'Bearer ' + sessionToken },
+      });
+      const data = await res.json();
+      if (res.ok && data.won) {
+        renderActiveJob(data.booking);
+        loadJobs();
+      } else {
+        alert(data.reason || 'Job no longer available.');
+        loadJobs();
+      }
+    } catch {
+      alert('Connection error.');
+    }
+  }
+
+  function renderActiveJob(booking) {
+    const el = document.getElementById('activeJobWrap');
+    el.innerHTML = `
+      <div class="active-job" data-id="${booking.id}">
+        <div class="job-route">${booking.pickup_zone} → ${booking.destination_zone}</div>
+        <div class="job-meta">Status: <strong>${booking.status}</strong></div>
+        <div class="status-actions" id="statusActions"></div>
+      </div>
+    `;
+    renderStatusButtons(booking.id, booking.status);
+  }
+
+  function renderStatusButtons(id, status) {
+    const el = document.getElementById('statusActions');
+    if (status === 'accepted') {
+      el.innerHTML = '<button class="btn-status" id="statusBtn">En Route</button>';
+      document.getElementById('statusBtn').addEventListener('click', () => setStatus(id, 'en_route'));
+    } else if (status === 'en_route') {
+      el.innerHTML = '<button class="btn-status" id="statusBtn">Completed</button>';
+      document.getElementById('statusBtn').addEventListener('click', () => setStatus(id, 'completed'));
+    } else {
+      el.innerHTML = '<div style="font-size:13px;color:#2e8b57;font-weight:600;">Trip completed ✓</div>';
+    }
+  }
+
+  async function setStatus(id, status) {
+    try {
+      const res = await fetch(`${API_URL}/driver/bookings/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessionToken },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        document.querySelector(`.active-job[data-id="${id}"] .job-meta`).innerHTML = 'Status: <strong>' + data.status + '</strong>';
+        renderStatusButtons(id, data.status);
+        if (data.status === 'completed') setTimeout(() => { document.getElementById('activeJobWrap').innerHTML = ''; }, 2000);
+      } else {
+        alert(data.error || 'Could not update status.');
+      }
+    } catch {
+      alert('Connection error.');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -113,11 +113,87 @@ first real deployment.
 
 Generated fresh for this Worker, given to James directly (not committed to git, not in this file).
 
+## Milestone 3 — driver PWA login, job feed, dispatch broadcast (spec Sections 4 & 6)
+
+### Lesson applied from the WhatsApp investigation, not rediscovered
+
+Both new WhatsApp sends (driver login link, booking broadcast) use `type: 'template'` from the
+start — `sendWhatsAppTemplate()` replaces the old free-form-text `sendMagicLinkWhatsApp()` body.
+Neither driver logins nor dispatch broadcasts have an open 24h customer-service window (the driver
+hasn't messaged the business first), so free-form text would hit the exact silent-drop failure
+diagnosed the same night. Two templates drafted for James to submit via WhatsApp Manager's UI (the
+Graph API route is a confirmed dead end for this WABA — not retried):
+
+**`vakaviti_driver_login`** (Utility, `en_US`) — `{{1}}` driver name, `{{2}}` login link.
+**`vakaviti_booking_broadcast`** (Utility, `en_US`) — `{{1}}` pickup zone, `{{2}}` destination zone,
+`{{3}}` vehicle type, `{{4}}` fare, `{{5}}` driver app link.
+
+Neither is approved yet, so both sends currently error (or report "not configured" — this Worker
+still doesn't have `WHATSAPP_TOKEN`/`WHATSAPP_PHONE_ID` set, same as Milestone 2). That's expected,
+not a bug — every other part of the pipeline (D1 state, atomic accept, job matching, broadcast
+targeting) was verified independently of whether the WhatsApp send itself succeeds.
+
+### What's built and verified — new endpoints on `nadi-dispatch-api`
+
+- **`POST /driver/login`** — phone → generates a fresh `driver_login_tokens` row, attempts the
+  template send. Always returns a generic message regardless of whether the number is registered
+  (avoids confirming/denying which phones are drivers).
+- **`GET /driver/me`**, **`POST /driver/online`** (toggle + zone reselection), **`GET /driver/jobs`**
+  (pending bookings matching the driver's *online* zones, empty list with a note if offline).
+- **`POST /driver/bookings/:id/accept`** — atomic
+  `UPDATE ... WHERE assigned_driver_id IS NULL AND status = 'pending'`, `meta.changes` tells you if
+  you won.
+- **`POST /driver/bookings/:id/status`** — `en_route`/`completed`, ownership-checked
+  (403 if the booking isn't yours) and transition-checked (409 on an invalid jump, e.g. re-sending
+  `en_route` twice).
+- **`POST /admin/test-booking`** — admin-only, inserts a real `bookings` row and broadcasts to every
+  online + verified + zone-matching driver. Real guest-widget integration is still out of scope.
+- Driver auth (`requireDriver()`) reuses the `driver_login_tokens` row itself as the bearer
+  credential, valid until `expires_at` — no separate session system, per the Milestone 2 schema.
+
+### Driver PWA (`staging-site/driver-app.html`)
+
+Login screen (phone entry) → magic-link URL param consumed into `localStorage` → online/offline
+toggle with zone multi-select → job feed → Accept → active-job panel with En Route/Completed
+buttons. **A real bug found and fixed during verification**: the status-button rendering code used
+`\\'` (double-backslash) instead of `\'` inside a JS string literal, which silently killed the
+*entire* inline script (confirmed via `typeof init` → `undefined` in the live browser before the
+fix) — the page rendered but nothing was interactive, no console error surfaced. Fixed by switching
+to `addEventListener` instead of string-built `onclick` attributes, which also removes the
+escaping hazard entirely rather than just patching this one instance.
+
+### Real evidence — full loop, verified live against the real deployed Worker in a real browser
+
+1. Two real test drivers inserted (`verified`, zone `Denarau`), real `driver_login_tokens` rows
+   generated, both authenticated via `GET /driver/me`, both brought online via
+   `POST /driver/online`.
+2. **Race condition test — the one that actually matters**: fired two truly concurrent
+   `POST /driver/bookings/1/accept` requests (one per driver, backgrounded shell processes, not
+   sequential). Driver B: `200`, `won: true`. Driver A: `409`, `won: false`, with the `current`
+   state shown to A already matching what B received. **Independently re-`SELECT`ed the booking
+   row** — `assigned_driver_id = 2`, exactly one winner, no double-assignment.
+3. Status flow: `accepted → en_route → completed`, ownership check confirmed (Driver A got `403`
+   trying to touch Driver B's booking), invalid re-transition confirmed (`en_route → en_route` →
+   `409`). Final state independently re-`SELECT`ed: `status = 'completed'`.
+4. Full loop repeated in an actual browser against the live Worker: logged in via the magic-link
+   token as a URL param, saw "Online" status persist, a second test booking appeared as a real job
+   card, Accept → active-job panel rendered, En Route → Completed both worked, job feed correctly
+   emptied at each stage. Screenshots not included here but every state transition was read back
+   from the live DOM (`get_page_text`) and cross-checked against direct D1 queries.
+5. **Cleanup**: both test bookings, both driver rows, both login tokens deleted. Re-verified via
+   `SELECT COUNT(*)` — `drivers`, `vehicles`, `bookings`, `driver_login_tokens`, `wallets` all back
+   to `0`.
+
+### Deployed
+
+Pushed to `nadi-marketplace-phase1-staging` — Pages auto-deploy (connected in Milestone 2) picks up
+`staging-site/driver-app.html` automatically.
+
 ## Explicitly not built this milestone
 
-PWA job feed, accept button, dispatch broadcast (spec Section 4 core + 6), wallet view, max-hours
-cap (Section 4), fuel index cron (Section 7), guest widget fuel-price line (Section 8), cutover
-(Section 9).
+Wallet view, commission accrual, max-hours cap (rest of spec Section 4), fuel index cron
+(Section 7), guest widget fuel-price line (Section 8), real guest booking integration (still
+manually-inserted test bookings), cutover (Section 9).
 
 ## Branch
 

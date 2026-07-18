@@ -2,9 +2,11 @@
  * Nadi Airport Transfers — Driver Marketplace Backend
  * nadi-dispatch-api
  *
- * Phase 1, Milestone 2: driver onboarding (join form submission, admin
- * approval queue). No dispatch/broadcast/PWA job feed/wallet logic yet —
- * see Phase 1 spec sections 4 (core)/6/7/8/9, all still out of scope.
+ * Phase 1, Milestone 3: driver PWA login, online/offline + zones, job feed,
+ * atomic accept, dispatch broadcast, status transitions (spec sections 4 & 6).
+ * Wallet/commission/max-hours-cap (rest of Section 4), fuel index cron
+ * (Section 7), guest widget change (Section 8), and cutover (Section 9)
+ * are still out of scope.
  *
  * Fully isolated: separate script, separate D1 database (nadi-marketplace-db),
  * separate R2 bucket (nadi-marketplace-driver-docs), zero shared bindings
@@ -12,6 +14,16 @@
  * route or domain. workers/chat-widget/worker.js was not touched to build
  * this — the WhatsApp send below is a new, independent implementation
  * against the same Meta Cloud API pattern, not a shared function.
+ *
+ * Milestone 3 lesson applied from the same night's WhatsApp investigation:
+ * free-form text (type: 'text') only delivers inside an open 24h
+ * customer-service window. Drivers who just submitted the join form, and
+ * dispatch broadcasts to idle drivers, are both business-initiated with no
+ * window open — both WhatsApp sends below use type: 'template' from the
+ * start, referencing templates submitted to Meta for review via WhatsApp
+ * Manager's UI (not the Graph API — confirmed a dead end for this WABA).
+ * Sends will error until those templates are approved; see the Milestone 3
+ * report for the exact content submitted and current approval status.
  */
 
 const JSON_CORS = {
@@ -25,6 +37,9 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
 const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
 const MAGIC_LINK_TTL_SECONDS = 7 * 24 * 3600; // 7 days
+const DRIVER_LOGIN_TEMPLATE = 'vakaviti_driver_login';
+const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
+const DRIVER_APP_URL = 'https://nadi-marketplace-staging.pages.dev/driver-app';
 
 export default {
   async fetch(request, env, ctx) {
@@ -62,6 +77,37 @@ export default {
     const rejectMatch = url.pathname.match(/^\/admin\/drivers\/(\d+)\/reject$/);
     if (request.method === 'POST' && rejectMatch) {
       return handleAdminReject(request, env, Number(rejectMatch[1]));
+    }
+
+    // ── Milestone 3: driver PWA + dispatch ──
+    if (request.method === 'POST' && url.pathname === '/driver/login') {
+      return handleDriverLogin(request, env);
+    }
+
+    if (request.method === 'GET' && url.pathname === '/driver/me') {
+      return handleDriverMe(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/driver/online') {
+      return handleDriverOnline(request, env);
+    }
+
+    if (request.method === 'GET' && url.pathname === '/driver/jobs') {
+      return handleDriverJobs(request, env);
+    }
+
+    const acceptMatch = url.pathname.match(/^\/driver\/bookings\/(\d+)\/accept$/);
+    if (request.method === 'POST' && acceptMatch) {
+      return handleDriverAcceptBooking(request, env, Number(acceptMatch[1]));
+    }
+
+    const statusMatch = url.pathname.match(/^\/driver\/bookings\/(\d+)\/status$/);
+    if (request.method === 'POST' && statusMatch) {
+      return handleDriverBookingStatus(request, env, Number(statusMatch[1]));
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/test-booking') {
+      return handleAdminTestBooking(request, env);
     }
 
     return json({ error: 'Not found.' }, 404);
@@ -325,7 +371,7 @@ async function handleAdminApprove(request, env, driverId) {
   if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
-  const driver = await env.DB.prepare(`SELECT id, phone, status FROM drivers WHERE id = ?`).bind(driverId).first();
+  const driver = await env.DB.prepare(`SELECT id, name, phone, status FROM drivers WHERE id = ?`).bind(driverId).first();
   if (!driver) return json({ ok: false, error: 'Driver not found.' }, 404);
 
   await env.DB.prepare(`UPDATE drivers SET status = 'verified' WHERE id = ?`).bind(driverId).run();
@@ -337,7 +383,7 @@ async function handleAdminApprove(request, env, driverId) {
     `INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, ?)`
   ).bind(driverId, token, expiresAt).run();
 
-  const whatsappResult = await sendMagicLinkWhatsApp(env, driver.phone, token);
+  const whatsappResult = await sendMagicLinkWhatsApp(env, driver.phone, token, driver.name);
 
   return json({
     ok: true,
@@ -360,35 +406,27 @@ async function handleAdminReject(request, env, driverId) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// WHATSAPP MAGIC LINK — same Meta Cloud API pattern as fiji-chat-widget's
-// sendWhatsAppNotification, reimplemented independently here (that file
-// was not touched). Requires env.WHATSAPP_TOKEN / env.WHATSAPP_PHONE_ID,
-// which are NOT currently set on this Worker (see Milestone 2 report —
-// the platform's shared token is known-broken, so a live test was
-// deliberately skipped; this returns "not_configured" until secrets are
-// set, which will surface the real Meta response once they are).
+// WHATSAPP — template-based, NOT free-form text. Same Meta Cloud API
+// endpoint pattern as fiji-chat-widget's sendWhatsAppNotification,
+// reimplemented independently here (that file was not touched), but using
+// type: 'template' from the start per the Milestone 3 brief — business-
+// initiated sends to drivers with no open 24h window would otherwise hit
+// the exact same silent-drop failure diagnosed in the previous session.
+// Requires env.WHATSAPP_TOKEN / env.WHATSAPP_PHONE_ID, and the referenced
+// template approved in Meta Business Manager (submitted via WhatsApp
+// Manager's UI, not the Graph API — see Milestone 3 report). Until
+// approved, Meta will return an error naming the template as the reason,
+// which is expected and not a code bug.
 // ═══════════════════════════════════════════════════════════════
 
-async function sendMagicLinkWhatsApp(env, phone, token) {
+async function sendWhatsAppTemplate(env, phone, templateName, bodyParams) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
   }
-
   const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
   if (!cleanNumber || cleanNumber.length < 8) {
-    return { attempted: false, reason: 'Driver phone number invalid for WhatsApp send.' };
+    return { attempted: false, reason: 'Phone number invalid for WhatsApp send.' };
   }
-
-  const loginUrl = `https://nadi-marketplace-staging.pages.dev/driver-login?token=${token}`;
-  const msgBody = [
-    'Bula! Your Nadi Airport Transfers driver application has been approved.',
-    '',
-    'Tap below to log in to your driver dashboard:',
-    loginUrl,
-    '',
-    'This link expires in 7 days.',
-  ].join('\n');
-
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
       method: 'POST',
@@ -396,8 +434,15 @@ async function sendMagicLinkWhatsApp(env, phone, token) {
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         to: cleanNumber,
-        type: 'text',
-        text: { body: msgBody },
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en_US' },
+          components: [{
+            type: 'body',
+            parameters: bodyParams.map((text) => ({ type: 'text', text: String(text) })),
+          }],
+        },
       }),
     });
     const bodyText = await res.text().catch(() => '');
@@ -405,6 +450,229 @@ async function sendMagicLinkWhatsApp(env, phone, token) {
   } catch (err) {
     return { attempted: true, ok: false, error: err.message };
   }
+}
+
+async function sendMagicLinkWhatsApp(env, phone, token, driverName) {
+  const loginUrl = `${DRIVER_APP_URL}?token=${token}`;
+  // vakaviti_driver_login body: {{1}} driver name, {{2}} login link
+  return sendWhatsAppTemplate(env, phone, DRIVER_LOGIN_TEMPLATE, [driverName || 'Driver', loginUrl]);
+}
+
+async function sendBookingBroadcastWhatsApp(env, phone, booking) {
+  const jobUrl = `${DRIVER_APP_URL}?token=`; // driver's own stored session token completes this client-side
+  const fare = `${booking.quoted_currency} ${booking.quoted_amount}`;
+  // vakaviti_booking_broadcast body: {{1}} pickup, {{2}} destination, {{3}} vehicle type, {{4}} fare, {{5}} app link
+  return sendWhatsAppTemplate(env, phone, BOOKING_BROADCAST_TEMPLATE, [
+    booking.pickup_zone,
+    booking.destination_zone,
+    booking.vehicle_type,
+    fare,
+    DRIVER_APP_URL,
+  ]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRIVER AUTH — bearer token is the driver_login_tokens row itself,
+// valid until expires_at (7 days from issue). Not a separate session
+// system, per the Milestone 2 schema note this reuses.
+// ═══════════════════════════════════════════════════════════════
+
+async function requireDriver(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  const row = await env.DB.prepare(
+    `SELECT d.id, d.name, d.phone, d.status, d.zones, d.online, d.online_since
+     FROM driver_login_tokens t
+     JOIN drivers d ON d.id = t.driver_id
+     WHERE t.token = ? AND t.expires_at > datetime('now') AND d.status = 'verified'`
+  ).bind(token).first();
+  return row || null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRIVER LOGIN (magic link request)
+// ═══════════════════════════════════════════════════════════════
+
+async function handleDriverLogin(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const phone = normalisePhone((body.phone || '').toString());
+  if (!phone) return json({ ok: false, error: 'Valid phone number required.' }, 400);
+
+  const driver = await env.DB.prepare(`SELECT id, name, phone FROM drivers WHERE phone = ? AND status = 'verified'`).bind(phone).first();
+  // Generic response either way - avoid confirming/denying which numbers are registered drivers.
+  if (!driver) {
+    return json({ ok: true, message: 'If this number is a verified driver, a login link has been sent.' }, 200);
+  }
+
+  const token = crypto.randomUUID().replace(/-/g, '');
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000).toISOString();
+  await env.DB.prepare(`INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, ?)`).bind(driver.id, token, expiresAt).run();
+
+  const whatsappResult = await sendMagicLinkWhatsApp(env, driver.phone, token, driver.name);
+  return json({ ok: true, message: 'If this number is a verified driver, a login link has been sent.', whatsapp: whatsappResult }, 200);
+}
+
+async function handleDriverMe(request, env) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+  return json({
+    id: driver.id,
+    name: driver.name,
+    phone: driver.phone,
+    status: driver.status,
+    zones: JSON.parse(driver.zones || '[]'),
+    online: !!driver.online,
+    online_since: driver.online_since,
+  }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ONLINE/OFFLINE + ZONES
+// ═══════════════════════════════════════════════════════════════
+
+async function handleDriverOnline(request, env) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON.' }, 400); }
+  const online = !!body.online;
+  const zones = Array.isArray(body.zones) ? body.zones.map((z) => String(z).trim()).filter(Boolean) : null;
+
+  if (online) {
+    if (!zones || zones.length === 0) return json({ error: 'At least one zone is required to go online.' }, 400);
+    const validZones = await getValidZoneNames(env);
+    const invalid = zones.filter((z) => !validZones.has(z));
+    if (invalid.length > 0) return json({ error: `unknown zone(s): ${invalid.join(', ')}` }, 400);
+    await env.DB.prepare(`UPDATE drivers SET online = 1, online_since = datetime('now'), zones = ? WHERE id = ?`).bind(JSON.stringify(zones), driver.id).run();
+  } else {
+    await env.DB.prepare(`UPDATE drivers SET online = 0, online_since = NULL WHERE id = ?`).bind(driver.id).run();
+  }
+
+  const updated = await env.DB.prepare(`SELECT online, online_since, zones FROM drivers WHERE id = ?`).bind(driver.id).first();
+  return json({ ok: true, online: !!updated.online, online_since: updated.online_since, zones: JSON.parse(updated.zones || '[]') }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// JOB FEED
+// ═══════════════════════════════════════════════════════════════
+
+async function handleDriverJobs(request, env) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+  if (!driver.online) return json({ jobs: [], note: 'Go online to see available jobs.' }, 200);
+
+  const driverZones = new Set(JSON.parse(driver.zones || '[]'));
+  const result = await env.DB.prepare(
+    `SELECT id, guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
+            quoted_currency, quoted_amount, payment_method, status, created_at
+     FROM bookings WHERE status = 'pending' AND assigned_driver_id IS NULL ORDER BY created_at ASC LIMIT 20`
+  ).all();
+
+  const jobs = (result.results || []).filter((b) => driverZones.has(b.pickup_zone));
+  return json({ jobs }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCEPT — atomic, race-condition-safe
+// ═══════════════════════════════════════════════════════════════
+
+async function handleDriverAcceptBooking(request, env, bookingId) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+
+  const result = await env.DB.prepare(
+    `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted' WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
+  ).bind(driver.id, bookingId).run();
+
+  const won = result.meta.changes === 1;
+  if (!won) {
+    const current = await env.DB.prepare(`SELECT assigned_driver_id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
+    return json({ ok: false, won: false, reason: 'Booking already taken or no longer available.', current }, 409);
+  }
+
+  const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+  return json({ ok: true, won: true, booking }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS TRANSITIONS — En Route -> Completed
+// ═══════════════════════════════════════════════════════════════
+
+const VALID_STATUS_TRANSITIONS = {
+  accepted: ['en_route', 'completed'],
+  en_route: ['completed'],
+};
+
+async function handleDriverBookingStatus(request, env, bookingId) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON.' }, 400); }
+  const newStatus = (body.status || '').toString();
+  if (!['en_route', 'completed'].includes(newStatus)) return json({ error: "status must be 'en_route' or 'completed'" }, 400);
+
+  const booking = await env.DB.prepare(`SELECT id, assigned_driver_id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
+  if (!booking) return json({ error: 'Booking not found.' }, 404);
+  if (booking.assigned_driver_id !== driver.id) return json({ error: 'This booking is not assigned to you.' }, 403);
+
+  const allowed = VALID_STATUS_TRANSITIONS[booking.status] || [];
+  if (!allowed.includes(newStatus)) {
+    return json({ error: `Cannot transition from '${booking.status}' to '${newStatus}'.` }, 409);
+  }
+
+  await env.DB.prepare(`UPDATE bookings SET status = ? WHERE id = ?`).bind(newStatus, bookingId).run();
+  return json({ ok: true, booking_id: bookingId, status: newStatus }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — insert a test booking + broadcast dispatch
+// (real guest widget integration is out of scope this milestone)
+// ═══════════════════════════════════════════════════════════════
+
+async function handleAdminTestBooking(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const required = ['pickup_zone', 'destination_zone', 'vehicle_type', 'quoted_currency', 'quoted_amount', 'payment_method'];
+  const missing = required.filter((f) => !body[f]);
+  if (missing.length > 0) return json({ ok: false, error: `Missing required fields: ${missing.join(', ')}` }, 400);
+
+  const validZones = await getValidZoneNames(env);
+  if (!validZones.has(body.pickup_zone)) return json({ ok: false, error: `unknown pickup_zone: ${body.pickup_zone}` }, 400);
+  if (!validZones.has(body.destination_zone)) return json({ ok: false, error: `unknown destination_zone: ${body.destination_zone}` }, 400);
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
+       quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied, payment_method, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+  ).bind(
+    body.guest_name || 'Test Guest', body.guest_phone || null, body.pickup_zone, body.destination_zone,
+    body.distance_km || null, body.vehicle_type, body.quoted_currency, body.quoted_amount,
+    body.fx_rate_at_booking || 1, body.settlement_amount_fjd || body.quoted_amount,
+    body.fuel_multiplier_applied || 1, body.payment_method
+  ).run();
+
+  const bookingId = insert.meta.last_row_id;
+  const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+
+  const candidates = await env.DB.prepare(`SELECT id, name, phone, zones FROM drivers WHERE status = 'verified' AND online = 1`).all();
+  const matching = (candidates.results || []).filter((d) => JSON.parse(d.zones || '[]').includes(body.pickup_zone));
+
+  const broadcastResults = [];
+  for (const d of matching) {
+    const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
+    broadcastResults.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
+  }
+
+  return json({ ok: true, booking_id: bookingId, booking, broadcast: { matched_drivers: matching.length, results: broadcastResults } }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════
