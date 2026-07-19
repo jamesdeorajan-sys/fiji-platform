@@ -1426,3 +1426,195 @@ it said "successfully executed."
    `Name` field showed literal "Looking", parsed from "I'm looking for..."); a clearly-stated date
    ("this Friday") wasn't captured into the `Dates` field on another lead. Low priority — worth a
    future session, not urgent.
+
+## Session 59 — 2026-07-15/19 — WhatsApp template migration real-delivery-verified (all 4 templates); Nadi Airport Transfers driver marketplace Milestones 1-3 built and verified live, entirely isolated from production
+
+Long, technically dense session across two parallel workstreams. Actor attribution below is explicit
+throughout: **James directly** (Meta Business Suite, WhatsApp Manager, Cloudflare dashboard actions,
+his own phone confirming real message delivery), **Claude Code** (branch/commit/push, temporary
+diagnostic Worker versions, live Meta API test calls, build work), and **this chat** (direction,
+verification discipline, diagnosis).
+
+### PART 1 — WhatsApp notification fix: from "should be working" to real-delivery-verified
+
+**Starting state:** WhatsApp lead notifications broken in production — Meta error 190, expired/invalid
+`WHATSAPP_TOKEN` — actively blocking revenue.
+
+**1. Permanent token generated (James directly).** James generated a permanent Meta System User access
+token (`VakavitiBot`, scopes `whatsapp_business_management` + `whatsapp_business_messaging`, no
+expiry) via Meta Business Suite and deployed it as the `WHATSAPP_TOKEN` secret on `fiji-chat-widget`
+via the Cloudflare dashboard (rotate + deploy) — a manual dashboard action, not run through Code or
+this chat.
+
+**2. A parallel discovery, unrelated to the token (James directly + Code verification).** James had
+separately already deployed P30 + P30b to production via the Cloudflare dashboard himself — production
+moved from `d6cc4d3a` to `8a2001d7` mid-session, outside of any branch/PR flow tracked in this chat.
+Code independently fetched the live deployed source and confirmed it matches the already-merged
+commits (`29da21a`, `8b85e12`) byte-for-byte in the relevant functions — this was a real deploy, not a
+partial or stale one.
+
+**3. First diagnosis round — a real data bug (this chat + James in D1 console).** `contact_channels`
+rows for `op_fijitourtransfers_001` and `op_smugglers_001` still had `min_lead_score=70` (stale,
+pre-P30b — the code threshold is now 40). 28 of 30 partner WhatsApp rows were already correctly at
+`min_lead_score=0`. Fixed via `UPDATE`, verified via re-`SELECT`. Then verified end-to-end by
+re-triggering the real `notifyPartner()` function against a real lead row: a real WAMID came back from
+Meta, and the lead's `channel_used` flipped from `"email"` to `"whatsapp+email"` in D1.
+
+**4. James reported the message was NOT actually received** despite the real WAMID — a genuine
+accepted-but-not-delivered gap, investigated with no code changes made until the cause was confirmed:
+- Ruled out: wrong recipient number; Cloud API/consumer-app coexistence conflict (confirmed regular
+  consumer WhatsApp still works fine on that same number); account-level restrictions; messaging limit
+  tier (confirmed `TIER_250`, LIVE mode, GREEN quality rating, no restrictions flagged); business
+  verification requirement (confirmed not required for sending, only for certain higher tiers/Catalog).
+- **Real root cause, confirmed via a controlled A/B test**: WhatsApp only delivers free-form
+  `type: "text"` messages within an open 24-hour customer-service window. James messaging the business
+  number himself opened a window; the exact same retrigger that had just failed then succeeded and
+  delivered — same code, same token, same number, same message, the only variable that changed was an
+  open window.
+- **The actual fix**: convert business-initiated notifications to approved WhatsApp Message Templates
+  (`type: "template"`), which Meta permits sending outside the window for exactly this use case.
+
+**5. Template submission saga.**
+- Graph API template submission was a genuine dead end for this account — every attempt (multiple
+  fresh tokens, all scopes confirmed sufficient) returned "does not exist / missing permissions" or
+  "nonexisting field" on the WABA's `message_templates` endpoint. Confirmed dead, not retried again for
+  any of the four templates this session.
+- Unblocked by using WhatsApp Manager's UI directly (`business.facebook.com/wa/manage`) instead of the
+  API — all four templates this session were created this way.
+- **Real WABA mismatch discovered**: the Meta Business account has TWO separate WABAs — "Vakaviti AI"
+  (ID `1038250892014680`, zero phone numbers attached) and "Test WhatsApp Business Account" (ID
+  `415031440523931`, has the real sending number `+1 555-641-4099`). The first template
+  (`vakaviti_lead_alert`) was created while the account switcher was on "Vakaviti AI" — it showed
+  "Active" in the dashboard but was completely invisible to the actual sending number's WABA, causing a
+  404 "template does not exist" error on every real send attempt despite the Active status. Fixed by
+  recreating the template as `vakaviti_lead_alert_v2`, explicitly created under the "Test WhatsApp
+  Business Account" WABA context this time.
+- **Category-classifier lessons learned (apply to any future template work on this account):**
+  - Utility category was rejected repeatedly by Meta's classifier for this content, even when
+    genuinely a status/account update — Marketing was the practical fallback every time.
+  - Separately: phrasing combining "log in" + "dashboard" + "expires in X days" specifically triggers
+    Meta's Authentication-category classifier and gets rejected regardless of link domain — this cost
+    4 rejections on `vakaviti_driver_login`/`_v2` before the wording was reframed as an approval/status
+    notification instead ("Your application has been approved...") rather than a login message. The
+    reframing is what actually fixed it, not any domain change.
+  - A custom domain (`driver.vakaviti.ai`, added via Cloudflare Pages custom domain on
+    `nadi-marketplace-staging`, confirmed Active with SSL) was set up as a hypothesis fix for the
+    rejections mid-session, but was later proven NOT to be the actual cause — kept anyway as good
+    practice (a branded domain over a raw `.pages.dev` one), but the wording fix, not the domain, is
+    what actually resolved the rejections.
+  - Variables cannot sit at the very start or end of a template body — Meta rejects this structurally,
+    independent of content quality.
+  - **Language code must be verified individually per template — there is no shortcut or pattern to
+    assume from a previously-working template.** Confirmed independently across all four templates via
+    live test each time, never carried over from the last answer: `vakaviti_lead_alert_v2` needed
+    `en_AU` (`en_US` and plain `en` both 404'd); `vakaviti_driver_welcome` needed plain `en` (`en_US`
+    and `en_AU` both 404'd); `vakaviti_booking_broadcast` needed plain `en` (`en_US` and `en_AU` both
+    404'd, confirmed separately, not assumed carried over from `driver_welcome`); `vakaviti_driver_return`
+    needed plain `en` (worked on the first attempt this time, but was still verified live, not assumed
+    from the pattern).
+
+**6. Final state — four templates, all Active, ALL real-delivery-verified via actual WhatsApp
+screenshots on James's phone (not just accepted Meta API responses):**
+- **`vakaviti_lead_alert_v2`** (Marketing, `en_AU`) — lead alerts to James/team. 7 body params: heat
+  tier, score, name, contact, service/intent, group size, dashboard link.
+- **`vakaviti_driver_welcome`** (Marketing, `en`) — driver application approval notification. 1 body
+  param (driver name) + 1 button URL param (login token). Dynamic URL button to
+  `https://driver.vakaviti.ai/driver-app?token=`.
+- **`vakaviti_booking_broadcast`** (Marketing, `en`) — job broadcast to online drivers. 5 body params:
+  pickup zone, drop-off zone, vehicle type, fare, driver app link.
+- **`vakaviti_driver_return`** (Marketing, `en`) — returning-driver re-login notification. 1 body param
+  (driver name) + 1 button URL param (login token), same Dynamic URL pattern as `driver_welcome`.
+  Closes a gap Code itself had flagged earlier in the marketplace build (returning drivers previously
+  had no WhatsApp path at all — Code had correctly reported this as "not configured" rather than
+  pointing at anything broken).
+- **Abandoned**: `vakaviti_driver_login` and `vakaviti_driver_login_v2` — both Rejected, confirmed via
+  grep to be no longer referenced anywhere in the codebase, superseded by the welcome/return split
+  above.
+
+**7. Code changes — branch `whatsapp-template-migration`, off `fiji-chat-widget/worker.js` (PROTECTED
+CORE — surgical find-and-replace only, per standing rules):**
+- Commit `7a3a45b` — initial text-to-template diff for `sendWhatsAppNotification()`.
+- Commit `aa0ca01` — corrected template name to `vakaviti_lead_alert_v2`, dropped an erroneous 8th
+  parameter (lead ID) to match the template's actual 7.
+- Commit `0c24c94` — fixed hardcoded `en_US` to `en_AU` (the only one of four codes that actually
+  worked for this specific template).
+- **STATUS: NOT MERGED, NOT DEPLOYED.** Pending decision for next session — needs James's explicit
+  branch review + sign-off before merge, per standing rules on this protected file.
+
+**8. Two real scoring-regex gaps** found during live testing, already logged to Known Issues mid-session
+— confirmed still present, not fixed, not re-logged as duplicates: day-of-week terms like "Friday"
+don't match `dates_mentioned`/`travel_dates`; "ready to pay now" doesn't match the `booking_intent`
+regex (only phrases like "ready to book" match). Both in `scoreConversationHeat()`. Real evidence: lead
+`lead_1784272549279_lvna`.
+
+### PART 2 — Nadi Airport Transfers Driver Marketplace build
+
+Entirely separate branch (`nadi-marketplace-phase1-staging`), entirely isolated from live
+`nadiairporttransfers.com` throughout — verified at every single milestone that production was
+untouched.
+
+**Milestone 1 (staging skeleton) — complete.** New isolated D1 (`nadi-marketplace-db`,
+`0ec1cd84-fcda-4f7f-8337-0fb70fe1a512`), new Worker (`nadi-dispatch-api`), new Pages project
+(`nadi-marketplace-staging`). 16-zone list seeded from the live widget's real `ROUTES_DATA.area`
+(James's choice over a 9-zone condensed alternative).
+
+**Milestone 2 (driver onboarding) — complete.** Real R2 bucket for driver documents (signed URLs,
+tamper-tested — confirmed genuinely private), `driver-join.html` and `admin-drivers.html` live,
+approve/reject flow verified against real D1 rows (`drivers`, `wallets`, `driver_login_tokens` created
+on approval), all test data independently re-verified deleted after testing. One deviation flagged by
+Code: added a required `plate` field not in the original spec's join-form field list, since
+`vehicles.plate` is `NOT NULL` — a reasonable call, avoided writing a placeholder value into a
+production column.
+
+**Milestone 3 (driver PWA + dispatch) — complete.** Full loop verified live in a real browser (login via
+magic-link token → online toggle → job card → Accept → status chain to Completed). Real
+concurrent-accept race-condition test passed: two genuinely simultaneous accept requests from different
+test drivers, exactly one won (200/409), independently confirmed via D1 re-`SELECT`. A real bug found
+and fixed: a JS escaping error (`\\'` instead of `\'`) silently killed the entire inline `<script>`
+block with zero console error — fixed by switching to `addEventListener`, removing the escaping hazard
+for good rather than patching the one spot. All test data cleaned up and re-verified at 0 afterward.
+
+**Custom domain `driver.vakaviti.ai`** added to `nadi-marketplace-staging` (Active, SSL enabled) — kept
+even though it turned out not to be the actual template-rejection fix (see Part 1), since a branded
+domain is still better practice than a raw `.pages.dev` one.
+
+**Driver-side WhatsApp integration** — three separate, independent send functions
+(`sendDriverWelcomeWhatsApp`, `sendDriverReturnWhatsApp`, `sendBookingBroadcastWhatsApp`, confirmed via
+grep to share zero code with each other or with the lead-alert path), all four templates now
+real-delivery-verified as described in Part 1.
+
+**Commits on this branch:** `aadb65d` (Milestone 3), `7835487` (driver_welcome wiring), `e7f1c34`
+(driver_return wiring), `9cacc64` (booking_broadcast language fix), `13ea26c` (comment update
+confirming `driver_return`'s language code was live-tested, not just guessed).
+
+**STATUS: NOT MERGED to `main`, nothing deployed to production.** Fully isolated and verified
+throughout.
+
+**Explicitly NOT yet built (remaining Phase 1 spec scope):** driver wallet/commission accrual and
+max-hours cap (rest of spec Section 4), fuel index cron automation (Section 7), the one planned
+guest-widget change (fuel-price transparency line, Section 8 — the only change ever planned for the
+live site, and only at final cutover), the full Section 9 test plan, and the cutover procedure itself.
+
+### PART 3 — Pre-existing open items, carried forward untouched this session
+
+- Critical checkout payment failure on `fijitourtransfers.com` (`sentinel_errors`) — unchanged.
+- 999999 master OTP bypass code — still never confirmed removed.
+- `domain_compliance` table notes vs. reality drift — unchanged.
+- P25/P26 loose ends: "Tour Fiji Tours" duplicate-name decision, category-mismatch bug (deferred), Home
+  vs. Categories migrate-or-retire decision, `DEAL_TRIGGERS` migration (protected core) — all unchanged.
+- P28: WhatsApp Catalog — still blocked on Meta Business verification. Re-confirmed this session: the
+  Test WhatsApp Business Account still shows "Unverified."
+- P31: knowledge base growth gating (RAG-confidence gate, 0.65 threshold, human review routing,
+  dedupe-before-embedding) — still queued, not started.
+
+### PART 4 — Decisions explicitly pending for next session (not done items)
+
+1. **Merge/deploy decision for `whatsapp-template-migration`** — protected core
+   (`fiji-chat-widget/worker.js`), needs James's explicit branch review + sign-off.
+2. **Merge/deploy decision for `nadi-marketplace-phase1-staging`** — not protected core, and merging
+   doesn't affect production either way since it's fully isolated, but still a real decision worth a
+   deliberate review rather than a default merge.
+3. **Whether to continue the marketplace build** (Milestone 4: wallet/commission/max-hours) or shift
+   focus to merge/cutover planning for what's already built.
+4. **WABA business verification** — still Unverified, not currently blocking anything, but worth
+   revisiting.

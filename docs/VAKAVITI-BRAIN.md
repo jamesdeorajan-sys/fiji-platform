@@ -2,7 +2,7 @@
 # James Richardson — CEO Intelligence File
 # Fetched by Claude at the start of every session
 # Updated by Claude at the end of every session
-# Last updated: Session 58 CLOSED — 2026-07-15
+# Last updated: Session 59 CLOSED — 2026-07-19
 
 ---
 
@@ -212,9 +212,37 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 
 ---
 
-## 3. TOP PRIORITIES — SESSION 51
+## 3. TOP PRIORITIES — SESSION 59
 
 > Claude: read this section first. Platform is now POST-LAUNCH (July 1 passed). Priorities shift from launch blockers to growth and open technical debt.
+
+**P34 — 🆕 Session 59, TOP PRIORITY — merge/deploy decision for `whatsapp-template-migration`**
+- All four WhatsApp templates (`vakaviti_lead_alert_v2`, `vakaviti_driver_welcome`,
+  `vakaviti_booking_broadcast`, `vakaviti_driver_return`) are Active and real-delivery-verified via
+  actual phone screenshots, not just accepted Meta API responses. Code is on branch
+  `whatsapp-template-migration`, touching the PROTECTED `fiji-chat-widget/worker.js` (commits `7a3a45b`,
+  `aa0ca01`, `0c24c94`). **NOT MERGED, NOT DEPLOYED** — needs James's explicit branch review + sign-off
+  before merge, per standing protected-core rules. Full detail: BUILD.md / BRAIN.md Session 59.
+- Supersedes P30's and P30b's earlier "still open" framing (generate a permanent WhatsApp token, decide
+  when to deploy) — the token was generated and deployed by James this session, and the deploy decision
+  itself is now this item.
+
+**P35 — 🆕 Session 59 — merge/deploy decision for `nadi-marketplace-phase1-staging`**
+- Milestones 1-3 of the Nadi Airport Transfers driver marketplace (onboarding, admin approval, driver
+  PWA, dispatch broadcast with race-condition-safe accept) are built and verified live, fully isolated
+  from `nadiairporttransfers.com` throughout. Custom domain `driver.vakaviti.ai` active. Merging doesn't
+  affect production either way since it's fully isolated — but still worth a deliberate review, not a
+  default merge. Full detail: BUILD.md / BRAIN.md Session 59.
+
+**P36 — 🆕 Session 59 — continue marketplace build (Milestone 4) or shift to merge/cutover planning?**
+- Open decision: keep building (driver wallet/commission accrual, max-hours cap — the rest of spec
+  Section 4) or pause new build work and plan the merge/cutover for what's already built (Sections
+  7-9 of the spec plus the cutover procedure remain unbuilt either way).
+
+**P37 — 🆕 Session 59 — WABA business verification still Unverified**
+- Re-confirmed this session: the Test WhatsApp Business Account still shows "Unverified" in Meta
+  Business Suite. Not currently blocking anything (all four templates work fine Unverified), but worth
+  revisiting — this is also what blocks P28 (WhatsApp Catalog).
 
 **P25 — ✅ RESOLVED Session 55 — self-serve partner onboarding for lagi.vakaviti.ai**
 - Turned out to already be ~80% built and unknown to this priority list: `join.vakaviti.ai` → `vakaviti-onboard` Worker has existed since Session 28 (24 May), never tracked in Git, never verified end-to-end. Verified with a real dummy submission that it silently failed — new partners inserted as `status='pending'` with no non-technical activation path, and never got a `contact_channels` row at all (same gap Session 52 fixed for cometofiji.com, this Worker predates that fix). Root-caused from the real source (now tracked at `workers/vakaviti-onboard/worker.js`) and fixed: added `contact_channels` inserts, added a one-click `GET /activate` link (email → click → live, no SQL). Verified live in production with three real dummy submissions and a real lead POST. Full writeup: BUILD.md Session 55.
@@ -233,7 +261,7 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 **P28 — 🟡 Researched Session 54, requirements confirmed Session 55 — WhatsApp Catalog integration for partners**
 - WhatsApp Business's native Catalog feature (up to 500 products/services, images, price, description, browsable directly inside a chat thread) requires ZERO payment integration — fits the "we will not take any payments" decision exactly. Confirms two earlier decisions were right for reasons not fully visible at the time: native WhatsApp Pay only operates in India/Brazil/Mexico/Indonesia — not Fiji — so "no payments" wasn't just a policy choice, in-chat native payment literally isn't available in this market yet regardless.
 - Session 55 confirmed exact technical requirements: Meta Commerce Manager catalog linked to the WABA, a product feed (id/title/description/availability/price/currency/link/image_link/brand per item), Meta display-name business verification (2-14 days). Correctly did NOT start writing sync code — the real listings data (P26) is still hardcoded HTML, so a catalog sync would just be a second hand-maintained data source, the exact anti-pattern P25/P26 exist to eliminate.
-- **Blocked on a real, non-code step:** Meta Business verification + Commerce Manager catalog creation both need James's direct access to Meta Business Suite — no API/CLI path from a coding session, same shape as the Session 53 Cloudflare Pages "Connect" button.
+- **Blocked on a real, non-code step:** Meta Business verification + Commerce Manager catalog creation both need James's direct access to Meta Business Suite — no API/CLI path from a coding session, same shape as the Session 53 Cloudflare Pages "Connect" button. Re-confirmed Session 59: the Test WhatsApp Business Account still shows "Unverified" — see P37.
 
 **P29 — 🆕 Realistic "Revenue Agent": intent-based lead detection**
 - From reviewing an external "AI operating system" proposal (Session 54) — most of that document specs enterprise multi-agent architecture (Chief Orchestrator, formal Agent Registry) that's a genuine mismatch for a solo-founder + session-based build cadence, and was NOT adopted. But one idea from it is genuinely valuable in realistic form: extend Lagi's existing `intent` field/detection logic (already real in worker.js) to specifically flag transfer/booking intent, log it to a simple table, and send James a daily digest of hot leads. Not a new "agent" — a small extension of what already exists. Directly operationalizes revenue-bias CTA logic (own properties prioritized where honestly applicable) discussed in the same session.
@@ -247,13 +275,13 @@ Carried-forward tasks from BRAIN.md said llms.txt was missing and schema wasn't 
 - **Verified with real evidence, not inference**: created a disposable test partner (`test_p30_verification_001`, zero `contact_channels` by construction) via D1, POSTed a real `/lead` request against a `wrangler versions upload` preview (production untouched throughout), confirmed the `alertOpsFailure` email actually arrived in Gmail with correct subject/lead ID/reason. Test rows cleaned up after.
 - **Also confirmed live in production** (unpatched code, current SendGrid fix only): a real conversation through Fiji Tour Transfers' Lagi widget (contact info shared, WARM 60/100) triggered a correct, real lead-notification email — proving the SendGrid account fix alone already restored the primary failure mode, independent of the code deploy.
 - **Second real bug found via the same live test, scoped and fixed in the same session (see below)**: a HOT-scored (90/100) test lead's email fired correctly but WhatsApp never sent — traced to Meta API error 190 (expired/invalid `WHATSAPP_TOKEN`), a different failure mode from SendGrid's, previously invisible since `channel_used` just silently showed `"email"` only.
-- **Still open, James's action, not a build task**: generate a permanent Meta System User token (App ID `1700903951357623`) to replace the expired `WHATSAPP_TOKEN` secret — WhatsApp notifications remain broken in production until this is done, regardless of any code deploy.
-- **Still open**: decide when to actually deploy the merged `main` code to production (`wrangler deploy` / version promotion) — nothing technical blocks it, deliberately left as James's explicit call each time per the protected-core rule.
+- **✅ RESOLVED Session 59**: James generated a permanent Meta System User token (`VakavitiBot`, no expiry) and deployed it himself via the Cloudflare dashboard.
+- **✅ RESOLVED Session 59**: James deployed the merged P30/P30b code to production himself via the Cloudflare dashboard (`d6cc4d3a` → `8a2001d7`), independently verified by Code to match the merged commits. See P34 for the current, separate deploy decision (the WhatsApp template migration).
 
 **P30b — 🆕 RESOLVED Session 58, merged to main via PR #2 (commit `8b85e12`), same session — WhatsApp notification reliability + threshold change**
 - Found while verifying P30 live: WhatsApp silently fails on Meta auth errors with no alert (same failure *class* as the original SendGrid bug, different channel). Root cause: expired/invalid `WHATSAPP_TOKEN` (Meta error 190), confirmed via a direct, contained test call to Vakaviti's own support number — never touched a real partner's number.
 - Three changes shipped, all in the same branch/diff/sign-off pattern as P30: (1) WhatsApp trigger threshold changed from score ≥70 to score ≥40 — deliberate product decision by James, so a WhatsApp message now fires for every qualified lead alongside email, not just HOT ones; (2) `alertOpsFailure()` now fires on any WhatsApp send failure (any non-ok Meta response); (3) the missing-binding fallback (`WHATSAPP_TOKEN`/`WHATSAPP_PHONE_ID` unset) no longer soft-succeeds as `whatsapp_logged` — now correctly alerts and counts as a failure, same false-positive class as the original SendGrid bug.
-- Same "not yet deployed to production" status as P30 — merged to `main` only.
+- **✅ RESOLVED Session 59**: James deployed the merged `main` code to production himself. Same status as P30 above.
 
 **P31 — 🆕 Lagi's knowledge base only grows from a subset of conversations, not "every question" — fix the gating**
 - Traced precisely in the live Worker (Session 57): the real Layer 4 self-learning step (`ingestConversationAsKnowledge()` — the one that embeds a Q&A into Vectorize/`knowledge_items` so Lagi can actually retrieve and reuse it later) is nested inside `if (phoneMatch || emailMatch) { if (env.DB) { ... } }`. **Only conversations where the visitor also shared a phone number or email trigger real knowledge-base learning.** A visitor who asks ten genuinely good questions and shares no contact info teaches Lagi nothing retrievable from those ten conversations.
@@ -431,7 +459,8 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 | `notifyPartner()` silently returns `false` with zero alerting if a partner has no `contact_channels` row, or if the notification call itself fails | **RESOLVED Session 58 — see P30** | Fixed via `alertOpsFailure()`, merged to `main` via PR #1 (commit `29da21a`), verified live with a real test lead and real delivered email. Not yet deployed to production. |
 | `sendEmailNotification()` returns `true` (false positive) when `env.SENDGRID_API_KEY` is unset, masking a real failure as a success in the `leads.notified` field | **RESOLVED Session 58 — see P30** | Fixed, merged, verified. Not yet deployed to production. |
 | SendGrid's 60-day free trial expired 2026-07-11, silently killing ALL email lead notifications platform-wide (not just P30's alert path) — root cause of the 22/93 historical `notified=0` leads | **RESOLVED Session 58** | Trial expiry date matched the real failure timing exactly. Fixed: payment added, `vakaviti.ai` domain authenticated (4 DNS records), upgraded to Essentials 50K ($19.95/mo). Confirmed working with a real live lead through Fiji Tour Transfers' Lagi widget. |
-| `WHATSAPP_TOKEN` is expired/invalid (Meta error 190, "Authentication Error") — WhatsApp notifications silently fail for every qualified lead, with no alert, `channel_used` just shows `"email"` with no trace WhatsApp was even attempted | **NEW Session 58, HIGH — see P30b** | Confirmed via a direct, contained Meta API test call (Vakaviti's own support number only). Alerting for this failure mode is now built (P30b, merged not deployed) but the token itself is still broken — **James needs to generate a permanent Meta System User token** and update the Worker secret. Not fixable from code alone. |
+| `WHATSAPP_TOKEN` is expired/invalid (Meta error 190, "Authentication Error") — WhatsApp notifications silently fail for every qualified lead, with no alert, `channel_used` just shows `"email"` with no trace WhatsApp was even attempted | **RESOLVED Session 59** | James generated a permanent Meta System User token (`VakavitiBot`, no expiry) and deployed it via the Cloudflare dashboard. Separately, WhatsApp's 24-hour customer-service-window rule was found to be a second, distinct delivery gap even with a valid token — see the new template-based-notification row below. |
+| WhatsApp free-form (`type: "text"`) notifications only deliver within an open 24-hour customer-service window — outside that window, Meta accepts the send (200 + real WAMID) but silently never delivers it | **NEW Session 59, fix built not yet deployed — see P34** | Confirmed via a controlled A/B test: James messaging the business number himself opened a window, and the identical retrigger that had just failed then succeeded. Fix: convert to approved Message Templates (`type: "template"`), which Meta permits sending anytime. All four templates needed (`vakaviti_lead_alert_v2`, `vakaviti_driver_welcome`, `vakaviti_booking_broadcast`, `vakaviti_driver_return`) are now Active and real-delivery-verified. Code is on branch `whatsapp-template-migration` (commits `7a3a45b`, `aa0ca01`, `0c24c94`) — NOT merged, NOT deployed, needs James's sign-off. |
 | Lagi's knowledge base (Vectorize/`knowledge_items`) only grows from conversations where the visitor also shared contact info — not from every question asked, despite the "self-learning" framing | **NEW Session 57 — see P31** | Traced precisely via brace-nesting in the live Worker. `conversation_events` DOES log every question, but that's an analytics log, not retrievable knowledge. Likely a deliberate cost-control choice, not a bug — but worth a real decision on whether to broaden it. |
 | WhatsApp is rolling out usernames + a business-scoped user ID (BSUID) in 2026 to eventually replace phone numbers as the customer identifier | **NEW Session 54, forward-looking, not urgent yet** | If Lagi's attribution/lead-tracking currently keys off phone number as the primary identifier, this will silently break for any customer who adopts a username (webhook payloads won't always include a phone number). Fix: store BSUID alongside phone number now, before rollout is widespread — cheap now, expensive to retrofit later. |
 | Unconfirmed: does Lagi's WhatsApp flow disclose to customers that they're chatting with an automated assistant? | **NEW Session 54, needs verification, not confirmed either way** | Meta's WhatsApp Business Platform terms require this disclosure. Genuinely don't know current state — check before assuming compliant. |
@@ -495,6 +524,99 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Session 59 — 2026-07-15/19 — CLOSED — WhatsApp template migration real-delivery-verified for all 4 templates; Nadi Airport Transfers driver marketplace Milestones 1-3 built and live-verified, fully isolated. Long, technically dense session, nothing merged to production.
+
+**Actor attribution held throughout, not defaulted to whichever tool did the most visible work: James
+directly** (Meta Business Suite, WhatsApp Manager, Cloudflare dashboard actions, his own phone
+confirming real message delivery each time), **Claude Code** (branch/commit/push, temporary diagnostic
+Worker versions, live Meta API test calls, the marketplace build itself), and **this chat** (direction,
+diagnosis, verification discipline). Full blow-by-blow technical detail, including every commit hash,
+Meta API response, and D1 query, is in BUILD.md Session 59 — this entry is the condensed narrative.
+
+**PART 1 — WhatsApp notification fix.** Started as the session's top priority: WhatsApp lead
+notifications broken in production (Meta error 190, expired `WHATSAPP_TOKEN`), actively blocking
+revenue. James generated a permanent Meta System User token (`VakavitiBot`, no expiry) and deployed it
+himself via the Cloudflare dashboard. Separately discovered mid-session: James had already deployed
+P30 + P30b to production via the dashboard on his own (`d6cc4d3a` → `8a2001d7`) — Code independently
+verified the live code matches the merged commits.
+
+First diagnosis round found a real, fixable data bug: two partners' `contact_channels` rows still had
+the stale pre-P30b `min_lead_score=70` threshold. Fixed, verified via re-`SELECT`, and confirmed
+end-to-end with a real re-triggered notification (real WAMID, `channel_used` flipped to
+`"whatsapp+email"`). **But James then reported the message never actually arrived on his phone**,
+despite the real WAMID — a genuine accepted-but-not-delivered gap. Extensive diagnosis ruled out wrong
+number, API/consumer-app conflict, account restrictions, and messaging tier limits, before a controlled
+A/B test nailed the real cause: **WhatsApp only delivers free-form text within an open 24-hour
+customer-service window.** James messaging the business number himself opened a window; the identical
+retrigger that had just failed then succeeded. The real fix: convert to approved Message Templates,
+which Meta permits sending outside the window.
+
+Template creation had its own saga. The Graph API's template-management endpoints were a confirmed
+dead end for this account (tested repeatedly, including with a fresh, more broadly-scoped token) —
+templates had to be created through WhatsApp Manager's UI instead. A **real WABA mismatch** was found
+and cost the first template entirely: the Meta Business account has two separate WABAs ("Vakaviti AI,"
+zero phone numbers vs. "Test WhatsApp Business Account," the one with the real sending number), and the
+first template was created under the wrong one — it showed "Active" in the dashboard but 404'd on every
+real send. Fixed by recreating it as `vakaviti_lead_alert_v2` under the correct WABA. Other lessons
+banked for future template work on this account: Utility category gets rejected for content that's
+genuinely a status update (Marketing is the practical fallback); phrasing combining "log in" +
+"dashboard" + "expires" specifically triggers Meta's Authentication classifier regardless of link
+domain (cost 4 rejections before reframing the wording as an approval notice fixed it — the wording
+change resolved it, not the custom domain that was also tried); variables can't sit at the very start or
+end of a template body; and **each template's approved language code must be verified live,
+independently, every time — no pattern to assume from a previous template.**
+
+**Final state: all four templates Active and genuinely real-delivery-verified via actual WhatsApp
+screenshots on James's phone**, not just accepted API responses — `vakaviti_lead_alert_v2` (`en_AU`, 7
+body params, lead alerts to James/team), `vakaviti_driver_welcome` (`en`, body+button, driver approval),
+`vakaviti_booking_broadcast` (`en`, 5 body params, job dispatch), `vakaviti_driver_return` (`en`,
+body+button, returning-driver re-login — closes a gap Code itself had flagged, not a bug). Two earlier
+drafts (`vakaviti_driver_login`/`_v2`) were abandoned as Rejected and are confirmed gone from the
+codebase.
+
+Code changes live on branch `whatsapp-template-migration`, touching the PROTECTED
+`fiji-chat-widget/worker.js` — three commits (`7a3a45b`, `aa0ca01`, `0c24c94`), each a surgical
+find-and-replace, each fixing a real bug found via live testing (wrong template name, wrong parameter
+count, wrong language code). **NOT MERGED, NOT DEPLOYED** — this is the top pending decision, see
+Section 3.
+
+Two real, pre-existing scoring-regex gaps were also confirmed still present during this diagnosis (not
+newly found, not re-fixed): day-of-week terms like "Friday" don't match the dates regex, and "ready to
+pay now" doesn't match the booking-intent regex. Both in `scoreConversationHeat()`, both still open.
+
+**PART 2 — Nadi Airport Transfers driver marketplace.** Entirely separate branch
+(`nadi-marketplace-phase1-staging`), fully isolated from live `nadiairporttransfers.com` throughout,
+confirmed untouched at every milestone. Milestone 1 built the isolated skeleton (own D1, own Worker
+`nadi-dispatch-api`, own Pages project, 16 real zones seeded from the live widget's actual route data).
+Milestone 2 built driver onboarding (R2 document uploads with tamper-tested signed URLs, admin
+approval queue, verified against real D1 rows). Milestone 3 built the driver PWA — magic-link login,
+online/offline toggle, job feed, atomic accept verified race-condition-safe with a real simultaneous-request
+test, full status chain to Completed — all confirmed live in a real browser. A real bug was found and
+fixed along the way: a JS escaping error (`\\'` instead of `\'`) was silently killing the entire inline
+script with zero console error, fixed by switching to `addEventListener` rather than patching the one
+spot. Custom domain `driver.vakaviti.ai` is live with SSL. All driver-side WhatsApp sends (welcome,
+return, broadcast) are three deliberately independent functions sharing no code with each other or with
+the lead-alert path — confirmed via grep — and all now use the real-delivery-verified templates from
+Part 1. **NOT MERGED, nothing deployed** — doesn't affect production either way since it's fully
+isolated, but still a real decision to make deliberately, see Section 3.
+
+Explicitly not yet built: driver wallet/commission accrual, max-hours cap, fuel index cron automation,
+the one planned guest-widget change (fuel-price transparency line — the only change ever planned for
+the live site, and only at final cutover), the full test plan, and the cutover procedure itself.
+
+**PART 3 — carried forward untouched, all pre-existing:** the fijitourtransfers.com checkout failure
+sentinel, the 999999 master OTP bypass code, `domain_compliance` drift, the P25/P26 loose ends, P28
+(WhatsApp Catalog, re-confirmed still Unverified this session), and P31 (knowledge-base growth gating,
+still queued).
+
+**PART 4 — four real decisions now pending for next session**, all superseding the old "WhatsApp token +
+P30/P30b deploy decision" framing (now resolved): (1) merge/deploy sign-off for
+`whatsapp-template-migration` — protected core, needs James's explicit review; (2) merge/deploy decision
+for `nadi-marketplace-phase1-staging` — isolated either way, but still a deliberate call; (3) continue
+the marketplace build (Milestone 4: wallet/commission/max-hours) vs. shift to merge/cutover planning for
+what's already built; (4) WABA business verification, still Unverified, worth revisiting when convenient.
+See Section 3 for these as the new top priorities.
 
 ### Session 58 — 2026-07-15 — CLOSED — P30 lead-notification fix built, tested, and merged; found + fixed a live SendGrid billing failure and a broken WhatsApp token along the way
 **Picked up directly from Session 57's audit findings and executed the full plan of attack in order: D1 audit query, code fix, live verification, root-cause of the actual active leak. Two genuinely new production issues were found as a direct result of testing, not assumed going in. Full technical detail, with corrected actor attribution, is in BUILD.md — this session used three distinct actors (this chat directly with James, Claude Code as a separate agent James ran independently, and James alone in various dashboards) and an earlier draft of this entry incorrectly attributed several chat-side and James-side actions to Code; that has been corrected.**
