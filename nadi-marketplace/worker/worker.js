@@ -2,16 +2,21 @@
  * Nadi Airport Transfers — Driver Marketplace Backend
  * nadi-dispatch-api
  *
- * Phase 1, Milestone 5: driver wallet-view UI (Section 4) + fuel index
- * automation (Section 7) — detect-and-notify only, no PDF parsing (the FCCC
- * source is a multi-schedule legal PDF, not a scrapeable price; see the
- * Milestone 5 report for why "parse the page" from the spec became
- * "detect a new order + admin submits the number after reading it").
- * On top of Milestone 4's wallet lockout + commission accrual + max-hours
- * cap, and Milestone 3's driver PWA login, online/offline + zones, job
- * feed, atomic accept, dispatch broadcast, and status transitions.
- * Guest widget change (Section 8) and cutover (Section 9) are still out
- * of scope for this file — Section 8 is prepared but deliberately not
+ * Phase 1, Milestone 6: public POST /bookings — the missing piece
+ * cutover-plan.md flagged (the live guest widget has no booking API to
+ * swap to yet; this is what a future cutover would point at). Building
+ * this does NOT itself authorize cutover — that stays a separate,
+ * explicit sign-off. First public, unauthenticated write endpoint on this
+ * Worker; see its section below for the trust-boundary handling that
+ * required (server-derived pricing fields, IP rate limit).
+ * On top of Milestone 5's driver wallet-view UI (Section 4) + fuel index
+ * automation (Section 7, detect-and-notify only — see that section for
+ * why "parse the page" became "detect + admin submits the number"),
+ * Milestone 4's wallet lockout + commission accrual + max-hours cap, and
+ * Milestone 3's driver PWA login, online/offline + zones, job feed,
+ * atomic accept, dispatch broadcast, and status transitions.
+ * Guest widget change (Section 8) and cutover itself (Section 9) remain
+ * out of scope for this file — Section 8 is prepared but deliberately not
  * deployed to the live guest widget's own codebase.
  *
  * Fully isolated: separate script, separate D1 database (nadi-marketplace-db),
@@ -130,6 +135,11 @@ export default {
       return handleDriverSubmit(request, env);
     }
 
+    // ── Milestone 6: public guest booking intake (the missing piece cutover-plan.md flagged) ──
+    if (request.method === 'POST' && url.pathname === '/bookings') {
+      return handleGuestBookingCreate(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/admin/docs/')) {
       return handleDocServe(request, env, url);
     }
@@ -235,7 +245,7 @@ async function handleHealth(env) {
   const status = {
     service: 'nadi-dispatch-api',
     phase: 1,
-    milestone: 'wallet-lockout-and-max-hours-cap',
+    milestone: 'public-guest-booking-intake',
     db_connected: false,
     r2_connected: !!env.DOCS,
     tables: [],
@@ -946,17 +956,126 @@ async function handleAdminTestBooking(request, env) {
 
   const bookingId = insert.meta.last_row_id;
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+  const broadcast = await broadcastBookingToDrivers(env, booking);
 
+  return json({ ok: true, booking_id: bookingId, booking, broadcast }, 201);
+}
+
+// Shared by handleAdminTestBooking and Milestone 6's public
+// handleGuestBookingCreate - one implementation of "who gets notified about
+// a new booking" so the two entry points can't silently drift apart. Same
+// query already verified in the Milestone 3 race-condition test (matching
+// zone-inclusion filter, same sendBookingBroadcastWhatsApp call).
+async function broadcastBookingToDrivers(env, booking) {
   const candidates = await env.DB.prepare(`SELECT id, name, phone, zones FROM drivers WHERE status = 'verified' AND online = 1`).all();
-  const matching = (candidates.results || []).filter((d) => JSON.parse(d.zones || '[]').includes(body.pickup_zone));
+  const matching = (candidates.results || []).filter((d) => JSON.parse(d.zones || '[]').includes(booking.pickup_zone));
 
-  const broadcastResults = [];
+  const results = [];
   for (const d of matching) {
     const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
-    broadcastResults.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
+    results.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
   }
 
-  return json({ ok: true, booking_id: bookingId, booking, broadcast: { matched_drivers: matching.length, results: broadcastResults } }, 201);
+  return { matched_drivers: matching.length, results };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 6 — public guest booking intake. The only public,
+// unauthenticated WRITE endpoint on this Worker - every other write
+// endpoint requires an admin token or a driver's login token. That's a
+// materially different trust boundary, handled two ways:
+//
+// 1. settlement_amount_fjd and fuel_multiplier_applied are ALWAYS
+//    server-derived, never taken from the request body. Both feed
+//    directly into accrueCommission() (Milestone 4) once a trip completes
+//    - trusting client-supplied values here would let any anonymous caller
+//      manipulate a real driver's wallet debt. quoted_amount/fx_rate_at_booking
+//      are still caller-supplied (this endpoint doesn't compute fares -
+//      pricing_rules is still empty/unbuilt, spec Section 3/6, out of
+//      scope here - same trust level admin-test-booking already has for
+//      those two fields), but settlement_amount_fjd is derived from them
+//      server-side rather than accepted as-is.
+// 2. A basic D1-backed IP rate limit (see checkGuestBookingRateLimit below)
+//    - see that function's comment for exactly what this does and doesn't
+//      cover.
+// ═══════════════════════════════════════════════════════════════
+
+// IP-based sliding window using the bookings table itself (source_ip,
+// Milestone 6 migration) rather than a new table or KV - avoids adding a
+// new binding for what's still a fairly small mitigation. What this DOES
+// cover: a single scripted client hammering this endpoint from one IP.
+// What it does NOT cover: distributed abuse from many IPs, a determined
+// attacker rotating IPs, or anything below the edge (Cloudflare's own
+// DDoS/bot-management layer is a separate, unrelated protection this
+// Worker doesn't configure). This is app-level spam friction, not a
+// security boundary - flagging that distinction explicitly per instruction.
+async function checkGuestBookingRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'guest_booking_rate_limit_max', '5'));
+  const windowMinutes = Number(await getSetting(env, 'guest_booking_rate_limit_window_minutes', '10'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM bookings WHERE source_ip = ? AND created_at > datetime('now', '-' || ? || ' minutes')`
+  ).bind(ip, windowMinutes).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max, window_minutes: windowMinutes };
+}
+
+async function handleGuestBookingCreate(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkGuestBookingRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many booking submissions from this connection. Please try again shortly.' }, 429);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const guestName = (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest';
+  const guestPhone = normalisePhone((body.guest_phone || '').toString());
+  const pickupZone = (body.pickup_zone || '').toString().trim();
+  const destinationZone = (body.destination_zone || '').toString().trim();
+  const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
+  const quotedCurrency = (body.quoted_currency || '').toString().trim().toUpperCase();
+  const quotedAmount = Number(body.quoted_amount);
+  const fxRate = body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1;
+  const distanceKm = body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null;
+  const paymentMethod = (body.payment_method || '').toString().trim().toLowerCase();
+
+  const errors = [];
+  if (!guestPhone) errors.push('a valid guest_phone is required');
+  if (!ALLOWED_VEHICLE_TYPES.includes(vehicleType)) errors.push(`vehicle_type must be one of: ${ALLOWED_VEHICLE_TYPES.join(', ')}`);
+  if (!/^[A-Z]{3}$/.test(quotedCurrency)) errors.push('quoted_currency must be a 3-letter currency code');
+  if (!quotedAmount || !isFinite(quotedAmount) || quotedAmount <= 0 || quotedAmount > 5000) errors.push('quoted_amount must be a positive number no greater than 5000');
+  if (!fxRate || !isFinite(fxRate) || fxRate <= 0 || fxRate > 100) errors.push('fx_rate_at_booking must be a positive, sane number');
+  if (distanceKm !== null && (!isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500)) errors.push('distance_km out of range');
+  if (!['cash', 'prepay'].includes(paymentMethod)) errors.push("payment_method must be 'cash' or 'prepay'");
+
+  const validZones = await getValidZoneNames(env);
+  if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
+  if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
+
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
+  const fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
+  const settlementAmountFjd = Math.round(quotedAmount * fxRate * 100) / 100;
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
+       quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
+       payment_method, status, source_ip)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+  ).bind(
+    guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
+    quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied, paymentMethod, clientIp
+  ).run();
+
+  const bookingId = insert.meta.last_row_id;
+  const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+  const broadcast = await broadcastBookingToDrivers(env, booking);
+
+  return json({ ok: true, booking_id: bookingId, booking, broadcast }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════

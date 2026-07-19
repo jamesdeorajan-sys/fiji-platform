@@ -36,10 +36,12 @@ now rather than writing a plan that implies cutover is one line away when it isn
 
 ## What cutover would actually require, in order
 
-1. **Build the missing piece** — a public `POST /bookings` endpoint on `nadi-dispatch-api`,
-   validating guest input the same way `/admin/test-booking` does today (zone validation, required
-   fields) but without an admin token, plus whatever abuse/rate-limit protection a public,
-   unauthenticated write endpoint needs that an admin-only one doesn't. Not built. Not started.
+1. ~~**Build the missing piece**~~ **DONE** (separate session after this plan was written) — real,
+   public `POST /bookings` on `nadi-dispatch-api`, guest-safe validation, server-derived
+   `settlement_amount_fjd`/`fuel_multiplier_applied` (never client-trusted, since this is now an
+   anonymous-caller endpoint feeding real driver commission math), IP-based rate limit. Full report
+   and real evidence in `README.md`'s Milestone 6 section. **Building this did not authorize
+   cutover** — that's still step 2 onward, still James's call.
 2. **Wire `app.js`'s confirm handler** to call it — replacing or supplementing the current
    WhatsApp-deep-link handoff. This *is* close to the spec's "single URL swap" once step 1 exists,
    but decide deliberately whether the WhatsApp-handoff stays as a fallback/backup channel or is
@@ -74,7 +76,9 @@ now rather than writing a plan that implies cutover is one line away when it isn
 
 ## Status
 
-**Not ready to execute** — not because of missing sign-off alone, but because step 1 above (the
-public booking endpoint) doesn't exist yet. Recommend treating that as its own reviewed milestone,
-not folded silently into a "cutover" step, given it's a public-facing write endpoint on a database
-that will hold real driver financial data (wallets, commissions) once live.
+**Not ready to execute.** Step 1 is now built and real-evidenced (Milestone 6). What's still
+outstanding: step 2 (wiring `app.js` to actually call it, and the WhatsApp-handoff-fallback product
+decision that requires), step 3 (deploying Section 8's fuel line, still just prepared), and re-running
+Section 9 item 1 for real once there's an actual endpoint for the live widget to hit. None of that has
+been done. **This remains a hard stop pending James's explicit sign-off**, unchanged by step 1 being
+done — building the endpoint was scoped and requested separately from authorizing cutover itself.

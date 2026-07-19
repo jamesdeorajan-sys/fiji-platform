@@ -440,6 +440,89 @@ tokens, 1 fuel_index_pending test row, 1 fuel_index test row) deleted. Re-verifi
 `SELECT COUNT(*)` — all six driver/booking-related tables at `0`, `fuel_index` back to exactly 1 row
 (the real seeded baseline).
 
+## Milestone 6 — public `POST /bookings` (the missing piece cutover-plan.md flagged)
+
+**Building this does not authorize cutover.** It's the endpoint an eventual updated guest widget
+would call — cutover itself (pointing the live widget at it) is still James's separate, explicit
+sign-off, per instruction. `ftt-booking-site/` was not touched (confirmed below).
+
+### Schema (`migrations/milestone6-schema.sql`)
+
+Verified live `bookings` schema via `PRAGMA` first — no `source_ip` or rate-limit tracking existed
+(this is the first public, unauthenticated write endpoint on this Worker; every other write endpoint
+is admin- or driver-token-gated, so nothing needed this before). `ALTER TABLE bookings ADD COLUMN
+source_ip TEXT`, plus `platform_settings.guest_booking_rate_limit_max=5` and
+`guest_booking_rate_limit_window_minutes=10` — configurable without a redeploy, same pattern as
+every other tunable in this build.
+
+### What's built — `worker/worker.js`
+
+- **`broadcastBookingToDrivers(env, booking)`** — extracted from `handleAdminTestBooking`'s inline
+  broadcast loop so both it and the new public endpoint share one implementation of "who gets
+  notified," not two that could drift apart.
+- **`POST /bookings`** — public, no admin token. Two trust-boundary decisions, made deliberately
+  because this is the first anonymous-caller write endpoint here:
+  1. **`settlement_amount_fjd` and `fuel_multiplier_applied` are always server-derived, never taken
+     from the request body.** Both feed directly into `accrueCommission()` once a trip completes —
+     trusting client-supplied values here would let any anonymous caller manipulate a real driver's
+     wallet debt. `quoted_amount`/`fx_rate_at_booking` are still caller-supplied (this endpoint
+     doesn't compute fares — `pricing_rules` is still empty/unbuilt, Section 3/6, unchanged scope —
+     same trust level `admin-test-booking` already had for those two fields), but
+     `settlement_amount_fjd` is computed from them server-side rather than accepted as-is, and
+     `fuel_multiplier_applied` is read from the live `fuel_index` table, never the client.
+  2. **IP-based rate limit** (`checkGuestBookingRateLimit`) — D1-backed sliding window using the new
+     `source_ip` column, no new binding needed. **Exactly what this covers and doesn't, stated
+     plainly**: covers a single scripted client hammering the endpoint from one IP. Does **not**
+     cover distributed abuse from many IPs, a determined attacker rotating IPs, or anything at
+     Cloudflare's own edge/bot-management layer (unconfigured, separate from this). This is app-level
+     spam friction, not a security boundary.
+  3. Field validation: `guest_phone` required, `vehicle_type`/`payment_method` whitelisted,
+     `quoted_currency` must be a 3-letter code, `quoted_amount` bounded (0, 5000], `distance_km`
+     bounded [0, 500] if provided, `pickup_zone`/`destination_zone` must exist in the real `zones`
+     table (same check `admin-test-booking` and the driver join form already use).
+
+### Real evidence — every claim independently re-checked, not trusted from an API response
+
+1. Real test driver joined (real multipart, real R2 photos), approved, brought online.
+2. **Submitted a real booking through `POST /bookings` with zero `Authorization` header at all** —
+   real `201`, `settlement_amount_fjd: 90` (= `quoted_amount 90 × fx_rate 1`, matches manual
+   calculation), `fuel_multiplier_applied: 1` (matched the live `fuel_index` baseline at the time,
+   independently checked via `GET /fuel-index` immediately before), `source_ip` populated with the
+   real calling IP. Independently `SELECT`ed the `bookings` row directly — same values, not just
+   trusted the response body. `broadcast.matched_drivers: 1` — the online test driver was correctly
+   notified.
+3. Driver's `GET /driver/jobs` showed the real guest-submitted booking; `POST
+   /driver/bookings/:id/accept` → real `won: true` — confirming a guest-created booking flows through
+   the exact same, already-tested Milestone 3 accept logic without any special-casing.
+4. Validation: an unknown `pickup_zone` and an absurd `quoted_amount` (999999) both → real `400` with
+   the specific `errors` array, not a generic failure.
+5. **Rate limit — tested for real, not just code-reviewed**: temporarily lowered
+   `guest_booking_rate_limit_max` to `2` via direct D1 `UPDATE` for a fast, deterministic test (rather
+   than making 5 real submissions to hit the real default). 2nd submission from the same IP → `201`.
+   3rd → real `429`, `"Too many booking submissions from this connection..."`. Independently
+   `SELECT`ed `COUNT(*) FROM bookings WHERE source_ip = '<real IP>'` — exactly `2`, matching the
+   threshold that triggered the block. Restored `guest_booking_rate_limit_max` back to the real
+   default of `5` immediately after.
+6. **Cleanup**: driver, vehicle, both test bookings (the accepted one + the rate-limit-test one),
+   wallet, login token all deleted. Re-verified via `SELECT COUNT(*)` — all six affected tables at
+   `0`.
+
+### Protected files — confirmed untouched, against the real `origin/main`
+
+`git diff --stat main..nadi-marketplace-phase1-staging -- ftt-booking-site/` and
+`-- workers/chat-widget/` both returned empty. Re-fetched `origin/main` fresh before this check
+(same lesson from Section 9 item 7 — a stale local `main` ref will make this check lie).
+
+### Still open (not blockers for this task, flagged as instructed)
+
+- `platform_settings.admin_alert_phone` is still empty — no real number given for fuel/WhatsApp
+  alerts.
+- Cutover authorization itself is undecided — this endpoint existing doesn't change that; it's still
+  a separate, explicit sign-off whenever James is ready.
+- `cutover-plan.md`'s step 2 (deciding whether the WhatsApp-handoff stays as a fallback once
+  `app.js` is wired to this endpoint) is a real product decision, not made here — this milestone only
+  built the endpoint side.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

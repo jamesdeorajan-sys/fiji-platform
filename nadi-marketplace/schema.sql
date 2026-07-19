@@ -160,3 +160,13 @@ VALUES (3.39, '2026-07-01', 1.0, 'LN 89/26 - Petroleum Prices (No. 6) Order 2026
 
 INSERT INTO platform_settings (key, value) VALUES ('fuel_index_last_seen_order', 'LN-89-FCCC-Price-Control-Petroleum-Prices-No.-6-Order-2026.pdf');
 INSERT INTO platform_settings (key, value) VALUES ('admin_alert_phone', '');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 6 additions — public POST /bookings endpoint. See
+-- migrations/milestone6-schema.sql for the migration actually run.
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE bookings ADD COLUMN source_ip TEXT;
+
+INSERT INTO platform_settings (key, value) VALUES ('guest_booking_rate_limit_max', '5');
+INSERT INTO platform_settings (key, value) VALUES ('guest_booking_rate_limit_window_minutes', '10');
