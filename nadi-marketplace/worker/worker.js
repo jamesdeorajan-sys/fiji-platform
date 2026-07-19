@@ -44,9 +44,24 @@ const DRIVER_WELCOME_TEMPLATE = 'vakaviti_driver_welcome';
 // returned 200 with a real WAMID (Meta API acceptance confirmed - real-device
 // delivery confirmation pending as of this commit, see Milestone 3 report).
 // Each template's approved language is its own fact to verify, not something
-// to carry over from a different template.
-const WHATSAPP_LANG_CODE = 'en';
+// to carry over from a different template. Renamed from the generic
+// WHATSAPP_LANG_CODE to DRIVER_WELCOME_LANG_CODE once a second template
+// (vakaviti_driver_return, below) needed a language code of its own to
+// verify separately - a shared constant here would invite exactly the
+// wrong-assumption mistake this comment is warning against.
+const DRIVER_WELCOME_LANG_CODE = 'en';
 const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
+
+// vakaviti_driver_return - returning-driver re-login, submitted separately
+// (Marketing category, per James - Utility rejected the driver_login attempts
+// earlier tonight). NOT YET ACTIVE as of this commit - sendDriverReturnWhatsApp
+// exists and is wired up below, but must not be live-tested until James
+// confirms approval, same discipline as every other template tonight.
+const DRIVER_RETURN_TEMPLATE = 'vakaviti_driver_return';
+// Unverified starting guess, exactly the kind of assumption that turned out
+// wrong for vakaviti_driver_welcome - do not trust this until a real live
+// test confirms it once the template is Active.
+const DRIVER_RETURN_LANG_CODE = 'en';
 // Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
 // rejecting both driver-facing templates over the .pages.dev domain itself.
 const DRIVER_APP_URL = 'https://driver.vakaviti.ai/driver-app';
@@ -490,7 +505,50 @@ async function sendDriverWelcomeWhatsApp(env, phone, driverName, token) {
         type: 'template',
         template: {
           name: DRIVER_WELCOME_TEMPLATE,
-          language: { code: WHATSAPP_LANG_CODE },
+          language: { code: DRIVER_WELCOME_LANG_CODE },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: driverName || 'Driver' }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
+          ],
+        },
+      }),
+    });
+    const bodyText = await res.text().catch(() => '');
+    return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
+// Returning-driver re-login. Fully separate from sendDriverWelcomeWhatsApp and
+// sendWhatsAppTemplate/sendBookingBroadcastWhatsApp, per instruction - zero
+// shared code with either, so nothing here can regress vakaviti_booking_broadcast
+// or the welcome flow. Same body+button component shape as the welcome
+// template (body {{1}} = driver name, button {{1}} = token), since
+// vakaviti_driver_return has the same variable structure.
+// NOT YET LIVE-TESTED - vakaviti_driver_return is not Active yet as of this
+// commit. Do not call this in a way that actually sends until James confirms
+// approval and a live test (same discipline as every other template tonight)
+// has independently confirmed real delivery.
+async function sendDriverReturnWhatsApp(env, phone, driverName, token) {
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
+  }
+  const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanNumber || cleanNumber.length < 8) {
+    return { attempted: false, reason: 'Phone number invalid for WhatsApp send.' };
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanNumber,
+        type: 'template',
+        template: {
+          name: DRIVER_RETURN_TEMPLATE,
+          language: { code: DRIVER_RETURN_LANG_CODE },
           components: [
             { type: 'body', parameters: [{ type: 'text', text: driverName || 'Driver' }] },
             { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
@@ -558,15 +616,14 @@ async function handleDriverLogin(request, env) {
   const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000).toISOString();
   await env.DB.prepare(`INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, ?)`).bind(driver.id, token, expiresAt).run();
 
-  // No approved template for a returning-driver re-login exists yet -
-  // vakaviti_driver_login/_v2 are abandoned/rejected, not referenced here or
-  // anywhere else. vakaviti_driver_welcome's copy ("your application has been
-  // approved... get started with your first job") is specific to first-time
-  // approval and wouldn't make sense resent to an already-active driver, so
-  // it isn't reused here either. The token above is still real and valid in
-  // D1 - only the WhatsApp delivery is unavailable until a dedicated
-  // re-login template is designed and submitted (not in this milestone's scope).
-  const whatsappResult = { attempted: false, reason: 'No approved WhatsApp template for driver re-login yet.' };
+  // vakaviti_driver_return - submitted separately (Marketing category), not yet
+  // Active as of this commit. vakaviti_driver_login/_v2 are abandoned/rejected,
+  // not referenced here or anywhere else. Wired up now so nothing further needs
+  // to change once the template clears review, but real delivery is unverified
+  // until James confirms Active status and a live test independently confirms
+  // it actually arrives - Meta will currently reject this exactly like every
+  // other not-yet-approved template did tonight, which is expected, not a bug.
+  const whatsappResult = await sendDriverReturnWhatsApp(env, driver.phone, driver.name, token);
   return json({ ok: true, message: 'If this number is a verified driver, a login link has been sent.', whatsapp: whatsappResult }, 200);
 }
 
