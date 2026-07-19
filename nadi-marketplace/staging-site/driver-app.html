@@ -46,6 +46,22 @@
   .active-job { margin: 12px 16px; padding: 14px; border-radius: 10px; background: #eef4f7; border: 1px solid var(--ocean); }
   .status-actions { display: flex; gap: 8px; margin-top: 10px; }
   .btn-status { flex: 1; background: var(--ocean); color: #fff; }
+
+  .btn-wallet { background: transparent; color: #fff; border: 1px solid #fff; padding: 6px 12px; font-size: 12px; margin-right: 8px; }
+  .wallet-panel { padding: 16px; background: #fffdf8; border-bottom: 1px solid var(--line); display: none; }
+  .wallet-panel.show { display: block; }
+  .wallet-balance { font-size: 28px; font-weight: 700; }
+  .wallet-balance.negative { color: var(--red); }
+  .wallet-balance.positive { color: var(--green); }
+  .wallet-locked-banner { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #fdeaea; color: #8a1f1f; font-size: 13px; font-weight: 600; }
+  .wallet-txn-list { margin-top: 16px; }
+  .wallet-txn { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .wallet-txn:last-child { border-bottom: none; }
+  .wallet-txn .type { font-weight: 600; text-transform: capitalize; }
+  .wallet-txn .date { color: #888; font-size: 12px; }
+  .wallet-txn .amount.negative { color: var(--red); }
+  .wallet-txn .amount.positive { color: var(--green); }
+  .wallet-empty { text-align: center; color: #888; padding: 20px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -61,7 +77,13 @@
 <div id="appView" style="display:none;">
   <div class="topbar">
     <div class="name" id="driverName">—</div>
-    <button id="logoutBtn" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 12px;font-size:12px;">Log out</button>
+    <div>
+      <button id="walletBtn" class="btn-wallet">Wallet</button>
+      <button id="logoutBtn" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 12px;font-size:12px;">Log out</button>
+    </div>
+  </div>
+  <div class="wallet-panel" id="walletPanel">
+    <div id="walletBody">Loading…</div>
   </div>
   <div class="toggle-row">
     <label class="switch">
@@ -162,6 +184,56 @@
     showLogin();
   });
 
+  document.getElementById('walletBtn').addEventListener('click', async () => {
+    const panel = document.getElementById('walletPanel');
+    const showing = panel.classList.toggle('show');
+    if (showing) await loadWallet();
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function loadWallet() {
+    const bodyEl = document.getElementById('walletBody');
+    bodyEl.textContent = 'Loading…';
+    try {
+      const res = await fetch(API_URL + '/driver/wallet', { headers: { Authorization: 'Bearer ' + sessionToken } });
+      const data = await res.json();
+      if (!res.ok) { bodyEl.textContent = data.error || 'Could not load wallet.'; return; }
+      renderWallet(data);
+    } catch {
+      bodyEl.textContent = 'Connection error.';
+    }
+  }
+
+  function renderWallet(data) {
+    const bodyEl = document.getElementById('walletBody');
+    const balanceClass = data.balance_fjd < 0 ? 'negative' : 'positive';
+    const lockedBanner = data.locked
+      ? `<div class="wallet-locked-banner">Locked — balance is below FJ$${data.threshold_fjd}. Settle your balance to go online or accept jobs again.</div>`
+      : '';
+    const txnRows = (data.transactions || []).length
+      ? data.transactions.map((t) => {
+          const amtClass = t.amount_fjd < 0 ? 'negative' : 'positive';
+          const sign = t.amount_fjd >= 0 ? '+' : '';
+          return `<div class="wallet-txn">
+            <div>
+              <div class="type">${escapeHtml(t.type.replace(/_/g, ' '))}</div>
+              <div class="date">${escapeHtml(t.created_at)}${t.booking_id ? ' · booking #' + t.booking_id : ''}</div>
+            </div>
+            <div class="amount ${amtClass}">${sign}FJ$${Number(t.amount_fjd).toFixed(2)}</div>
+          </div>`;
+        }).join('')
+      : '<div class="wallet-empty">No transactions yet.</div>';
+
+    bodyEl.innerHTML = `
+      <div class="wallet-balance ${balanceClass}">FJ$${Number(data.balance_fjd).toFixed(2)}</div>
+      ${lockedBanner}
+      <div class="wallet-txn-list">${txnRows}</div>
+    `;
+  }
+
   async function loadZonesList() {
     if (allZones.length) return;
     try {
@@ -210,6 +282,12 @@
         body: JSON.stringify({ online, zones }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        document.getElementById('onlineToggle').checked = false;
+        document.getElementById('onlineLabel').textContent = 'Offline';
+        alert(data.error + (data.resting_until ? ('\nResting until: ' + data.resting_until) : '') + (data.balance_fjd !== undefined ? ('\nBalance: FJ$' + data.balance_fjd) : ''));
+        return;
+      }
       document.getElementById('onlineToggle').checked = data.online;
       document.getElementById('onlineLabel').textContent = data.online ? 'Online' : 'Offline';
     } catch {}

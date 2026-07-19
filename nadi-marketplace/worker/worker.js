@@ -129,6 +129,11 @@ export default {
       return handleDriverJobs(request, env);
     }
 
+    // ── Milestone 5: driver wallet view (spec Section 4, left open from Milestone 4) ──
+    if (request.method === 'GET' && url.pathname === '/driver/wallet') {
+      return handleDriverWallet(request, env);
+    }
+
     const acceptMatch = url.pathname.match(/^\/driver\/bookings\/(\d+)\/accept$/);
     if (request.method === 'POST' && acceptMatch) {
       return handleDriverAcceptBooking(request, env, Number(acceptMatch[1]));
@@ -695,6 +700,33 @@ async function handleDriverOnline(request, env) {
 
   const updated = await env.DB.prepare(`SELECT online, online_since, zones FROM drivers WHERE id = ?`).bind(driver.id).first();
   return json({ ok: true, online: !!updated.online, online_since: updated.online_since, zones: JSON.parse(updated.zones || '[]') }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WALLET VIEW — balance + transaction history for the logged-in driver
+// (spec Section 4, left open from Milestone 4). Read-only: reuses
+// enforceWalletLockout() from Milestone 4 rather than re-deriving the
+// locked state, so the driver PWA and the accept/go-online gates can never
+// disagree about whether a driver is locked out.
+// ═══════════════════════════════════════════════════════════════
+
+async function handleDriverWallet(request, env) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+
+  const wallet = await env.DB.prepare(`SELECT balance_fjd, updated_at FROM wallets WHERE driver_id = ?`).bind(driver.id).first();
+  const txns = await env.DB.prepare(
+    `SELECT id, booking_id, amount_fjd, type, created_at FROM wallet_transactions WHERE driver_id = ? ORDER BY created_at DESC LIMIT 50`
+  ).bind(driver.id).all();
+  const locked = await enforceWalletLockout(env, driver.id);
+
+  return json({
+    balance_fjd: wallet ? wallet.balance_fjd : 0,
+    updated_at: wallet ? wallet.updated_at : null,
+    locked: locked.locked,
+    threshold_fjd: locked.threshold_fjd,
+    transactions: txns.results || [],
+  }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════
