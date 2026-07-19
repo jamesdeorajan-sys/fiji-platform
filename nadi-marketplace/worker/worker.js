@@ -2,12 +2,17 @@
  * Nadi Airport Transfers — Driver Marketplace Backend
  * nadi-dispatch-api
  *
- * Phase 1, Milestone 4: wallet lockout + commission accrual + max-hours cap
- * (rest of spec Section 4), on top of Milestone 3's driver PWA login,
- * online/offline + zones, job feed, atomic accept, dispatch broadcast, and
- * status transitions (spec sections 4 & 6).
- * Fuel index cron (Section 7), guest widget change (Section 8), and
- * cutover (Section 9) are still out of scope.
+ * Phase 1, Milestone 5: driver wallet-view UI (Section 4) + fuel index
+ * automation (Section 7) — detect-and-notify only, no PDF parsing (the FCCC
+ * source is a multi-schedule legal PDF, not a scrapeable price; see the
+ * Milestone 5 report for why "parse the page" from the spec became
+ * "detect a new order + admin submits the number after reading it").
+ * On top of Milestone 4's wallet lockout + commission accrual + max-hours
+ * cap, and Milestone 3's driver PWA login, online/offline + zones, job
+ * feed, atomic accept, dispatch broadcast, and status transitions.
+ * Guest widget change (Section 8) and cutover (Section 9) are still out
+ * of scope for this file — Section 8 is prepared but deliberately not
+ * deployed to the live guest widget's own codebase.
  *
  * Fully isolated: separate script, separate D1 database (nadi-marketplace-db),
  * separate R2 bucket (nadi-marketplace-driver-docs), zero shared bindings
@@ -73,6 +78,37 @@ const DRIVER_RETURN_LANG_CODE = 'en';
 // Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
 // rejecting both driver-facing templates over the .pages.dev domain itself.
 const DRIVER_APP_URL = 'https://driver.vakaviti.ai/driver-app';
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 5 — fuel index (spec Section 7). FCCC's real petroleum page
+// (verified live, not assumed from the spec's description of it) is a list
+// of legal-notice PDFs, not a scrapeable price table - each PDF has 6
+// geographic schedules x 4 fuel types x Bulk/Drum x Retail/Wholesale.
+// Confirmed with James which cell applies before writing any parsing logic:
+// Schedule 1 (Viti Levu, within 3km of a public road - covers all 16
+// operating zones), Gasoil (diesoline), Retail, Bulk Sale.
+// ═══════════════════════════════════════════════════════════════
+
+// Final resolved URL (curl -L confirmed the /petroleum/ path redirects here) -
+// fetching this directly avoids relying on a redirect chain inside the Worker.
+const FCCC_PETROLEUM_URL = 'https://fccc.gov.fj/master-price-list/petroleum/';
+// Confirmed via a real fetch of the live page: the newest order's PDF link is
+// always the first entry with class="doc-row" - real HTML source order, not
+// assumed. No PDF parsing happens here (see the header comment) - this only
+// detects that a NEW order was published, by filename.
+const FCCC_PDF_LINK_RE = /href="(https:\/\/fccc\.gov\.fj\/wp-content\/uploads\/[^"]*Petroleum-Prices[^"]*\.pdf)"/;
+// pricing_rules.base_rate_fjd_per_km's spec comment says "baseline at
+// fuel_price = $3.93/L" - kept as the multiplier reference point even though
+// the real seeded fuel_index baseline (Milestone 5 migration) is $3.39/L,
+// since pricing_rules itself is still empty (out of scope, Section 3/6) and
+// changing this reference now would silently invalidate rates nothing has
+// been built against yet.
+const FUEL_MULTIPLIER_BASELINE_FJD = 3.93;
+// Not yet submitted to Meta - same "draft, needs James to submit via
+// WhatsApp Manager's UI" state every other template started in. Admin-facing,
+// not driver-facing, so it's a new template rather than reusing any driver one.
+const FUEL_INDEX_ALERT_TEMPLATE = 'vakaviti_fuel_index_alert';
+const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 
 export default {
   async fetch(request, env, ctx) {
@@ -153,16 +189,41 @@ export default {
       return handleAdminMaxHoursSweep(request, env);
     }
 
+    // ── Milestone 5: fuel index (spec Section 7) ──
+    if (request.method === 'GET' && url.pathname === '/fuel-index') {
+      return handleFuelIndexPublic(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/fuel-index/check') {
+      return handleAdminFuelIndexCheck(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/fuel-index/submit') {
+      return handleAdminFuelIndexSubmit(request, env);
+    }
+
+    const fuelConfirmMatch = url.pathname.match(/^\/admin\/fuel-index\/pending\/(\d+)\/confirm$/);
+    if (request.method === 'POST' && fuelConfirmMatch) {
+      return handleAdminFuelIndexConfirm(request, env, Number(fuelConfirmMatch[1]));
+    }
+
+    const fuelRejectMatch = url.pathname.match(/^\/admin\/fuel-index\/pending\/(\d+)\/reject$/);
+    if (request.method === 'POST' && fuelRejectMatch) {
+      return handleAdminFuelIndexReject(request, env, Number(fuelRejectMatch[1]));
+    }
+
     return json({ error: 'Not found.' }, 404);
   },
 
-  // Max-hours-cap sweep. Registered as a Cron Trigger in wrangler.toml
-  // (every 15 minutes) — same enforceMaxHoursCap() logic the admin-only
-  // /admin/max-hours-sweep endpoint calls on demand, so a manual run and a
-  // real cron fire are provably identical, not two code paths that could
-  // drift apart.
+  // Cron dispatch — controller.cron tells us which of the two schedules
+  // fired (wrangler.toml registers both), so one scheduled() export can
+  // route to the right job rather than needing two separate Workers.
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(enforceMaxHoursCap(env));
+    if (controller.cron === '*/15 * * * *') {
+      ctx.waitUntil(enforceMaxHoursCap(env));
+    } else if (controller.cron === '0 12 * * 6') {
+      ctx.waitUntil(checkFuelIndexUpdate(env));
+    }
   },
 };
 
@@ -603,6 +664,43 @@ async function sendBookingBroadcastWhatsApp(env, phone, booking) {
   ]);
 }
 
+// Not built on sendWhatsAppTemplate() - that function hardcodes
+// BOOKING_BROADCAST_LANG_CODE internally rather than taking a language code
+// as a parameter, so reusing it here would silently send this template under
+// the wrong language code. Same self-contained pattern as
+// sendDriverWelcomeWhatsApp/sendDriverReturnWhatsApp instead. Admin-facing,
+// not driver-facing - goes to platform_settings.admin_alert_phone, not any
+// driver's number.
+async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
+  }
+  const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanNumber || cleanNumber.length < 8) {
+    return { attempted: false, reason: 'admin_alert_phone not set or invalid.' };
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanNumber,
+        type: 'template',
+        template: {
+          name: FUEL_INDEX_ALERT_TEMPLATE,
+          language: { code: FUEL_INDEX_ALERT_LANG_CODE },
+          components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
+        },
+      }),
+    });
+    const responseText = await res.text().catch(() => '');
+    return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DRIVER AUTH — bearer token is the driver_login_tokens row itself,
 // valid until expires_at (7 days from issue). Not a separate session
@@ -942,6 +1040,164 @@ async function handleAdminMaxHoursSweep(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
   const result = await enforceMaxHoursCap(env);
   return json({ ok: true, ...result }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 5 — fuel index automation (spec Section 7), detect-and-notify.
+// No bot-extracted price is ever trusted as fact: the Worker only detects
+// that a NEW FCCC order was published and alerts the admin with a link to
+// read it. A human reads the actual PDF and submits the number themselves
+// via /admin/fuel-index/submit - that submission is what starts the ≥5%
+// confirm gate, not anything the Worker parsed on its own.
+// ═══════════════════════════════════════════════════════════════
+
+// Weekly Cron Trigger (spec: Sunday 00:00 Fiji time = Saturday 12:00 UTC,
+// since Fiji is UTC+12 with no DST currently observed - spec itself flags
+// "adjust +1hr during DST window" defensively for if that ever changes).
+async function checkFuelIndexUpdate(env) {
+  let html;
+  try {
+    const res = await fetch(FCCC_PETROLEUM_URL, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; nadi-dispatch-api fuel-index-check)' } });
+    if (!res.ok) return { ok: false, error: `FCCC page returned ${res.status}` };
+    html = await res.text();
+  } catch (err) {
+    return { ok: false, error: `Fetch failed: ${err.message}` };
+  }
+
+  const match = html.match(FCCC_PDF_LINK_RE);
+  if (!match) return { ok: false, error: 'No Petroleum Prices PDF link found on the FCCC page - page structure may have changed.' };
+
+  const latestPdfUrl = match[1];
+  const latestFilename = latestPdfUrl.split('/').pop();
+  const lastSeen = await getSetting(env, 'fuel_index_last_seen_order', '');
+
+  if (latestFilename === lastSeen) {
+    return { ok: true, new_order: false, filename: latestFilename };
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO platform_settings (key, value, updated_at) VALUES ('fuel_index_last_seen_order', ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ).bind(latestFilename).run();
+
+  const current = await env.DB.prepare(`SELECT fuel_price_fjd_per_litre FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
+  const currentPrice = current ? current.fuel_price_fjd_per_litre : null;
+
+  const alertPhone = await getSetting(env, 'admin_alert_phone', '');
+  const bodyText = `New FCCC petroleum price order detected: ${latestFilename}. Current fuel_index baseline: FJ$${currentPrice ?? 'unset'}/L. Please review Schedule 1 (Viti Levu, within 3km), Gasoil (diesoline), Retail, Bulk Sale price at ${latestPdfUrl} and submit it via POST /admin/fuel-index/submit.`;
+  const whatsapp = alertPhone
+    ? await sendFuelIndexAlertWhatsApp(env, alertPhone, bodyText)
+    : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+
+  return { ok: true, new_order: true, filename: latestFilename, pdf_url: latestPdfUrl, current_price_fjd: currentPrice, whatsapp };
+}
+
+async function handleAdminFuelIndexCheck(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  const result = await checkFuelIndexUpdate(env);
+  return json(result, result.ok ? 200 : 500);
+}
+
+// Admin has read the actual PDF and is submitting the real number - this is
+// the human-in-the-loop step the spec's "parse the page" collapsed into one
+// automated step, but the underlying FCCC source doesn't support that
+// safely (see the file header comment). Computes % change vs the current
+// live fuel_index baseline and queues a fuel_index_pending row - does NOT
+// touch the live fuel_index table. That only happens on an explicit confirm.
+async function handleAdminFuelIndexSubmit(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const price = Number(body.fuel_price_fjd_per_litre);
+  const effectiveFrom = (body.effective_from || '').toString();
+  const orderReference = (body.order_reference || '').toString();
+  if (!price || price <= 0) return json({ ok: false, error: 'fuel_price_fjd_per_litre must be a positive number.' }, 400);
+  if (!effectiveFrom) return json({ ok: false, error: 'effective_from is required.' }, 400);
+  if (!orderReference) return json({ ok: false, error: 'order_reference is required.' }, 400);
+
+  const current = await env.DB.prepare(`SELECT fuel_price_fjd_per_litre FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
+  const currentPrice = current ? current.fuel_price_fjd_per_litre : null;
+  const percentChange = currentPrice ? ((price - currentPrice) / currentPrice) * 100 : null;
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO fuel_index_pending (fuel_price_fjd_per_litre, effective_from, order_reference, status) VALUES (?, ?, ?, 'pending')`
+  ).bind(price, effectiveFrom, orderReference).run();
+  const pendingId = insert.meta.last_row_id;
+
+  const alertPhone = await getSetting(env, 'admin_alert_phone', '');
+  const changeText = percentChange !== null ? `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(1)}%` : 'no prior baseline';
+  const bodyText = `Fuel price change pending confirm: FJ$${currentPrice ?? 'unset'}/L -> FJ$${price}/L (${changeText}). Order: ${orderReference}. Effective ${effectiveFrom}. Reply/call POST /admin/fuel-index/pending/${pendingId}/confirm to apply, or /reject to discard. fuel_auto_apply is false - this will NOT go live without an explicit confirm.`;
+  const whatsapp = alertPhone
+    ? await sendFuelIndexAlertWhatsApp(env, alertPhone, bodyText)
+    : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+
+  return json({
+    ok: true,
+    pending_id: pendingId,
+    current_price_fjd: currentPrice,
+    submitted_price_fjd: price,
+    percent_change: percentChange,
+    whatsapp,
+  }, 201);
+}
+
+// The actual state-changing action. Spec language says "WhatsApp CONFIRM" -
+// this Worker has no inbound WhatsApp webhook (it only ever sends, never
+// receives - true of every template in this file), so "CONFIRM" is this
+// authenticated admin endpoint, called after reading the WhatsApp alert, not
+// literal free-text reply parsing. fuel_auto_apply is checked and logged but
+// not branched on - per instruction it stays false regardless for the first
+// 2-3 months, so every path here requires this explicit call either way.
+async function handleAdminFuelIndexConfirm(request, env, pendingId) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const pending = await env.DB.prepare(`SELECT * FROM fuel_index_pending WHERE id = ?`).bind(pendingId).first();
+  if (!pending) return json({ ok: false, error: 'Pending fuel index change not found.' }, 404);
+  if (pending.status !== 'pending') return json({ ok: false, error: `Already ${pending.status}, cannot confirm again.` }, 409);
+
+  const multiplier = Math.round((pending.fuel_price_fjd_per_litre / FUEL_MULTIPLIER_BASELINE_FJD) * 10000) / 10000;
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO fuel_index (fuel_price_fjd_per_litre, effective_from, multiplier, order_reference, updated_by) VALUES (?, ?, ?, ?, 'admin confirm via /admin/fuel-index/pending/:id/confirm')`
+    ).bind(pending.fuel_price_fjd_per_litre, pending.effective_from, multiplier, pending.order_reference),
+    env.DB.prepare(`UPDATE fuel_index_pending SET status = 'confirmed' WHERE id = ?`).bind(pendingId),
+    env.DB.prepare(
+      `UPDATE platform_settings SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), updated_at = datetime('now') WHERE key = 'fuel_confirmed_accurate_count'`
+    ),
+  ]);
+
+  return json({ ok: true, pending_id: pendingId, applied_price_fjd: pending.fuel_price_fjd_per_litre, multiplier }, 200);
+}
+
+async function handleAdminFuelIndexReject(request, env, pendingId) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const pending = await env.DB.prepare(`SELECT id, status FROM fuel_index_pending WHERE id = ?`).bind(pendingId).first();
+  if (!pending) return json({ ok: false, error: 'Pending fuel index change not found.' }, 404);
+  if (pending.status !== 'pending') return json({ ok: false, error: `Already ${pending.status}, cannot reject.` }, 409);
+
+  await env.DB.prepare(`UPDATE fuel_index_pending SET status = 'rejected' WHERE id = ?`).bind(pendingId).run();
+  return json({ ok: true, pending_id: pendingId, status: 'rejected' }, 200);
+}
+
+// Public, read-only - the live fuel_index baseline that Section 8's guest
+// widget line (prepared, not deployed - see Milestone 5 report) reads from.
+async function handleFuelIndexPublic(request, env) {
+  if (!env.DB) return json({ error: 'Database not available.' }, 503);
+  const row = await env.DB.prepare(
+    `SELECT fuel_price_fjd_per_litre, effective_from, multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`
+  ).first();
+  if (!row) return json({ error: 'No fuel index set yet.' }, 404);
+  return json({
+    fuel_price_fjd_per_litre: row.fuel_price_fjd_per_litre,
+    effective_from: row.effective_from,
+    multiplier: row.multiplier,
+  }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -147,3 +147,16 @@ ALTER TABLE drivers ADD COLUMN forced_offline_until TEXT;
 INSERT INTO platform_settings (key, value) VALUES ('wallet_lockout_threshold_fjd', '-150');
 INSERT INTO platform_settings (key, value) VALUES ('max_hours_rest_gap_hours', '8');
 INSERT INTO platform_settings (key, value) VALUES ('default_commission_rate', '0.15');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 5 additions — fuel index automation (spec Section 7). See
+-- migrations/milestone5-schema.sql for the migration actually run against
+-- the live database, including sourcing and rationale for the real seeded
+-- baseline price below.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO fuel_index (fuel_price_fjd_per_litre, effective_from, multiplier, order_reference, updated_by)
+VALUES (3.39, '2026-07-01', 1.0, 'LN 89/26 - Petroleum Prices (No. 6) Order 2026 - Schedule 1, Gasoil (diesoline), Retail, Bulk Sale', 'Claude Code - seeded from real FCCC PDF, no prior baseline existed');
+
+INSERT INTO platform_settings (key, value) VALUES ('fuel_index_last_seen_order', 'LN-89-FCCC-Price-Control-Petroleum-Prices-No.-6-Order-2026.pdf');
+INSERT INTO platform_settings (key, value) VALUES ('admin_alert_phone', '');

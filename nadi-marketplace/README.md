@@ -265,16 +265,105 @@ generated and set via `wrangler secret put`, given to James directly, not commit
 file. Any tooling using the old admin token (e.g. `staging-site/admin-drivers.html` sessions) will
 need the new one.
 
-## Explicitly not built this milestone
+## Milestone 5 — driver wallet-view UI, fuel index automation (spec Section 7)
 
-**Wallet view UI** in the driver PWA (`staging-site/driver-app.html`) — spec Section 4 nominally
-includes it, but this milestone's brief was specifically the backend three functions + cron, and
-adding UI work that wasn't asked for is scope creep. The API already returns everything a wallet
-view would need (`commission` on the status-completed response; balance is readable via a direct
-`wallets` query, no dedicated read endpoint exists yet). Also still not built: fuel index cron
-(Section 7), guest widget fuel-price line (Section 8), real guest booking integration (still
-manually-inserted test bookings), cutover (Section 9), and a `wallets`/balance read endpoint for the
-driver PWA or admin dashboard (Section 5's "wallet/balance overview" is still entirely unbuilt).
+### Wallet-view UI (Section 4, left open from Milestone 4)
+
+New `GET /driver/wallet` (worker.js) — balance, locked state (reusing Milestone 4's
+`enforceWalletLockout` so the PWA and the accept/go-online gates can never disagree), and the 50
+most recent `wallet_transactions` rows. `staging-site/driver-app.html` gets a Wallet button in the
+topbar and a collapsible panel. Also surfaces the `403` body (`balance_fjd`/`resting_until`) as a
+real alert on a failed go-online attempt instead of silently reverting the toggle with no
+explanation.
+
+Real evidence: real driver approved via the live admin API, real `wallet_transactions` rows
+inserted directly in D1, pushed through the Pages auto-deploy pipeline (polled the live URL for the
+new markup before testing — didn't assume push meant deployed), opened in an actual browser with
+the driver's real login token, read the rendered DOM via `get_page_text` — showed the exact balance
+and transaction rows from D1. Balance then pushed to `-$200` via direct D1 `UPDATE`, reloaded —
+locked banner rendered with the real threshold value from the live API. All test data (driver,
+wallet, 2 transactions, login token) deleted, re-verified at `0`.
+
+### Fuel index automation (Section 7) — real research changed the design before any code was written
+
+The spec assumes "Worker fetches FCCC petroleum page, parses latest price." Checked the actual live
+page (`https://fccc.gov.fj/petroleum/`, resolves to `.../master-price-list/petroleum/`) before
+writing anything: prices are not in a scrapeable table — each week's price is a legal-notice PDF
+(`Petroleum Prices (No. N) Order YYYY`), and each PDF has **6 geographic schedules** × 4 fuel types
+× Bulk/Drum sale × Retail/Wholesale columns. Downloaded and read the actual current PDF (LN 89/26,
+No. 6 Order 2026) to confirm this — real text, not a scanned image, so parsing is technically
+possible, but "which of ~48 numbers in this PDF is the fuel index" is a genuine ambiguity the spec
+doesn't resolve. Stopped and confirmed with James before writing code: **Schedule 1** (Viti Levu,
+within 3km of a public road — covers all 16 operating zones), **Gasoil (diesoline)**, **Retail**,
+**Bulk Sale**; and — since building a PDF-parsing pipeline in a Worker with no build step is real
+new complexity with real misparse risk on financial data — **detect-and-notify only**, not full
+automated extraction. The Worker never asserts a price as fact; a human reads the PDF and submits
+the number.
+
+**Schema** (`migrations/milestone5-schema.sql`): `fuel_index` and `fuel_index_pending` already
+existed (Milestone 1) but were verified empty on the live DB — no baseline existed to diff against.
+Seeded `fuel_index` with the **real, current** figure read directly from the live PDF: Schedule 1,
+Gasoil, Retail, Bulk Sale = **$3.39/L**, effective 1 July 2026 (source:
+`https://fccc.gov.fj/wp-content/uploads/2026/06/LN-89-FCCC-Price-Control-Petroleum-Prices-No.-6-Order-2026.pdf`).
+This is a one-time bootstrap of an empty table, not a "change" — the ≥5% confirm gate only applies
+once a prior baseline exists. Also added `platform_settings.fuel_index_last_seen_order` (dedupes
+weekly notifications for the same still-unconfirmed order) and `platform_settings.admin_alert_phone`
+— left **empty deliberately**, since no real phone number for fuel alerts was given and guessing one
+risks messaging the wrong real person; both `checkFuelIndexUpdate()` and the submit handler no-op
+cleanly with a clear reason until it's set, same pattern as the unset `WHATSAPP_TOKEN`.
+
+**What's built** — `worker/worker.js`:
+- **`checkFuelIndexUpdate(env)`** — weekly Cron Trigger (`0 12 * * 6` = Saturday 12:00 UTC = Sunday
+  00:00 Fiji time, added to `worker/wrangler.toml` alongside Milestone 4's `*/15 * * * *`;
+  `scheduled()` now branches on `controller.cron`). Fetches the live FCCC page, regex-matches the
+  first `Petroleum-Prices...pdf` link (confirmed via a real fetch that this is reliably the newest
+  order — real HTML source order, not assumed), compares its filename against
+  `fuel_index_last_seen_order`. On a new order: updates the setting and WhatsApps
+  `admin_alert_phone` a link to the PDF asking them to read Schedule 1/Gasoil/Retail/Bulk and submit
+  it. Never touches `fuel_index` or `fuel_index_pending` itself — no price is known at this stage.
+- **`POST /admin/fuel-index/check`** — same function, callable on demand (same shared-implementation
+  pattern as Milestone 4's max-hours sweep).
+- **`POST /admin/fuel-index/submit`** — admin submits the number they read from the PDF. Computes %
+  change vs the live `fuel_index` baseline, inserts a `fuel_index_pending` row (`status='pending'`),
+  WhatsApps a summary with the confirm/reject endpoints. Does not touch live `fuel_index`.
+- **`POST /admin/fuel-index/pending/:id/confirm`** — the actual state-changing action. This Worker
+  has no inbound WhatsApp webhook (every template in this file only ever sends, never receives), so
+  "WhatsApp CONFIRM" from the spec is this authenticated endpoint, not literal reply-text parsing —
+  Section 5's "admin dashboard... pending changes awaiting confirm" is where a real CONFIRM button
+  would eventually live. Writes a new `fuel_index` row (multiplier = price ÷ $3.93/L, the baseline
+  referenced in `pricing_rules`'s own spec comment), flips the pending row to `confirmed`, increments
+  `fuel_confirmed_accurate_count`. Idempotency-guarded (`409` on a second confirm).
+- **`POST /admin/fuel-index/pending/:id/reject`** — flips to `rejected`, no `fuel_index` change.
+- **`GET /fuel-index`** — public, read-only, the current live baseline. Built now since Section 8's
+  guest-widget line (prepared, see below) needs it.
+
+**Real evidence** — every step run against the actual live worker and the actual live FCCC
+government site, not a mock:
+1. `GET /fuel-index` → real seeded baseline (`$3.39/L`, `2026-07-01`).
+2. `POST /admin/fuel-index/check` against production → correctly found `new_order: false` (matched
+   the already-recorded No. 6 order). `platform_settings.fuel_index_last_seen_order` temporarily
+   rewound to a fake older filename via direct D1 `UPDATE`, re-ran check → correctly detected
+   `new_order: true` with the real PDF URL, self-healed the setting back to the real filename
+   (independently re-`SELECT`ed to confirm) — and correctly did **not** attempt a WhatsApp send
+   (`admin_alert_phone` unset), same graceful-no-op pattern as every prior WhatsApp integration here.
+3. Submitted a real test change (`$3.39 → $3.60`) → API reported `percent_change: 6.19%`, matching
+   manual calculation. Confirmed it → independently `SELECT`ed `fuel_index` (2 rows now),
+   `fuel_index_pending.status = 'confirmed'`, `fuel_confirmed_accurate_count` incremented to `1`,
+   and `GET /fuel-index` returned the new `$3.60` — real state change, not just an API claim.
+   Re-confirming the same pending row → real `409`.
+4. Submitted a second test change (`$3.39 → $4.50`, 25%) and rejected it → independently confirmed
+   `fuel_index` stayed at 2 rows (the reject never touched it) and `GET /fuel-index` still returned
+   `$3.60`, not `$4.50`.
+5. **Cleanup — this one mattered more than usual**: the confirmed test row was a *fake* price
+   ($3.60) that had become the live baseline, not incidental test data. Deleted `fuel_index` id 2,
+   both `fuel_index_pending` test rows, and reset `fuel_confirmed_accurate_count` back to `0` (the
+   increment was from this test, not a real confirmed cycle). Re-verified via direct `SELECT` and
+   `GET /fuel-index` — back to the real `$3.39` baseline, exactly as before testing started.
+
+### Guest widget line (Section 8) — prepared, not deployed
+
+See the separate report below — this touches the live `ftt-booking-site` repo, not
+`nadi-marketplace`, and per instruction is explicitly held back from actual deployment.
 
 ## Branch
 

@@ -19,8 +19,14 @@ bucket_name = "nadi-marketplace-driver-docs"
 # driver is rarely more than 15 minutes past their cap before being forced
 # offline, without hammering D1. Same enforceMaxHoursCap() the admin-only
 # POST /admin/max-hours-sweep endpoint calls on demand.
+#
+# Milestone 5: fuel index check. Spec says Sunday 00:00 Fiji time — Fiji is
+# UTC+12 with no DST currently observed, so that's Saturday 12:00 UTC. Spec's
+# own comment flags "adjust +1hr during DST window" if that ever changes;
+# left as a standing note here rather than silently building DST-awareness
+# for a policy that isn't currently in effect.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/15 * * * *", "0 12 * * 6"]
 
 # Secrets (ADMIN_TOKEN, DOC_SIGNING_SECRET, and the not-yet-set
 # WHATSAPP_TOKEN/WHATSAPP_PHONE_ID) are set via `wrangler secret put` /
