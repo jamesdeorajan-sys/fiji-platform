@@ -51,6 +51,12 @@ const DRIVER_WELCOME_TEMPLATE = 'vakaviti_driver_welcome';
 // wrong-assumption mistake this comment is warning against.
 const DRIVER_WELCOME_LANG_CODE = 'en';
 const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
+// Confirmed via a live test, not assumed from either of the other two templates
+// (which needed en_AU and plain 'en' respectively) - en_US and en_AU both
+// 404'd "does not exist" against this specific template, plain 'en' returned
+// 200 with a real WAMID. Third template, third distinct answer on language
+// code - there is no pattern to infer from, each one must be checked.
+const BOOKING_BROADCAST_LANG_CODE = 'en';
 
 // vakaviti_driver_return - returning-driver re-login, submitted separately
 // (Marketing category, per James - Utility rejected the driver_login attempts
@@ -462,7 +468,7 @@ async function sendWhatsAppTemplate(env, phone, templateName, bodyParams) {
         type: 'template',
         template: {
           name: templateName,
-          language: { code: 'en_US' },
+          language: { code: BOOKING_BROADCAST_LANG_CODE },
           components: [{
             type: 'body',
             parameters: bodyParams.map((text) => ({ type: 'text', text: String(text) })),
