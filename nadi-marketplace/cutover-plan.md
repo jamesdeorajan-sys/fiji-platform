@@ -42,13 +42,29 @@ now rather than writing a plan that implies cutover is one line away when it isn
    anonymous-caller endpoint feeding real driver commission math), IP-based rate limit. Full report
    and real evidence in `README.md`'s Milestone 6 section. **Building this did not authorize
    cutover** — that's still step 2 onward, still James's call.
-2. **Wire `app.js`'s confirm handler** to call it — replacing or supplementing the current
-   WhatsApp-deep-link handoff. This *is* close to the spec's "single URL swap" once step 1 exists,
-   but decide deliberately whether the WhatsApp-handoff stays as a fallback/backup channel or is
-   fully replaced — not decided yet, real product question for James, not a default to pick silently.
-3. **Deploy Section 8's guest-widget fuel line** (prepared, `section8-guest-widget-fuel-line.md`) at
+2. **Move `WHATSAPP_PHONE_ID` off Meta's test/sandbox number before any real guest traffic.**
+   **Hard precondition, not a nice-to-have** — same weight as step 1 above, not a lesser item. Full
+   detail in `docs/BUILD.md`'s "Known Limitation: Test WABA Number" section. In short:
+   `WHATSAPP_PHONE_ID` (`1134456946416024`) on `nadi-dispatch-api` is currently bound to Meta's test
+   number (+1 555-641-4099), not the production +61 478 886 145 line — a deliberate, informed choice
+   to unblock real driver-side testing now (see that section), but test numbers have low daily
+   message caps, no guarantee against Meta reclaiming/resetting the sandbox, and a test sender ID
+   reads as untrustworthy to a real guest or driver at real volume. Before cutover: register a real
+   production number for messaging (either +61 478 886 145 or a dedicated number), move
+   `WHATSAPP_PHONE_ID` to it, and **re-run delivery verification against that number** for the three
+   templates with real prior WAMID evidence (`vakaviti_driver_welcome`, `vakaviti_driver_return`,
+   `vakaviti_booking_broadcast`) — the sandbox-number verification already done does not carry over
+   to a new sender identity. `vakaviti_fuel_index_alert` needs Meta submission/approval first, on its
+   own timeline, regardless of the number migration (see `docs/BUILD.md` for why — it was never
+   actually submitted, correcting a loose "four templates" count from earlier in this build).
+3. **Wire `app.js`'s confirm handler** to call the new endpoint — replacing or supplementing the
+   current WhatsApp-deep-link handoff. This *is* close to the spec's "single URL swap" once step 1
+   exists, but decide deliberately whether the WhatsApp-handoff stays as a fallback/backup channel or
+   is fully replaced — not decided yet, real product question for James, not a default to pick
+   silently.
+4. **Deploy Section 8's guest-widget fuel line** (prepared, `section8-guest-widget-fuel-line.md`) at
    the same time or before, since it's the one other planned change to this same file.
-4. Re-run Section 9's test plan item 1 for real at that point — it's the one item this session
+5. Re-run Section 9's test plan item 1 for real at that point — it's the one item this session
    couldn't honestly test, and it becomes testable (and necessary) once there's an actual endpoint to
    test against.
 
@@ -76,9 +92,12 @@ now rather than writing a plan that implies cutover is one line away when it isn
 
 ## Status
 
-**Not ready to execute.** Step 1 is now built and real-evidenced (Milestone 6). What's still
-outstanding: step 2 (wiring `app.js` to actually call it, and the WhatsApp-handoff-fallback product
-decision that requires), step 3 (deploying Section 8's fuel line, still just prepared), and re-running
-Section 9 item 1 for real once there's an actual endpoint for the live widget to hit. None of that has
-been done. **This remains a hard stop pending James's explicit sign-off**, unchanged by step 1 being
-done — building the endpoint was scoped and requested separately from authorizing cutover itself.
+**Not ready to execute.** Step 1 is built and real-evidenced (Milestone 6). Step 2 (moving off the
+test WABA number) is **not done** and is a hard precondition, not a lesser item — real driver-side
+testing under the current test number was a deliberate, informed decision James approved, but it does
+not extend to guest-facing cutover traffic. Also outstanding: step 3 (wiring `app.js` to actually call
+the endpoint, and the WhatsApp-handoff-fallback product decision that requires), step 4 (deploying
+Section 8's fuel line, still just prepared), and re-running Section 9 item 1 for real once there's an
+actual endpoint for the live widget to hit. **This remains a hard stop pending James's explicit
+sign-off**, unchanged by step 1 being done — building the endpoint was scoped and requested separately
+from authorizing cutover itself.

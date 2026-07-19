@@ -547,6 +547,12 @@ Meta's WhatsApp test/sandbox number for this WABA, not the +61 number referenced
 spec's architecture notes. Worth knowing before assuming the sender identity on a future real send.
 Test driver, vehicle, wallet, and login token deleted afterward, re-verified at `0`.
 
+**This test-number finding is now tracked as a hard cutover precondition, not just a note** — see
+`docs/BUILD.md`'s "Known Limitation: Test WABA Number" section for the full writeup (why this is
+fine for driver-side testing now but not guest-facing cutover, and the exact action required before
+then), and item 2 of `cutover-plan.md`'s precondition list, alongside the booking-endpoint work from
+Milestone 6.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

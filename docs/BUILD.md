@@ -1426,3 +1426,45 @@ it said "successfully executed."
    `Name` field showed literal "Looking", parsed from "I'm looking for..."); a clearly-stated date
    ("this Friday") wasn't captured into the `Dates` field on another lead. Low priority — worth a
    future session, not urgent.
+
+## Known Limitation: Test WABA Number
+
+Applies to `nadi-dispatch-api` (Nadi Airport Transfers driver marketplace,
+`nadi-marketplace-phase1-staging` branch — separate build, separate WhatsApp Business Account
+credential from `fiji-chat-widget`, see `nadi-marketplace/README.md`'s isolation notes).
+
+**The fact:** `WHATSAPP_PHONE_ID` (`1134456946416024`) on `nadi-dispatch-api` is bound to Meta's
+WhatsApp test/sandbox number, **+1 555-641-4099** — not the production **+61 478 886 145** line.
+Confirmed via a real end-to-end send (`vakaviti_driver_return` and `vakaviti_driver_welcome`, real
+200s + WAMIDs from the Graph API) followed by a real phone screenshot: the messages arrived from the
+test number.
+
+**This is a deliberate, informed decision, not an oversight.** James approved starting real
+(non-synthetic) driver-side testing now — onboarding, approval, job broadcasts to real drivers —
+under the current test number, on the basis that:
+
+- **Acceptable now**: driver-side testing volume is low and controlled (a handful of real test
+  drivers, not public traffic), and the test number's message-template delivery has already been
+  verified to work correctly (real WAMIDs, real screenshot confirmation, correct `{{1}}` variable
+  substitution).
+- **Not acceptable once guest-facing cutover happens**: test/sandbox numbers carry real, specific
+  risks that don't matter at low controlled volume but do at real scale — low daily message caps,
+  no guarantee Meta won't reclaim or reset the sandbox infrastructure without notice, and a sandbox
+  sender ID reads as untrustworthy to a real guest or driver receiving an unsolicited business
+  message from an unfamiliar US test number rather than the business's own line.
+
+**Action required before real guest cutover** (tracked as a hard precondition, not a nice-to-have,
+in `nadi-marketplace/cutover-plan.md`): register a real production number for messaging under the
+WABA — either activate +61 478 886 145 for the Business Platform if not already, or provision a
+dedicated number for this build — move `WHATSAPP_PHONE_ID` to it, and **re-run delivery verification
+against that number**. Correcting a loose "four already-verified templates" phrasing from earlier in
+this build rather than carrying it forward uncritically — checked `worker.js`'s own comments before
+writing this: three templates (`vakaviti_driver_welcome`, `vakaviti_driver_return`,
+`vakaviti_booking_broadcast`) have real Graph API acceptance (WAMIDs); `vakaviti_driver_welcome` and
+`vakaviti_driver_return` specifically have real phone-screenshot delivery confirmation (this session,
+against the test number); `vakaviti_booking_broadcast` has a WAMID on record but no phone-screenshot
+confirmation found. **`vakaviti_fuel_index_alert` (the fourth template) was never submitted to Meta
+at all** — its own code comment says so explicitly — so it needs Meta submission and approval
+regardless of the phone-number migration, not just a re-test. The sandbox-number verification already
+completed for the other three does not carry over to a new sender identity either way — a different
+sender number is a different real-world delivery path, not a config detail.
