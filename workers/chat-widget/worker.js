@@ -1693,6 +1693,11 @@ async function sendWhatsAppNotification(env, toNumber, name, contact, intent, sc
   // variables (heat tier, score, name, contact, service, group size, dashboard link).
   // Requires env.WHATSAPP_TOKEN and env.WHATSAPP_PHONE_ID Worker secrets, and the
   // 'vakaviti_lead_alert_v2' template approved in Meta Business Manager.
+  // Language code is 'en_AU', not 'en_US' - confirmed via a live test: en_US, en,
+  // and en_GB all got a real 404 "does not exist" from this exact template/WABA;
+  // en_AU returned 200 with a real WAMID and was independently confirmed delivered
+  // to James's phone, screenshot-verified against the template preview (all 7
+  // fields, correct order).
   try {
     const cleanNumber = (toNumber || '').replace(/[^0-9]/g, '');
     if (!cleanNumber || cleanNumber.length < 8) return false;
@@ -1706,7 +1711,7 @@ async function sendWhatsAppNotification(env, toNumber, name, contact, intent, sc
         type: 'template',
         template: {
           name: 'vakaviti_lead_alert_v2',
-          language: { code: 'en_US' },
+          language: { code: 'en_AU' },
           components: [{
             type: 'body',
             parameters: [
