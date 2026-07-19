@@ -362,8 +362,83 @@ government site, not a mock:
 
 ### Guest widget line (Section 8) — prepared, not deployed
 
-See the separate report below — this touches the live `ftt-booking-site` repo, not
+See `section8-guest-widget-fuel-line.md` — this touches the live `ftt-booking-site` repo, not
 `nadi-marketplace`, and per instruction is explicitly held back from actual deployment.
+`ftt-booking-site/` confirmed untouched via `git status` before and after.
+
+## Section 9 — full test plan, each item run individually with real evidence
+
+All 8 items from the spec, run this session. Full clean-slate confirmed before starting
+(`drivers`/`bookings`/`wallets` all `0`).
+
+**1. Full guest booking flow, all currencies, matches existing widget exactly — not live-tested;
+reported honestly rather than faked.** Testing this for real means submitting an actual booking
+through the live nadiairporttransfers.com/fijitourtransfers.com widget — the same class of action
+that created a real, unintended live WooCommerce order in a past session (`docs/BUILD.md`, the
+`sentinel_errors` test from the "checkout payment failed" investigation). Nothing in Phase 1 has
+touched this flow — confirmed via `git diff --stat main..nadi-marketplace-phase1-staging --
+ftt-booking-site/` returning empty (zero lines changed) — so "matches the existing widget exactly"
+is trivially true by construction, not something a fresh live test would add confidence to. Did not
+risk a real booking to re-prove a byte-for-byte no-op.
+
+**2. Driver signup → admin approve → PWA login, real end-to-end — PASS.** Real multipart join-form
+submission (real JPEGs) → `201`. Independently fetched the actual signed R2 doc URL — `200`, 286
+bytes, exact match to the uploaded file (not just trusted the admin-list response). Approved via the
+real `/admin/drivers/:id/approve` endpoint. Retrieved the real login token from D1, opened
+`driver-app` in an actual browser with it — rendered "Test Driver S9", logged in, against the real
+deployed Worker and Pages site.
+
+**3. Broadcast dispatch, race-condition claim — PASS, no regression from Milestone 4's lockout
+check.** Two real verified drivers, both brought online (confirmed the lockout gate added in
+Milestone 4 doesn't false-positive block a fresh $0-balance driver). Real test booking broadcast to
+both (`matched_drivers: 2`). Fired truly concurrent `accept` requests (backgrounded, not sequential).
+Exactly one winner — independently re-`SELECT`ed the booking row, `assigned_driver_id = 1`, no
+double-assignment.
+
+**4. Wallet accrues commission debt on cash-marked completed trip — PASS.** Same booking taken
+`accepted → en_route → completed` (cash, $80). API reported `commission_fjd: 12` (15% default rate).
+Independently `SELECT`ed `wallets.balance_fjd = -12` and the `wallet_transactions` row
+(`amount_fjd: -12, type: 'commission_owed'`) directly.
+
+**5. Wallet lockout triggers past the negative threshold — PASS.** Same driver's balance pushed to
+`-155` via direct D1 `UPDATE`. `POST /driver/online` → real `403`,
+`{"balance_fjd":-155,"threshold_fjd":-150}` in the body, not a generic error.
+
+**6. Fuel index pending → confirm → live pricing updates, and only after confirm — PASS, both
+directions checked.** Submitted a real test change (`$3.39 → $3.55`, 4.7%) — re-checked
+`GET /fuel-index` immediately after: still `$3.39`, confirming an unconfirmed submission cannot leak
+into live pricing. Confirmed the pending row — re-checked `GET /fuel-index` again: now `$3.55`,
+confirming the confirm action is what actually applies it. Test data (the fake `$3.55` row) deleted
+immediately after, re-verified `GET /fuel-index` back to the real `$3.39` baseline.
+
+**7. Existing production data/flow untouched throughout — PASS.** `git diff --stat` between `main`
+(correctly fetched — an earlier stale local `main` ref briefly made this look wrong; re-fetched and
+re-ran against the real `origin/main`) and this branch, scoped to every production path
+(`workers/`, `ftt-booking-site/`, `vakaviti-root/`, `vakaviti/`, `pages/`, `partners/`,
+`microsites/`) — zero changes. The only diff anywhere near "production" is `docs/BUILD.md` /
+`docs/VAKAVITI-BRAIN.md`, and that's `main` having advanced independently since this branch forked
+(confirmed the docs-touching commits on this branch all predate Milestone 1's first commit) — not
+anything this build did. `workers/chat-widget/worker.js` specifically: zero commits touching it
+anywhere in this branch's own history.
+
+**8. Rollback — precondition verified; the literal traffic-revert test doesn't apply yet.** No
+cutover has happened, so there is no live traffic currently pointing at `nadi-marketplace` to roll
+back from — reported honestly rather than simulating a test that can't meaningfully run pre-cutover.
+What **is** verified, directly via the Cloudflare API (`wrangler pages project list`): the
+`nadi-marketplace-staging` Pages project's only domains are `nadi-marketplace-staging.pages.dev` and
+`driver.vakaviti.ai`; the separate `nadiairporttransfers` project's domains are
+`nadiairporttransfers.com`/`www.nadiairporttransfers.com`/`fttlandingpage.pages.dev` — zero overlap.
+If `nadi-marketplace-staging` were disabled entirely right now, it would have zero effect on live
+guest traffic, because nothing currently routes through it. The real rollback drill (disable staging
+mid-cutover, confirm zero guest-visible disruption) is only meaningful after cutover happens, which
+per instruction hasn't and won't without explicit sign-off.
+
+### Cleanup
+
+All Section 9 test data (2 drivers, 2 vehicles, 1 booking, wallets, wallet_transactions, login
+tokens, 1 fuel_index_pending test row, 1 fuel_index test row) deleted. Re-verified via direct
+`SELECT COUNT(*)` — all six driver/booking-related tables at `0`, `fuel_index` back to exactly 1 row
+(the real seeded baseline).
 
 ## Branch
 
