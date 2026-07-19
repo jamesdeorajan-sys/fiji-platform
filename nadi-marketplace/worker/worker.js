@@ -37,7 +37,15 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
 const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
 const MAGIC_LINK_TTL_SECONDS = 7 * 24 * 3600; // 7 days
-const DRIVER_LOGIN_TEMPLATE = 'vakaviti_driver_login';
+const DRIVER_WELCOME_TEMPLATE = 'vakaviti_driver_welcome';
+// NOT the same language code as vakaviti_lead_alert_v2 (en_AU) - confirmed via a
+// live test that assumption would have been wrong. For vakaviti_driver_welcome
+// specifically: en_AU and en_US both 404'd ("does not exist"), plain 'en'
+// returned 200 with a real WAMID (Meta API acceptance confirmed - real-device
+// delivery confirmation pending as of this commit, see Milestone 3 report).
+// Each template's approved language is its own fact to verify, not something
+// to carry over from a different template.
+const WHATSAPP_LANG_CODE = 'en';
 const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
 // Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
 // rejecting both driver-facing templates over the .pages.dev domain itself.
@@ -385,7 +393,7 @@ async function handleAdminApprove(request, env, driverId) {
     `INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, ?)`
   ).bind(driverId, token, expiresAt).run();
 
-  const whatsappResult = await sendMagicLinkWhatsApp(env, driver.phone, token, driver.name);
+  const whatsappResult = await sendDriverWelcomeWhatsApp(env, driver.phone, driver.name, token);
 
   return json({
     ok: true,
@@ -454,10 +462,47 @@ async function sendWhatsAppTemplate(env, phone, templateName, bodyParams) {
   }
 }
 
-async function sendMagicLinkWhatsApp(env, phone, token, driverName) {
-  const loginUrl = `${DRIVER_APP_URL}?token=${token}`;
-  // vakaviti_driver_login body: {{1}} driver name, {{2}} login link
-  return sendWhatsAppTemplate(env, phone, DRIVER_LOGIN_TEMPLATE, [driverName || 'Driver', loginUrl]);
+// Separate, self-contained function rather than reusing sendWhatsAppTemplate -
+// vakaviti_driver_welcome has both a body variable AND a dynamic URL button
+// variable, which Meta requires as two SEPARATE component entries in the
+// components array (a 'body' component and a 'button' component with
+// sub_type: 'url' and index: '0'), not one combined parameter list. The
+// button parameter is just the token itself - the template's own configured
+// button URL already has "https://driver.vakaviti.ai/driver-app?token={{1}}"
+// baked in, so we only supply the {{1}} substitution, not the full URL.
+// Kept fully separate from sendWhatsAppTemplate so vakaviti_booking_broadcast
+// (untouched, still en_US, still body-only) can't be affected by this change.
+async function sendDriverWelcomeWhatsApp(env, phone, driverName, token) {
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
+  }
+  const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanNumber || cleanNumber.length < 8) {
+    return { attempted: false, reason: 'Phone number invalid for WhatsApp send.' };
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanNumber,
+        type: 'template',
+        template: {
+          name: DRIVER_WELCOME_TEMPLATE,
+          language: { code: WHATSAPP_LANG_CODE },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: driverName || 'Driver' }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
+          ],
+        },
+      }),
+    });
+    const bodyText = await res.text().catch(() => '');
+    return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
 }
 
 async function sendBookingBroadcastWhatsApp(env, phone, booking) {
@@ -513,7 +558,15 @@ async function handleDriverLogin(request, env) {
   const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000).toISOString();
   await env.DB.prepare(`INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, ?)`).bind(driver.id, token, expiresAt).run();
 
-  const whatsappResult = await sendMagicLinkWhatsApp(env, driver.phone, token, driver.name);
+  // No approved template for a returning-driver re-login exists yet -
+  // vakaviti_driver_login/_v2 are abandoned/rejected, not referenced here or
+  // anywhere else. vakaviti_driver_welcome's copy ("your application has been
+  // approved... get started with your first job") is specific to first-time
+  // approval and wouldn't make sense resent to an already-active driver, so
+  // it isn't reused here either. The token above is still real and valid in
+  // D1 - only the WhatsApp delivery is unavailable until a dedicated
+  // re-login template is designed and submitted (not in this milestone's scope).
+  const whatsappResult = { attempted: false, reason: 'No approved WhatsApp template for driver re-login yet.' };
   return json({ ok: true, message: 'If this number is a verified driver, a login link has been sent.', whatsapp: whatsappResult }, 200);
 }
 
