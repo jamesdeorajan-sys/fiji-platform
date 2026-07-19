@@ -58,15 +58,16 @@ const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
 // code - there is no pattern to infer from, each one must be checked.
 const BOOKING_BROADCAST_LANG_CODE = 'en';
 
-// vakaviti_driver_return - returning-driver re-login, submitted separately
-// (Marketing category, per James - Utility rejected the driver_login attempts
-// earlier tonight). NOT YET ACTIVE as of this commit - sendDriverReturnWhatsApp
-// exists and is wired up below, but must not be live-tested until James
-// confirms approval, same discipline as every other template tonight.
+// vakaviti_driver_return - returning-driver re-login (Marketing category, per
+// James - Utility rejected the driver_login attempts earlier tonight). Now
+// Active and Meta-API-confirmed: a live test (temporary Worker version, sent
+// to +61 478 886 145, torn down after) returned 200 with a real WAMID.
+// Real-device delivery confirmation from James is the last step before this
+// counts as genuinely done, same standard as the other three templates.
 const DRIVER_RETURN_TEMPLATE = 'vakaviti_driver_return';
-// Unverified starting guess, exactly the kind of assumption that turned out
-// wrong for vakaviti_driver_welcome - do not trust this until a real live
-// test confirms it once the template is Active.
+// 'en' worked on the first attempt, confirmed via the same live test above -
+// this happened to be a correct guess, but was verified rather than trusted
+// on the strength of that guess alone.
 const DRIVER_RETURN_LANG_CODE = 'en';
 // Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
 // rejecting both driver-facing templates over the .pages.dev domain itself.
