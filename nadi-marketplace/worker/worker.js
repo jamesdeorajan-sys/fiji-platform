@@ -39,7 +39,9 @@ const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
 const MAGIC_LINK_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const DRIVER_LOGIN_TEMPLATE = 'vakaviti_driver_login';
 const BOOKING_BROADCAST_TEMPLATE = 'vakaviti_booking_broadcast';
-const DRIVER_APP_URL = 'https://nadi-marketplace-staging.pages.dev/driver-app';
+// Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
+// rejecting both driver-facing templates over the .pages.dev domain itself.
+const DRIVER_APP_URL = 'https://driver.vakaviti.ai/driver-app';
 
 export default {
   async fetch(request, env, ctx) {
