@@ -1678,14 +1678,21 @@ async function sendWebhookNotification(url, payload) {
 }
 
 async function sendWhatsAppNotification(env, toNumber, name, contact, intent, score, leadId, travelDates, groupSize) {
-  // v58: Meta Cloud API WhatsApp notify via approved template (vakaviti_lead_alert)
+  // v58: Meta Cloud API WhatsApp notify via approved template (vakaviti_lead_alert_v2)
   // Free-form text (v56) only delivers inside an open 24h customer-service window.
   // Lead alerts are business-initiated with no such window open, so Meta silently
   // dropped delivery while still returning 200 + a real WAMID - confirmed via a
   // controlled test (same send failed with no window open, succeeded once James
   // opened one by messaging first). Templates bypass the window entirely.
+  // v2: original submission (vakaviti_lead_alert) was created under the wrong WABA
+  // - Graph API calls from this Worker's actual phone number/WABA (Test WhatsApp
+  // Business Account, 415031440523931) got a real 404 "does not exist" for every
+  // language code tried, confirmed via a live test. Resubmitted as
+  // vakaviti_lead_alert_v2 under the correct WABA. Also drops the 8th parameter
+  // (lead ID) that was never part of the approved template - it has exactly 7
+  // variables (heat tier, score, name, contact, service, group size, dashboard link).
   // Requires env.WHATSAPP_TOKEN and env.WHATSAPP_PHONE_ID Worker secrets, and the
-  // 'vakaviti_lead_alert' template approved in Meta Business Manager.
+  // 'vakaviti_lead_alert_v2' template approved in Meta Business Manager.
   try {
     const cleanNumber = (toNumber || '').replace(/[^0-9]/g, '');
     if (!cleanNumber || cleanNumber.length < 8) return false;
@@ -1698,7 +1705,7 @@ async function sendWhatsAppNotification(env, toNumber, name, contact, intent, sc
         to: cleanNumber,
         type: 'template',
         template: {
-          name: 'vakaviti_lead_alert',
+          name: 'vakaviti_lead_alert_v2',
           language: { code: 'en_US' },
           components: [{
             type: 'body',
@@ -1709,7 +1716,6 @@ async function sendWhatsAppNotification(env, toNumber, name, contact, intent, sc
               { type: 'text', text: contact || 'not provided' },
               { type: 'text', text: intent },
               { type: 'text', text: groupSize ? String(groupSize) : 'not mentioned' },
-              { type: 'text', text: leadId },
               { type: 'text', text: 'https://dashboard.vakaviti.ai' },
             ],
           }],
