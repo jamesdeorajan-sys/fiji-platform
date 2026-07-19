@@ -515,13 +515,37 @@ every other tunable in this build.
 
 ### Still open (not blockers for this task, flagged as instructed)
 
-- `platform_settings.admin_alert_phone` is still empty — no real number given for fuel/WhatsApp
-  alerts.
+- ~~`platform_settings.admin_alert_phone` is still empty~~ — set to `+61478886145` in a later session,
+  confirmed via a real `SELECT`, and confirmed both `checkFuelIndexUpdate()` and
+  `handleAdminFuelIndexSubmit()` read it live at call time (no code change needed).
 - Cutover authorization itself is undecided — this endpoint existing doesn't change that; it's still
   a separate, explicit sign-off whenever James is ready.
 - `cutover-plan.md`'s step 2 (deciding whether the WhatsApp-handoff stays as a fallback once
   `app.js` is wired to this endpoint) is a real product decision, not made here — this milestone only
   built the endpoint side.
+
+## Operational update — WHATSAPP_TOKEN / WHATSAPP_PHONE_ID set, real delivery confirmed
+
+The gap that had blocked every WhatsApp send on this branch since Milestone 2 is closed.
+`WHATSAPP_TOKEN` and `WHATSAPP_PHONE_ID` were deliberately never set on this Worker until now —
+copying `fiji-chat-widget`'s values wasn't possible (Cloudflare secrets are write-only; `wrangler
+secret list` confirmed the same binding *names* exist there but values are never retrievable by
+anyone, including James) and would have broken this build's stated zero-shared-secrets guarantee
+anyway. James generated a fresh, dedicated Meta System User token via Meta Business Suite (same App
+ID `1700903951357623`, same scopes as the one already working on `fiji-chat-widget`) specifically for
+`nadi-dispatch-api`, and provided both values directly for `wrangler secret put` — neither was ever
+committed to git or written to `wrangler.toml`.
+
+**Real evidence:** re-triggered `vakaviti_driver_return` (`POST /driver/login`) and
+`vakaviti_driver_welcome` (`POST /admin/drivers/:id/approve`) against a real test driver — both
+returned real `200`s with real WAMIDs from the Graph API. Per the standing discipline on this build, a
+`200` isn't treated as delivery proof — James checked his own phone and provided a real screenshot:
+both messages arrived, with `vakaviti_driver_welcome`'s `{{1}}` correctly substituted with the real
+submitted driver name ("WhatsApp Delivery Test"). Real finding surfaced by that screenshot: messages
+arrived from **+1 (555) 641-4099**, not +61 478 886 145 — phone ID `1134456946416024` is bound to
+Meta's WhatsApp test/sandbox number for this WABA, not the +61 number referenced elsewhere in the
+spec's architecture notes. Worth knowing before assuming the sender identity on a future real send.
+Test driver, vehicle, wallet, and login token deleted afterward, re-verified at `0`.
 
 ## Branch
 
