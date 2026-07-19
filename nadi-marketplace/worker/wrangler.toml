@@ -1,0 +1,27 @@
+name = "nadi-dispatch-api"
+main = "worker.js"
+compatibility_date = "2026-07-19"
+account_id = "595101df2c562b3c65595420d43f9fe1"
+
+# Fully isolated from fiji-chat-widget / vakaviti-kb — see nadi-marketplace/README.md
+# "Isolation" section. No KV, no Vectorize, no AI, no shared secrets.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nadi-marketplace-db"
+database_id = "0ec1cd84-fcda-4f7f-8337-0fb70fe1a512"
+
+[[r2_buckets]]
+binding = "DOCS"
+bucket_name = "nadi-marketplace-driver-docs"
+
+# Milestone 4: max-hours-cap sweep. Every 15 minutes — frequent enough that a
+# driver is rarely more than 15 minutes past their cap before being forced
+# offline, without hammering D1. Same enforceMaxHoursCap() the admin-only
+# POST /admin/max-hours-sweep endpoint calls on demand.
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Secrets (ADMIN_TOKEN, DOC_SIGNING_SECRET, and the not-yet-set
+# WHATSAPP_TOKEN/WHATSAPP_PHONE_ID) are set via `wrangler secret put` /
+# the dashboard, not committed here — same as every prior milestone.

@@ -189,11 +189,92 @@ escaping hazard entirely rather than just patching this one instance.
 Pushed to `nadi-marketplace-phase1-staging` — Pages auto-deploy (connected in Milestone 2) picks up
 `staging-site/driver-app.html` automatically.
 
+## Milestone 4 — wallet lockout, commission accrual, max-hours cap (spec Section 4 remainder)
+
+### Before writing anything: verified the live schema, didn't assume it
+
+Ran `PRAGMA table_info()` directly against the live `nadi-marketplace-db` for `drivers`, `wallets`,
+and `wallet_transactions` before touching any migration. `wallets.balance_fjd` and
+`wallet_transactions.amount_fjd`/`type` already existed from Milestone 1's schema, matching the
+spec exactly — no `balance_cents` mismatch, no CREATE needed for either table. The only real gap:
+nothing tracked the mandatory rest gap after a max-hours-cap forced-offline. Migration:
+`migrations/milestone4-schema.sql` — `ALTER TABLE drivers ADD COLUMN forced_offline_until TEXT`,
+plus three new `platform_settings` rows (`wallet_lockout_threshold_fjd=-150`,
+`max_hours_rest_gap_hours=8`, `default_commission_rate=0.15` — all three confirmed with James
+before writing the migration, not assumed). Applied via `wrangler d1 execute --remote`, verified
+live afterward with an independent `SELECT`/`PRAGMA`, not just trusted because the apply command
+reported success.
+
+### What's built — new logic in `worker/worker.js`
+
+- **`accrueCommission(env, booking)`** — called from `POST /driver/bookings/:id/status` only when a
+  booking transitions to `completed` **and** `payment_method = 'cash'` (test plan Section 9 is
+  explicit that only cash trips accrue wallet debt; prepay is Stripe/Phase 3, out of scope). Uses
+  the booking's own `commission_rate` if set, else falls back to `platform_settings.
+  default_commission_rate`. Writes the `wallet_transactions` row and the `wallets.balance_fjd`
+  update in a single `env.DB.batch()` so a partial write can't happen.
+- **`enforceWalletLockout(env, driverId)`** — reads the live `wallets` row (never a cached balance)
+  and compares against `platform_settings.wallet_lockout_threshold_fjd`. Wired into both
+  `POST /driver/online` (going online) and `POST /driver/bookings/:id/accept` — both return a real
+  `403` with the current balance and threshold in the body, not a generic error.
+- **`enforceMaxHoursCap(env)`** — finds every online driver whose current stint has reached
+  `max_hours_cap`, forces them offline, and sets `forced_offline_until` using
+  `platform_settings.max_hours_rest_gap_hours`. `POST /driver/online` checks this column and
+  returns `403` with `resting_until` if a driver tries to go online before the gap has passed.
+  Called from **both** the new `scheduled()` export (Cron Trigger, `*/15 * * * *`, added to a new
+  `worker/wrangler.toml` — none existed before this milestone, previous deploys had no committed
+  config) and a new admin-only `POST /admin/max-hours-sweep` endpoint — one shared implementation,
+  not two that could drift apart. The admin endpoint doubles as a legitimate manual override, not
+  just a test hook.
+
+### Real evidence — every claim below independently re-checked via a direct D1 `SELECT`, not just trusted from an API response
+
+1. **Commission accrual**: real test driver approved via the live `/admin/drivers/:id/approve`
+   endpoint (wallet auto-created at `balance_fjd=0`), brought online, a real `$100 FJD` cash test
+   booking created via `/admin/test-booking`, accepted, taken through `en_route → completed`. API
+   response reported `commission_fjd: 15, new_balance_fjd: -15` (default 15% rate, since this test
+   booking had no per-booking `commission_rate`) — independently `SELECT`ed both `wallets.balance_fjd`
+   (`-15`) and the new `wallet_transactions` row (`amount_fjd: -15, type: 'commission_owed'`)
+   directly, not just trusted the response body.
+2. **Wallet lockout**: `wallets.balance_fjd` pushed to `-160` via a direct D1 `UPDATE` (past the
+   `-150` threshold). `POST /driver/online` → real `403`, full response body:
+   `{"error":"Wallet balance below the allowed threshold...","balance_fjd":-160,"threshold_fjd":-150}`.
+   A second real booking created and `POST /driver/bookings/:id/accept` attempted while still locked
+   out → also a real `403` with the same balance/threshold detail.
+3. **Max-hours cap — logic correctness**: `drivers.online_since` set to 13 hours ago via direct D1
+   `UPDATE` (`max_hours_cap` default is 12). Called `POST /admin/max-hours-sweep` →
+   `forced_offline_driver_ids: [1]`. Independently `SELECT`ed the driver row:
+   `online=0, online_since=NULL, forced_offline_until` set to exactly 8 hours after the sweep ran.
+   Confirmed the rest-gap block works too: `POST /driver/online` while resting → real `403`,
+   `{"error":"Resting after reaching your max-hours cap.","resting_until":"..."}`.
+4. **Max-hours cap — the actual Cron Trigger, not just the function it calls**: reset the same
+   driver back into an over-cap online state, then made **zero** further calls to the Worker and
+   polled D1 directly every ~25 seconds for 12 minutes. The driver flipped to `online=0` at
+   `13:30:09`, exactly on the `*/15 * * * *` boundary, with `forced_offline_until` correctly set —
+   proof the real, deployed Cloudflare Cron Trigger fired on its own and invoked `scheduled()`
+   correctly, not just that the underlying function works when called directly.
+5. **Cleanup**: test driver, vehicle, wallet, wallet_transactions row, both test bookings, and the
+   login token all deleted. Re-verified via `SELECT COUNT(*)` across all six affected tables —
+   every one back to `0`, not just trusted because the delete statements reported success.
+
+### Operational note
+
+`ADMIN_TOKEN` was rotated during this milestone's testing (the original Milestone 2 token's value
+was never committed anywhere and wasn't available to authenticate test calls) — a fresh token was
+generated and set via `wrangler secret put`, given to James directly, not committed to git or this
+file. Any tooling using the old admin token (e.g. `staging-site/admin-drivers.html` sessions) will
+need the new one.
+
 ## Explicitly not built this milestone
 
-Wallet view, commission accrual, max-hours cap (rest of spec Section 4), fuel index cron
+**Wallet view UI** in the driver PWA (`staging-site/driver-app.html`) — spec Section 4 nominally
+includes it, but this milestone's brief was specifically the backend three functions + cron, and
+adding UI work that wasn't asked for is scope creep. The API already returns everything a wallet
+view would need (`commission` on the status-completed response; balance is readable via a direct
+`wallets` query, no dedicated read endpoint exists yet). Also still not built: fuel index cron
 (Section 7), guest widget fuel-price line (Section 8), real guest booking integration (still
-manually-inserted test bookings), cutover (Section 9).
+manually-inserted test bookings), cutover (Section 9), and a `wallets`/balance read endpoint for the
+driver PWA or admin dashboard (Section 5's "wallet/balance overview" is still entirely unbuilt).
 
 ## Branch
 

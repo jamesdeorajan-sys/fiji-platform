@@ -134,3 +134,16 @@ INSERT INTO zones (name) VALUES ('Ba');
 INSERT INTO zones (name) VALUES ('Rakiraki');
 INSERT INTO zones (name) VALUES ('Suva');
 INSERT INTO zones (name) VALUES ('Nausori');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 4 additions — wallet lockout + max-hours cap (spec
+-- Section 4 remainder). See migrations/milestone4-schema.sql for the
+-- migration actually run against the live database; this block keeps
+-- schema.sql (the from-scratch reference) in sync with it.
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE drivers ADD COLUMN forced_offline_until TEXT;
+
+INSERT INTO platform_settings (key, value) VALUES ('wallet_lockout_threshold_fjd', '-150');
+INSERT INTO platform_settings (key, value) VALUES ('max_hours_rest_gap_hours', '8');
+INSERT INTO platform_settings (key, value) VALUES ('default_commission_rate', '0.15');

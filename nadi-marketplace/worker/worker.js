@@ -2,11 +2,12 @@
  * Nadi Airport Transfers — Driver Marketplace Backend
  * nadi-dispatch-api
  *
- * Phase 1, Milestone 3: driver PWA login, online/offline + zones, job feed,
- * atomic accept, dispatch broadcast, status transitions (spec sections 4 & 6).
- * Wallet/commission/max-hours-cap (rest of Section 4), fuel index cron
- * (Section 7), guest widget change (Section 8), and cutover (Section 9)
- * are still out of scope.
+ * Phase 1, Milestone 4: wallet lockout + commission accrual + max-hours cap
+ * (rest of spec Section 4), on top of Milestone 3's driver PWA login,
+ * online/offline + zones, job feed, atomic accept, dispatch broadcast, and
+ * status transitions (spec sections 4 & 6).
+ * Fuel index cron (Section 7), guest widget change (Section 8), and
+ * cutover (Section 9) are still out of scope.
  *
  * Fully isolated: separate script, separate D1 database (nadi-marketplace-db),
  * separate R2 bucket (nadi-marketplace-driver-docs), zero shared bindings
@@ -142,7 +143,21 @@ export default {
       return handleAdminTestBooking(request, env);
     }
 
+    // ── Milestone 4: wallet lockout + max-hours cap ──
+    if (request.method === 'POST' && url.pathname === '/admin/max-hours-sweep') {
+      return handleAdminMaxHoursSweep(request, env);
+    }
+
     return json({ error: 'Not found.' }, 404);
+  },
+
+  // Max-hours-cap sweep. Registered as a Cron Trigger in wrangler.toml
+  // (every 15 minutes) — same enforceMaxHoursCap() logic the admin-only
+  // /admin/max-hours-sweep endpoint calls on demand, so a manual run and a
+  // real cron fire are provably identical, not two code paths that could
+  // drift apart.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(enforceMaxHoursCap(env));
   },
 };
 
@@ -154,7 +169,7 @@ async function handleHealth(env) {
   const status = {
     service: 'nadi-dispatch-api',
     phase: 1,
-    milestone: 'driver-onboarding',
+    milestone: 'wallet-lockout-and-max-hours-cap',
     db_connected: false,
     r2_connected: !!env.DOCS,
     tables: [],
@@ -594,7 +609,7 @@ async function requireDriver(request, env) {
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
   const row = await env.DB.prepare(
-    `SELECT d.id, d.name, d.phone, d.status, d.zones, d.online, d.online_since
+    `SELECT d.id, d.name, d.phone, d.status, d.zones, d.online, d.online_since, d.forced_offline_until
      FROM driver_login_tokens t
      JOIN drivers d ON d.id = t.driver_id
      WHERE t.token = ? AND t.expires_at > datetime('now') AND d.status = 'verified'`
@@ -662,6 +677,13 @@ async function handleDriverOnline(request, env) {
   const zones = Array.isArray(body.zones) ? body.zones.map((z) => String(z).trim()).filter(Boolean) : null;
 
   if (online) {
+    if (driver.forced_offline_until && driver.forced_offline_until > sqliteNow()) {
+      return json({ error: 'Resting after reaching your max-hours cap.', resting_until: driver.forced_offline_until }, 403);
+    }
+    const locked = await enforceWalletLockout(env, driver.id);
+    if (locked.locked) {
+      return json({ error: 'Wallet balance below the allowed threshold. Settle your balance to go online.', balance_fjd: locked.balance_fjd, threshold_fjd: locked.threshold_fjd }, 403);
+    }
     if (!zones || zones.length === 0) return json({ error: 'At least one zone is required to go online.' }, 400);
     const validZones = await getValidZoneNames(env);
     const invalid = zones.filter((z) => !validZones.has(z));
@@ -703,6 +725,11 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
   const driver = await requireDriver(request, env);
   if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
 
+  const locked = await enforceWalletLockout(env, driver.id);
+  if (locked.locked) {
+    return json({ error: 'Wallet balance below the allowed threshold. Settle your balance before accepting jobs.', balance_fjd: locked.balance_fjd, threshold_fjd: locked.threshold_fjd }, 403);
+  }
+
   const result = await env.DB.prepare(
     `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted' WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
   ).bind(driver.id, bookingId).run();
@@ -735,7 +762,9 @@ async function handleDriverBookingStatus(request, env, bookingId) {
   const newStatus = (body.status || '').toString();
   if (!['en_route', 'completed'].includes(newStatus)) return json({ error: "status must be 'en_route' or 'completed'" }, 400);
 
-  const booking = await env.DB.prepare(`SELECT id, assigned_driver_id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
+  const booking = await env.DB.prepare(
+    `SELECT id, assigned_driver_id, status, payment_method, settlement_amount_fjd, commission_rate FROM bookings WHERE id = ?`
+  ).bind(bookingId).first();
   if (!booking) return json({ error: 'Booking not found.' }, 404);
   if (booking.assigned_driver_id !== driver.id) return json({ error: 'This booking is not assigned to you.' }, 403);
 
@@ -745,7 +774,13 @@ async function handleDriverBookingStatus(request, env, bookingId) {
   }
 
   await env.DB.prepare(`UPDATE bookings SET status = ? WHERE id = ?`).bind(newStatus, bookingId).run();
-  return json({ ok: true, booking_id: bookingId, status: newStatus }, 200);
+
+  let commission = null;
+  if (newStatus === 'completed' && booking.payment_method === 'cash') {
+    commission = await accrueCommission(env, booking);
+  }
+
+  return json({ ok: true, booking_id: bookingId, status: newStatus, commission }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -795,8 +830,99 @@ async function handleAdminTestBooking(request, env) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// MILESTONE 4 — wallet lockout, commission accrual, max-hours cap
+// (spec Section 4 remainder). Thresholds live in platform_settings, not
+// hardcoded, so they can change without a redeploy — same pattern as
+// fuel_auto_apply from Milestone 1.
+// ═══════════════════════════════════════════════════════════════
+
+async function getSetting(env, key, fallback) {
+  const row = await env.DB.prepare(`SELECT value FROM platform_settings WHERE key = ?`).bind(key).first();
+  return row ? row.value : fallback;
+}
+
+// Balance <= threshold (both negative-or-zero, threshold e.g. -150) means
+// locked out. Reads the live wallets row rather than trusting any cached
+// balance, since this gates real actions (accept, go-online).
+async function enforceWalletLockout(env, driverId) {
+  const thresholdRaw = await getSetting(env, 'wallet_lockout_threshold_fjd', '-150');
+  const threshold = Number(thresholdRaw);
+  const wallet = await env.DB.prepare(`SELECT balance_fjd FROM wallets WHERE driver_id = ?`).bind(driverId).first();
+  const balance = wallet ? wallet.balance_fjd : 0;
+  return { locked: balance <= threshold, balance_fjd: balance, threshold_fjd: threshold };
+}
+
+// Debits the driver's wallet for a completed cash trip's commission. Only
+// called for payment_method = 'cash' (test plan section 9) — prepay trips
+// are Stripe/Phase 3, out of scope, and settle differently. Uses the
+// booking's own commission_rate if set, otherwise platform_settings'
+// default_commission_rate (0.15) — per-booking always wins so pricing_rules-
+// driven overrides later aren't clobbered by the platform default.
+// wallets.balance_fjd and the wallet_transactions insert are written via
+// batch() so a partial write (transaction logged but balance not updated,
+// or vice versa) can't happen.
+async function accrueCommission(env, booking) {
+  const rateRaw = booking.commission_rate ?? await getSetting(env, 'default_commission_rate', '0.15');
+  const rate = Number(rateRaw);
+  const commission = Math.round(booking.settlement_amount_fjd * rate * 100) / 100;
+
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO wallets (driver_id, balance_fjd) VALUES (?, 0)`).bind(booking.assigned_driver_id),
+    env.DB.prepare(
+      `INSERT INTO wallet_transactions (driver_id, booking_id, amount_fjd, type) VALUES (?, ?, ?, 'commission_owed')`
+    ).bind(booking.assigned_driver_id, booking.id, -commission),
+    env.DB.prepare(
+      `UPDATE wallets SET balance_fjd = balance_fjd - ?, updated_at = datetime('now') WHERE driver_id = ?`
+    ).bind(commission, booking.assigned_driver_id),
+  ]);
+
+  const wallet = await env.DB.prepare(`SELECT balance_fjd FROM wallets WHERE driver_id = ?`).bind(booking.assigned_driver_id).first();
+  return { rate, commission_fjd: commission, new_balance_fjd: wallet.balance_fjd };
+}
+
+// Forces offline any driver whose current online stint has run at or past
+// their max_hours_cap, and starts their rest-gap clock. Called both by the
+// scheduled() Cron Trigger and the /admin/max-hours-sweep endpoint below —
+// same function, so there is exactly one implementation of this rule to
+// verify, not two that could silently diverge.
+async function enforceMaxHoursCap(env) {
+  const restGapHours = Number(await getSetting(env, 'max_hours_rest_gap_hours', '8'));
+
+  const overCap = await env.DB.prepare(
+    `SELECT id FROM drivers
+     WHERE online = 1 AND online_since IS NOT NULL
+       AND (julianday('now') - julianday(online_since)) * 24 >= max_hours_cap`
+  ).all();
+
+  const forced = [];
+  for (const row of overCap.results || []) {
+    await env.DB.prepare(
+      `UPDATE drivers SET online = 0, online_since = NULL, forced_offline_until = datetime('now', '+' || ? || ' hours') WHERE id = ?`
+    ).bind(restGapHours, row.id).run();
+    forced.push(row.id);
+  }
+
+  return { checked_at: sqliteNow(), rest_gap_hours: restGapHours, forced_offline_driver_ids: forced };
+}
+
+async function handleAdminMaxHoursSweep(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+  const result = await enforceMaxHoursCap(env);
+  return json({ ok: true, ...result }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // UTIL
 // ═══════════════════════════════════════════════════════════════
+
+function sqliteNow() {
+  // Matches SQLite's datetime('now') format (UTC, 'YYYY-MM-DD HH:MM:SS') so
+  // string comparison against columns like forced_offline_until is valid —
+  // Date#toISOString()'s 'T'/'Z'/milliseconds would otherwise break the
+  // lexicographic comparison.
+  return new Date().toISOString().slice(0, 19).replace('T', ' ');
+}
 
 function json(obj, status) {
   return new Response(JSON.stringify(obj, null, 2), {
