@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nadi Marketplace — Destinations Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin: 28px 0 12px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gateErr { color: var(--red); font-size: 13px; margin-top: 8px; display: none; }
+
+  .add-form { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end; }
+  .add-form label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+  .add-form input, .add-form select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+  .add-form button { background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .add-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #addMsg { grid-column: 1 / -1; font-size: 13px; padding: 6px 10px; border-radius: 6px; display: none; }
+  #addMsg.ok { display: block; background: #e5f5ea; color: #1a5c34; }
+  #addMsg.err { display: block; background: #fdeaea; color: #8a1f1f; }
+
+  .zone-group { margin-bottom: 20px; }
+  .zone-title { font-weight: 700; font-size: 15px; color: var(--ocean); margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+  th { background: #f2ece0; font-weight: 600; color: #666; }
+  tr:last-child td { border-bottom: none; }
+  tr.inactive { opacity: 0.5; }
+  .type-badge { display: inline-block; background: #eef4f7; color: var(--ocean); border-radius: 10px; padding: 2px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .row-actions { display: flex; gap: 6px; }
+  .btn-sm { border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-deactivate { background: var(--red); color: #fff; }
+  .btn-activate { background: var(--green); color: #fff; }
+  .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+  .empty { color: #888; font-size: 14px; padding: 30px 0; text-align: center; }
+  select.zone-edit { padding: 4px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter the admin token to manage destinations.</p>
+  <input type="password" id="tokenInput" placeholder="Admin token">
+  <button id="gateBtn">Enter</button>
+  <div id="gateErr">Invalid token or connection error.</div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Destinations</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <h2>Add a new destination</h2>
+  <div class="add-form">
+    <div>
+      <label for="newName">Name</label>
+      <input type="text" id="newName" placeholder="e.g. Novotel Nadi">
+    </div>
+    <div>
+      <label for="newType">Type</label>
+      <select id="newType">
+        <option value="hotel">Hotel</option>
+        <option value="airport">Airport</option>
+        <option value="port">Port</option>
+        <option value="town">Town</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div>
+      <label for="newZone">Zone</label>
+      <select id="newZone"><option value="">Loading zones…</option></select>
+    </div>
+    <button id="addBtn">Add destination</button>
+    <div id="addMsg"></div>
+  </div>
+
+  <div id="list" style="margin-top:24px;"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadDestinations();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      loadZonesIntoSelect();
+      return true;
+    }
+    return false;
+  }
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      document.getElementById('gateErr').style.display = 'block';
+    }
+  });
+
+  async function loadZonesIntoSelect() {
+    const sel = document.getElementById('newZone');
+    try {
+      const res = await fetch(API_URL + '/zones');
+      const data = await res.json();
+      sel.innerHTML = (data.zones || []).map(z => `<option value="${escHtml(z.name)}">${escHtml(z.name)}</option>`).join('');
+    } catch {
+      sel.innerHTML = '<option value="">Could not load zones</option>';
+    }
+  }
+
+  let allDestinations = [];
+
+  async function loadDestinations() {
+    try {
+      const res = await fetch(API_URL + '/admin/destinations', { headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN } });
+      if (!res.ok) return false;
+      const data = await res.json();
+      allDestinations = data.destinations || [];
+      renderList();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function renderList() {
+    const activeCount = allDestinations.filter(d => d.active).length;
+    document.getElementById('subline').textContent =
+      allDestinations.length + ' destination' + (allDestinations.length === 1 ? '' : 's') +
+      ' (' + activeCount + ' active)';
+
+    const listEl = document.getElementById('list');
+    if (allDestinations.length === 0) {
+      listEl.innerHTML = '<div class="empty">No destinations yet.</div>';
+      return;
+    }
+
+    const byZone = new Map();
+    for (const d of allDestinations) {
+      if (!byZone.has(d.zone)) byZone.set(d.zone, []);
+      byZone.get(d.zone).push(d);
+    }
+
+    listEl.innerHTML = [...byZone.entries()].map(([zone, dests]) => `
+      <div class="zone-group">
+        <div class="zone-title">${escHtml(zone)}</div>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Order</th><th></th></tr></thead>
+          <tbody>
+            ${dests.map(d => `
+              <tr class="${d.active ? '' : 'inactive'}" data-id="${d.id}">
+                <td>${escHtml(d.name)}</td>
+                <td><span class="type-badge">${escHtml(d.type)}</span></td>
+                <td>${d.display_order == null ? '—' : d.display_order}</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-sm ${d.active ? 'btn-deactivate' : 'btn-activate'}" onclick="toggleActive(${d.id}, ${!d.active}, this)">
+                      ${d.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('addBtn').addEventListener('click', async () => {
+    const name = document.getElementById('newName').value.trim();
+    const type = document.getElementById('newType').value;
+    const zone = document.getElementById('newZone').value;
+    const msgEl = document.getElementById('addMsg');
+    const btn = document.getElementById('addBtn');
+
+    if (!name || !zone) {
+      msgEl.className = 'err'; msgEl.textContent = 'Name and zone are required.'; msgEl.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/destinations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+        body: JSON.stringify({ name, type, zone }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        msgEl.className = 'ok'; msgEl.textContent = 'Added "' + name + '".'; msgEl.style.display = 'block';
+        document.getElementById('newName').value = '';
+        await loadDestinations();
+      } else {
+        msgEl.className = 'err'; msgEl.textContent = (data.errors || [data.error] || ['Failed to add.']).join(', '); msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function toggleActive(id, makeActive, btnEl) {
+    btnEl.disabled = true;
+    try {
+      let res;
+      if (makeActive) {
+        res = await fetch(`${API_URL}/admin/destinations/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+          body: JSON.stringify({ active: true }),
+        });
+      } else {
+        res = await fetch(`${API_URL}/admin/destinations/${id}/deactivate`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+        });
+      }
+      if (res.ok) {
+        await loadDestinations();
+      } else {
+        btnEl.disabled = false;
+        alert('Could not update destination.');
+      }
+    } catch {
+      btnEl.disabled = false;
+      alert('Connection error.');
+    }
+  }
+
+  tryLoad();
+</script>
+</body>
+</html>

@@ -2,19 +2,24 @@
  * Nadi Airport Transfers — Driver Marketplace Backend
  * nadi-dispatch-api
  *
- * Phase 1, Milestone 6: public POST /bookings — the missing piece
+ * Phase 1, Milestone 7: dynamic destinations system (Item 2) — moves
+ * ROUTES_DATA's hardcoded 35-destination list (ftt-booking-site/src/app.js,
+ * read only, never modified) into real D1 data with admin CRUD, so a new
+ * hotel/destination doesn't need a code deploy. Backend + admin tooling
+ * only — the live guest widget is NOT wired to this yet, deliberately.
+ * Also: driver phone validation temporarily accepts +61 Australian mobile
+ * numbers alongside +679 Fiji ones (normaliseDriverPhone()) — a deliberate,
+ * TEMPORARY allowance for James's own pre-launch testing, not a product
+ * decision to support Australian drivers. Real launch scope is Fiji only.
+ * On top of Milestone 6's public POST /bookings — the missing piece
  * cutover-plan.md flagged (the live guest widget has no booking API to
- * swap to yet; this is what a future cutover would point at). Building
- * this does NOT itself authorize cutover — that stays a separate,
- * explicit sign-off. First public, unauthenticated write endpoint on this
- * Worker; see its section below for the trust-boundary handling that
- * required (server-derived pricing fields, IP rate limit).
- * On top of Milestone 5's driver wallet-view UI (Section 4) + fuel index
- * automation (Section 7, detect-and-notify only — see that section for
- * why "parse the page" became "detect + admin submits the number"),
- * Milestone 4's wallet lockout + commission accrual + max-hours cap, and
- * Milestone 3's driver PWA login, online/offline + zones, job feed,
- * atomic accept, dispatch broadcast, and status transitions.
+ * swap to yet; this is what a future cutover would point at — building it
+ * did NOT itself authorize cutover, still a separate explicit sign-off),
+ * Milestone 5's driver wallet-view UI (Section 4) + fuel index automation
+ * (Section 7, detect-and-notify only), Milestone 4's wallet lockout +
+ * commission accrual + max-hours cap, and Milestone 3's driver PWA login,
+ * online/offline + zones, job feed, atomic accept, dispatch broadcast, and
+ * status transitions.
  * Guest widget change (Section 8) and cutover itself (Section 9) remain
  * out of scope for this file — Section 8 is prepared but deliberately not
  * deployed to the live guest widget's own codebase.
@@ -39,7 +44,9 @@
 
 const JSON_CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  // PATCH added for Milestone 7's destination edit endpoint - every prior
+  // write endpoint in this file was POST-only, so nothing needed it before.
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -222,6 +229,33 @@ export default {
       return handleAdminFuelIndexReject(request, env, Number(fuelRejectMatch[1]));
     }
 
+    // ── Milestone 7: dynamic destinations (Item 2) ──
+    if (request.method === 'GET' && url.pathname === '/destinations') {
+      return handleDestinationsPublic(env);
+    }
+
+    // Admin-only, returns ALL destinations (active and inactive) - the
+    // public endpoint above deliberately only returns active ones. The
+    // admin UI needs to see and manage inactive rows too (e.g. to
+    // reactivate one), which GET /destinations can't provide by design.
+    if (request.method === 'GET' && url.pathname === '/admin/destinations') {
+      return handleAdminDestinationsList(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/destinations') {
+      return handleAdminDestinationCreate(request, env);
+    }
+
+    const destEditMatch = url.pathname.match(/^\/admin\/destinations\/(\d+)$/);
+    if (request.method === 'PATCH' && destEditMatch) {
+      return handleAdminDestinationEdit(request, env, Number(destEditMatch[1]));
+    }
+
+    const destDeactivateMatch = url.pathname.match(/^\/admin\/destinations\/(\d+)\/deactivate$/);
+    if (request.method === 'POST' && destDeactivateMatch) {
+      return handleAdminDestinationDeactivate(request, env, Number(destDeactivateMatch[1]));
+    }
+
     return json({ error: 'Not found.' }, 404);
   },
 
@@ -245,7 +279,7 @@ async function handleHealth(env) {
   const status = {
     service: 'nadi-dispatch-api',
     phase: 1,
-    milestone: 'public-guest-booking-intake',
+    milestone: 'dynamic-destinations',
     db_connected: false,
     r2_connected: !!env.DOCS,
     tables: [],
@@ -1412,6 +1446,145 @@ async function handleFuelIndexPublic(request, env) {
     effective_from: row.effective_from,
     multiplier: row.multiplier,
   }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 7 — dynamic destinations (Item 2). Moves ROUTES_DATA's
+// hardcoded destination list into real D1 data so a non-developer admin
+// can add a new hotel/destination without a code deploy. The live guest
+// widget (ftt-booking-site) is NOT wired to this yet, deliberately -
+// backend + admin tooling only this milestone, per instruction.
+// Admin write endpoints (create/edit/deactivate), same requireAdmin()
+// pattern as driver approval - not public, unlike GET /destinations.
+// ═══════════════════════════════════════════════════════════════
+
+const ALLOWED_DESTINATION_TYPES = ['hotel', 'airport', 'port', 'town', 'custom'];
+
+// Public, read-only, active destinations grouped by zone - what a future
+// guest-widget integration (not built this milestone) or the admin UI's
+// own listing would call.
+async function handleDestinationsPublic(env) {
+  if (!env.DB) return json({ zones: [] }, 503);
+  const result = await env.DB.prepare(
+    `SELECT d.id, d.name, d.type, d.display_order, z.id AS zone_id, z.name AS zone_name
+     FROM destinations d JOIN zones z ON z.id = d.zone_id
+     WHERE d.active = 1
+     ORDER BY z.id, d.display_order, d.name`
+  ).all();
+
+  const zonesMap = new Map();
+  for (const row of result.results || []) {
+    if (!zonesMap.has(row.zone_id)) zonesMap.set(row.zone_id, { zone_id: row.zone_id, zone_name: row.zone_name, destinations: [] });
+    zonesMap.get(row.zone_id).destinations.push({ id: row.id, name: row.name, type: row.type, display_order: row.display_order });
+  }
+
+  return json({ zones: [...zonesMap.values()] }, 200);
+}
+
+async function handleAdminDestinationsList(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ destinations: [] }, 503);
+  const result = await env.DB.prepare(
+    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone
+     FROM destinations d JOIN zones z ON z.id = d.zone_id
+     ORDER BY z.id, d.display_order, d.name`
+  ).all();
+  return json({ destinations: (result.results || []).map((r) => ({ ...r, active: !!r.active })) }, 200);
+}
+
+async function handleAdminDestinationCreate(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const name = (body.name || '').toString().trim();
+  const type = (body.type || '').toString().trim().toLowerCase();
+  const zoneName = (body.zone || '').toString().trim();
+  const displayOrder = body.display_order !== undefined && body.display_order !== null ? Number(body.display_order) : null;
+  const active = body.active !== undefined ? (body.active ? 1 : 0) : 1;
+
+  const errors = [];
+  if (!name) errors.push('name is required');
+  if (!ALLOWED_DESTINATION_TYPES.includes(type)) errors.push(`type must be one of: ${ALLOWED_DESTINATION_TYPES.join(', ')}`);
+  if (!zoneName) errors.push('zone is required');
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const zone = await env.DB.prepare(`SELECT id FROM zones WHERE name = ?`).bind(zoneName).first();
+  if (!zone) return json({ ok: false, error: `unknown zone: ${zoneName}` }, 400);
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO destinations (name, type, zone_id, display_order, active) VALUES (?, ?, ?, ?, ?)`
+  ).bind(name, type, zone.id, displayOrder, active).run();
+
+  const destinationId = insert.meta.last_row_id;
+  const row = await env.DB.prepare(
+    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
+  ).bind(destinationId).first();
+
+  return json({ ok: true, destination: row }, 201);
+}
+
+async function handleAdminDestinationEdit(request, env, destinationId) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const existing = await env.DB.prepare(`SELECT id FROM destinations WHERE id = ?`).bind(destinationId).first();
+  if (!existing) return json({ ok: false, error: 'Destination not found.' }, 404);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const updates = [];
+  const values = [];
+
+  if (body.name !== undefined) {
+    const name = body.name.toString().trim();
+    if (!name) return json({ ok: false, error: 'name cannot be empty.' }, 400);
+    updates.push('name = ?'); values.push(name);
+  }
+  if (body.type !== undefined) {
+    const type = body.type.toString().trim().toLowerCase();
+    if (!ALLOWED_DESTINATION_TYPES.includes(type)) return json({ ok: false, error: `type must be one of: ${ALLOWED_DESTINATION_TYPES.join(', ')}` }, 400);
+    updates.push('type = ?'); values.push(type);
+  }
+  if (body.zone !== undefined) {
+    const zone = await env.DB.prepare(`SELECT id FROM zones WHERE name = ?`).bind(body.zone.toString().trim()).first();
+    if (!zone) return json({ ok: false, error: `unknown zone: ${body.zone}` }, 400);
+    updates.push('zone_id = ?'); values.push(zone.id);
+  }
+  if (body.display_order !== undefined) {
+    updates.push('display_order = ?'); values.push(body.display_order === null ? null : Number(body.display_order));
+  }
+  if (body.active !== undefined) {
+    updates.push('active = ?'); values.push(body.active ? 1 : 0);
+  }
+
+  if (updates.length === 0) return json({ ok: false, error: 'No fields to update.' }, 400);
+
+  values.push(destinationId);
+  await env.DB.prepare(`UPDATE destinations SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+
+  const row = await env.DB.prepare(
+    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
+  ).bind(destinationId).first();
+
+  return json({ ok: true, destination: row }, 200);
+}
+
+// Convenience shortcut for the common case (PATCH active=0 is equally
+// valid) - same pattern as driver approve/reject being their own endpoints
+// rather than forcing every admin action through one generic PATCH.
+async function handleAdminDestinationDeactivate(request, env, destinationId) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const existing = await env.DB.prepare(`SELECT id FROM destinations WHERE id = ?`).bind(destinationId).first();
+  if (!existing) return json({ ok: false, error: 'Destination not found.' }, 404);
+
+  await env.DB.prepare(`UPDATE destinations SET active = 0 WHERE id = ?`).bind(destinationId).run();
+  return json({ ok: true, destination_id: destinationId, active: false }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════
