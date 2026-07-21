@@ -131,6 +131,15 @@ const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 // screenshot - full delivery confirmation is pending template approval,
 // same honest gap as fuel_index_alert before it. Documented plainly in
 // the Milestone 8 report rather than implied as done.
+//
+// 'en' is a STARTING GUESS, not a verified fact - 'en' happened to work
+// for 3 of the 4 prior templates, but this file's own history (see
+// DRIVER_WELCOME_LANG_CODE's comment) exists specifically to warn against
+// assuming a language code carries over. Once James submits and Meta
+// approves this template, this must be independently re-verified the same
+// way every other template was (live test, check for a 404 "does not
+// exist" vs a real 200) before trusting it - not assumed correct because
+// it matches most of the others.
 // ═══════════════════════════════════════════════════════════════
 const HEALTH_ALERT_TEMPLATE = 'vakaviti_ops_health_alert';
 const HEALTH_ALERT_LANG_CODE = 'en';
@@ -375,17 +384,15 @@ async function runHealthCheckAlert(env) {
   let alert = null;
   if (transitioned) {
     const alertPhone = await getSetting(env, 'admin_alert_phone', '');
-    let bodyText;
-    if (currentStatus === 'unhealthy') {
-      const reasons = [];
-      if (!status.db_connected) reasons.push('D1 not reachable' + (status.db_error ? ` (${status.db_error})` : ''));
-      if (!status.whatsapp_configured) reasons.push('WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not both set');
-      bodyText = `ALERT: nadi-dispatch-api health check failed - ${reasons.join('; ')}. Checked ${sqliteNow()}.`;
-    } else {
-      bodyText = `RECOVERED: nadi-dispatch-api health check passed again after a prior failure. Checked ${sqliteNow()}.`;
-    }
+    // "DOWN"/"RECOVERED" match vakaviti_ops_health_alert's {{1}} exactly as
+    // submitted - the reasons detail (which check failed) still exists in
+    // the API response's health.db_error etc. for anyone querying directly,
+    // just not crammed into the templated WhatsApp text, which only has
+    // room for the two approved variables.
+    const state = currentStatus === 'unhealthy' ? 'DOWN' : 'RECOVERED';
+    const timestamp = sqliteNow();
     alert = alertPhone
-      ? await sendHealthAlertWhatsApp(env, alertPhone, bodyText)
+      ? await sendHealthAlertWhatsApp(env, alertPhone, state, timestamp)
       : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
   }
 
@@ -897,7 +904,13 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
 
 // Same self-contained pattern as sendFuelIndexAlertWhatsApp - not built on
 // sendWhatsAppTemplate() for the same reason (hardcoded language constant).
-async function sendHealthAlertWhatsApp(env, phone, bodyText) {
+// vakaviti_ops_health_alert body: {{1}} = state ("DOWN"/"RECOVERED"),
+// {{2}} = timestamp. Two separate template parameters, not one freeform
+// string - matches the exact two-variable template submitted to Meta.
+// Getting this wrong (e.g. one combined {{1}}) would fail with a
+// parameter-count mismatch even after approval, so this was fixed to
+// match the submitted content BEFORE submission, not discovered after.
+async function sendHealthAlertWhatsApp(env, phone, state, timestamp) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
   }
@@ -916,7 +929,10 @@ async function sendHealthAlertWhatsApp(env, phone, bodyText) {
         template: {
           name: HEALTH_ALERT_TEMPLATE,
           language: { code: HEALTH_ALERT_LANG_CODE },
-          components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
+          components: [{
+            type: 'body',
+            parameters: [{ type: 'text', text: state }, { type: 'text', text: timestamp }],
+          }],
         },
       }),
     });
