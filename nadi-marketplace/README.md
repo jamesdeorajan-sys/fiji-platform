@@ -683,6 +683,103 @@ to exactly 1 row (the real seeded baseline).
 `nadi-marketplace-phase1-staging` (not merged to `main`). Cutover itself remains exactly as gated as
 before this session — a separate, explicit sign-off, unchanged by any of these fixes.
 
+## Milestone 7 — Australian test-driver phone support (temporary) + dynamic destinations system
+
+Two isolated items, same branch, both fully isolated from `nadiairporttransfers.com` and
+`ftt-booking-site/`.
+
+### Item 1 — Accept +61 Australian mobile numbers for driver testing (deliberately temporary)
+
+**Real picture checked before changing anything**: `normalisePhone()` had no country-code
+restriction at all — just a ≥7-digit check, format-blind for any country. The "+679 only"
+description was really just the UI placeholder text, not backend validation. Rather than further
+loosen an already-loose function, added real structural validation scoped to exactly two country
+codes: new `normaliseDriverPhone()` (Fiji `+679` + 7 digits; Australian mobile `+61 4XX XXX XXX` in
+E.164, local `04XX XXX XXX`, or `4XX XXX XXX` without the leading 0). Wired into only the two
+driver-facing entry points (`handleDriverSubmit`, `handleDriverLogin`) — `guest_phone` in
+`handleGuestBookingCreate` deliberately still uses the original permissive `normalisePhone()`, since
+guests can be genuine international tourists and tightening that would be an unrelated regression.
+
+**Flagged everywhere as temporary, per instruction**: code comments at the validator itself, both
+call sites removed, and the UI hint text in `driver-join.html`/`driver-app.html` (updated to mention
+both formats, with a comment explaining this is not a product decision to support Australian
+drivers — real launch scope stays Fiji only).
+
+**Real evidence, full lifecycle, both countries, same session:**
+- **AU driver**: joined with domestic format `"0478 886 145"` → correctly normalized to
+  `+61478886145` (a real, already-WABA-allowed number). Real R2 document verified (200, 286 bytes,
+  exact match). Admin approve → real `vakaviti_driver_welcome` send, `200` + WAMID. Returning-driver
+  login with `"0478886145"` → found the same driver record, real `vakaviti_driver_return` send,
+  `200` + WAMID. Went online, real test booking broadcast reached the driver (`200` + WAMID),
+  accepted successfully (`won: true`).
+- **Fiji driver — the one that must not break**: joined with bare local format `"9369435"` (the
+  pre-existing real-world usage pattern, no `+` or country code) → correctly normalized to
+  `+6799369435`, completely unaffected by the AU change. Identical full lifecycle: approve,
+  returning-driver login with bare digits found the same record, online, broadcast (correctly
+  matched both the AU and Fiji drivers together by zone), accept (`won: true`).
+
+**One observation from testing, not a code issue**: a single `GET /driver/me` read briefly returned
+data inconsistent with a fresh direct D1 `SELECT` taken at the same moment, and self-corrected on
+the very next request. Consistent with D1's known read-replica behaviour immediately after a write,
+not a regression — nothing in Worker code controls D1 replica consistency, so noted for the record
+rather than "fixed."
+
+All test data (2 drivers, 2 vehicles, 2 bookings, 2 wallets, 4 login tokens) deleted, re-verified at
+`0`.
+
+### Item 2 — Dynamic destinations system (backend + admin tooling only, guest widget not wired)
+
+Moves `ROUTES_DATA`'s hardcoded 35-destination list into real D1 data with admin CRUD, so a new
+hotel/destination doesn't need a code deploy. **The live guest widget is not wired to this yet** —
+deliberately, per instruction.
+
+**Seeded from the real, live source, read-only.** Extracted `ftt-booking-site/src/app.js`'s
+`ROUTES_DATA` array directly (that file was never modified) — exactly 35 entries, confirmed via a
+count scoped to the array's own line range (the looser whole-file grep for `destValue:`
+double-counts unrelated references elsewhere in the file, e.g. deep-link config — caught and
+corrected before trusting the count). All 16 distinct `area` values in `ROUTES_DATA` matched the 16
+zones already seeded in Milestone 1 exactly — clean 1:1 mapping, confirmed with a real `LEFT JOIN`
+showing zero orphaned `zone_id` references after seeding.
+
+**Schema**: new `destinations` table (`id, name, type, zone_id, active, display_order, created_at`).
+`type` (`hotel`/`airport`/`port`/`town`/`custom`) is a judgment call per destination — `ROUTES_DATA`
+has no type field of its own — using explicit rules documented in the migration file (name contains
+"Airport" → airport; "Marina"/"Cruise Terminal" → port; town/city-centre references → town;
+standalone non-accommodation attractions → custom; everything else, the large majority → hotel).
+
+**Endpoints**: public `GET /destinations` (active only, grouped by zone — what a future guest-widget
+integration would call); `GET /admin/destinations` (admin-gated, all rows including inactive — added
+because the admin UI genuinely can't manage or reactivate anything without it, which the public
+endpoint can't provide by design); `POST /admin/destinations` (create); `PATCH
+/admin/destinations/:id` (edit any field, including reactivating via `active: true`); `POST
+/admin/destinations/:id/deactivate` (convenience shortcut, same pattern as driver approve/reject).
+
+**`destinations-admin.html`** — same visual/structural pattern as `admin-drivers.html`
+(`sessionStorage` token gate, same CSS variables), add-destination form, zone-grouped table with
+deactivate/activate buttons.
+
+**Real evidence:**
+1. `GET /destinations` → exactly 16 zones / 35 destinations, matching the real seed.
+2. Real admin-endpoint test: created a genuinely new test destination via `POST
+   /admin/destinations`, confirmed it appeared in the public listing (36 total, correct zone group).
+   Edited its type and zone via `PATCH`, confirmed the change. Deactivated it, confirmed it
+   disappeared from the public list (back to 35) while independently `SELECT`ing the row directly in
+   D1 — still present with `active = 0` (soft-delete, not hard-delete, as designed).
+3. **Real UI test, not just the API**: logged into the actual deployed `destinations-admin.html` in
+   a real browser with the real admin token, confirmed all 35 real destinations render correctly
+   grouped by zone with correct types/order. Added a new destination through the actual form fields
+   and the real Add button — subline correctly updated to "36 destinations (36 active)." Clicked the
+   real Deactivate button on that row — subline updated to "36 destinations (35 active)," row visibly
+   marked inactive. Independently confirmed via `GET /destinations` that it was excluded.
+4. Test destination hard-deleted, re-verified via direct `SELECT COUNT(*)` — exactly 35 real
+   destinations remain, matching the original seed.
+
+### Protected paths
+
+`git diff --stat main..nadi-marketplace-phase1-staging -- ftt-booking-site/ workers/chat-widget/`
+returned empty throughout both items (checked before every commit, against a freshly-fetched
+`origin/main`).
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
