@@ -542,7 +542,15 @@ async function handleAdminReject(request, env, driverId) {
 // which is expected and not a code bug.
 // ═══════════════════════════════════════════════════════════════
 
-async function sendWhatsAppTemplate(env, phone, templateName, bodyParams) {
+// Found during deep review: this took templateName as a parameter but
+// hardcoded language: { code: BOOKING_BROADCAST_LANG_CODE } regardless of
+// which template was actually passed in - harmless today since
+// sendBookingBroadcastWhatsApp is its only caller, but a real landmine for
+// any future reuse (this exact class of mistake - assuming one template's
+// language code applies to another - is what every other template comment
+// in this file explicitly warns against, based on real prior incidents).
+// Now takes langCode explicitly so the caller can't get this wrong silently.
+async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyParams) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
   }
@@ -560,7 +568,7 @@ async function sendWhatsAppTemplate(env, phone, templateName, bodyParams) {
         type: 'template',
         template: {
           name: templateName,
-          language: { code: BOOKING_BROADCAST_LANG_CODE },
+          language: { code: langCode },
           components: [{
             type: 'body',
             parameters: bodyParams.map((text) => ({ type: 'text', text: String(text) })),
@@ -665,7 +673,7 @@ async function sendBookingBroadcastWhatsApp(env, phone, booking) {
   const jobUrl = `${DRIVER_APP_URL}?token=`; // driver's own stored session token completes this client-side
   const fare = `${booking.quoted_currency} ${booking.quoted_amount}`;
   // vakaviti_booking_broadcast body: {{1}} pickup, {{2}} destination, {{3}} vehicle type, {{4}} fare, {{5}} app link
-  return sendWhatsAppTemplate(env, phone, BOOKING_BROADCAST_TEMPLATE, [
+  return sendWhatsAppTemplate(env, phone, BOOKING_BROADCAST_TEMPLATE, BOOKING_BROADCAST_LANG_CODE, [
     booking.pickup_zone,
     booking.destination_zone,
     booking.vehicle_type,
@@ -865,6 +873,25 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
   const driver = await requireDriver(request, env);
   if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
 
+  // Found during deep review: nothing here previously checked driver.online
+  // or driver.zones vs the booking's pickup_zone — job feed and broadcast
+  // both filter by zone, but accept itself didn't, so any authenticated
+  // driver could accept ANY booking anywhere by guessing/enumerating
+  // booking IDs (small sequential integers), bypassing the entire
+  // zone-dispatch model via a direct API call. This is a pre-check, not
+  // part of the atomic winner-takes-it UPDATE below — a legitimate,
+  // in-zone, online driver losing a race to another in-zone driver is
+  // still the correct 409 path, unchanged.
+  if (!driver.online) {
+    return json({ error: 'Go online to accept jobs.' }, 403);
+  }
+  const target = await env.DB.prepare(`SELECT pickup_zone FROM bookings WHERE id = ?`).bind(bookingId).first();
+  if (!target) return json({ error: 'Booking not found.' }, 404);
+  const driverZones = new Set(JSON.parse(driver.zones || '[]'));
+  if (!driverZones.has(target.pickup_zone)) {
+    return json({ error: 'This booking is outside your online zones.' }, 403);
+  }
+
   const locked = await enforceWalletLockout(env, driver.id);
   if (locked.locked) {
     return json({ error: 'Wallet balance below the allowed threshold. Settle your balance before accepting jobs.', balance_fjd: locked.balance_fjd, threshold_fjd: locked.threshold_fjd }, 403);
@@ -943,6 +970,20 @@ async function handleAdminTestBooking(request, env) {
   if (!validZones.has(body.pickup_zone)) return json({ ok: false, error: `unknown pickup_zone: ${body.pickup_zone}` }, 400);
   if (!validZones.has(body.destination_zone)) return json({ ok: false, error: `unknown destination_zone: ${body.destination_zone}` }, 400);
 
+  // Found during deep review: this defaulted fuel_multiplier_applied to a
+  // flat 1 unless the caller passed one in, unlike the public /bookings
+  // endpoint (Milestone 6) which always derives it from the live fuel_index
+  // row. That made admin-created test bookings silently diverge from real
+  // guest bookings whenever the live multiplier isn't 1 - a real risk for
+  // any future Section 9 re-run using this endpoint. Still overridable
+  // (this endpoint is admin-only/trusted, unlike the public one), just
+  // sensibly defaulted now instead of flatly defaulted.
+  let fuelMultiplierApplied = body.fuel_multiplier_applied;
+  if (fuelMultiplierApplied === undefined || fuelMultiplierApplied === null) {
+    const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
+    fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
+  }
+
   const insert = await env.DB.prepare(
     `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
        quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied, payment_method, status)
@@ -951,7 +992,7 @@ async function handleAdminTestBooking(request, env) {
     body.guest_name || 'Test Guest', body.guest_phone || null, body.pickup_zone, body.destination_zone,
     body.distance_km || null, body.vehicle_type, body.quoted_currency, body.quoted_amount,
     body.fx_rate_at_booking || 1, body.settlement_amount_fjd || body.quoted_amount,
-    body.fuel_multiplier_applied || 1, body.payment_method
+    fuelMultiplierApplied, body.payment_method
   ).run();
 
   const bookingId = insert.meta.last_row_id;
@@ -1126,6 +1167,19 @@ async function accrueCommission(env, booking) {
   ]);
 
   const wallet = await env.DB.prepare(`SELECT balance_fjd FROM wallets WHERE driver_id = ?`).bind(booking.assigned_driver_id).first();
+
+  // Found during deep review: without this, a driver who was online and in
+  // good standing when they accepted a trip, but whose commission on THIS
+  // trip pushes them past the lockout threshold, stayed online=1 in D1
+  // indefinitely - still receiving real job broadcasts for bookings
+  // enforceWalletLockout would immediately 403 them on accepting. Forcing
+  // offline here closes that gap the same moment the debt actually happens,
+  // not on the next unrelated online-toggle or max-hours sweep.
+  const threshold = Number(await getSetting(env, 'wallet_lockout_threshold_fjd', '-150'));
+  if (wallet.balance_fjd <= threshold) {
+    await env.DB.prepare(`UPDATE drivers SET online = 0, online_since = NULL WHERE id = ?`).bind(booking.assigned_driver_id).run();
+  }
+
   return { rate, commission_fjd: commission, new_balance_fjd: wallet.balance_fjd };
 }
 

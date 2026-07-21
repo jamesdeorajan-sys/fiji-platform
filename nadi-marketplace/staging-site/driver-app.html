@@ -38,6 +38,7 @@
   .job-card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 12px 16px; }
   .job-route { font-weight: 700; font-size: 15px; }
   .job-meta { font-size: 13px; color: #666; margin-top: 4px; }
+  .job-guest { font-size: 13px; color: #666; margin-top: 4px; font-weight: 600; }
   .job-fare { font-size: 18px; font-weight: 700; color: var(--ocean); margin-top: 8px; }
   .job-actions { margin-top: 10px; }
   .btn-accept { background: var(--green); color: #fff; width: 100%; }
@@ -307,11 +308,18 @@
       el.innerHTML = '<div class="empty-state">No jobs available right now.</div>';
       return;
     }
+    // Found during deep review: guest_name is free-text and guest-controlled
+    // (submitted through the public POST /bookings endpoint, Milestone 6) -
+    // rendering it without escapeHtml() would be a real stored-XSS vector in
+    // the driver's own app. pickup_zone/destination_zone/vehicle_type/
+    // payment_method are whitelist-validated server-side so were never
+    // exploitable, but escaping them too for consistency rather than relying
+    // on that constraint holding forever.
     el.innerHTML = jobs.map((j) => `
       <div class="job-card" data-id="${j.id}">
-        <div class="job-route">${j.pickup_zone} → ${j.destination_zone}</div>
-        <div class="job-meta">${j.vehicle_type} · ${j.distance_km ? j.distance_km + ' km' : ''} · ${j.payment_method}</div>
-        <div class="job-fare">${j.quoted_currency} ${j.quoted_amount}</div>
+        <div class="job-route">${escapeHtml(j.pickup_zone)} → ${escapeHtml(j.destination_zone)}</div>
+        <div class="job-meta">${escapeHtml(j.vehicle_type)} · ${j.distance_km ? j.distance_km + ' km' : ''} · ${escapeHtml(j.payment_method)}</div>
+        <div class="job-fare">${escapeHtml(j.quoted_currency)} ${j.quoted_amount}</div>
         <div class="job-actions">
           <button class="btn-accept" onclick="acceptJob(${j.id}, this)">Accept</button>
         </div>
@@ -341,10 +349,21 @@
 
   function renderActiveJob(booking) {
     const el = document.getElementById('activeJobWrap');
+    // Found during deep review: guest_name/guest_phone were already returned
+    // by the accept response but never shown anywhere in the app - a driver
+    // had no way to identify or contact their own guest for pickup. Shown
+    // only here (post-accept), not in the general job feed every online
+    // driver sees, to avoid exposing a guest's name/phone to drivers who
+    // never end up taking the job. escapeHtml() throughout - guest_name is
+    // free-text, guest-controlled input.
+    const guestLine = (booking.guest_name || booking.guest_phone)
+      ? `<div class="job-guest">${escapeHtml(booking.guest_name || 'Guest')}${booking.guest_phone ? ' · ' + escapeHtml(booking.guest_phone) : ''}</div>`
+      : '';
     el.innerHTML = `
       <div class="active-job" data-id="${booking.id}">
-        <div class="job-route">${booking.pickup_zone} → ${booking.destination_zone}</div>
-        <div class="job-meta">Status: <strong>${booking.status}</strong></div>
+        <div class="job-route">${escapeHtml(booking.pickup_zone)} → ${escapeHtml(booking.destination_zone)}</div>
+        ${guestLine}
+        <div class="job-meta">Status: <strong>${escapeHtml(booking.status)}</strong></div>
         <div class="status-actions" id="statusActions"></div>
       </div>
     `;
