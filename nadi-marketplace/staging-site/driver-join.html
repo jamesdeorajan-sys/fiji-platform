@@ -41,7 +41,12 @@
     <div>
       <label for="phone">WhatsApp phone number</label>
       <input type="tel" id="phone" name="phone" placeholder="+679 XXX XXXX" required>
-      <div class="hint">Used for your approval notification and driver app login.</div>
+      <!-- +61 accepted too - deliberate, temporary allowance for James's own
+           pre-launch testing from Australia (nadi-dispatch-api's
+           normaliseDriverPhone()). Not a product decision to support
+           Australian drivers - real launch scope is Fiji drivers only,
+           so the placeholder stays Fiji-first rather than implying otherwise. -->
+      <div class="hint">Used for your approval notification and driver app login. Fiji (+679) or Australian mobile (+61) numbers accepted.</div>
     </div>
 
     <div>

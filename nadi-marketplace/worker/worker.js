@@ -294,7 +294,7 @@ async function handleDriverSubmit(request, env) {
   }
 
   const name = (form.get('name') || '').toString().trim();
-  const phone = normalisePhone((form.get('phone') || '').toString());
+  const phone = normaliseDriverPhone((form.get('phone') || '').toString());
   const vehicleType = (form.get('vehicle_type') || '').toString().trim().toLowerCase();
   const plate = (form.get('plate') || '').toString().trim().toUpperCase();
   const zones = form.getAll('zones').map((z) => z.toString().trim()).filter(Boolean);
@@ -376,6 +376,47 @@ function normalisePhone(raw) {
   const digits = raw.replace(/[^\d+]/g, '');
   if (digits.replace(/[^\d]/g, '').length < 7) return '';
   return digits;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRIVER PHONE VALIDATION — deliberate, TEMPORARY allowance for James's own
+// pre-launch testing from Australia. Accepts +679 (Fiji) and +61 mobile
+// (Australian) numbers SPECIFICALLY, not phone numbers generally — this is
+// not a decision to support Australian drivers as a product; real launch
+// scope is Fiji drivers only. Only used for driver join/login
+// (handleDriverSubmit, handleDriverLogin) — guest_phone in
+// handleGuestBookingCreate deliberately still uses the permissive
+// normalisePhone() above, since guests can be genuine international
+// tourists calling from any country and tightening that would be a real,
+// unrelated regression. When AU pre-launch testing is no longer needed,
+// remove the AU_MOBILE_PHONE_RE branch (and this comment) and drivers
+// go back to Fiji-only.
+// ═══════════════════════════════════════════════════════════════
+
+const FIJI_PHONE_RE = /^\+679\d{7}$/;
+const AU_MOBILE_PHONE_RE = /^\+614\d{8}$/;
+
+function normaliseDriverPhone(raw) {
+  const digitsWithPlus = (raw || '').toString().trim().replace(/[^\d+]/g, '');
+  const digitsOnly = digitsWithPlus.replace(/\+/g, '');
+
+  // Already E.164 with a recognised country code.
+  if (FIJI_PHONE_RE.test(digitsWithPlus)) return digitsWithPlus;
+  if (AU_MOBILE_PHONE_RE.test(digitsWithPlus)) return digitsWithPlus;
+
+  // Fiji local format without the +679 prefix — matches this form's
+  // existing real-world usage; nothing before this change ever enforced a
+  // country code, so a bare 7-digit Fiji mobile must keep working exactly
+  // as before.
+  if (/^\d{7}$/.test(digitsOnly)) return '+679' + digitsOnly;
+
+  // Australian domestic mobile format: 04XX XXX XXX.
+  if (/^04\d{8}$/.test(digitsOnly)) return '+61' + digitsOnly.slice(1);
+
+  // Australian mobile typed without the leading 0: 4XX XXX XXX.
+  if (/^4\d{8}$/.test(digitsOnly)) return '+61' + digitsOnly;
+
+  return '';
 }
 
 function extFor(mimeType) {
@@ -746,7 +787,7 @@ async function handleDriverLogin(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
-  const phone = normalisePhone((body.phone || '').toString());
+  const phone = normaliseDriverPhone((body.phone || '').toString());
   if (!phone) return json({ ok: false, error: 'Valid phone number required.' }, 400);
 
   const driver = await env.DB.prepare(`SELECT id, name, phone FROM drivers WHERE phone = ? AND status = 'verified'`).bind(phone).first();

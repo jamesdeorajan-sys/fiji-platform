@@ -69,7 +69,10 @@
 
 <div id="loginView" class="wrap">
   <h1>Nadi Marketplace — Driver Login</h1>
-  <p class="sub">Enter your registered WhatsApp number to receive a login link.</p>
+  <!-- +61 accepted too - deliberate, temporary allowance for James's own
+       pre-launch testing from Australia, not a product decision to support
+       Australian drivers. See normaliseDriverPhone() in worker.js. -->
+  <p class="sub">Enter your registered WhatsApp number to receive a login link. Fiji (+679) or Australian mobile (+61) numbers accepted.</p>
   <input type="tel" id="phoneInput" placeholder="+679 XXX XXXX">
   <button class="btn-primary" id="loginBtn">Send login link</button>
   <div id="loginMsg"></div>
