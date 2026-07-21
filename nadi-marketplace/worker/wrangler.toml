@@ -15,6 +15,15 @@ database_id = "0ec1cd84-fcda-4f7f-8337-0fb70fe1a512"
 binding = "DOCS"
 bucket_name = "nadi-marketplace-driver-docs"
 
+# Milestone 8: separate bucket from DOCS (driver license/insurance/vehicle
+# photos) - isolation discipline applied to backups too, not just to
+# production. A backup job having write access to the same bucket that
+# serves signed driver document URLs would be an unnecessary blast-radius
+# increase for no real benefit.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "nadi-marketplace-db-backups"
+
 # Milestone 4: max-hours-cap sweep. Every 15 minutes — frequent enough that a
 # driver is rarely more than 15 minutes past their cap before being forced
 # offline, without hammering D1. Same enforceMaxHoursCap() the admin-only
@@ -25,9 +34,17 @@ bucket_name = "nadi-marketplace-driver-docs"
 # own comment flags "adjust +1hr during DST window" if that ever changes;
 # left as a standing note here rather than silently building DST-awareness
 # for a policy that isn't currently in effect.
+#
+# Milestone 8: health check every 5 minutes (real-time-ish alerting without
+# hammering D1/WhatsApp — edge-triggered, so a sustained outage doesn't
+# re-alert every 5 min, see runHealthCheckAlert()'s own comment). Daily
+# backup at 14:00 UTC = 02:00 Fiji time, a low-traffic window.
 [triggers]
-crons = ["*/15 * * * *", "0 12 * * 6"]
+crons = ["*/15 * * * *", "0 12 * * 6", "*/5 * * * *", "0 14 * * *"]
 
-# Secrets (ADMIN_TOKEN, DOC_SIGNING_SECRET, and the not-yet-set
-# WHATSAPP_TOKEN/WHATSAPP_PHONE_ID) are set via `wrangler secret put` /
-# the dashboard, not committed here — same as every prior milestone.
+# Secrets (ADMIN_TOKEN, DOC_SIGNING_SECRET, WHATSAPP_TOKEN, WHATSAPP_PHONE_ID)
+# are set via `wrangler secret put` / the dashboard, not committed here —
+# same as every prior milestone. WHATSAPP_TOKEN/WHATSAPP_PHONE_ID were set
+# in an earlier session (see README.md's WhatsApp operational-update
+# section) — this comment previously said "not-yet-set", corrected here
+# since it had gone stale.

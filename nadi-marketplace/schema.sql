@@ -224,3 +224,11 @@ INSERT INTO destinations (name, type, zone_id, display_order) VALUES ('Volivoli 
 INSERT INTO destinations (name, type, zone_id, display_order) VALUES ('Grand Pacific Hotel Suva', 'hotel', (SELECT id FROM zones WHERE name = 'Suva'), 33);
 INSERT INTO destinations (name, type, zone_id, display_order) VALUES ('Tanoa Plaza / Holiday Inn Suva', 'hotel', (SELECT id FROM zones WHERE name = 'Suva'), 34);
 INSERT INTO destinations (name, type, zone_id, display_order) VALUES ('Nausori Airport (SUV)', 'airport', (SELECT id FROM zones WHERE name = 'Nausori'), 35);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 8 additions — health monitoring + D1 backups. No new tables;
+-- backups live in a dedicated R2 bucket (nadi-marketplace-db-backups),
+-- not D1. See migrations/milestone8-schema.sql.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('health_check_last_status', 'healthy');

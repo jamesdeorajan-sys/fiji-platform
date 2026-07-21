@@ -122,6 +122,19 @@ const FUEL_MULTIPLIER_BASELINE_FJD = 3.93;
 const FUEL_INDEX_ALERT_TEMPLATE = 'vakaviti_fuel_index_alert';
 const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 8 — health monitoring + backups. Same "draft, needs James to
+// submit via WhatsApp Manager's UI" state vakaviti_fuel_index_alert
+// started in - not yet submitted to Meta as of this commit. The real test
+// for this milestone got a genuine, well-formed request reaching the Graph
+// API (proving the pipeline is wired correctly), not a real device
+// screenshot - full delivery confirmation is pending template approval,
+// same honest gap as fuel_index_alert before it. Documented plainly in
+// the Milestone 8 report rather than implied as done.
+// ═══════════════════════════════════════════════════════════════
+const HEALTH_ALERT_TEMPLATE = 'vakaviti_ops_health_alert';
+const HEALTH_ALERT_LANG_CODE = 'en';
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -132,6 +145,15 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/health') {
       return handleHealth(env);
+    }
+
+    // ── Milestone 8: health monitoring + backups ──
+    if (request.method === 'POST' && url.pathname === '/admin/health-check/run') {
+      return handleAdminHealthCheckRun(request, env);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/backup/run') {
+      return handleAdminBackupRun(request, env);
     }
 
     if (request.method === 'GET' && url.pathname === '/zones') {
@@ -267,6 +289,10 @@ export default {
       ctx.waitUntil(enforceMaxHoursCap(env));
     } else if (controller.cron === '0 12 * * 6') {
       ctx.waitUntil(checkFuelIndexUpdate(env));
+    } else if (controller.cron === '*/5 * * * *') {
+      ctx.waitUntil(runHealthCheckAlert(env));
+    } else if (controller.cron === '0 14 * * *') {
+      ctx.waitUntil(runD1Backup(env));
     }
   },
 };
@@ -275,18 +301,35 @@ export default {
 // HEALTH / ZONES
 // ═══════════════════════════════════════════════════════════════
 
-async function handleHealth(env) {
+// Real status code reflects an aggregate signal (db_connected AND
+// whatsapp_configured), not just DB reachability alone - "confirming
+// WHATSAPP_TOKEN/WHATSAPP_PHONE_ID are set" was asked as part of what this
+// endpoint checks, so their absence is a real degraded-health condition,
+// not a side note. Presence only, never values, anywhere in this response
+// - checkOverallHealth()/the cron alert path never logs or sends a secret
+// value, only booleans.
+//
+// Known, accepted limitation worth stating plainly: if WHATSAPP_TOKEN/
+// WHATSAPP_PHONE_ID themselves are the thing that's broken, the alert
+// mechanism that would normally notify admin_alert_phone about a health
+// failure can't fire over WhatsApp for THAT specific failure mode - it's
+// the same channel being used to report on its own outage. The DB-down
+// case still alerts fine. Not fixed here (would need a second, non-WhatsApp
+// notification channel, real new scope) - documented in OPERATIONS.md.
+async function checkOverallHealth(env) {
   const status = {
     service: 'nadi-dispatch-api',
     phase: 1,
-    milestone: 'dynamic-destinations',
+    milestone: 'health-monitoring-and-backups',
     db_connected: false,
     r2_connected: !!env.DOCS,
+    whatsapp_configured: !!(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID),
     tables: [],
   };
 
   if (!env.DB) {
-    return json(status, 503);
+    status.healthy = false;
+    return status;
   }
 
   try {
@@ -295,11 +338,69 @@ async function handleHealth(env) {
     ).all();
     status.db_connected = true;
     status.tables = (result.results || []).map((r) => r.name);
-    return json(status, 200);
   } catch (err) {
-    status.error = err.message;
-    return json(status, 500);
+    status.db_error = err.message;
   }
+
+  status.healthy = status.db_connected && status.whatsapp_configured;
+  return status;
+}
+
+async function handleHealth(env) {
+  const status = await checkOverallHealth(env);
+  return json(status, status.healthy ? 200 : 503);
+}
+
+// Called by the */5 * * * * Cron Trigger and the admin-only
+// /admin/health-check/run endpoint below - one implementation, same
+// shared-function pattern as every other cron+admin-endpoint pair in this
+// file (enforceMaxHoursCap, checkFuelIndexUpdate).
+//
+// Edge-triggered, not level-triggered: only sends a WhatsApp alert on a
+// STATE TRANSITION (healthy -> unhealthy, or unhealthy -> healthy), tracked
+// via platform_settings.health_check_last_status. Deliberate design choice
+// beyond the literal instruction - alerting on every failed check would
+// mean a real outage pages admin_alert_phone every 5 minutes for its
+// entire duration, which is real alert-fatigue risk, not a feature. This
+// also directly satisfies "confirming the alert stops" once fixed: a
+// distinct RECOVERED message fires on the transition back to healthy,
+// giving real positive evidence of recovery rather than just an absence
+// of further pages.
+async function runHealthCheckAlert(env) {
+  const status = await checkOverallHealth(env);
+  const lastStatus = await getSetting(env, 'health_check_last_status', 'healthy');
+  const currentStatus = status.healthy ? 'healthy' : 'unhealthy';
+  const transitioned = currentStatus !== lastStatus;
+
+  let alert = null;
+  if (transitioned) {
+    const alertPhone = await getSetting(env, 'admin_alert_phone', '');
+    let bodyText;
+    if (currentStatus === 'unhealthy') {
+      const reasons = [];
+      if (!status.db_connected) reasons.push('D1 not reachable' + (status.db_error ? ` (${status.db_error})` : ''));
+      if (!status.whatsapp_configured) reasons.push('WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not both set');
+      bodyText = `ALERT: nadi-dispatch-api health check failed - ${reasons.join('; ')}. Checked ${sqliteNow()}.`;
+    } else {
+      bodyText = `RECOVERED: nadi-dispatch-api health check passed again after a prior failure. Checked ${sqliteNow()}.`;
+    }
+    alert = alertPhone
+      ? await sendHealthAlertWhatsApp(env, alertPhone, bodyText)
+      : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO platform_settings (key, value, updated_at) VALUES ('health_check_last_status', ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ).bind(currentStatus).run();
+
+  return { checked_at: sqliteNow(), status: currentStatus, transitioned, alert, health: status };
+}
+
+async function handleAdminHealthCheckRun(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  const result = await runHealthCheckAlert(env);
+  return json(result, 200);
 }
 
 async function handleZones(env) {
@@ -783,6 +884,38 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
         template: {
           name: FUEL_INDEX_ALERT_TEMPLATE,
           language: { code: FUEL_INDEX_ALERT_LANG_CODE },
+          components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
+        },
+      }),
+    });
+    const responseText = await res.text().catch(() => '');
+    return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
+// Same self-contained pattern as sendFuelIndexAlertWhatsApp - not built on
+// sendWhatsAppTemplate() for the same reason (hardcoded language constant).
+async function sendHealthAlertWhatsApp(env, phone, bodyText) {
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
+  }
+  const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanNumber || cleanNumber.length < 8) {
+    return { attempted: false, reason: 'admin_alert_phone not set or invalid.' };
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanNumber,
+        type: 'template',
+        template: {
+          name: HEALTH_ALERT_TEMPLATE,
+          language: { code: HEALTH_ALERT_LANG_CODE },
           components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
         },
       }),
@@ -1446,6 +1579,63 @@ async function handleFuelIndexPublic(request, env) {
     effective_from: row.effective_from,
     multiplier: row.multiplier,
   }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 8 — D1 backup to R2. Real Cloudflare research done before
+// building this: the official D1 export REST API
+// (POST /accounts/{id}/d1/database/{id}/export) produces a byte-perfect
+// SQL dump, but requires its own Cloudflare API token secret (D1:Edit
+// scope) - a new external credential this session couldn't self-generate
+// (the wrangler OAuth session used throughout this build has no
+// "User API Tokens" management scope, confirmed via `wrangler whoami`).
+// Rather than block this milestone on James generating that token, built
+// an application-level backup using only bindings this Worker already
+// has: SELECT * from every table, serialize to JSON, write to a
+// dedicated, isolated R2 bucket (BACKUPS - separate from DOCS, the driver
+// document bucket, same isolation discipline applied everywhere else in
+// this build). Documented the official REST API path as a real upgrade
+// option in OPERATIONS.md for when that token exists - this isn't a
+// permanent design decision, it's what's buildable and fully
+// self-testable without an external dependency.
+//
+// Table order matters for restore (not backup) - foreign-key-safe order,
+// parents before children (zones/drivers before vehicles/destinations/
+// wallets, drivers+bookings before wallet_transactions, etc).
+// ═══════════════════════════════════════════════════════════════
+
+const BACKUP_TABLES = [
+  'zones', 'drivers', 'vehicles', 'destinations',
+  'fuel_index', 'fuel_index_pending', 'platform_settings', 'pricing_rules',
+  'bookings', 'wallets', 'wallet_transactions', 'driver_login_tokens',
+];
+
+async function runD1Backup(env) {
+  if (!env.DB) return { ok: false, error: 'Database not available.' };
+  if (!env.BACKUPS) return { ok: false, error: 'BACKUPS R2 bucket not bound to this Worker.' };
+
+  const snapshot = { exported_at: sqliteNow(), table_order: BACKUP_TABLES, tables: {} };
+  const rowCounts = {};
+  for (const table of BACKUP_TABLES) {
+    // BACKUP_TABLES is a fixed, hardcoded whitelist above, never
+    // user-derived - safe to interpolate into the query.
+    const result = await env.DB.prepare(`SELECT * FROM ${table}`).all();
+    snapshot.tables[table] = result.results || [];
+    rowCounts[table] = snapshot.tables[table].length;
+  }
+
+  const filename = `nadi-marketplace-db-${snapshot.exported_at.replace(/[: ]/g, '-')}.json`;
+  const key = `backups/${filename}`;
+  const body = JSON.stringify(snapshot);
+  await env.BACKUPS.put(key, body, { httpMetadata: { contentType: 'application/json' } });
+
+  return { ok: true, key, filename, size_bytes: body.length, row_counts: rowCounts, exported_at: snapshot.exported_at };
+}
+
+async function handleAdminBackupRun(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  const result = await runD1Backup(env);
+  return json(result, result.ok ? 201 : 500);
 }
 
 // ═══════════════════════════════════════════════════════════════

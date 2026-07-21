@@ -780,6 +780,83 @@ deactivate/activate buttons.
 returned empty throughout both items (checked before every commit, against a freshly-fetched
 `origin/main`).
 
+## Milestone 8 — health monitoring + backups + Dependabot (baseline ops for long-term maintenance)
+
+Full policy write-up in `docs/OPERATIONS.md` — this section is the real-evidence summary.
+
+### 1. Health check + alerting
+
+`GET /health` extended to check D1 connectivity (real query, not just binding presence) and
+`WHATSAPP_TOKEN`/`WHATSAPP_PHONE_ID` presence (booleans only, never values), returning a real `200`/
+`503`. New `*/5 * * * *` Cron Trigger calls the same check internally and alerts `admin_alert_phone`
+over WhatsApp — **edge-triggered**, not on every failed check: only on a state transition
+(`platform_settings.health_check_last_status`), so a sustained outage pages once, not every 5
+minutes. Recovery sends its own distinct message.
+
+**Real test — full break/fix cycle**: temporarily changed the D1 health query to reference a
+nonexistent table (a pure code change — D1 itself, all secrets, and all real data untouched
+throughout), deployed. `GET /health` → real `503`, real error message
+(`no such table: this_table_does_not_exist...`). Triggered `POST /admin/health-check/run` →
+`transitioned: true`, real WhatsApp send attempted (`attempted: true`), reached the Graph API,
+correctly formed request — got a real `404` "template not found," since `vakaviti_ops_health_alert`
+hasn't been submitted to Meta yet (same state `vakaviti_fuel_index_alert` started in — flagged
+plainly, not implied as fully working end-to-end). Called again while still broken → `transitioned:
+false`, no repeat alert, confirming edge-triggering works. Reverted the break, redeployed —
+`GET /health` → real `200`. Triggered the check again → `transitioned: true`, real RECOVERED alert
+attempted. Called once more → stable, no further alert. Independently `SELECT`ed
+`health_check_last_status` in D1 at each stage, matching the API's own reporting throughout.
+
+### 2. D1 backups to R2
+
+New, isolated `nadi-marketplace-db-backups` R2 bucket (separate from `DOCS`). Daily `0 14 * * *`
+Cron Trigger + `POST /admin/backup/run` (admin-gated) serialize every table to JSON and write it to
+R2. Real Cloudflare research done before building (see `docs/OPERATIONS.md` §3 for the official D1
+export REST API this deliberately doesn't use yet, and why — a new credential this session couldn't
+self-generate, not a design flaw).
+
+**Real test — an actual restore drill, not just "a file appeared"**: triggered a real backup
+(`POST /admin/backup/run` → real key, 6975 bytes, correct row counts matching the live DB exactly:
+16 zones, 35 destinations, 1 fuel_index, 10 platform_settings). Downloaded the object directly from
+R2 via `wrangler r2 object get` — real file, size and content matched the API's claim exactly (first
+destination name, exact timestamp). **Created a genuinely separate, throwaway D1 database**
+(`nadi-marketplace-restore-test`), applied `schema.sql`'s structure to it, converted the backup JSON
+into real `INSERT` statements, and ran them against it. Independently `SELECT`ed row counts (exact
+match: 16/35/1/10) and specific real content (destination name, fuel price) from the throwaway
+database — matched the source precisely. Database then deleted, independently confirmed gone via
+`wrangler d1 list`. The real backup object itself was kept in R2 (legitimate operational output, not
+test pollution — only the throwaway database was "throwaway").
+
+### 3. GitHub Dependabot
+
+Enabled directly via the GitHub API (I have admin access via `gh`, no dashboard click needed): real
+before/after confirmed — `vulnerability-alerts` check went `404 disabled` → `204 enabled`;
+`automated-security-fixes` went `{"enabled":false}` → `{"enabled":true}`.
+
+**Real finding**: this repository has zero dependency manifests anywhere (`package.json`,
+`requirements.txt`, etc. — confirmed via a repo-wide search), so the alerts are live but have
+nothing to scan yet. They'll activate automatically the moment a real manifest is added. A
+`dependabot.yml` for scheduled version-update PRs wasn't added — GitHub only reads it from `main`,
+and per standing policy this build doesn't commit there, plus there's nothing real for it to
+configure right now anyway.
+
+### 4. docs/OPERATIONS.md
+
+New file — formalizes the branch/evidence/sign-off discipline this whole build has followed since
+Milestone 1 as explicit standing policy (not new rules, a write-up of existing practice), documents
+the health-check and backup systems above, and explicitly names what's **not** done: no Cloudflare
+Bot Management/WAF on any public endpoint (the `POST /bookings` rate limit is spam friction, not a
+security boundary — restated plainly, not softened), and no Zero Trust/Access policy on any admin
+page (`admin-drivers.html`, `destinations-admin.html`, every `/admin/*` endpoint rely on
+`ADMIN_TOKEN` alone). Both flagged as real open items for a dedicated security-hardening session,
+not built here.
+
+### Cleanup
+
+Only one throwaway artifact this milestone: the `nadi-marketplace-restore-test` D1 database, deleted
+and confirmed gone. No test drivers/bookings/wallets were needed for this milestone's testing — final
+check confirmed `drivers=0, bookings=0` (already clean from prior milestones) alongside the real,
+legitimate data (`destinations=35, zones=16, fuel_index=1`) untouched throughout.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
