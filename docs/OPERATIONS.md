@@ -66,7 +66,26 @@ it, confirming a distinct recovery alert fired, confirming no repeat alerts whil
 persisted) confirmed the request reaches the Graph API correctly formed and gets a real, expected
 "template not found" rejection — proving the detection/alerting *logic* is correct, not yet that a
 message has landed on a real device. That needs James to submit the template via WhatsApp Manager,
-same process as every other template in this build.
+same process as every other template in this build — submitting via WhatsApp Manager's UI is a
+Meta Business account action Claude Code cannot perform, same as every prior template.
+
+**Submission spec** (drafted following the pattern that cleared review cleanly for
+`vakaviti_driver_welcome`/`vakaviti_booking_broadcast`/`vakaviti_driver_return` — plain status
+notification, no login/credential/urgency wording):
+
+| Field | Value |
+|---|---|
+| Name | `vakaviti_ops_health_alert` |
+| Category | Utility (recommended starting point — matches the plain-notification templates that passed; if rejected, `vakaviti_driver_return`'s precedent was Marketing after Utility failed for a *login*-flavored template specifically, which this isn't) |
+| Language | Start with `en` (code assumes this) — **must be independently re-verified once approved**, not assumed, same as every prior template |
+| Body | `Vakaviti Alert: nadi-dispatch-api status changed to {{1}} at {{2}}.` |
+| Variable examples (required by Meta at submission) | `{{1}}` → `DOWN`, `{{2}}` → `2026-07-21 14:38:49` |
+| Components | Body only — no header, no button, no footer |
+
+Code (`sendHealthAlertWhatsApp()`, `runHealthCheckAlert()`) already sends exactly this shape —
+`{{1}}` = `"DOWN"` or `"RECOVERED"`, `{{2}}` = a `YYYY-MM-DD HH:MM:SS` timestamp — fixed in the same
+session this spec was drafted, before submission, after finding the previously-deployed code sent
+one combined freeform string instead of two separate variables.
 
 ## 3. D1 backups (Milestone 8)
 
