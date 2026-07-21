@@ -553,6 +553,136 @@ fine for driver-side testing now but not guest-facing cutover, and the exact act
 then), and item 2 of `cutover-plan.md`'s precondition list, alongside the booking-endpoint work from
 Milestone 6.
 
+## Deep review before launch — 4 real fixes, 2 findings flagged, zero schema drift
+
+Requested review of everything built across Milestones 1–6 to get it launch-ready. Re-read the
+entire `worker.js` (1300+ lines) and `driver-app.html` fresh, end to end, cross-checked against the
+spec rather than trusting prior milestone reports. Real findings, in order of severity:
+
+### 1. Real authorization gap — any driver could accept any booking anywhere (FIXED)
+
+`handleDriverAcceptBooking` never checked `driver.online` or `driver.zones` against the booking's
+`pickup_zone`. The job feed (`GET /driver/jobs`) and dispatch broadcast both filter by zone, but
+**accept itself did not** — any authenticated driver could call `POST /driver/bookings/:id/accept`
+directly with a guessed or enumerated booking ID (small sequential integers) and win a job anywhere
+in Fiji, entirely bypassing the zone-dispatch model that the rest of the system assumes holds. Fixed
+with a pre-check (driver must be online, and the booking's `pickup_zone` must be in the driver's own
+zones) ahead of the existing atomic first-accept-wins `UPDATE`, which is unchanged.
+
+**Real evidence**: two real drivers in different zones (Nadi, Suva), a real booking in Nadi. Driver B
+(online, Suva) → real `403` *"This booking is outside your online zones."* Driver A (Nadi, but still
+offline) → real `403` *"Go online to accept jobs."* Driver A brought online in Nadi → real `200`,
+accepted, independently confirmed via `SELECT`. The existing Milestone 3 race-condition guarantee is
+untouched by this change (verified logically — the fix is a pre-check, not a modification to the
+atomic `UPDATE`'s `WHERE` clause).
+
+### 2. Wallet lockout didn't force a driver offline (FIXED)
+
+A driver who was online and in good standing when they accepted a trip, but whose commission on
+*that* trip pushed them past the lockout threshold, stayed `online = 1` in D1 indefinitely — still
+receiving real WhatsApp job broadcasts for bookings `enforceWalletLockout` would immediately `403`
+them on accepting. Fixed: `accrueCommission()` now checks the new balance against the threshold and
+forces the driver offline (without setting `forced_offline_until` — that field is specifically for
+the max-hours rest-gap mechanic; wallet lockout's unlock condition is paying down the balance, not
+waiting a fixed period, so it deliberately doesn't touch that column).
+
+**Real evidence**: real driver, balance set to `-145` via direct `UPDATE`, completed a real `$60`
+cash trip (`$9` commission at 15%) → new balance `-154`, past the `-150` threshold. Independently
+`SELECT`ed the driver row immediately after: `online = 0, online_since = NULL,
+forced_offline_until = NULL` — confirming the fix fired and confirming it correctly left the
+rest-gap column alone.
+
+### 3. driver-app.html: unescaped rendering + drivers had no way to see who they were picking up (FIXED)
+
+Job-feed and active-job rendering never used the file's own existing `escapeHtml()` helper (already
+used correctly in the wallet panel). Low risk before this session — every field rendered was
+whitelist-validated server-side — but a real stored-XSS vector now that `guest_name` is free-text,
+guest-controlled input via the public `POST /bookings` endpoint (Milestone 6) and worth showing to
+the driver. Fixed both together: added `guest_name`/`guest_phone` display (a genuine completeness
+gap — a driver who accepted a real job had no way to identify or contact their own guest for
+pickup), shown only in the post-accept active-job panel (not the general job feed every online
+driver sees, to avoid exposing a guest's name/phone to drivers who never end up taking the job), and
+escaped everywhere.
+
+**Caught and fixed a bug I introduced while doing this**: the new guest-info line initially reused
+the `.job-meta` class already used by the status line inside `.active-job`. `setStatus()`'s
+`document.querySelector('.active-job[data-id] .job-meta')` (singular) would have matched the guest
+line instead of the status line on the next status update, silently overwriting a guest's name/phone
+with "Status: en_route." Caught by checking every use of the class before shipping, not by accident —
+gave the guest line its own `.job-guest` class instead.
+
+**Real evidence**: real booking submitted with `guest_name: "<img src=x onerror=alert(2)> Test\"Guest"`
+via the public endpoint. Accepted through the actual deployed PWA in a real browser (clicked the real
+Accept button, not simulated). Read the live DOM directly: `document.querySelector('.job-guest').innerHTML`
+returned `"&lt;img src=x onerror=alert(2)&gt; Test\"Guest · +61422222222"` — confirmed
+HTML-entity-encoded in the real markup, not just coincidentally inert. No alert fired.
+
+### 4. sendWhatsAppTemplate hardcoded the wrong language-code constant (FIXED)
+
+Took `templateName` as a parameter but always sent `language: { code: BOOKING_BROADCAST_LANG_CODE }`
+regardless of which template was actually passed in. Harmless today (its only caller is
+`sendBookingBroadcastWhatsApp`), but a real landmine for any future reuse — this exact mistake class
+(assuming one template's approved language code applies to another) is what nearly every other
+template comment in this file explicitly warns against, based on real prior incidents in this
+project's history. Now takes `langCode` explicitly.
+
+**Real evidence**: real broadcast send post-fix, to a number already confirmed on the test WABA's
+allowed list — real `200`, real WAMID. Confirms the explicit parameter threading works correctly,
+not just that it compiles.
+
+### 5. admin-test-booking's fuel multiplier default (aligned, lower priority)
+
+Defaulted `fuel_multiplier_applied` to a flat `1` unless the caller passed one in, unlike the public
+`/bookings` endpoint which always derives it from the live `fuel_index` row — meaning admin-created
+test bookings could silently diverge from real guest bookings whenever the live multiplier isn't 1,
+a real risk for any future Section 9 re-run using this endpoint. Now defaults to the live value
+(still overridable — this endpoint is admin-only/trusted, unlike the public one).
+
+**Real evidence**: live `fuel_index` multiplier temporarily set to a distinct `0.85` value (not `1`,
+so the test couldn't coincidentally pass either way), admin-test-booking called without specifying
+`fuel_multiplier_applied` → real `0.85` in the response, not `1`. Test row deleted, real `$3.39`
+baseline confirmed restored via `GET /fuel-index`.
+
+### Schema drift check — clean
+
+Dumped the live `sqlite_master` schema for all 11 tables directly from `nadi-marketplace-db` and
+diffed column-by-column against `schema.sql` (the from-scratch reference file) after 6 milestones of
+incremental `ALTER`s. Exact match, every table, every column, including `drivers.forced_offline_until`
+and `bookings.source_ip`. No drift.
+
+### Found, flagged, deliberately not fixed
+
+- **No cancellation/abandon path for an accepted booking.** The spec itself never mentions one
+  either (Section 4 only specifies "En Route → Completed"). A driver who accepts a trip but can't
+  complete it (breakdown, guest no-show) has no way to release it back to `pending` — it's
+  permanently stuck once accepted. Real gap for a production dispatch system, but building a
+  cancellation flow is real new scope requiring product decisions (who can cancel, does a
+  cancelled trip still owe commission) — flagging for James rather than silently inventing an
+  answer.
+- **The IP rate limiter has an inherent check-then-insert race.** Two truly simultaneous requests
+  from the same IP could both read a count under the limit before either has inserted, allowing
+  one or two extra bookings past the configured max. Already honestly scoped in Milestone 6 as "app-
+  level spam friction, not a security boundary" — this adds the specific mechanism to that existing
+  disclosure rather than treating it as newly discovered.
+- **The active-job panel doesn't survive a page reload.** Noticed while testing fix #3: if a driver
+  accepts a job then refreshes the browser or reopens the PWA, `activeJobWrap` is empty — it's only
+  populated by the in-memory result of the `acceptJob()` call, never rehydrated from the driver's
+  actual current booking on load. The booking data itself is correct in D1 throughout; this is a
+  UI gap, not a data-integrity one. Not fixed here (would need a new endpoint or reused query to
+  fetch "my current active booking" on load) — flagging rather than expanding scope further in an
+  already-large review pass.
+
+### Cleanup
+
+3 test drivers, 3 vehicles, 7 bookings, 3 wallets, 1 wallet_transactions row, 3 login tokens, and 2
+temporary `fuel_index` test rows created across all five fix verifications. Deleted, independently
+re-verified via `SELECT COUNT(*)` — all six driver/booking-related tables at `0`, `fuel_index` back
+to exactly 1 row (the real seeded baseline).
+
+**This review did not touch cutover.** All fixes are deployed to `nadi-dispatch-api` and pushed to
+`nadi-marketplace-phase1-staging` (not merged to `main`). Cutover itself remains exactly as gated as
+before this session — a separate, explicit sign-off, unchanged by any of these fixes.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
