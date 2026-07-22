@@ -1047,6 +1047,50 @@ waiting on. Once James submits/gets it approved, a fresh real end-to-end test (t
 confirm the message lands on his phone with the right substituted text) is the natural next step — no
 new template needed, no new code needed, purely waiting on that one external approval.
 
+## Pricing refit — real least-squares fit replaces Milestone 9's eyeballed bands
+
+Backend data only, still fully isolated. Milestone 9's `pricing_rules` bands were fitted by eye
+("checked within ~15% of real actuals"). Refitted properly this pass: ordinary least-squares
+regression (`price = flagfall + rate × km`) run independently per vehicle type and per distance band
+against all 35 real routes in `ftt-booking-site/src/app.js`'s `ROUTES_DATA` (read-only source), plus a
+real remote-multiplier derivation for Ba/Rakiraki instead of the prior eyeballed 1.33.
+
+**Full evidence reviewed before writing anything**: published as an artifact — every band's fitted
+flagfall/rate/R², the real Ba/Rakiraki ratio derivation (6 real zone×vehicle data points), and all 35
+routes × 3 vehicle types compared live-price-vs-formula side by side. James reviewed it and approved
+applying it as-is.
+
+**Real anomalies surfaced and flagged, not fixed**:
+- **Tanoa International/Tokatoka (2km)** — the only route under 5km, anchors the 0–15km line almost
+  alone; real minivan/minibus prices jump 76–96% over the next 3km, which a single slope can't fit
+  (sedan -15.0%, minivan +36.3%, minibus +32.1% vs. live). A sub-band split would fix it — not built.
+- **Fiji Marriott Momi Bay, minibus** — live price ($79) is cheaper than the *same route's own sedan
+  price* ($99), which isn't physically possible. Reads as a data-entry error in the live site's own
+  `ROUTES_DATA`, not a pricing-formula problem. Excluded from the minibus band fit; flagging for a
+  content check on nadiairporttransfers.com, independent of this work.
+- **160–300km band rests on only 2 distinct real km values** (198, 225 — both real Suva routes share
+  198km). Fits the 3 known routes exactly by construction but is unvalidated for 226–300km, which is
+  exactly the range `/quote`'s live geocoding can return for a real address.
+- **Coral Coast (72–150km)** has real non-monotonic pricing (flat $129 plateaus then a jump) a single
+  slope smooths over — Shangri-La Yanuca undershoots up to -16.2% (minivan), Robinson Crusoe/Outrigger
+  overshoot 11–13%. None of the sedan figures cross 15%, but it's the band with the most real texture.
+
+**Remote multiplier**: real ratios (actual ÷ formula-predicted-before-multiplier) across the 6 zone×
+vehicle data points range 1.22–1.38×. Sedan-only average is 1.365× — inside James's requested
+1.35–1.4× range, so **1.37** was applied. True average across all three vehicle types is only 1.292×;
+since `zones.remote_multiplier` is a single column (not per-vehicle), this means minivan/minibus trips
+to Ba/Rakiraki now come out 7–12% above their real historical price — a known, reviewed tradeoff, not
+an oversight. A per-vehicle-type multiplier would fix this but needs a schema change beyond scope.
+
+**Applied to live D1** (`migrations/milestone9-pricing-refit.sql`, `nadi-marketplace-db`): all 15
+`pricing_rules` rows updated (5 bands × 3 vehicle types), `zones.remote_multiplier` for Ba/Rakiraki
+1.33→1.37. Independently `SELECT`ed all 15 rows and both zone rows after the write — every value
+matches the fitted numbers exactly, not just trusted the write response.
+
+**Real end-to-end test**: re-queried the same real Sofitel/Denarau address through `/quote` — returned
+`$48.49`, matching `5.57 + 3.592 × 11.95 = 48.4944` (rounds to `48.49`) exactly. Test cache/log rows
+deleted and re-verified `0`.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

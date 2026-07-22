@@ -256,27 +256,35 @@ UPDATE zones SET lat = -18.2264, lng = 177.3792 WHERE name = 'Natadola';
 UPDATE zones SET lat = -18.1416, lng = 177.5049 WHERE name = 'Sigatoka';
 UPDATE zones SET lat = -18.2000, lng = 177.7000 WHERE name = 'Coral Coast';
 UPDATE zones SET lat = -18.2333, lng = 178.0500 WHERE name = 'Pacific Harbour';
-UPDATE zones SET lat = -17.5333, lng = 177.6667, remote_multiplier = 1.33 WHERE name = 'Ba';
-UPDATE zones SET lat = -17.3667, lng = 178.1667, remote_multiplier = 1.33 WHERE name = 'Rakiraki';
+-- remote_multiplier revised 1.33 -> 1.37 in the pricing refit (real
+-- ratio derivation, migrations/milestone9-pricing-refit.sql)
+UPDATE zones SET lat = -17.5333, lng = 177.6667, remote_multiplier = 1.37 WHERE name = 'Ba';
+UPDATE zones SET lat = -17.3667, lng = 178.1667, remote_multiplier = 1.37 WHERE name = 'Rakiraki';
 UPDATE zones SET lat = -18.1416, lng = 178.4419 WHERE name = 'Suva';
 UPDATE zones SET lat = -18.0233, lng = 178.5561 WHERE name = 'Nausori';
 
+-- Real least-squares fit against all 35 live ROUTES_DATA routes (fitted
+-- independently per vehicle type/band, replacing the original eyeballed
+-- Milestone 9 values) - see migrations/milestone9-pricing-refit.sql and
+-- the Milestone 9 pricing-refit report in README.md for full derivation,
+-- R^2 per band, and flagged anomalies (Tanoa International/Tokatoka,
+-- Momi Bay minibus, the thin 160-300km band).
 INSERT INTO pricing_rules (vehicle_type, distance_min_km, distance_max_km, base_rate_fjd_per_km, flagfall_fjd) VALUES
-  ('sedan',   0,   15,  3.20, 10),
-  ('sedan',   15,  35,  2.60, 15),
-  ('sedan',   35,  70,  1.85, 20),
-  ('sedan',   70,  160, 1.20, 25),
-  ('sedan',   160, 300, 1.45, 50),
-  ('minivan', 0,   15,  4.16, 13),
-  ('minivan', 15,  35,  3.38, 19.5),
-  ('minivan', 35,  70,  2.405,26),
-  ('minivan', 70,  160, 1.56, 32.5),
-  ('minivan', 160, 300, 1.885,65),
-  ('minibus', 0,   15,  5.44, 17),
-  ('minibus', 15,  35,  4.42, 25.5),
-  ('minibus', 35,  70,  3.145,34),
-  ('minibus', 70,  160, 2.04, 42.5),
-  ('minibus', 160, 300, 2.465,85);
+  ('sedan',   0,   15,  3.592, 5.57),
+  ('sedan',   15,  35,  1.568, 44.19),
+  ('sedan',   35,  70,  1.438, 38.75),
+  ('sedan',   70,  160, 1.120, 33.65),
+  ('sedan',   160, 300, 1.852, -47.67),
+  ('minivan', 0,   15,  3.581, 26.91),
+  ('minivan', 15,  35,  2.622, 43.54),
+  ('minivan', 35,  70,  0.479, 128.92),
+  ('minivan', 70,  160, 1.764, 6.22),
+  ('minivan', 160, 300, 4.815, -584.33),
+  ('minibus', 0,   15,  4.133, 51.17),
+  ('minibus', 15,  35,  2.622, 73.54),
+  ('minibus', 35,  70,  0.956, 139.00),
+  ('minibus', 70,  160, 1.576, 66.96),
+  ('minibus', 160, 300, 1.852, 132.33);
 
 CREATE TABLE geocoded_addresses (
   id INTEGER PRIMARY KEY,
