@@ -1870,7 +1870,13 @@ async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
+        // routes.legs.endLocation added after a real test caught a real bug:
+        // without it, the destination's resolved lat/lng was never in the
+        // response at all, and findNearestZone() was silently computing
+        // distance from (0,0) instead - see the Milestone 9 report for
+        // exactly how this was caught (a real Denarau address matched
+        // "Natadola" as nearest zone, which is nowhere near it).
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.endLocation,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
       },
       body: JSON.stringify({
         origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
@@ -1900,7 +1906,15 @@ async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
     const stepsText = JSON.stringify(route.legs || []).toLowerCase();
     const hasFerryLeg = warningsText.includes('ferry') || stepsText.includes('ferry') || stepsText.includes('"travelmode":"ferry"');
 
-    return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg };
+    // Last leg's endLocation is the actual resolved destination point -
+    // required for findNearestZone(), previously missing entirely (see the
+    // field mask comment above).
+    const lastLeg = route.legs && route.legs[route.legs.length - 1];
+    const endLatLng = lastLeg && lastLeg.endLocation && lastLeg.endLocation.latLng;
+    const destLat = endLatLng ? endLatLng.latitude : null;
+    const destLng = endLatLng ? endLatLng.longitude : null;
+
+    return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg, destLat, destLng };
   } catch (err) {
     return { ok: false, reason: 'fetch_error', error: err.message };
   }
@@ -1968,16 +1982,28 @@ async function handleQuoteCreate(request, env) {
         detail: routeResult.reason,
       }, 200);
     } else if (!routeResult.hasRoute) {
-      outcome = 'needs_water_transfer';
+      // Google returned 200 with no routes array. This happens for both a
+      // real destination with no drivable route (e.g. an outer island) AND
+      // a garbage/nonexistent address - computeRoutes gives no geocoding
+      // confidence signal to tell them apart when there's no route at all.
+      // Per spec these are deliberately kept separate from the ferry/>300km
+      // case below (which requires Google to have found a REAL route worth
+      // trusting the distance/warnings on) - safest default here is manual
+      // confirmation, never guessing water-transfer OR a zone/price.
+      outcome = 'needs_manual_confirmation';
     } else if (routeResult.distanceKm > MAX_QUOTE_DISTANCE_KM || routeResult.hasFerryLeg) {
       outcome = 'needs_water_transfer';
       distanceKm = routeResult.distanceKm;
       durationText = routeResult.durationRaw;
       hasFerryLeg = routeResult.hasFerryLeg ? 1 : 0;
+      lat = routeResult.destLat;
+      lng = routeResult.destLng;
     } else {
       distanceKm = routeResult.distanceKm;
       durationText = routeResult.durationRaw;
       outcome = 'resolved';
+      lat = routeResult.destLat;
+      lng = routeResult.destLng;
     }
 
     const insert = await env.DB.prepare(
