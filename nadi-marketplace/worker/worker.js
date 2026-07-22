@@ -178,6 +178,11 @@ export default {
       return handleGuestBookingCreate(request, env);
     }
 
+    // ── Milestone 9: geocode + real-distance pricing for unlisted addresses ──
+    if (request.method === 'POST' && url.pathname === '/quote') {
+      return handleQuoteCreate(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/admin/docs/')) {
       return handleDocServe(request, env, url);
     }
@@ -1791,6 +1796,231 @@ async function handleAdminDestinationDeactivate(request, env, destinationId) {
 
   await env.DB.prepare(`UPDATE destinations SET active = 0 WHERE id = ?`).bind(destinationId).run();
   return json({ ok: true, destination_id: destinationId, active: false }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 9 — geocode + real-distance pricing for unlisted addresses.
+// Real finding before writing any of this: Distance Matrix API (the
+// literal ask) cannot detect ferry legs - its response is only
+// {distance, duration, status}, no route composition. Ferry-detection is
+// an explicit hard requirement (failure mode 2), so this uses the Routes
+// API instead - it returns per-step detail and warnings text, and is
+// Google's current recommended API regardless. GOOGLE_MAPS_API_KEY should
+// be restricted to Routes API only in Google Cloud Console (never
+// Distance Matrix, which this doesn't call).
+//
+// pricing_rules/zones.remote_multiplier populated this milestone from
+// real derivation - see migrations/milestone9-schema.sql for the full
+// methodology and evidence, not invented here.
+// ═══════════════════════════════════════════════════════════════
+
+const GOOGLE_ROUTES_API_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const MAX_QUOTE_DISTANCE_KM = 300;
+
+function normalizeAddressQuery(raw) {
+  return (raw || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Standard great-circle distance - good enough for "which of 16 real
+// zones is geographically closest," not used for the actual road distance
+// (that's what the Routes API call is for).
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function findNearestZone(env, lat, lng) {
+  const result = await env.DB.prepare(`SELECT id, name, lat, lng, remote_multiplier FROM zones WHERE lat IS NOT NULL AND lng IS NOT NULL`).all();
+  let nearest = null;
+  let nearestDist = Infinity;
+  for (const zone of result.results || []) {
+    const d = haversineKm(lat, lng, zone.lat, zone.lng);
+    if (d < nearestDist) { nearestDist = d; nearest = zone; }
+  }
+  return nearest;
+}
+
+async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
+  const rule = await env.DB.prepare(
+    `SELECT base_rate_fjd_per_km, flagfall_fjd FROM pricing_rules
+     WHERE vehicle_type = ? AND active = 1 AND distance_min_km <= ? AND (distance_max_km IS NULL OR ? < distance_max_km)
+     ORDER BY distance_min_km DESC LIMIT 1`
+  ).bind(vehicleType, distanceKm, distanceKm).first();
+  if (!rule) return null;
+  const raw = rule.flagfall_fjd + rule.base_rate_fjd_per_km * distanceKm;
+  return Math.round(raw * remoteMultiplier * 100) / 100;
+}
+
+// Real Google Routes API call. Field mask requests warnings text
+// specifically because ferry-leg detection isn't guaranteed to be a clean
+// structured field for DRIVE-mode routes (this wasn't verifiable without a
+// real API key and a real test call - see the Milestone 9 report for what
+// the actual live response looked like and whether this detection held up
+// against a real Yasawa/Mamanuca address).
+async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
+  if (!env.GOOGLE_MAPS_API_KEY) {
+    return { ok: false, reason: 'not_configured' };
+  }
+  try {
+    const res = await fetch(GOOGLE_ROUTES_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
+        destination: { address: destinationText },
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+        units: 'METRIC',
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return { ok: false, reason: 'geocode_failed', status: res.status, raw: errText.slice(0, 500) };
+    }
+
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if (!route) {
+      // A 200 with no routes: the geocoder understood the request enough
+      // to try, but no DRIVE route exists - the real signal this design
+      // uses for "needs a water transfer" (see file header comment).
+      return { ok: true, hasRoute: false };
+    }
+
+    const distanceKm = route.distanceMeters / 1000;
+    const warningsText = JSON.stringify(route.warnings || []).toLowerCase();
+    const stepsText = JSON.stringify(route.legs || []).toLowerCase();
+    const hasFerryLeg = warningsText.includes('ferry') || stepsText.includes('ferry') || stepsText.includes('"travelmode":"ferry"');
+
+    return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg };
+  } catch (err) {
+    return { ok: false, reason: 'fetch_error', error: err.message };
+  }
+}
+
+// Interim cost-abuse protection, not a security boundary - same honest
+// framing as Milestone 6's booking rate limit. Recommended in the
+// Milestone 9 report over pausing entirely, given the actual dollar
+// exposure at Google's real per-request Routes API pricing and a real
+// cap this low.
+async function checkQuoteRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'quote_rate_limit_max_per_day', '20'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM quote_requests_log WHERE source_ip = ? AND created_at > datetime('now', '-1440 minutes')`
+  ).bind(ip).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max };
+}
+
+async function handleQuoteCreate(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkQuoteRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many quote requests from this connection today. Please try again tomorrow, or contact us directly.' }, 429);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const addressRaw = (body.address || '').toString().trim();
+  const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
+
+  const errors = [];
+  if (!addressRaw) errors.push('address is required');
+  if (addressRaw.length > 300) errors.push('address is too long');
+  if (!ALLOWED_VEHICLE_TYPES.includes(vehicleType)) errors.push(`vehicle_type must be one of: ${ALLOWED_VEHICLE_TYPES.join(', ')}`);
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const queryNormalized = normalizeAddressQuery(addressRaw);
+  let cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE query_normalized = ?`).bind(queryNormalized).first();
+  let cacheHit = !!cacheRow;
+
+  if (!cacheRow) {
+    const nadiAirport = await env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = 'Nadi Airport'`).first();
+    if (!nadiAirport || nadiAirport.lat === null) {
+      return json({ ok: false, error: 'Origin zone coordinates not configured.' }, 500);
+    }
+
+    const routeResult = await callGoogleRoutesApi(env, nadiAirport.lat, nadiAirport.lng, addressRaw);
+
+    let outcome, resolvedAddress = null, lat = null, lng = null, distanceKm = null, durationText = null, hasFerryLeg = 0, nearestZoneId = null;
+
+    if (!routeResult.ok) {
+      // Google unreachable, misconfigured key, or a real geocode failure -
+      // never guess a zone. Not cached (routeResult.ok false means we
+      // don't have a query_normalized worth remembering as a permanent
+      // failure - e.g. GOOGLE_MAPS_API_KEY not yet set shouldn't poison
+      // the cache for when it is).
+      return json({
+        ok: true,
+        outcome: 'needs_manual_confirmation',
+        message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.',
+        detail: routeResult.reason,
+      }, 200);
+    } else if (!routeResult.hasRoute) {
+      outcome = 'needs_water_transfer';
+    } else if (routeResult.distanceKm > MAX_QUOTE_DISTANCE_KM || routeResult.hasFerryLeg) {
+      outcome = 'needs_water_transfer';
+      distanceKm = routeResult.distanceKm;
+      durationText = routeResult.durationRaw;
+      hasFerryLeg = routeResult.hasFerryLeg ? 1 : 0;
+    } else {
+      distanceKm = routeResult.distanceKm;
+      durationText = routeResult.durationRaw;
+      outcome = 'resolved';
+    }
+
+    const insert = await env.DB.prepare(
+      `INSERT INTO geocoded_addresses (query_normalized, query_raw, resolved_address, lat, lng, distance_km, duration_text, has_ferry_leg, nearest_zone_id, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(queryNormalized, addressRaw, resolvedAddress, lat, lng, distanceKm, durationText, hasFerryLeg, nearestZoneId, outcome).run();
+
+    cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE id = ?`).bind(insert.meta.last_row_id).first();
+    cacheHit = false;
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO quote_requests_log (source_ip, query_normalized, cache_hit) VALUES (?, ?, ?)`
+  ).bind(clientIp, queryNormalized, cacheHit ? 1 : 0).run();
+
+  if (cacheRow.outcome === 'needs_manual_confirmation') {
+    return json({ ok: true, outcome: 'needs_manual_confirmation', message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.', cached: cacheHit }, 200);
+  }
+  if (cacheRow.outcome === 'needs_water_transfer') {
+    return json({
+      ok: true,
+      outcome: 'needs_water_transfer',
+      message: 'This destination requires a water transfer. Please contact us directly to arrange this trip.',
+      distance_km: cacheRow.distance_km,
+      has_ferry_leg: !!cacheRow.has_ferry_leg,
+      cached: cacheHit,
+    }, 200);
+  }
+
+  const nearestZone = await findNearestZone(env, cacheRow.lat, cacheRow.lng);
+  const fare = nearestZone ? await computeFareFjd(env, vehicleType, cacheRow.distance_km, nearestZone.remote_multiplier) : null;
+
+  return json({
+    ok: true,
+    outcome: 'resolved',
+    query: addressRaw,
+    distance_km: cacheRow.distance_km,
+    duration: cacheRow.duration_text,
+    nearest_zone: nearestZone ? { id: nearestZone.id, name: nearestZone.name, remote_multiplier: nearestZone.remote_multiplier } : null,
+    vehicle_type: vehicleType,
+    quoted_fare_fjd: fare,
+    cached: cacheHit,
+  }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════

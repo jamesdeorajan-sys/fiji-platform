@@ -232,3 +232,73 @@ INSERT INTO destinations (name, type, zone_id, display_order) VALUES ('Nausori A
 -- ═══════════════════════════════════════════════════════════════
 
 INSERT INTO platform_settings (key, value) VALUES ('health_check_last_status', 'healthy');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 9 additions — geocode + real-distance pricing for unlisted
+-- addresses. Full derivation methodology, real evidence, and rationale
+-- in migrations/milestone9-schema.sql — this block keeps schema.sql (the
+-- from-scratch reference) in sync with it.
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE zones ADD COLUMN lat REAL;
+ALTER TABLE zones ADD COLUMN lng REAL;
+ALTER TABLE zones ADD COLUMN remote_multiplier REAL NOT NULL DEFAULT 1.0;
+
+UPDATE zones SET lat = -17.8033, lng = 177.4145 WHERE name = 'Nadi';
+UPDATE zones SET lat = -17.7554, lng = 177.4432 WHERE name = 'Nadi Airport';
+UPDATE zones SET lat = -17.7717, lng = 177.4083 WHERE name = 'Wailoaloa';
+UPDATE zones SET lat = -17.7746, lng = 177.3814 WHERE name = 'Denarau';
+UPDATE zones SET lat = -17.8225, lng = 177.3634 WHERE name = 'Sonaisali';
+UPDATE zones SET lat = -17.6725, lng = 177.3505 WHERE name = 'Vuda Point';
+UPDATE zones SET lat = -17.6053, lng = 177.4503 WHERE name = 'Lautoka';
+UPDATE zones SET lat = -17.9308, lng = 177.2678 WHERE name = 'Momi Bay';
+UPDATE zones SET lat = -18.2264, lng = 177.3792 WHERE name = 'Natadola';
+UPDATE zones SET lat = -18.1416, lng = 177.5049 WHERE name = 'Sigatoka';
+UPDATE zones SET lat = -18.2000, lng = 177.7000 WHERE name = 'Coral Coast';
+UPDATE zones SET lat = -18.2333, lng = 178.0500 WHERE name = 'Pacific Harbour';
+UPDATE zones SET lat = -17.5333, lng = 177.6667, remote_multiplier = 1.33 WHERE name = 'Ba';
+UPDATE zones SET lat = -17.3667, lng = 178.1667, remote_multiplier = 1.33 WHERE name = 'Rakiraki';
+UPDATE zones SET lat = -18.1416, lng = 178.4419 WHERE name = 'Suva';
+UPDATE zones SET lat = -18.0233, lng = 178.5561 WHERE name = 'Nausori';
+
+INSERT INTO pricing_rules (vehicle_type, distance_min_km, distance_max_km, base_rate_fjd_per_km, flagfall_fjd) VALUES
+  ('sedan',   0,   15,  3.20, 10),
+  ('sedan',   15,  35,  2.60, 15),
+  ('sedan',   35,  70,  1.85, 20),
+  ('sedan',   70,  160, 1.20, 25),
+  ('sedan',   160, 300, 1.45, 50),
+  ('minivan', 0,   15,  4.16, 13),
+  ('minivan', 15,  35,  3.38, 19.5),
+  ('minivan', 35,  70,  2.405,26),
+  ('minivan', 70,  160, 1.56, 32.5),
+  ('minivan', 160, 300, 1.885,65),
+  ('minibus', 0,   15,  5.44, 17),
+  ('minibus', 15,  35,  4.42, 25.5),
+  ('minibus', 35,  70,  3.145,34),
+  ('minibus', 70,  160, 2.04, 42.5),
+  ('minibus', 160, 300, 2.465,85);
+
+CREATE TABLE geocoded_addresses (
+  id INTEGER PRIMARY KEY,
+  query_normalized TEXT NOT NULL UNIQUE,
+  query_raw TEXT NOT NULL,
+  resolved_address TEXT,
+  lat REAL,
+  lng REAL,
+  distance_km REAL,
+  duration_text TEXT,
+  has_ferry_leg INTEGER NOT NULL DEFAULT 0,
+  nearest_zone_id INTEGER REFERENCES zones(id),
+  outcome TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE quote_requests_log (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  query_normalized TEXT NOT NULL,
+  cache_hit INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+INSERT INTO platform_settings (key, value) VALUES ('quote_rate_limit_max_per_day', '20');
