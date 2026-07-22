@@ -857,6 +857,108 @@ and confirmed gone. No test drivers/bookings/wallets were needed for this milest
 check confirmed `drivers=0, bookings=0` (already clean from prior milestones) alongside the real,
 legitimate data (`destinations=35, zones=16, fuel_index=1`) untouched throughout.
 
+## Milestone 9 — geocode + real-distance pricing for unlisted addresses
+
+Backend-only, still fully isolated. New `POST /quote` accepts a raw text address instead of a
+`destination_id`, resolves it via the real Google Routes API (`computeRoutes`, not Distance Matrix —
+Distance Matrix cannot detect ferry legs, a hard requirement, so this was a deliberate deviation from
+the literal spec wording, confirmed with James before building), and computes a real fare using
+`pricing_rules` — never guessing a zone or fabricating a price for anything ambiguous.
+
+### Pricing data — real derivation, not invented
+
+`pricing_rules` (designed in Milestone 1, empty for 8 milestones) and `zones.lat/lng/remote_multiplier`
+(didn't exist at all) were populated from a real empirical fit against all 35 live `ROUTES_DATA` routes
+(`ftt-booking-site/src/app.js`, read-only). Full methodology, band fits, and the two real outlier zones
+(Ba/Rakiraki, ~1.33x premium) are documented in `migrations/milestone9-schema.sql`'s header comment —
+reviewed and confirmed with James before any of it was written, since it's financially material.
+Coordinates are Claude-provided real-world best estimates (not geocoded), explicitly flagged as such —
+acceptable at Fiji's scale for "nearest zone" matching, not survey-grade.
+
+### `GOOGLE_MAPS_API_KEY`
+
+Set as a Wrangler secret on `nadi-dispatch-api`, restricted in Google Cloud Console to the Routes API
+only, no client-side use. Confirmed registered via `wrangler secret list`. Never displayed in chat.
+
+### Three failure modes — never silently produce a bad price
+
+1. **No route / doesn't resolve** → `needs_manual_confirmation`, no zone or price guessed.
+2. **Distance >300km OR a ferry leg on a route Google actually computed** → `needs_water_transfer`.
+3. **Otherwise** → nearest zone found by haversine distance, its `remote_multiplier` applied, fare
+   computed from the distance-banded `pricing_rules`.
+
+### Real bugs found and fixed during testing (not glossed over)
+
+The very first real test (`Sofitel Fiji Resort & Spa, Denarau Island` — a real hotel, unambiguously on
+Denarau) returned `nearest_zone: "Natadola"` instead of "Denarau" — geographically wrong. Diagnosed via
+a direct `SELECT` on the `geocoded_addresses` cache row: `lat`/`lng` were `null`. Root cause: the field
+mask sent to Google never requested `routes.legs.endLocation`, and even if it had been returned,
+`handleQuoteCreate()` never assigned it to the stored `lat`/`lng`. `null, null` gets JS-coerced to
+`(0, 0)` inside the haversine call, so nearest-zone matching was silently comparing against a point in
+the Gulf of Guinea. Fixed: field mask now includes `routes.legs.endLocation`; `callGoogleRoutesApi()`
+extracts `destLat`/`destLng` from the last leg's `endLocation`; `handleQuoteCreate()` now assigns them
+before the cache `INSERT`. Redeployed, deleted the bad cache row, re-ran the same real Sofitel query —
+`nearest_zone: "Denarau"`, real coordinates (`-17.769, 177.373`) confirmed via direct `SELECT`.
+
+A second real bug surfaced testing the water-transfer path with real Mamanuca/Vanua Levu addresses:
+Google's `computeRoutes` in `DRIVE` mode returns an identical `200` with an empty body (no `routes` key
+at all) for both "a real destination Google can't drive a route to" (a real outer island) and "this
+address doesn't resolve to anything" (garbage input) — confirmed by curling the Google API directly for
+both a real address and a nonsense string, byte-identical `{}` response either way. The original code
+mapped this whole "no route" case to `needs_water_transfer`, conflating it with the genuinely separate
+"needs manual confirmation" case the spec calls for. Fixed: `!routeResult.hasRoute` now maps to
+`needs_manual_confirmation`. `needs_water_transfer` is reserved for the case Google actually computed a
+real route that's either >300km or ferry-flagged — a case no real Fiji address could trigger in
+testing (see below), since Fiji is an island nation with no land border and Google's `DRIVE` mode
+simply won't compute a route across open ocean to another island or out of the country. This is real,
+useful operational insight, not a defect: any real inter-island or nonexistent address safely and
+correctly resolves to `needs_manual_confirmation` today, never a fabricated water-transfer message or
+a wrong price.
+
+Both fixes redeployed; the corrected `worker.js` diff is a clean, isolated 29-line change (verified via
+`git diff` before committing) — no other logic touched.
+
+### Real test — cache dedup
+
+Called `POST /quote` with the same Sofitel address twice. First call: `cached: false`, real Google API
+call (confirmed via direct D1 `SELECT` — one new `geocoded_addresses` row, real lat/lng/distance).
+Second call: `cached: true`, identical response. Independently confirmed via D1: `SELECT COUNT(*) FROM
+geocoded_addresses WHERE query_normalized = '...'` → `1` (not 2) after both calls; `quote_requests_log`
+shows one `cache_hit=0` row and one `cache_hit=1` row for the pair — proving exactly one real,
+billable Google API call happened across two requests for the same address.
+
+### Real test — 4 coverage scenarios
+
+| Scenario | Real address used | Result |
+|---|---|---|
+| Listed-zone address | Sofitel Fiji Resort & Spa, Denarau Island | `resolved`, nearest zone "Denarau", $48.24 sedan fare, 11.95km |
+| Yasawa/Mamanuca water-transfer address | Mana Island Resort, Mamanuca Islands | `needs_manual_confirmation` (see the no-route finding above — correct, safe outcome; also tested Savusavu, Vanua Levu, same result) |
+| Deliberately garbage address | `xzqjkw 99999 Nonexistentburg Fakeland` | `needs_manual_confirmation`, confirmed via direct curl to Google that it returns the identical empty response as the real-island case |
+| Normal unlisted Nadi-area address | Martintar, Nadi, Fiji | `resolved`, nearest zone "Wailoaloa", $20.00 sedan fare, 3.126km — a real suburb not in the `destinations` table, correctly falling back to nearest-zone matching |
+
+### Cost-abuse recommendation
+
+`/quote` triggers one paid Google API call per unique unresolved address; the existing IP-based rate
+limit (Milestone 6 pattern) is app-level spam friction, not a real security boundary against
+distributed abuse (documented already in `docs/OPERATIONS.md` §5). Recommendation: **proceed, don't
+pause**, with an interim `quote_rate_limit_max_per_day` per-IP cap (20/day, same pattern and setting
+table as the booking rate limiter) — built and live. This is a real mitigation for the realistic
+near-term risk (a single bad actor or broken client hammering the endpoint), not a substitute for the
+already-flagged, separately-scoped Cloudflare WAF/Bot Management work. Pausing entirely would block
+real progress for a risk this interim cap meaningfully reduces.
+
+### Cleanup
+
+All test rows deleted and re-verified `0` via direct `SELECT COUNT(*)`: `geocoded_addresses` (5→0),
+`quote_requests_log` (9→0). No drivers, bookings, or wallets were touched this milestone.
+
+### Not wired to the live widget
+
+`POST /quote` is backend-only, unauthenticated by design (same public-endpoint pattern as
+`POST /bookings`), and not called from `ftt-booking-site/` anywhere — confirmed via the standing
+protected-path diff below. Wiring it into the live guest widget is a separate, explicit decision, not
+authorized by this milestone.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
