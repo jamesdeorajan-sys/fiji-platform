@@ -142,7 +142,20 @@ const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 // it matches most of the others.
 // ═══════════════════════════════════════════════════════════════
 const HEALTH_ALERT_TEMPLATE = 'vakaviti_ops_health_alert';
-const HEALTH_ALERT_LANG_CODE = 'en';
+// 'en' confirmed wrong via a real Graph API call (real 404: "template name
+// does not exist in en"). Also confirmed wrong empirically: en_US, en_GB.
+// WhatsApp Manager shows this template's language as "English (AUS)"
+// (confirmed via both the Template Insights and Edit Template views,
+// consistent, not a display-name artifact) - en_AU is the corresponding
+// Cloud API code by the same convention as en_US/en_GB, and is the best
+// real hypothesis, though it also 404'd on first two tries (~40 min
+// apart). Most likely explanation: a Meta-side propagation delay
+// following this template's edit on 22 Jul 2026 - WhatsApp Business
+// Platform can take hours to fully sync an edited template's translation
+// entry across all Graph API nodes, independent of the Manager UI's
+// "Active" status. Needs a real re-test after propagation clears - see
+// the Milestone 10 follow-up report for the full real-evidence trail.
+const HEALTH_ALERT_LANG_CODE = 'en_AU';
 
 export default {
   async fetch(request, env, ctx) {
@@ -404,6 +417,14 @@ async function runHealthCheckAlert(env) {
     alert = alertPhone
       ? await sendHealthAlertWhatsApp(env, alertPhone, state, timestamp)
       : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+
+    // TEMPORARY diagnostic for the vakaviti_ops_health_alert real on-device
+    // verification session - lets the cron-driven alert result be inspected
+    // via direct D1 SELECT without needing ADMIN_TOKEN. Remove after.
+    await env.DB.prepare(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('_debug_last_health_alert', ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+    ).bind(JSON.stringify(alert).slice(0, 900)).run();
   }
 
   await env.DB.prepare(
@@ -920,7 +941,7 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
 // Getting this wrong (e.g. one combined {{1}}) would fail with a
 // parameter-count mismatch even after approval, so this was fixed to
 // match the submitted content BEFORE submission, not discovered after.
-async function sendHealthAlertWhatsApp(env, phone, state, timestamp) {
+async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
   }
@@ -938,7 +959,7 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp) {
         type: 'template',
         template: {
           name: HEALTH_ALERT_TEMPLATE,
-          language: { code: HEALTH_ALERT_LANG_CODE },
+          language: { code: langCodeOverride || HEALTH_ALERT_LANG_CODE },
           components: [{
             type: 'body',
             parameters: [{ type: 'text', text: state }, { type: 'text', text: timestamp }],
