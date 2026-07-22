@@ -302,3 +302,17 @@ CREATE TABLE quote_requests_log (
 );
 
 INSERT INTO platform_settings (key, value) VALUES ('quote_rate_limit_max_per_day', '20');
+
+-- Milestone 10: human escalation / "back to base" system
+CREATE TABLE escalations (
+  id INTEGER PRIMARY KEY,
+  source TEXT NOT NULL CHECK (source IN ('guest', 'driver')),
+  trigger_type TEXT NOT NULL CHECK (trigger_type IN (
+    'geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other'
+  )),
+  context TEXT,
+  booking_id INTEGER REFERENCES bookings(id),
+  driver_id INTEGER REFERENCES drivers(id),
+  created_at TEXT DEFAULT (datetime('now')),
+  resolved INTEGER NOT NULL DEFAULT 0
+);

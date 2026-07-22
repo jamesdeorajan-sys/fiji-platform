@@ -959,6 +959,94 @@ All test rows deleted and re-verified `0` via direct `SELECT COUNT(*)`: `geocode
 protected-path diff below. Wiring it into the live guest widget is a separate, explicit decision, not
 authorized by this milestone.
 
+## Milestone 10 — human escalation / "back to base" system
+
+Backend-only, still fully isolated. New `escalations` table (`id, source, trigger_type, context,
+booking_id, driver_id, created_at, resolved`) and `POST /escalate` — logs a real row, fires a WhatsApp
+alert to `admin_alert_phone`, returns a guest-facing `wa.me` deep link to the real concierge number.
+
+### Concierge number — real finding, confirmed with James before hardcoding
+
+Per instruction, pulled the number read-only from the live site rather than guessing: every WhatsApp
+button on `nadiairporttransfers.com` (`bulaWaBtn`, the footer "WhatsApp us now," the chat widget's
+"Continue on WhatsApp," the save-contact link) consistently points at `wa.me/61478886145`. Real finding
+surfaced before writing any code: this is the exact same number already stored in
+`platform_settings.admin_alert_phone`, contradicting the instruction's framing that these are two
+separate numbers. Confirmed with James via `AskUserQuestion` before hardcoding anything — same number,
+intentional. Stored as its own constant, `CONCIERGE_WHATSAPP_NUMBER`, not read from
+`admin_alert_phone` at runtime, so the two purposes (private ops alerts vs. public guest concierge
+line) stay logically independent in code even though the value matches today — if James ever splits
+them onto separate real numbers, only one line changes.
+
+### `POST /escalate`
+
+Validates `source` (`guest`/`driver`) and `trigger_type` (`geocode_failed`, `needs_manual_confirmation`,
+`wallet_dispute`, `app_issue`, `other`) against the schema's own `CHECK` constraints, inserts a real
+row, and returns `escalation_id`, a pre-filled `whatsapp_link`, and the raw alert-send result (useful
+for admin/debug calls; the guest-facing `/quote` wiring below doesn't leak the alert internals to
+guests, same discipline as every other admin-facing detail in this build).
+
+### Alert pipeline — reused, not duplicated, with a real tradeoff flagged plainly
+
+Per instruction, reuses Milestone 8's `sendHealthAlertWhatsApp()` directly rather than writing a new
+send function. `vakaviti_ops_health_alert`'s approved body wording ("Vakaviti Alert: nadi-dispatch-api
+status changed to `{{1}}` at `{{2}}`") is generic system-notification phrasing, not hardcoded to health
+semantics — `{{1}}` now carries an escalation summary (`ESCALATION #id (source/trigger_type):
+context`) instead of "DOWN"/"RECOVERED". This is a deliberate reuse decision to avoid a third async Meta
+template submission for materially the same "something needs a human" alert shape — flagged here
+plainly, not hidden. If this stretches Meta's template-content-match tolerance in practice, the fix is
+a dedicated `vakaviti_ops_escalation_alert` template later, same submission pattern as every prior
+template.
+
+### Wired to Milestone 9's `needs_manual_confirmation` path — both real exit points
+
+`handleQuoteCreate()`'s two `needs_manual_confirmation` returns (the uncached "Google unreachable/
+misconfigured" branch, tagged `trigger_type: 'geocode_failed'` since that's a distinct operational
+failure mode; and the cached-or-fresh "Google answered but found no route" branch, tagged
+`needs_manual_confirmation`) both now call `createEscalation()` automatically and include
+`escalation_id`/`whatsapp_link` in the guest-facing response. Fires on every request, cache hit or not
+— the geocode result is cached to save the paid Google call, but each request is a different real guest
+needing a human. Per Milestone 9's real finding, this is the actual reachable path for **both** garbage
+addresses **and** every genuine real inter-island/water-transfer address (Fiji has no land border, so
+Google's `DRIVE`-mode routing can never resolve those) — designed and worded accordingly: the alert
+summary and deep-link message are generic enough to fit either case, not narrowly "typo" wording.
+
+### Real test evidence
+
+Ran the full sequence against the real deployed Worker:
+1. **Garbage address** (`qzxjfk 88822 Nonexistentville Bogusland`) via `POST /quote` → real
+   `escalation_id: 1`, independently `SELECT`ed in D1 — real row, correct `source: 'guest'`,
+   `trigger_type: 'needs_manual_confirmation'`, context contains the exact typed address.
+2. **Direct `POST /escalate` call** to inspect real alert delivery → reached the Graph API, correctly
+   formed request, but got a real, specific `404`: `"template name (vakaviti_ops_health_alert) does not
+   exist in en"`. **Same open item Milestone 8 already flagged, still unresolved** — the template
+   hasn't been approved via WhatsApp Manager yet. This proves the escalation → alert pipeline is wired
+   correctly (real HTTP call, real expected rejection reason) but real on-device delivery confirmation
+   is blocked on the same external Meta-approval dependency, not a defect introduced here.
+3. **Mana Island Resort, Mamanuca Islands** (real resort, water-transfer case) via `POST /quote` → real
+   `escalation_id: 3`, correct context, correct `wa.me/61478886145` deep link.
+4. **Savusavu, Vanua Levu** (real town, water-transfer case) via `POST /quote` → real `escalation_id:
+   4`, same correctness.
+5. **Deep-link content verified**, not just assumed correct: decoded the returned URL directly —
+   `wa.me/61478886145` (the real, confirmed concierge number) with `text=` correctly containing the
+   guest's actual typed address and a plain-language explanation, not a generic placeholder. Actual
+   in-browser navigation to `wa.me` was blocked by the test browser's app-handoff sandboxing (expected
+   — `wa.me` redirects to native app/store handoff, not a renderable web page), so verification was done
+   by decoding the URL's `text` parameter directly instead.
+
+### Cleanup
+
+All test data across all three tables touched this session deleted and re-verified `0` via direct
+`SELECT COUNT(*)`: `escalations` (4→0), `geocoded_addresses` (3→0), `quote_requests_log` (3→0).
+
+### Open item carried forward, not new
+
+Real on-device WhatsApp delivery confirmation for escalation alerts needs `vakaviti_ops_health_alert`
+approved in WhatsApp Manager — the same precondition Milestone 8's health-check alerting has been
+waiting on. Once James submits/gets it approved, a fresh real end-to-end test (trigger an escalation,
+confirm the message lands on his phone with the right substituted text) is the natural next step — no
+new template needed, no new code needed, purely waiting on that one external approval.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

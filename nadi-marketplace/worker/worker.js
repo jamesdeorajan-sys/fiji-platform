@@ -183,6 +183,11 @@ export default {
       return handleQuoteCreate(request, env);
     }
 
+    // ── Milestone 10: human escalation / "back to base" system ──
+    if (request.method === 'POST' && url.pathname === '/escalate') {
+      return handleEscalationCreate(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/admin/docs/')) {
       return handleDocServe(request, env, url);
     }
@@ -1975,11 +1980,22 @@ async function handleQuoteCreate(request, env) {
       // don't have a query_normalized worth remembering as a permanent
       // failure - e.g. GOOGLE_MAPS_API_KEY not yet set shouldn't poison
       // the cache for when it is).
+      // trigger_type 'geocode_failed', not 'needs_manual_confirmation' -
+      // Google itself was unreachable/misconfigured here (an operational
+      // problem), distinct from Google answering fine but the destination
+      // genuinely needing a human (the branch below).
+      const { escalation: geoFailEscalation } = await createEscalation(env, {
+        source: 'guest',
+        triggerType: 'geocode_failed',
+        context: `Quote request for "${addressRaw}" could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
+      });
       return json({
         ok: true,
         outcome: 'needs_manual_confirmation',
         message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.',
         detail: routeResult.reason,
+        escalation_id: geoFailEscalation.id,
+        whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw),
       }, 200);
     } else if (!routeResult.hasRoute) {
       // Google returned 200 with no routes array. This happens for both a
@@ -2020,7 +2036,27 @@ async function handleQuoteCreate(request, env) {
   ).bind(clientIp, queryNormalized, cacheHit ? 1 : 0).run();
 
   if (cacheRow.outcome === 'needs_manual_confirmation') {
-    return json({ ok: true, outcome: 'needs_manual_confirmation', message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.', cached: cacheHit }, 200);
+    // Fires on every request, cache hit or not - the geocode result (real
+    // road distance) is what's cached to save the paid Google call, but
+    // each request here is a different real guest who needs a real human
+    // follow-up. Per Milestone 9's real finding, this is the actual
+    // reachable path for BOTH garbage addresses AND every genuine real
+    // inter-island/water-transfer address (Fiji has no land border, so
+    // Google's DRIVE-mode routing can never resolve those) - expect this
+    // to carry real volume, not rare typo-only traffic.
+    const { escalation: manualConfEscalation } = await createEscalation(env, {
+      source: 'guest',
+      triggerType: 'needs_manual_confirmation',
+      context: `Quote request for "${addressRaw}" needs manual confirmation.`,
+    });
+    return json({
+      ok: true,
+      outcome: 'needs_manual_confirmation',
+      message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.',
+      cached: cacheHit,
+      escalation_id: manualConfEscalation.id,
+      whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw),
+    }, 200);
   }
   if (cacheRow.outcome === 'needs_water_transfer') {
     return json({
@@ -2047,6 +2083,91 @@ async function handleQuoteCreate(request, env) {
     quoted_fare_fjd: fare,
     cached: cacheHit,
   }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 10 — human escalation / "back to base" system
+// ═══════════════════════════════════════════════════════════════
+
+const ESCALATION_SOURCES = ['guest', 'driver'];
+const ESCALATION_TRIGGER_TYPES = ['geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other'];
+
+// Same real number already live on nadiairporttransfers.com's WhatsApp
+// buttons (wa.me/61478886145) - confirmed with James this is intentionally
+// the same physical number as admin_alert_phone today. Kept as its own
+// constant, not read from platform_settings.admin_alert_phone at runtime,
+// so the two purposes (private ops alerts vs. public guest concierge line)
+// stay logically independent even though the value matches right now - if
+// James ever splits them onto separate numbers, only this line changes.
+const CONCIERGE_WHATSAPP_NUMBER = '61478886145';
+
+function buildConciergeWhatsAppLink(triggerType, contextText) {
+  const preface = {
+    geocode_failed: "Hi, I'm trying to book a Nadi Airport transfer but the online quote tool couldn't process my destination.",
+    needs_manual_confirmation: "Hi, I'm trying to book a Nadi Airport transfer but couldn't get an automatic quote for my destination.",
+    wallet_dispute: 'Hi, I have a question about my driver wallet balance.',
+    app_issue: "Hi, I'm having a problem with the driver app.",
+    other: 'Hi, I need some help with my Nadi Airport transfer.',
+  }[triggerType] || 'Hi, I need some help with my Nadi Airport transfer.';
+  const message = contextText ? `${preface} Details: ${contextText}` : preface;
+  return `https://wa.me/${CONCIERGE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
+// Reuses sendHealthAlertWhatsApp() directly rather than a new function or a
+// new template - vakaviti_ops_health_alert's approved body ("Vakaviti
+// Alert: nadi-dispatch-api status changed to {{1}} at {{2}}") is generic
+// system-notification wording, not hardcoded to health-check semantics, so
+// {{1}} carries an escalation summary here instead of "DOWN"/"RECOVERED".
+// Deliberate reuse to avoid a third async Meta template submission for
+// materially the same "something needs a human" alert shape - flagged
+// plainly in the Milestone 10 report, not a hidden repurposing. If this
+// stretches Meta's template-content-match tolerance in practice, the fix
+// is a dedicated vakaviti_ops_escalation_alert template later, same
+// submission pattern as every other template in this build.
+async function sendEscalationAlert(env, escalation) {
+  const alertPhone = await getSetting(env, 'admin_alert_phone', '');
+  const summary = `ESCALATION #${escalation.id} (${escalation.source}/${escalation.trigger_type}): ${(escalation.context || 'no context provided').slice(0, 200)}`;
+  return alertPhone
+    ? await sendHealthAlertWhatsApp(env, alertPhone, summary, sqliteNow())
+    : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+}
+
+// Shared by both POST /escalate and the automatic Milestone 9 wiring below
+// - one insert-and-alert path, not duplicated per caller.
+async function createEscalation(env, { source, triggerType, context, bookingId = null, driverId = null }) {
+  const insert = await env.DB.prepare(
+    `INSERT INTO escalations (source, trigger_type, context, booking_id, driver_id) VALUES (?, ?, ?, ?, ?)`
+  ).bind(source, triggerType, context, bookingId, driverId).run();
+  const escalation = { id: insert.meta.last_row_id, source, trigger_type: triggerType, context };
+  const alert = await sendEscalationAlert(env, escalation);
+  return { escalation, alert };
+}
+
+async function handleEscalationCreate(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const source = (body.source || '').toString().trim().toLowerCase();
+  const triggerType = (body.trigger_type || '').toString().trim().toLowerCase();
+  const context = (body.context !== undefined && body.context !== null) ? body.context.toString().slice(0, 2000) : null;
+  const bookingId = Number.isInteger(body.booking_id) ? body.booking_id : null;
+  const driverId = Number.isInteger(body.driver_id) ? body.driver_id : null;
+
+  const errors = [];
+  if (!ESCALATION_SOURCES.includes(source)) errors.push(`source must be one of: ${ESCALATION_SOURCES.join(', ')}`);
+  if (!ESCALATION_TRIGGER_TYPES.includes(triggerType)) errors.push(`trigger_type must be one of: ${ESCALATION_TRIGGER_TYPES.join(', ')}`);
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const { escalation, alert } = await createEscalation(env, { source, triggerType, context, bookingId, driverId });
+
+  return json({
+    ok: true,
+    escalation_id: escalation.id,
+    whatsapp_link: buildConciergeWhatsAppLink(triggerType, context),
+    alert,
+  }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════
