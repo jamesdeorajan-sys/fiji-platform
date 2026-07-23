@@ -1091,6 +1091,50 @@ matches the fitted numbers exactly, not just trusted the write response.
 `$48.49`, matching `5.57 + 3.592 × 11.95 = 48.4944` (rounds to `48.49`) exactly. Test cache/log rows
 deleted and re-verified `0`.
 
+## Deep review #2 — everything built since the first deep review
+
+Full read-through of `worker.js` (all ~2,200 lines) plus `destinations-admin.html` and
+`admin-drivers.html`, covering every milestone since the first deep review pass (destinations,
+health monitoring + backups, geocode/quote pricing, the pricing refit, escalations, and the health-alert
+language investigation). One real issue found and fixed; one piece of leftover debug code removed.
+
+### Fix: `POST /escalate` had zero rate limiting
+
+Real gap, not a hypothetical: every other public write endpoint on this Worker has an IP-based rate
+limit (`POST /bookings` → `checkGuestBookingRateLimit`, `POST /quote` → `checkQuoteRateLimit`), but
+`POST /escalate` — arguably the most sensitive of the three, since every real call triggers an actual
+WhatsApp send to James's personal phone (`admin_alert_phone`) — had none at all. Unbounded, that's a
+genuine spam/harassment vector against a real human, not just a cost concern; anyone who found the
+endpoint could fire unlimited alerts at his phone with zero friction.
+
+Fixed with the same pattern already used twice elsewhere: added `escalations.source_ip` (mirrors
+`bookings.source_ip` — a column on the entity itself, not a separate log table, since escalations has
+no caching concept requiring one), `checkEscalationRateLimit()` (10/day per IP, configurable via
+`platform_settings.escalation_rate_limit_max_per_day`), wired into `handleEscalationCreate`. The two
+Milestone 9 auto-wired calls (`geocode_failed`, `needs_manual_confirmation`) now also record `source_ip`
+for observability, though they're not separately capped — already bounded by `/quote`'s own rate limit
+before any escalation is created.
+
+**Real test**: inserted 8 synthetic prior rows for one IP via direct D1 `INSERT`, then made 2 real
+`POST /escalate` calls. Call 10 → real `201`, `escalation_id: 10`. Call 11 → real `429`, "Too many
+escalation requests." Exact boundary confirmed, not just "some limit exists." All 10 test escalation
+rows deleted afterward, re-verified `0`.
+
+### Cleanup: removed the temporary health-alert diagnostic
+
+`platform_settings._debug_last_health_alert` (added during the health-alert language investigation to
+inspect cron-driven alert results without `ADMIN_TOKEN`) served its purpose and was removed — leftover
+debug-only code has no place in production once its immediate need has passed. The leftover row itself
+was deleted from D1 and re-verified gone.
+
+### What else was checked, no issues found
+
+`destinations-admin.html` and `admin-drivers.html` both consistently escape every server-derived value
+through `escHtml()` before rendering — no repeat of the `driver-app.html` XSS gap the first deep review
+found. Every admin/driver write endpoint still correctly gates on `requireAdmin()`/`requireDriver()`;
+the accept-booking zone/online check and the wallet-lockout offline-forcing fix from the first deep
+review both remain intact and unregressed by anything built since.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

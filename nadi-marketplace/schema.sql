@@ -322,5 +322,8 @@ CREATE TABLE escalations (
   booking_id INTEGER REFERENCES bookings(id),
   driver_id INTEGER REFERENCES drivers(id),
   created_at TEXT DEFAULT (datetime('now')),
-  resolved INTEGER NOT NULL DEFAULT 0
+  resolved INTEGER NOT NULL DEFAULT 0,
+  source_ip TEXT
 );
+
+INSERT INTO platform_settings (key, value) VALUES ('escalation_rate_limit_max_per_day', '10');

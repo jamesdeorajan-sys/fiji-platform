@@ -417,14 +417,6 @@ async function runHealthCheckAlert(env) {
     alert = alertPhone
       ? await sendHealthAlertWhatsApp(env, alertPhone, state, timestamp)
       : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
-
-    // TEMPORARY diagnostic for the vakaviti_ops_health_alert real on-device
-    // verification session - lets the cron-driven alert result be inspected
-    // via direct D1 SELECT without needing ADMIN_TOKEN. Remove after.
-    await env.DB.prepare(
-      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('_debug_last_health_alert', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
-    ).bind(JSON.stringify(alert).slice(0, 900)).run();
   }
 
   await env.DB.prepare(
@@ -2009,6 +2001,7 @@ async function handleQuoteCreate(request, env) {
         source: 'guest',
         triggerType: 'geocode_failed',
         context: `Quote request for "${addressRaw}" could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
+        sourceIp: clientIp,
       });
       return json({
         ok: true,
@@ -2069,6 +2062,7 @@ async function handleQuoteCreate(request, env) {
       source: 'guest',
       triggerType: 'needs_manual_confirmation',
       context: `Quote request for "${addressRaw}" needs manual confirmation.`,
+      sourceIp: clientIp,
     });
     return json({
       ok: true,
@@ -2153,12 +2147,33 @@ async function sendEscalationAlert(env, escalation) {
     : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
 }
 
+// Found during deep review: unlike every other public write endpoint on
+// this Worker (POST /bookings has checkGuestBookingRateLimit, POST /quote
+// has checkQuoteRateLimit), POST /escalate had NO rate limiting at all -
+// a real gap, since every real call here triggers an actual WhatsApp send
+// to James's personal phone (admin_alert_phone). Unbounded, that's a
+// genuine spam/harassment vector against a real human, not just a cost
+// concern. Same IP-based sliding-window pattern as the other two, same
+// honest framing: app-level friction, not a security boundary.
+async function checkEscalationRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'escalation_rate_limit_max_per_day', '10'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM escalations WHERE source_ip = ? AND created_at > datetime('now', '-1440 minutes')`
+  ).bind(ip).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max };
+}
+
 // Shared by both POST /escalate and the automatic Milestone 9 wiring below
-// - one insert-and-alert path, not duplicated per caller.
-async function createEscalation(env, { source, triggerType, context, bookingId = null, driverId = null }) {
+// - one insert-and-alert path, not duplicated per caller. sourceIp is
+// recorded for every escalation (observability + the rate limit above),
+// even though only the direct POST /escalate endpoint enforces a cap on
+// it - the Milestone 9 auto-wired calls are already bounded by /quote's
+// own rate limit before any escalation is created.
+async function createEscalation(env, { source, triggerType, context, bookingId = null, driverId = null, sourceIp = null }) {
   const insert = await env.DB.prepare(
-    `INSERT INTO escalations (source, trigger_type, context, booking_id, driver_id) VALUES (?, ?, ?, ?, ?)`
-  ).bind(source, triggerType, context, bookingId, driverId).run();
+    `INSERT INTO escalations (source, trigger_type, context, booking_id, driver_id, source_ip) VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(source, triggerType, context, bookingId, driverId, sourceIp).run();
   const escalation = { id: insert.meta.last_row_id, source, trigger_type: triggerType, context };
   const alert = await sendEscalationAlert(env, escalation);
   return { escalation, alert };
@@ -2166,6 +2181,12 @@ async function createEscalation(env, { source, triggerType, context, bookingId =
 
 async function handleEscalationCreate(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkEscalationRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many escalation requests from this connection today. Please try again tomorrow, or contact us directly.' }, 429);
+  }
 
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
@@ -2181,7 +2202,7 @@ async function handleEscalationCreate(request, env) {
   if (!ESCALATION_TRIGGER_TYPES.includes(triggerType)) errors.push(`trigger_type must be one of: ${ESCALATION_TRIGGER_TYPES.join(', ')}`);
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
-  const { escalation, alert } = await createEscalation(env, { source, triggerType, context, bookingId, driverId });
+  const { escalation, alert } = await createEscalation(env, { source, triggerType, context, bookingId, driverId, sourceIp: clientIp });
 
   return json({
     ok: true,
