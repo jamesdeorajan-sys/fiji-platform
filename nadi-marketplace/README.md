@@ -1135,6 +1135,41 @@ found. Every admin/driver write endpoint still correctly gates on `requireAdmin(
 the accept-booking zone/online check and the wallet-lockout offline-forcing fix from the first deep
 review both remain intact and unregressed by anything built since.
 
+## WAF + Rate Limiting — ahead of guest widget integration
+
+Before wiring any real UI to `/quote` or `/bookings`, added a real edge-level protection layer in
+front of `nadi-dispatch-api`. Full detail, exact rule expressions, and the real constraints
+discovered while configuring are in `docs/OPERATIONS.md` §5 — summary here.
+
+**Real gap found first**: `nadi-dispatch-api` had no custom domain — pure `*.workers.dev`, and
+Cloudflare's zone-level WAF/Rate Limiting attach to a zone, which `workers.dev` isn't. Fixed by
+binding `api.nadiairporttransfers.com` to the Worker via the Workers Custom Domains API. Confirmed
+real (not just a 200 from the bind call): `GET https://api.nadiairporttransfers.com/health` returns
+the identical live response as the `workers.dev` URL; the existing root site confirmed unaffected.
+
+**Plan tier confirmed via API, not assumed**: `nadiairporttransfers.com` is on Cloudflare's Free
+plan. Configuring the actual rules surfaced real, load-bearing Free-tier constraints along the way —
+1 Rate Limiting Rule per zone (not the 2 originally planned; `/quote` and `/bookings` now share one
+combined rule), a fixed 10-second period (a 60s period was rejected outright), matching 10s
+mitigation timeout, and a required `cf.colo.id` characteristic. Each was a real API rejection that
+reshaped the final rule, not something guessed in advance.
+
+**Live now**: a Rate Limiting Rule (5 req/10s per IP, combined across `/quote` + `/bookings`) and a
+WAF Custom Rule (block `cf.threat_score > 30` on the same two paths), both scoped to
+`api.nadiairporttransfers.com` only.
+
+**Real test**: 6 rapid `POST /quote` calls through the new domain — requests 1–5 real `200`s (1 real
+Google API call, 4 cache hits, confirmed via direct D1 query), request 6 → real `429` with
+Cloudflare's own native block response (`error code: 1015`, not this Worker's JSON shape) — proof
+the block fires at Cloudflare's edge, never reaching the Worker. Confirmed correct scoping: 7 rapid
+requests to the unrelated `/health` path all passed through untouched. Test data cleaned up,
+re-verified `0`.
+
+**Real, honest gaps not closed by this pass** (see `docs/OPERATIONS.md` §6 for full detail):
+`POST /drivers`/`POST /driver/login` still have no edge-level rule (out of scope — only the two
+endpoints implicated in guest widget integration were covered); Bot Fight Mode deliberately
+deferred as a judgment call, not a blocker; admin pages still have no Zero Trust/Access layer.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

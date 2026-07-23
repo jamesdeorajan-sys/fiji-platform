@@ -149,19 +149,63 @@ branch (`main`), and per standing policy this build doesn't commit there without
 would also have nothing real to configure right now given the point above. Revisit when either
 becomes true.
 
-## 5. Explicitly NOT done — flagged for a dedicated security-hardening session
+## 5. WAF + Rate Limiting (added ahead of guest widget integration)
 
-Stated plainly, not glossed over: these are real gaps, not oversights, and not addressed in this
-milestone because they're genuinely separate scope, not because they're low-value.
+Before wiring any real UI to `/quote` or `/bookings` (even on an isolated preview), a real
+edge-level layer was added in front of `nadi-dispatch-api` — the point at which these endpoints
+stop being curl-tested-only and become genuinely discoverable/probeable, and `/quote` specifically
+triggers a real, paid Google Routes API call per unique address.
 
-- **No Cloudflare Bot Management or WAF rules on any public endpoint.** `POST /bookings`'s current
-  IP-based rate limit (Milestone 6) is explicitly scoped as "app-level spam friction, not a security
-  boundary" — it covers a single scripted client from one IP, nothing more. It does not cover
-  distributed abuse, IP rotation, or anything at Cloudflare's actual edge/bot-management layer,
-  which is entirely unconfigured for this Worker today. A real security-hardening pass should
-  evaluate Cloudflare's WAF custom rules and Bot Management (Super Bot Fight Mode at minimum) on
-  `nadi-dispatch-api`'s routes, particularly the public write endpoints (`POST /bookings`,
-  `POST /drivers`, `POST /driver/login`).
+**Real, hard constraint discovered first**: `nadi-dispatch-api` had no custom domain — it was pure
+`*.workers.dev`, and Cloudflare's zone-level WAF/Rate Limiting products attach to a *zone*, which
+`workers.dev` isn't (it's Cloudflare's own shared domain). Fixed by binding
+`api.nadiairporttransfers.com` to the Worker (Workers Custom Domains API — auto-provisions DNS +
+SSL), confirmed real via a direct request (`GET https://api.nadiairporttransfers.com/health` →
+real `200`, identical to the `workers.dev` URL) and confirmed the existing live site is unaffected
+(`nadiairporttransfers.com` root still real `200`).
+
+**Plan tier confirmed via API**: `nadiairporttransfers.com`'s zone is on Cloudflare's Free plan
+(`GET /zones?name=...` → `plan.name: "Free Website"`). Real, load-bearing constraints discovered
+while configuring (each one a genuine API rejection, not assumed from documentation):
+- Exactly **1** Rate Limiting Rule allowed per zone on Free (attempting a 2nd failed with
+  `exceeded the maximum number of rules in the phase http_ratelimit: 2 out of 1`) — `/quote` and
+  `/bookings` share one combined rule/counter rather than two independent ones.
+- Rate Limiting period is locked to **10 seconds** on Free (a 60s period was rejected: "not
+  entitled to use the period 60, can only use a period among [10]").
+- Mitigation timeout must equal the period (10s), not a longer cooldown.
+- `characteristics` must include `cf.colo.id` alongside `ip.src` — Free-tier rate limiting counts
+  per colocation, not globally per IP across Cloudflare's whole network.
+
+**What's live now** (zone `nadiairporttransfers.com`, scoped to `api.nadiairporttransfers.com`
+only):
+- **Rate Limiting Rule**: `(http.host eq "api.nadiairporttransfers.com" and
+  (http.request.uri.path eq "/quote" or http.request.uri.path eq "/bookings"))` — block at 5
+  requests per 10 seconds per IP (combined across both paths), 10s cooldown.
+- **WAF Custom Rule**: same path match, plus `cf.threat_score gt 30` → block.
+
+**Real test performed**: 6 rapid `POST /quote` requests through the new domain — requests 1–5 real
+`200`s from the Worker (1 real Google API call, 4 cache hits, independently confirmed via D1),
+request 6 → real `429` with Cloudflare's own native block response (`error code: 1015`, not this
+Worker's JSON error shape) — proof the block fired at Cloudflare's edge, before the request ever
+reached the Worker. Confirmed the rules are correctly scoped: 7 rapid requests to `/health` (an
+unrelated path on the same subdomain) all returned real `200`s, untouched. Test data cleaned up,
+re-verified `0`.
+
+## 6. Explicitly NOT done — flagged for a dedicated security-hardening session
+
+Stated plainly, not glossed over: these are real gaps, not oversights, and not addressed because
+they're genuinely separate scope, not because they're low-value.
+
+- **`POST /drivers` and `POST /driver/login` have no edge-level rule.** Only `/quote` and
+  `/bookings` were in scope for the pass above (the two endpoints directly implicated in guest
+  widget integration) — same class of gap, not yet closed for these two.
+- **Bot Fight Mode deliberately deferred**, not built. Its imprecision (real false-positive risk
+  against legitimate automated/non-browser traffic on Free tier specifically) makes it a judgment
+  call worth real usage data before enabling, not a blocker for guest widget integration — Rate
+  Limiting + WAF Custom Rules already meaningfully raise the bar over the prior app-only state for
+  the realistic near-term threat (a single or modestly-distributed scripted abuser). Revisit once
+  there's real traffic to tune against, or consider a Pro-tier upgrade ($20/mo) for Super Bot Fight
+  Mode if stronger bot-specific coverage is wanted sooner.
 - **No Zero Trust / Access policy on any admin page.** `admin-drivers.html`, `destinations-admin.html`,
   and every `/admin/*` API endpoint rely on a single bearer token (`ADMIN_TOKEN`) alone — no IP
   allowlisting, no Cloudflare Access login gate, no MFA. Anyone with the token, from anywhere, has
@@ -171,5 +215,5 @@ milestone because they're genuinely separate scope, not because they're low-valu
   possibly splitting into narrower per-function tokens instead of one token with full access to
   every admin action).
 
-Neither of these is built here — this section exists so they're tracked as explicit, named open
+None of these are built here — this section exists so they're tracked as explicit, named open
 items for a dedicated session, not lost track of between now and whenever cutover approaches.
