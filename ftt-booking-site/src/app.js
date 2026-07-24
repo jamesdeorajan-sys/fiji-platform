@@ -1917,20 +1917,24 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 
   function renderList(filter = '') {
     const f = filter.toLowerCase().trim();
-    let html = '';
+    let sentinelHtml = '';
+    let resultsHtml = '';
 
-    // Always show sentinels (custom address option) at the top
+    // Non-blank sentinels (the custom-address escape hatch) must never be
+    // filtered out by search text - a guest whose destination doesn't match
+    // anything is exactly who needs this option, so treating it like a
+    // normal searchable option (as before) made it disappear along with
+    // every other result and left the "no matches" state with nothing
+    // clickable at all.
     sentinels.forEach(s => {
       if (s.value === '' && f) return;          // hide blank when searching
-      if (!f || s.text.toLowerCase().includes(f)) {
-        html += `<div class="ta-opt ta-opt-sentinel" data-val="${s.value}">${s.text}</div>`;
-      }
+      sentinelHtml += `<div class="ta-opt ta-opt-sentinel" data-val="${s.value}">${s.text}</div>`;
     });
 
     if (ungrouped.length) {
       ungrouped.forEach(o => {
         if (!f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f)) {
-          html += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+          resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
         }
       });
     }
@@ -1940,13 +1944,18 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
         !f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f) || g.label.toLowerCase().includes(f)
       );
       if (!matched.length) return;
-      html += `<div class="ta-group-label">${g.label}</div>`;
+      resultsHtml += `<div class="ta-group-label">${g.label}</div>`;
       matched.forEach(o => {
-        html += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+        resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
       });
     });
 
-    if (!html) html = `<div class="ta-empty">No matches for "${filter}". Try the area name (e.g. "Coral Coast") or pick "📍 Other / not listed".</div>`;
+    let html = sentinelHtml;
+    if (!resultsHtml && f) {
+      html += `<div class="ta-empty">No matches for "${filter}". Try the area name (e.g. "Coral Coast"), or pick "📍 Other / not listed" above.</div>`;
+    } else {
+      html += resultsHtml;
+    }
     list.innerHTML = html;
 
     // Wire option clicks
