@@ -1,0 +1,12 @@
+-- Milestone 12: airport-anchored quotes in both directions.
+--
+-- /quote previously only supported "Nadi Airport -> free-text address"
+-- (arriving guests). Adding "free-text address -> Nadi Airport" (departing
+-- guests) means the same free-text query can now be geocoded for two
+-- genuinely different real trips - direction distinguishes them in the
+-- cache so a departure quote and an arrival quote for the same address
+-- text never collide. direction is also folded into query_normalized
+-- itself (the actual cache key); this column exists so the direction of
+-- an existing cached row can be read back directly rather than parsed out
+-- of query_normalized.
+ALTER TABLE geocoded_addresses ADD COLUMN direction TEXT NOT NULL DEFAULT 'from_airport';

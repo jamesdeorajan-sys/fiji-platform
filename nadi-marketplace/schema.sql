@@ -298,7 +298,12 @@ CREATE TABLE geocoded_addresses (
   has_ferry_leg INTEGER NOT NULL DEFAULT 0,
   nearest_zone_id INTEGER REFERENCES zones(id),
   outcome TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  -- Milestone 12: which real trip this cached geocode represents.
+  -- 'from_airport' (arriving guest) or 'to_airport' (departing guest).
+  -- Folded into query_normalized itself so the same address text never
+  -- collides between the two directions.
+  direction TEXT NOT NULL DEFAULT 'from_airport'
 );
 
 CREATE TABLE quote_requests_log (

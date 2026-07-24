@@ -1878,10 +1878,19 @@ async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
 // real API key and a real test call - see the Milestone 9 report for what
 // the actual live response looked like and whether this detection held up
 // against a real Yasawa/Mamanuca address).
-async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
+// direction: 'from_airport' (airportLatLng -> free-text address, the
+// original arriving-guest flow) or 'to_airport' (free-text address ->
+// airportLatLng, Milestone 12's departing-guest flow). Google's Waypoint
+// object accepts either a location or an address on BOTH ends, so this is
+// a symmetric swap, not two different API shapes.
+async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, direction = 'from_airport') {
   if (!env.GOOGLE_MAPS_API_KEY) {
     return { ok: false, reason: 'not_configured' };
   }
+  const airportPoint = { location: { latLng: { latitude: airportLat, longitude: airportLng } } };
+  const addressPoint = { address: addressText };
+  const origin = direction === 'to_airport' ? addressPoint : airportPoint;
+  const destination = direction === 'to_airport' ? airportPoint : addressPoint;
   try {
     const res = await fetch(GOOGLE_ROUTES_API_URL, {
       method: 'POST',
@@ -1894,11 +1903,14 @@ async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
         // distance from (0,0) instead - see the Milestone 9 report for
         // exactly how this was caught (a real Denarau address matched
         // "Natadola" as nearest zone, which is nowhere near it).
-        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.endLocation,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
+        // routes.legs.startLocation added for Milestone 12: when the
+        // free-text address is the ORIGIN (direction='to_airport'), its
+        // resolved point is the first leg's start, not the last leg's end.
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.startLocation,routes.legs.endLocation,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
       },
       body: JSON.stringify({
-        origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
-        destination: { address: destinationText },
+        origin,
+        destination,
         travelMode: 'DRIVE',
         routingPreference: 'TRAFFIC_UNAWARE',
         units: 'METRIC',
@@ -1924,15 +1936,18 @@ async function callGoogleRoutesApi(env, originLat, originLng, destinationText) {
     const stepsText = JSON.stringify(route.legs || []).toLowerCase();
     const hasFerryLeg = warningsText.includes('ferry') || stepsText.includes('ferry') || stepsText.includes('"travelmode":"ferry"');
 
-    // Last leg's endLocation is the actual resolved destination point -
-    // required for findNearestZone(), previously missing entirely (see the
-    // field mask comment above).
+    // The free-text address's own resolved point: the last leg's endLocation
+    // when it's the destination (from_airport), or the first leg's
+    // startLocation when it's the origin (to_airport, Milestone 12).
+    const firstLeg = route.legs && route.legs[0];
     const lastLeg = route.legs && route.legs[route.legs.length - 1];
-    const endLatLng = lastLeg && lastLeg.endLocation && lastLeg.endLocation.latLng;
-    const destLat = endLatLng ? endLatLng.latitude : null;
-    const destLng = endLatLng ? endLatLng.longitude : null;
+    const addressLatLng = direction === 'to_airport'
+      ? (firstLeg && firstLeg.startLocation && firstLeg.startLocation.latLng)
+      : (lastLeg && lastLeg.endLocation && lastLeg.endLocation.latLng);
+    const geocodedLat = addressLatLng ? addressLatLng.latitude : null;
+    const geocodedLng = addressLatLng ? addressLatLng.longitude : null;
 
-    return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg, destLat, destLng };
+    return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg, geocodedLat, geocodedLng };
   } catch (err) {
     return { ok: false, reason: 'fetch_error', error: err.message };
   }
@@ -1966,14 +1981,27 @@ async function handleQuoteCreate(request, env) {
 
   const addressRaw = (body.address || '').toString().trim();
   const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
+  // Milestone 12: which real trip this address represents. 'from_airport'
+  // (default, unchanged) = arriving guest, Nadi Airport -> address.
+  // 'to_airport' = departing guest, address -> Nadi Airport. Same address
+  // text means two different real journeys depending on this, so it must
+  // never be inferred or defaulted away once present.
+  const direction = (body.direction || 'from_airport').toString().trim();
 
   const errors = [];
   if (!addressRaw) errors.push('address is required');
   if (addressRaw.length > 300) errors.push('address is too long');
   if (!ALLOWED_VEHICLE_TYPES.includes(vehicleType)) errors.push(`vehicle_type must be one of: ${ALLOWED_VEHICLE_TYPES.join(', ')}`);
+  if (!['from_airport', 'to_airport'].includes(direction)) errors.push(`direction must be one of: from_airport, to_airport`);
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
-  const queryNormalized = normalizeAddressQuery(addressRaw);
+  // direction is folded into the cache key itself (not just a separate
+  // column) so "address X as pickup, airport as destination" and "airport
+  // as pickup, address X as destination" can never share a cached fare -
+  // real distance/duration is looked up fresh for each, even though in
+  // practice they'll often be close. The direction column below exists so
+  // it can be read straight back off a cached row without re-parsing the key.
+  const queryNormalized = `${direction}:${normalizeAddressQuery(addressRaw)}`;
   let cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE query_normalized = ?`).bind(queryNormalized).first();
   let cacheHit = !!cacheRow;
 
@@ -1983,7 +2011,7 @@ async function handleQuoteCreate(request, env) {
       return json({ ok: false, error: 'Origin zone coordinates not configured.' }, 500);
     }
 
-    const routeResult = await callGoogleRoutesApi(env, nadiAirport.lat, nadiAirport.lng, addressRaw);
+    const routeResult = await callGoogleRoutesApi(env, nadiAirport.lat, nadiAirport.lng, addressRaw, direction);
 
     let outcome, resolvedAddress = null, lat = null, lng = null, distanceKm = null, durationText = null, hasFerryLeg = 0, nearestZoneId = null;
 
@@ -2000,7 +2028,7 @@ async function handleQuoteCreate(request, env) {
       const { escalation: geoFailEscalation } = await createEscalation(env, {
         source: 'guest',
         triggerType: 'geocode_failed',
-        context: `Quote request for "${addressRaw}" could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
+        context: `Quote request for "${addressRaw}" (${direction}) could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
         sourceIp: clientIp,
       });
       return json({
@@ -2009,7 +2037,7 @@ async function handleQuoteCreate(request, env) {
         message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.',
         detail: routeResult.reason,
         escalation_id: geoFailEscalation.id,
-        whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw),
+        whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw, direction),
       }, 200);
     } else if (!routeResult.hasRoute) {
       // Google returned 200 with no routes array. This happens for both a
@@ -2026,14 +2054,14 @@ async function handleQuoteCreate(request, env) {
       distanceKm = routeResult.distanceKm;
       durationText = routeResult.durationRaw;
       hasFerryLeg = routeResult.hasFerryLeg ? 1 : 0;
-      lat = routeResult.destLat;
-      lng = routeResult.destLng;
+      lat = routeResult.geocodedLat;
+      lng = routeResult.geocodedLng;
     } else {
       distanceKm = routeResult.distanceKm;
       durationText = routeResult.durationRaw;
       outcome = 'resolved';
-      lat = routeResult.destLat;
-      lng = routeResult.destLng;
+      lat = routeResult.geocodedLat;
+      lng = routeResult.geocodedLng;
     }
 
     // The guest widget fires one /quote request per vehicle type in
@@ -2043,9 +2071,9 @@ async function handleQuoteCreate(request, env) {
     // request that loses the race still gets the winning row instead of
     // throwing on the UNIQUE constraint.
     await env.DB.prepare(
-      `INSERT OR IGNORE INTO geocoded_addresses (query_normalized, query_raw, resolved_address, lat, lng, distance_km, duration_text, has_ferry_leg, nearest_zone_id, outcome)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(queryNormalized, addressRaw, resolvedAddress, lat, lng, distanceKm, durationText, hasFerryLeg, nearestZoneId, outcome).run();
+      `INSERT OR IGNORE INTO geocoded_addresses (query_normalized, query_raw, resolved_address, lat, lng, distance_km, duration_text, has_ferry_leg, nearest_zone_id, outcome, direction)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(queryNormalized, addressRaw, resolvedAddress, lat, lng, distanceKm, durationText, hasFerryLeg, nearestZoneId, outcome, direction).run();
 
     cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE query_normalized = ?`).bind(queryNormalized).first();
     cacheHit = false;
@@ -2067,7 +2095,7 @@ async function handleQuoteCreate(request, env) {
     const { escalation: manualConfEscalation } = await createEscalation(env, {
       source: 'guest',
       triggerType: 'needs_manual_confirmation',
-      context: `Quote request for "${addressRaw}" needs manual confirmation.`,
+      context: `Quote request for "${addressRaw}" (${direction}) needs manual confirmation.`,
       sourceIp: clientIp,
     });
     return json({
@@ -2076,7 +2104,7 @@ async function handleQuoteCreate(request, env) {
       message: 'Could not confirm this address automatically. We will follow up with you directly to confirm pricing.',
       cached: cacheHit,
       escalation_id: manualConfEscalation.id,
-      whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw),
+      whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw, direction),
     }, 200);
   }
   if (cacheRow.outcome === 'needs_water_transfer') {
@@ -2086,6 +2114,7 @@ async function handleQuoteCreate(request, env) {
       message: 'This destination requires a water transfer. Please contact us directly to arrange this trip.',
       distance_km: cacheRow.distance_km,
       has_ferry_leg: !!cacheRow.has_ferry_leg,
+      direction,
       cached: cacheHit,
     }, 200);
   }
@@ -2097,6 +2126,7 @@ async function handleQuoteCreate(request, env) {
     ok: true,
     outcome: 'resolved',
     query: addressRaw,
+    direction,
     distance_km: cacheRow.distance_km,
     duration: cacheRow.duration_text,
     nearest_zone: nearestZone ? { id: nearestZone.id, name: nearestZone.name, remote_multiplier: nearestZone.remote_multiplier } : null,
@@ -2122,10 +2152,14 @@ const ESCALATION_TRIGGER_TYPES = ['geocode_failed', 'needs_manual_confirmation',
 // James ever splits them onto separate numbers, only this line changes.
 const CONCIERGE_WHATSAPP_NUMBER = '61478886145';
 
-function buildConciergeWhatsAppLink(triggerType, contextText) {
+// direction (Milestone 12): 'to_airport' means the address being quoted is
+// the guest's PICKUP (departing guest), not the destination - the message
+// wording needs to match, since this is what the guest actually sends.
+function buildConciergeWhatsAppLink(triggerType, contextText, direction = 'from_airport') {
+  const which = direction === 'to_airport' ? 'pickup' : 'destination';
   const preface = {
-    geocode_failed: "Hi, I'm trying to book a Nadi Airport transfer but the online quote tool couldn't process my destination.",
-    needs_manual_confirmation: "Hi, I'm trying to book a Nadi Airport transfer but couldn't get an automatic quote for my destination.",
+    geocode_failed: `Hi, I'm trying to book a Nadi Airport transfer but the online quote tool couldn't process my ${which}.`,
+    needs_manual_confirmation: `Hi, I'm trying to book a Nadi Airport transfer but couldn't get an automatic quote for my ${which}.`,
     wallet_dispute: 'Hi, I have a question about my driver wallet balance.',
     app_issue: "Hi, I'm having a problem with the driver app.",
     other: 'Hi, I need some help with my Nadi Airport transfer.',
