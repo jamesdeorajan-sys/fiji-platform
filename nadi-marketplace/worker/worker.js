@@ -2036,12 +2036,18 @@ async function handleQuoteCreate(request, env) {
       lng = routeResult.destLng;
     }
 
-    const insert = await env.DB.prepare(
-      `INSERT INTO geocoded_addresses (query_normalized, query_raw, resolved_address, lat, lng, distance_km, duration_text, has_ferry_leg, nearest_zone_id, outcome)
+    // The guest widget fires one /quote request per vehicle type in
+    // parallel for the same address, so concurrent requests can race here
+    // for a brand-new (not-yet-cached) address. query_normalized is UNIQUE,
+    // so use INSERT OR IGNORE + re-SELECT rather than a plain INSERT: a
+    // request that loses the race still gets the winning row instead of
+    // throwing on the UNIQUE constraint.
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO geocoded_addresses (query_normalized, query_raw, resolved_address, lat, lng, distance_km, duration_text, has_ferry_leg, nearest_zone_id, outcome)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(queryNormalized, addressRaw, resolvedAddress, lat, lng, distanceKm, durationText, hasFerryLeg, nearestZoneId, outcome).run();
 
-    cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE id = ?`).bind(insert.meta.last_row_id).first();
+    cacheRow = await env.DB.prepare(`SELECT * FROM geocoded_addresses WHERE query_normalized = ?`).bind(queryNormalized).first();
     cacheHit = false;
   }
 
