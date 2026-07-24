@@ -169,6 +169,14 @@ const state = {
   // a fetch resolves; forAddress guards against a slow, stale response
   // landing after the guest has already changed the address.
   quoteResult: null,
+  // MILESTONE 12 (departing guest, bidirectional /quote): mirrors
+  // quoteResult above but for a custom PICKUP address when destination is
+  // the fixed Nadi Airport (direction='to_airport'). Same forAddress guard,
+  // same shape - kept as a separate field rather than reusing quoteResult
+  // because both can legitimately be mid-flight at once if a guest fiddles
+  // with both fields (only one is ever actually used for pricing, gated by
+  // which end is CUSTOM_* and which is 'NAN').
+  pickupQuoteResult: null,
   // Resolved marketplace zone for the current destination, ANY type (fixed
   // or custom) - used only for POST /bookings' destination_zone field, not
   // for pricing. null until resolved.
@@ -300,6 +308,20 @@ function computePrices(pickupVal, destVal, km) {
       };
     }
   }
+  // MILESTONE 12: symmetric departing-guest case - real Google-backed fare
+  // for a custom pickup address quoted to the fixed Nadi Airport.
+  if (destVal === 'NAN' && pickupVal === 'CUSTOM_PICKUP') {
+    const addr = document.getElementById('customPickupAddress')?.value.trim();
+    const q = state.pickupQuoteResult;
+    if (addr && q && q.forAddress === addr && q.outcome === 'resolved') {
+      return {
+        sedan:   applyModifiers(q.fares.sedan),
+        minivan: applyModifiers(q.fares.minivan),
+        minibus: applyModifiers(q.fares.minibus),
+        source:  'quote'
+      };
+    }
+  }
   const pub = lookupPublishedPrices(pickupVal, destVal);
   if (pub) {
     return {
@@ -318,16 +340,17 @@ function computePrices(pickupVal, destVal, km) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MILESTONE 11 — guest widget integration (isolated preview, NOT live).
+// MILESTONE 11/12 — guest widget integration (isolated preview, NOT live).
 // Wires nadi-dispatch-api's /quote and /bookings into the existing booking
-// flow. Real, hard scope limit discovered while designing this: /quote's
-// backend hardcodes its origin to Nadi Airport (nadi-marketplace/worker/
-// worker.js's callGoogleRoutesApi always queries FROM Nadi Airport), so it
-// can only reliably answer "Nadi Airport -> this destination" - never
-// hotel-to-hotel, return-direction (hotel -> airport), or a custom pickup.
-// Both real /quote pricing AND POST /bookings are scoped to pickup === 'NAN'
-// only; every other pickup keeps today's WhatsApp-only flow completely
-// unchanged - not a regression, an explicit, flagged scope boundary.
+// flow. /quote is airport-ANCHORED, not general point-to-point: it can
+// answer "Nadi Airport -> this address" (direction='from_airport', arriving
+// guest, Milestone 11) or "this address -> Nadi Airport" (direction=
+// 'to_airport', departing guest, Milestone 12) - never hotel-to-hotel with
+// no airport involved. Real /quote pricing AND POST /bookings are scoped to
+// exactly two cases: pickup === 'NAN' (arriving), or pickup === 'CUSTOM_PICKUP'
+// && destination === 'NAN' (departing). Every other combination keeps
+// today's WhatsApp-only flow completely unchanged - not a regression, an
+// explicit, flagged scope boundary.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const NADI_API_BASE = 'https://api.nadiairporttransfers.com';
@@ -346,21 +369,25 @@ const MARKETPLACE_ZONE_NAMES = new Set([
 const AREA_ZONE_ALIASES = { 'Port Denarau': 'Denarau' };
 
 let quoteDebounceTimer = null;
+let pickupQuoteDebounceTimer = null;
 let zoneResolveTimer = null;
 
-// Real Google-Maps-backed price + zone for a Nadi-Airport-departure booking
-// to an arbitrary address. Calls /quote once per vehicle type in parallel -
-// the backend caches by address text, not vehicle type, so only the FIRST
-// of the three is a real, billable Google API call; the other two are free
-// cache hits (confirmed in the Milestone 9 real cache-dedup test).
-async function fetchQuoteForAddress(addressText) {
+// Real Google-Maps-backed price + zone for an airport-anchored trip to/from
+// an arbitrary address. Calls /quote once per vehicle type in parallel - the
+// backend caches by address text AND direction, not vehicle type, so only
+// the FIRST of the three is a real, billable Google API call; the other two
+// are free cache hits (confirmed in the Milestone 9 real cache-dedup test).
+// direction: 'from_airport' (default, Milestone 11 - Nadi Airport -> address,
+// arriving guest) or 'to_airport' (Milestone 12 - address -> Nadi Airport,
+// departing guest).
+async function fetchQuoteForAddress(addressText, direction = 'from_airport') {
   try {
     const [sedanRes, minivanRes, minibusRes] = await Promise.all(
       ['sedan', 'minivan', 'minibus'].map(vt =>
         fetch(`${NADI_API_BASE}/quote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: addressText, vehicle_type: vt }),
+          body: JSON.stringify({ address: addressText, vehicle_type: vt, direction }),
         }).then(r => r.json()).catch(() => null)
       )
     );
@@ -405,12 +432,33 @@ function maybeDebounceCustomDestQuote() {
   if (!addr || addr.length < 8) return;
   if (state.quoteResult && state.quoteResult.forAddress === addr) return; // already have it
   quoteDebounceTimer = setTimeout(async () => {
-    const result = await fetchQuoteForAddress(addr);
+    const result = await fetchQuoteForAddress(addr, 'from_airport');
     // Guard against a slow response landing after the guest changed the
     // address again in the meantime.
     const currentAddr = document.getElementById('customDestAddress')?.value.trim();
     if (currentAddr !== addr) return;
     state.quoteResult = { forAddress: addr, ...result };
+    updatePricing();
+  }, 800);
+}
+
+// MILESTONE 12: mirrors maybeDebounceCustomDestQuote() above, but for the
+// departing-guest direction - fires when destination is the fixed Nadi
+// Airport and pickup is the free-text CUSTOM_PICKUP field. Same 800ms
+// debounce, same address-length guard, same stale-response guard.
+function maybeDebounceCustomPickupQuote() {
+  const pickupVal = document.getElementById('pickup')?.value;
+  const destVal    = document.getElementById('destination')?.value;
+  if (destVal !== 'NAN' || pickupVal !== 'CUSTOM_PICKUP') return;
+  const addr = document.getElementById('customPickupAddress')?.value.trim();
+  clearTimeout(pickupQuoteDebounceTimer);
+  if (!addr || addr.length < 8) return;
+  if (state.pickupQuoteResult && state.pickupQuoteResult.forAddress === addr) return; // already have it
+  pickupQuoteDebounceTimer = setTimeout(async () => {
+    const result = await fetchQuoteForAddress(addr, 'to_airport');
+    const currentAddr = document.getElementById('customPickupAddress')?.value.trim();
+    if (currentAddr !== addr) return;
+    state.pickupQuoteResult = { forAddress: addr, ...result };
     updatePricing();
   }, 800);
 }
@@ -488,6 +536,17 @@ function resolveLocation(which) {
         return { lat: null, lng: null, name: addr, area: q.nearestZoneName || addr, hotel: addr };
       }
     }
+    // MILESTONE 12: symmetric to the destination branch above, for a
+    // departing guest's custom pickup address once /quote (direction=
+    // 'to_airport') has resolved it - same reasoning, lat/lng intentionally
+    // null so updatePricing() uses the quote's real distance_km directly.
+    if (which === 'pickup') {
+      const addr = document.getElementById('customPickupAddress')?.value.trim();
+      const q = state.pickupQuoteResult;
+      if (addr && q && q.forAddress === addr && q.outcome === 'resolved') {
+        return { lat: null, lng: null, name: addr, area: q.nearestZoneName || addr, hotel: addr };
+      }
+    }
     const zSel = document.getElementById(which === 'pickup' ? 'customPickupZone' : 'customDestZone');
     const aInp = document.getElementById(which === 'pickup' ? 'customPickupAddress' : 'customDestAddress');
     const z    = zSel?.options[zSel.selectedIndex];
@@ -548,6 +607,29 @@ function toggleDestPanel() {
   if (p) p.style.display = open ? 'block' : 'none';
 }
 
+// MILESTONE 12: shared by both the destination (arriving guest) and pickup
+// (departing guest) quote flows - whichever end is the free-text address,
+// if /quote determined it needs a human (garbage address, or a genuine
+// water-transfer destination), render the same concierge path instead of a
+// fabricated price. routeLabel is built by the caller since only it knows
+// which end is the real address text and which is the fixed airport.
+function renderQuoteNeedsHuman(q, routeLabel) {
+  const panel   = document.getElementById('pricingPanel');
+  const empty   = document.getElementById('emptyState');
+  const nextBtn = document.getElementById('nextBtn1');
+  if (document.getElementById('pricingRoute')) document.getElementById('pricingRoute').textContent = routeLabel;
+  if (document.getElementById('pricingMeta')) document.getElementById('pricingMeta').textContent = q.message;
+  const vcEl = document.getElementById('vehicleCards');
+  if (vcEl) {
+    vcEl.innerHTML = q.whatsappLink
+      ? `<a href="${q.whatsappLink}" target="_blank" rel="noopener" class="btn-whatsapp">💬 Confirm this address on WhatsApp</a>`
+      : `<p>Please contact us directly to confirm pricing for this address.</p>`;
+  }
+  if (panel) panel.style.display = 'block';
+  if (empty) empty.style.display = 'none';
+  if (nextBtn) nextBtn.disabled = true; // never let a guest book against a fabricated price
+}
+
 function updatePricing() {
   const panel   = document.getElementById('pricingPanel');
   const empty   = document.getElementById('emptyState');
@@ -555,14 +637,15 @@ function updatePricing() {
   const pickupVal = document.getElementById('pickup')?.value;
   const destVal   = document.getElementById('destination')?.value;
 
-  // MILESTONE 11: fire this BEFORE the resolveLocation() checks below - a
-  // real, valid guest interaction is typing an address before (or without
-  // ever) touching the secondary "approximate zone" dropdown resolveLocation
-  // requires for the old estimate path. /quote only needs the address text,
-  // so waiting on that dropdown too would defeat much of the point of
-  // replacing it with a real lookup. No-op unless pickup=NAN and
-  // destination=CUSTOM_DEST with real address text.
+  // MILESTONE 11/12: fire these BEFORE the resolveLocation() checks below -
+  // a real, valid guest interaction is typing an address before (or
+  // without ever) touching the secondary "approximate zone" dropdown
+  // resolveLocation requires for the old estimate path. /quote only needs
+  // the address text, so waiting on that dropdown too would defeat much of
+  // the point of replacing it with a real lookup. Each is a no-op unless
+  // its own pickup/destination combination is active with real address text.
   maybeDebounceCustomDestQuote();
+  maybeDebounceCustomPickupQuote();
 
   // MILESTONE 11: a custom destination that /quote has determined needs a
   // human (garbage address, or a genuine water-transfer destination) never
@@ -570,21 +653,21 @@ function updatePricing() {
   // normal pricing panel. Checked here, BEFORE the resolveLocation()/km
   // early-return below, so it renders even if the guest never touches the
   // secondary zone dropdown that path requires.
-  const currentAddr = destVal === 'CUSTOM_DEST' ? document.getElementById('customDestAddress')?.value.trim() : null;
-  const q = state.quoteResult;
-  if (pickupVal === 'NAN' && destVal === 'CUSTOM_DEST' && currentAddr && q && q.forAddress === currentAddr
-      && (q.outcome === 'needs_manual_confirmation' || q.outcome === 'needs_water_transfer')) {
-    if (document.getElementById('pricingRoute')) document.getElementById('pricingRoute').textContent = `Nadi Airport → ${currentAddr}`;
-    if (document.getElementById('pricingMeta')) document.getElementById('pricingMeta').textContent = q.message;
-    const vcEl = document.getElementById('vehicleCards');
-    if (vcEl) {
-      vcEl.innerHTML = q.whatsappLink
-        ? `<a href="${q.whatsappLink}" target="_blank" rel="noopener" class="btn-whatsapp">💬 Confirm this address on WhatsApp</a>`
-        : `<p>Please contact us directly to confirm pricing for this address.</p>`;
-    }
-    if (panel) panel.style.display = 'block';
-    if (empty) empty.style.display = 'none';
-    if (nextBtn) nextBtn.disabled = true; // never let a guest book against a fabricated price
+  const currentDestAddr = destVal === 'CUSTOM_DEST' ? document.getElementById('customDestAddress')?.value.trim() : null;
+  const dq = state.quoteResult;
+  if (pickupVal === 'NAN' && destVal === 'CUSTOM_DEST' && currentDestAddr && dq && dq.forAddress === currentDestAddr
+      && (dq.outcome === 'needs_manual_confirmation' || dq.outcome === 'needs_water_transfer')) {
+    renderQuoteNeedsHuman(dq, `Nadi Airport → ${currentDestAddr}`);
+    return;
+  }
+
+  // MILESTONE 12: symmetric check for a departing guest's custom pickup
+  // address that /quote determined needs a human.
+  const currentPickupAddr = pickupVal === 'CUSTOM_PICKUP' ? document.getElementById('customPickupAddress')?.value.trim() : null;
+  const pq = state.pickupQuoteResult;
+  if (destVal === 'NAN' && pickupVal === 'CUSTOM_PICKUP' && currentPickupAddr && pq && pq.forAddress === currentPickupAddr
+      && (pq.outcome === 'needs_manual_confirmation' || pq.outcome === 'needs_water_transfer')) {
+    renderQuoteNeedsHuman(pq, `${currentPickupAddr} → Nadi Airport`);
     return;
   }
 
@@ -598,12 +681,17 @@ function updatePricing() {
     return;
   }
 
-  // MILESTONE 11: a resolved custom-destination quote carries its own real
-  // distance_km (from Google, via nadi-dispatch-api) - d.lat/d.lng are null
-  // for this case (see resolveLocation() above), so roadKm() would produce
-  // garbage; use the real value directly instead.
+  // MILESTONE 11/12: a resolved custom-address quote (either end) carries
+  // its own real distance_km (from Google, via nadi-dispatch-api) - the
+  // custom end's lat/lng are null for this case (see resolveLocation()
+  // above), so roadKm() would produce garbage; use the real value directly
+  // instead. Only one of these two can be true at once (computePrices'
+  // scope boundary is the same: pickup=NAN+dest=CUSTOM_DEST XOR
+  // dest=NAN+pickup=CUSTOM_PICKUP).
   const kmFromQuote = (destVal === 'CUSTOM_DEST' && d.lat === null && state.quoteResult?.outcome === 'resolved')
-    ? state.quoteResult.distanceKm : null;
+    ? state.quoteResult.distanceKm
+    : (destVal === 'NAN' && pickupVal === 'CUSTOM_PICKUP' && p.lat === null && state.pickupQuoteResult?.outcome === 'resolved')
+      ? state.pickupQuoteResult.distanceKm : null;
   const km  = kmFromQuote !== null ? kmFromQuote : roadKm(p.lat, p.lng, d.lat, d.lng);
   const min = estimateMinutes(km);
   state.distanceKm  = km;
@@ -611,11 +699,16 @@ function updatePricing() {
   state.pickup      = p;
   state.destination = d;
 
-  // MILESTONE 11: fire the async real-zone lookup for FIXED destinations
+  // MILESTONE 11/12: fire the async real-zone lookup for FIXED destinations
   // (the custom-destination /quote call already fired above). Doesn't
   // block this synchronous render - re-calls updatePricing() itself once
-  // it resolves.
-  if (pickupVal === 'NAN' && destVal !== 'CUSTOM_DEST' && destVal) {
+  // it resolves. Gate relaxed from "pickupVal === 'NAN'" to also cover the
+  // departing-guest case (pickup=CUSTOM_PICKUP, dest=NAN) - for that case
+  // resolveFixedDestinationZone resolves 'Nadi Airport' for free (it's in
+  // MARKETPLACE_ZONE_NAMES), so this never triggers an extra async /quote
+  // call for the departing flow, it just lets state.destZoneName populate
+  // correctly so submitMarketplaceBooking() has a real destination_zone.
+  if ((pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destVal === 'NAN')) && destVal !== 'CUSTOM_DEST' && destVal) {
     const destOpt = document.getElementById('destination')?.selectedOptions?.[0];
     const zone = resolveFixedDestinationZone(destOpt);
     if (zone === 'NEEDS_LOOKUP') {
@@ -1304,15 +1397,18 @@ function confirmBooking() {
   // Scroll to the top of the booking section so the success card is centered
   document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
 
-  // MILESTONE 11: also create a real driver-marketplace booking - the
+  // MILESTONE 11/12: also create a real driver-marketplace booking - the
   // actual point of this integration is real guest bookings reaching real
   // online drivers, not just replicating the existing WhatsApp message.
-  // Scoped to pickup === 'NAN' only (see the section note above for why -
-  // /quote's backend can't reliably resolve a zone for any other pickup).
-  // Fire-and-forget: never blocks or alters what the guest sees above, and
-  // a failure here is never surfaced to them - the WhatsApp confirmation
-  // already sent is their real, working confirmation regardless.
-  if (pickupVal === 'NAN') {
+  // Scoped to exactly the two airport-anchored cases /quote can reliably
+  // resolve: pickup === 'NAN' (arriving guest, Milestone 11) or pickup ===
+  // 'CUSTOM_PICKUP' && destination === 'NAN' (departing guest, Milestone
+  // 12). Every other combination is out of scope (see the section note
+  // above). Fire-and-forget: never blocks or alters what the guest sees
+  // above, and a failure here is never surfaced to them - the WhatsApp
+  // confirmation already sent is their real, working confirmation regardless.
+  const destValForSync = document.getElementById('destination')?.value;
+  if (pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN')) {
     submitMarketplaceBooking(ref).catch(() => {});
   }
 }
@@ -1330,14 +1426,34 @@ function resolveConfirmedDestinationZone() {
   return state.destZoneName;
 }
 
+// MILESTONE 12: resolves the pickup_zone needed for POST /bookings, for
+// THIS specific confirm. Mirrors resolveConfirmedDestinationZone() above,
+// but pickup only ever has two marketplace-synced real cases: the fixed
+// Nadi Airport (arriving guest, existing behaviour, was previously
+// hardcoded inline) or a departing guest's custom address once /quote has
+// resolved it. Every other pickup returns null, matching the existing
+// scope boundary - submitMarketplaceBooking() skips the sync entirely
+// when this comes back empty.
+function resolveConfirmedPickupZone() {
+  const pickupVal = document.getElementById('pickup')?.value;
+  if (pickupVal === 'NAN') return 'Nadi Airport';
+  if (pickupVal === 'CUSTOM_PICKUP') {
+    const addr = document.getElementById('customPickupAddress')?.value.trim();
+    const q = state.pickupQuoteResult;
+    return (addr && q && q.forAddress === addr && q.outcome === 'resolved') ? q.nearestZoneName : null;
+  }
+  return null;
+}
+
 async function submitMarketplaceBooking(ref) {
+  const pickupZone = resolveConfirmedPickupZone();
   const destinationZone = resolveConfirmedDestinationZone();
   const t = calculateTotal();
   const firstName = document.getElementById('firstName')?.value.trim() || '';
   const lastName  = document.getElementById('lastName')?.value.trim() || '';
   const phone     = document.getElementById('phone')?.value.trim() || '';
 
-  if (!destinationZone || !state.selectedVehicle || !t.final) {
+  if (!pickupZone || !destinationZone || !state.selectedVehicle || !t.final) {
     // Not enough real, verified data to create a correct booking - skip
     // rather than send a guess. The guest's WhatsApp confirmation is
     // unaffected either way.
@@ -1347,7 +1463,7 @@ async function submitMarketplaceBooking(ref) {
   const payload = {
     guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
     guest_phone: phone,
-    pickup_zone: 'Nadi Airport',
+    pickup_zone: pickupZone,
     destination_zone: destinationZone,
     vehicle_type: state.selectedVehicle,
     quoted_currency: 'FJD', // charging is always FJD - see the A4 currency-toggle note above
