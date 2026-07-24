@@ -1931,24 +1931,48 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
       sentinelHtml += `<div class="ta-opt ta-opt-sentinel" data-val="${s.value}">${s.text}</div>`;
     });
 
-    if (ungrouped.length) {
+    if (!f) {
+      // Browse mode (no search text yet): show the full grouped list as-is,
+      // ordered by proximity to Nadi the way the groups were authored -
+      // nothing to rank when there's nothing to match against.
       ungrouped.forEach(o => {
-        if (!f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f)) {
-          resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
-        }
-      });
-    }
-
-    groups.forEach(g => {
-      const matched = g.items.filter(o =>
-        !f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f) || g.label.toLowerCase().includes(f)
-      );
-      if (!matched.length) return;
-      resultsHtml += `<div class="ta-group-label">${g.label}</div>`;
-      matched.forEach(o => {
         resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
       });
-    });
+      groups.forEach(g => {
+        resultsHtml += `<div class="ta-group-label">${g.label}</div>`;
+        g.items.forEach(o => {
+          resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+        });
+      });
+    } else {
+      // Search mode: rank every candidate across both name and area/zone,
+      // tightest match first - an exact prefix on the name, then a prefix
+      // on the area, then a substring anywhere in the name, then in the
+      // area, then (lowest tier) a match only on the group's region label.
+      // Group headers are dropped here since ranking mixes items from
+      // different groups; the area is still shown inline per option.
+      const candidates = ungrouped.concat(
+        groups.flatMap(g => g.items.map(o => ({ ...o, groupLabel: g.label })))
+      );
+      const scored = [];
+      candidates.forEach(o => {
+        const text = o.text.toLowerCase();
+        const area = o.area.toLowerCase();
+        const group = (o.groupLabel || '').toLowerCase();
+        let score;
+        if (text.startsWith(f)) score = 0;
+        else if (area.startsWith(f)) score = 1;
+        else if (text.includes(f)) score = 2;
+        else if (area.includes(f)) score = 3;
+        else if (group.includes(f)) score = 4;
+        else return;
+        scored.push({ o, score });
+      });
+      scored.sort((a, b) => a.score - b.score); // stable: ties keep original order
+      scored.forEach(({ o }) => {
+        resultsHtml += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+      });
+    }
 
     let html = sentinelHtml;
     if (!resultsHtml && f) {
