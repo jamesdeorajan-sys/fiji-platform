@@ -250,38 +250,58 @@ function getPublishedPriceMap() {
   return _publishedPriceMap;
 }
 
-// MILESTONE 13 SUPERSEDES THIS for the 5 destinations below: real,
-// live-sourced boat fares now exist (see BOAT_DESTINATION_IDS), so those 5
-// use the actual per-resort operator fare instead of this Port-Denarau
-// land-fare approximation. Musket Cove and Yasawa Island Resort aren't on
-// South Sea Cruises' standard network (private/resort-operated transfer -
-// need separate sourcing), so they keep this fallback: a LAND-only
-// drop-off at Port Denarau Marina - the boat/ferry onward is a separate
-// product this site has never sold, matching the option text itself ("...
-// transfer (via Port Denarau)"). Their data-lat/lng were already correctly
-// set to the marina's own coordinates, but lookupPublishedPrices() didn't
-// know to treat them as the marina route, so they fell through to the raw
-// TIER formula and showed a fabricated "estimate" instead of the real,
-// already-published Port Denarau Marina fare.
-const BOAT_TRANSFER_DEST_ALIASES = {
-  MUSKET_COVE_TRANSFER: 'PORT_DENARAU_MARINA',
-  YASAWA_ISLAND_TRANSFER: 'PORT_DENARAU_MARINA',
-};
-
-// MILESTONE 13: real per-resort boat fares, live-sourced from South Sea
-// Cruises' own booking engine (25 Jul 2026) - maps each destValue to its
-// real backend destinations.id row. Fares are per-passenger (adult/child),
-// not vehicle-tiered - there's no "minibus" equivalent for a scheduled
-// ferry. Every other Mamanuca/Yasawa destination not listed here either
-// falls back to BOAT_TRANSFER_DEST_ALIASES above, or (for anything not in
-// the dropdown at all) the existing needs_manual_confirmation flow via a
-// custom address.
+// MILESTONE 14 REMOVED the old BOAT_TRANSFER_DEST_ALIASES map (Musket Cove
+// and Yasawa Island Resort's Port-Denarau-land-fare approximation) - both
+// are now real destinations.id rows (pricing_status='pending', same as
+// every other not-yet-sourced boat property below), so they go through
+// the real backend branch like everything else instead of a special-cased
+// fallback fare.
+//
+// MILESTONE 13/14: every real Mamanuca/Yasawa/Beqa boat destination this
+// site knows about maps here to its real backend destinations.id row -
+// maps each destValue to its real backend destinations.id row. Fares are
+// per-passenger (adult/child), not vehicle-tiered - there's no "minibus"
+// equivalent for a scheduled ferry. The backend decides sourced vs pending
+// per row (see handleBoatQuote) - this map's only job is "which real id
+// does this dropdown option mean," not which ones have a real fare yet.
+// Anything genuinely not in this list falls back to the existing
+// needs_manual_confirmation flow via a custom address.
 const BOAT_DESTINATION_IDS = {
+  // Sourced (Milestone 13)
   MANA_ISLAND_TRANSFER: 50,
   CASTAWAY_TRANSFER: 51,
   LIKULIKU_TRANSFER: 52,
   TOKORIKI_TRANSFER: 53,
   VOMO_TRANSFER: 54,
+  // Pending (Milestone 14) - South Sea Cruises network, Mamanuca
+  MALOLO_TRANSFER: 56,
+  MATAMANOA_TRANSFER: 57,
+  SERENITY_ISLAND_TRANSFER: 58,
+  TADRAI_TRANSFER: 59,
+  TROPICA_TRANSFER: 60,
+  WADIGI_TRANSFER: 61,
+  // Pending (Milestone 14) - South Sea Cruises network, Yasawa
+  BAREFOOT_MANTA_TRANSFER: 62,
+  BLUE_LAGOON_BEACH_TRANSFER: 63,
+  COCONUT_BEACH_TRANSFER: 64,
+  MANTARAY_ISLAND_TRANSFER: 65,
+  NANUYA_ISLAND_TRANSFER: 66,
+  NAVUTU_STARS_TRANSFER: 67,
+  OARSMANS_BAY_TRANSFER: 68,
+  OCTOPUS_RESORT_TRANSFER: 69,
+  PARADISE_COVE_TRANSFER: 70,
+  TURTLE_ISLAND_TRANSFER: 71,
+  WAYA_ISLAND_TRANSFER: 72,
+  // Pending (Milestone 14) - private/resort-operated, not South Sea Cruises
+  LOMANI_ISLAND_TRANSFER: 73,
+  MUSKET_COVE_TRANSFER: 74,
+  NAMOTU_ISLAND_TRANSFER: 75,
+  PLANTATION_ISLAND_TRANSFER: 76,
+  SIX_SENSES_FIJI_TRANSFER: 77,
+  TAVARUA_ISLAND: 78,
+  YASAWA_ISLAND_TRANSFER: 79,
+  // Pending (Milestone 14) - Beqa Lagoon, private/resort-operated
+  ROYAL_DAVUI: 80,
 };
 
 let boatQuoteDebounceTimer = null;
@@ -321,7 +341,14 @@ function maybeFetchBoatQuote() {
     const result = await fetchBoatQuote(destId, adults);
     const currentDestVal = document.getElementById('destination')?.value;
     if (currentDestVal !== destVal) return; // guest changed destination while this was in flight
-    state.boatQuoteResult = result ? { forDestValue: destVal, forAdults: adults, ...result } : null;
+    // MILESTONE 14: whatsappLink (camelCase) mirrors the same mapping
+    // fetchQuoteForAddress() already does for the address-based flow -
+    // renderQuoteNeedsHuman() reads q.whatsappLink, not the raw
+    // whatsapp_link the backend returns, so a pending boat destination's
+    // concierge button would silently disappear without this.
+    state.boatQuoteResult = result
+      ? { forDestValue: destVal, forAdults: adults, ...result, whatsappLink: result.whatsapp_link || null }
+      : null;
     updatePricing();
   }, 300);
 }
@@ -331,9 +358,8 @@ function maybeFetchBoatQuote() {
 function lookupPublishedPrices(pickupVal, destVal) {
   if (!pickupVal || !destVal) return null;
   const map = getPublishedPriceMap();
-  const resolvedDestVal = BOAT_TRANSFER_DEST_ALIASES[destVal] || destVal;
   // Nadi Airport → hotel
-  if (pickupVal === 'NAN' && map[resolvedDestVal]) return map[resolvedDestVal];
+  if (pickupVal === 'NAN' && map[destVal]) return map[destVal];
   // Hotel → Nadi Airport (return leg, same published price)
   if (destVal === 'NAN' && map[pickupVal]) return map[pickupVal];
   return null;
@@ -414,7 +440,12 @@ function computePrices(pickupVal, destVal, km) {
   // shown regardless of trip type until a genuine return fare is sourced.
   const boatDestId = BOAT_DESTINATION_IDS[destVal];
   const bq = state.boatQuoteResult;
-  if (boatDestId && bq && bq.forDestValue === destVal && bq.forAdults === state.passengers) {
+  // MILESTONE 14: outcome check matters now that a boat destination can be
+  // 'pending' - without it, a needs_manual_confirmation response (no
+  // quoted_fare_fjd) would render as NaN pricing instead of falling
+  // through. updatePricing() catches the pending case earlier and returns
+  // before this ever runs, but this stays a real guard, not decoration.
+  if (boatDestId && bq && bq.outcome === 'resolved' && bq.forDestValue === destVal && bq.forAdults === state.passengers) {
     const total = bq.quoted_fare_fjd;
     return { sedan: total, minivan: total, minibus: total, source: 'published' };
   }
@@ -768,6 +799,19 @@ function updatePricing() {
   if (destVal === 'NAN' && pickupVal === 'CUSTOM_PICKUP' && currentPickupAddr && pq && pq.forAddress === currentPickupAddr
       && (pq.outcome === 'needs_manual_confirmation' || pq.outcome === 'needs_water_transfer')) {
     renderQuoteNeedsHuman(pq, `${currentPickupAddr} → Nadi Airport`);
+    return;
+  }
+
+  // MILESTONE 14: a real, named boat destination whose fare isn't sourced
+  // yet (pricing_status='pending' server-side) - same real-evidence
+  // discipline as the two checks above, reusing the exact same render
+  // path. destName comes straight off the /quote response (the backend's
+  // own destinations.name), not re-derived from the option text, so it
+  // can never drift from what the escalation/WhatsApp message says.
+  const bqPending = state.boatQuoteResult;
+  if (BOAT_DESTINATION_IDS[destVal] && bqPending && bqPending.forDestValue === destVal && bqPending.forAdults === state.passengers
+      && bqPending.outcome === 'needs_manual_confirmation') {
+    renderQuoteNeedsHuman(bqPending, `Nadi Airport → ${bqPending.destination_name || 'your resort'}`);
     return;
   }
 
@@ -1585,7 +1629,7 @@ async function submitMarketplaceBooking(ref) {
   const destVal = document.getElementById('destination')?.value;
   const boatDestId = BOAT_DESTINATION_IDS[destVal];
   const bq = state.boatQuoteResult;
-  const isBoatBooking = boatDestId && bq && bq.forDestValue === destVal && bq.forAdults === state.passengers;
+  const isBoatBooking = boatDestId && bq && bq.outcome === 'resolved' && bq.forDestValue === destVal && bq.forAdults === state.passengers;
 
   const t = calculateTotal();
   const quotedAmount = isBoatBooking ? bq.quoted_fare_fjd : t.final;
