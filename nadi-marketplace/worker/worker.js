@@ -50,7 +50,10 @@ const JSON_CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus'];
+// 'boat' (Milestone 13) never reaches the road-quote vehicle-tier check in
+// handleQuoteCreate (the destination_id branch returns before it), but is
+// a real, valid vehicle_type for /bookings and admin test bookings.
+const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
 const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
@@ -1329,6 +1332,11 @@ async function handleGuestBookingCreate(request, env) {
   const fxRate = body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1;
   const distanceKm = body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null;
   const paymentMethod = (body.payment_method || '').toString().trim().toLowerCase();
+  // Milestone 13: for a boat booking, the land-leg-only portion of the
+  // bundled quoted_amount - kept separate so a future commission pass
+  // never charges/credits a driver commission on the boat operator's
+  // pass-through fare. null for every ordinary road booking, unchanged.
+  const commissionBaseFjd = body.commission_base_fjd !== undefined && body.commission_base_fjd !== null ? Number(body.commission_base_fjd) : null;
 
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
@@ -1338,6 +1346,7 @@ async function handleGuestBookingCreate(request, env) {
   if (!fxRate || !isFinite(fxRate) || fxRate <= 0 || fxRate > 100) errors.push('fx_rate_at_booking must be a positive, sane number');
   if (distanceKm !== null && (!isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500)) errors.push('distance_km out of range');
   if (!['cash', 'prepay'].includes(paymentMethod)) errors.push("payment_method must be 'cash' or 'prepay'");
+  if (commissionBaseFjd !== null && (!isFinite(commissionBaseFjd) || commissionBaseFjd < 0 || commissionBaseFjd > quotedAmount)) errors.push('commission_base_fjd out of range');
 
   const validZones = await getValidZoneNames(env);
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
@@ -1352,11 +1361,11 @@ async function handleGuestBookingCreate(request, env) {
   const insert = await env.DB.prepare(
     `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
        quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
-       payment_method, status, source_ip)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+       payment_method, status, source_ip, commission_base_fjd)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).bind(
     guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
-    quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied, paymentMethod, clientIp
+    quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied, paymentMethod, clientIp, commissionBaseFjd
   ).run();
 
   const bookingId = insert.meta.last_row_id;
@@ -1733,23 +1742,37 @@ async function handleAdminDestinationCreate(request, env) {
   const zoneName = (body.zone || '').toString().trim();
   const displayOrder = body.display_order !== undefined && body.display_order !== null ? Number(body.display_order) : null;
   const active = body.active !== undefined ? (body.active ? 1 : 0) : 1;
+  // Milestone 13: boat-transfer fields, all optional - only meaningful when
+  // transfer_type='boat'. Left null for the normal road-destination case.
+  const transferType = (body.transfer_type || 'road').toString().trim().toLowerCase();
+  const boatAdultFareFjd = body.boat_adult_fare_fjd !== undefined && body.boat_adult_fare_fjd !== null ? Number(body.boat_adult_fare_fjd) : null;
+  const boatChildFareFjd = body.boat_child_fare_fjd !== undefined && body.boat_child_fare_fjd !== null ? Number(body.boat_child_fare_fjd) : null;
+  const boatLandLegFareFjd = body.boat_land_leg_fare_fjd !== undefined && body.boat_land_leg_fare_fjd !== null ? Number(body.boat_land_leg_fare_fjd) : null;
+  const boatOperatorName = body.boat_operator_name ? body.boat_operator_name.toString().trim() : null;
+  const boatFareSourcedAt = body.boat_fare_sourced_at ? body.boat_fare_sourced_at.toString().trim() : null;
+  const boatFareSourceNote = body.boat_fare_source_note ? body.boat_fare_source_note.toString().trim() : null;
 
   const errors = [];
   if (!name) errors.push('name is required');
   if (!ALLOWED_DESTINATION_TYPES.includes(type)) errors.push(`type must be one of: ${ALLOWED_DESTINATION_TYPES.join(', ')}`);
   if (!zoneName) errors.push('zone is required');
+  if (!['road', 'boat'].includes(transferType)) errors.push(`transfer_type must be one of: road, boat`);
+  if (transferType === 'boat' && !boatAdultFareFjd) errors.push('boat_adult_fare_fjd is required when transfer_type is boat');
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
   const zone = await env.DB.prepare(`SELECT id FROM zones WHERE name = ?`).bind(zoneName).first();
   if (!zone) return json({ ok: false, error: `unknown zone: ${zoneName}` }, 400);
 
   const insert = await env.DB.prepare(
-    `INSERT INTO destinations (name, type, zone_id, display_order, active) VALUES (?, ?, ?, ?, ?)`
-  ).bind(name, type, zone.id, displayOrder, active).run();
+    `INSERT INTO destinations (name, type, zone_id, display_order, active, transfer_type, boat_adult_fare_fjd, boat_child_fare_fjd, boat_land_leg_fare_fjd, boat_operator_name, boat_fare_sourced_at, boat_fare_source_note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(name, type, zone.id, displayOrder, active, transferType, boatAdultFareFjd, boatChildFareFjd, boatLandLegFareFjd, boatOperatorName, boatFareSourcedAt, boatFareSourceNote).run();
 
   const destinationId = insert.meta.last_row_id;
   const row = await env.DB.prepare(
-    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
+    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone,
+            d.transfer_type, d.boat_adult_fare_fjd, d.boat_child_fare_fjd, d.boat_land_leg_fare_fjd, d.boat_operator_name
+     FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
   ).bind(destinationId).first();
 
   return json({ ok: true, destination: row }, 201);
@@ -1967,6 +1990,56 @@ async function checkQuoteRateLimit(env, ip) {
   return { limited: count >= max, count, max };
 }
 
+// Milestone 13: fixed-fare boat-transfer quote. destination_id must be a
+// real, active, transfer_type='boat' row - never a guess. Fares are
+// per-passenger (adult/child), not per-vehicle-tier, matching how the
+// real operator actually prices these routes (confirmed: no "minibus"
+// equivalent exists for a scheduled ferry). Total is the full bundled
+// fare Fiji Tour Transfers collects (confirmed real resale arrangement),
+// while land_leg_fare_fjd is carried separately for future commission use.
+async function handleBoatQuote(env, body) {
+  const destinationId = Number(body.destination_id);
+  const adults = body.adults !== undefined ? Number(body.adults) : 1;
+  const children = body.children !== undefined ? Number(body.children) : 0;
+
+  const errors = [];
+  if (!Number.isInteger(destinationId) || destinationId <= 0) errors.push('destination_id must be a positive integer');
+  if (!Number.isInteger(adults) || adults < 1 || adults > 20) errors.push('adults must be an integer between 1 and 20');
+  if (!Number.isInteger(children) || children < 0 || children > 20) errors.push('children must be an integer between 0 and 20');
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const dest = await env.DB.prepare(
+    `SELECT d.id, d.name, d.active, d.transfer_type, z.name AS zone_name,
+            d.boat_adult_fare_fjd, d.boat_child_fare_fjd, d.boat_land_leg_fare_fjd, d.boat_operator_name
+     FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
+  ).bind(destinationId).first();
+
+  if (!dest || !dest.active || dest.transfer_type !== 'boat') {
+    return json({ ok: false, error: 'Unknown or unsupported boat destination_id.' }, 400);
+  }
+  if (children > 0 && dest.boat_child_fare_fjd === null) {
+    return json({ ok: false, error: `${dest.name} does not accept children on this transfer.` }, 400);
+  }
+
+  const totalFjd = Math.round((adults * dest.boat_adult_fare_fjd + children * (dest.boat_child_fare_fjd || 0)) * 100) / 100;
+
+  return json({
+    ok: true,
+    outcome: 'resolved',
+    transfer_type: 'boat',
+    destination_id: dest.id,
+    destination_name: dest.name,
+    zone: dest.zone_name,
+    operator_name: dest.boat_operator_name,
+    adults,
+    children,
+    adult_fare_fjd: dest.boat_adult_fare_fjd,
+    child_fare_fjd: dest.boat_child_fare_fjd,
+    land_leg_fare_fjd: dest.boat_land_leg_fare_fjd,
+    quoted_fare_fjd: totalFjd,
+  }, 200);
+}
+
 async function handleQuoteCreate(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
@@ -1978,6 +2051,16 @@ async function handleQuoteCreate(request, env) {
 
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  // Milestone 13: fixed-fare boat-transfer path, a clean branch from the
+  // road/km model below - never calls callGoogleRoutesApi, never touches
+  // geocoded_addresses (there's nothing to geocode, the destination is
+  // already a known row with a real, sourced fare). Selected via
+  // destination_id instead of address, since this is a known destination,
+  // not free text.
+  if (body.destination_id !== undefined && body.destination_id !== null) {
+    return handleBoatQuote(env, body);
+  }
 
   const addressRaw = (body.address || '').toString().trim();
   const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
