@@ -1819,27 +1819,35 @@ async function handleAdminDestinationCreate(request, env) {
   const boatOperatorName = body.boat_operator_name ? body.boat_operator_name.toString().trim() : null;
   const boatFareSourcedAt = body.boat_fare_sourced_at ? body.boat_fare_sourced_at.toString().trim() : null;
   const boatFareSourceNote = body.boat_fare_source_note ? body.boat_fare_source_note.toString().trim() : null;
+  // Milestone 14: explicit if provided; otherwise inferred from whether a
+  // fare was given, so existing callers that already pass a real fare
+  // (the original 5 boat destinations' creation calls) keep working
+  // unchanged. Only meaningful for transfer_type='boat' - null for road.
+  const pricingStatus = body.pricing_status
+    ? body.pricing_status.toString().trim().toLowerCase()
+    : (transferType === 'boat' ? (boatAdultFareFjd ? 'sourced' : 'pending') : null);
 
   const errors = [];
   if (!name) errors.push('name is required');
   if (!ALLOWED_DESTINATION_TYPES.includes(type)) errors.push(`type must be one of: ${ALLOWED_DESTINATION_TYPES.join(', ')}`);
   if (!zoneName) errors.push('zone is required');
   if (!['road', 'boat'].includes(transferType)) errors.push(`transfer_type must be one of: road, boat`);
-  if (transferType === 'boat' && !boatAdultFareFjd) errors.push('boat_adult_fare_fjd is required when transfer_type is boat');
+  if (transferType === 'boat' && !['sourced', 'pending'].includes(pricingStatus)) errors.push(`pricing_status must be one of: sourced, pending (required for transfer_type=boat)`);
+  if (transferType === 'boat' && pricingStatus === 'sourced' && !boatAdultFareFjd) errors.push('boat_adult_fare_fjd is required when pricing_status is sourced');
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
   const zone = await env.DB.prepare(`SELECT id FROM zones WHERE name = ?`).bind(zoneName).first();
   if (!zone) return json({ ok: false, error: `unknown zone: ${zoneName}` }, 400);
 
   const insert = await env.DB.prepare(
-    `INSERT INTO destinations (name, type, zone_id, display_order, active, transfer_type, boat_adult_fare_fjd, boat_child_fare_fjd, boat_land_leg_fare_fjd, boat_operator_name, boat_fare_sourced_at, boat_fare_source_note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(name, type, zone.id, displayOrder, active, transferType, boatAdultFareFjd, boatChildFareFjd, boatLandLegFareFjd, boatOperatorName, boatFareSourcedAt, boatFareSourceNote).run();
+    `INSERT INTO destinations (name, type, zone_id, display_order, active, transfer_type, boat_adult_fare_fjd, boat_child_fare_fjd, boat_land_leg_fare_fjd, boat_operator_name, boat_fare_sourced_at, boat_fare_source_note, pricing_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(name, type, zone.id, displayOrder, active, transferType, boatAdultFareFjd, boatChildFareFjd, boatLandLegFareFjd, boatOperatorName, boatFareSourcedAt, boatFareSourceNote, pricingStatus).run();
 
   const destinationId = insert.meta.last_row_id;
   const row = await env.DB.prepare(
     `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone,
-            d.transfer_type, d.boat_adult_fare_fjd, d.boat_child_fare_fjd, d.boat_land_leg_fare_fjd, d.boat_operator_name
+            d.transfer_type, d.pricing_status, d.boat_adult_fare_fjd, d.boat_child_fare_fjd, d.boat_land_leg_fare_fjd, d.boat_operator_name
      FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
   ).bind(destinationId).first();
 
@@ -1880,6 +1888,43 @@ async function handleAdminDestinationEdit(request, env, destinationId) {
   if (body.active !== undefined) {
     updates.push('active = ?'); values.push(body.active ? 1 : 0);
   }
+  // Milestone 14: lets a 'pending' boat destination be updated to
+  // 'sourced' in place once a real fare comes in (per Milestone 13's
+  // journal-style boat_fare_sourced_at/source_note discipline) - the same
+  // row, never a duplicate insert. Every boat-specific field is editable
+  // independently since a re-verification (Milestone 13's documented
+  // monthly-recheck cadence) may only need to touch the fare, not the
+  // whole row.
+  if (body.pricing_status !== undefined) {
+    const pricingStatus = body.pricing_status === null ? null : body.pricing_status.toString().trim().toLowerCase();
+    if (pricingStatus !== null && !['sourced', 'pending'].includes(pricingStatus)) {
+      return json({ ok: false, error: "pricing_status must be 'sourced', 'pending', or null" }, 400);
+    }
+    updates.push('pricing_status = ?'); values.push(pricingStatus);
+  }
+  if (body.transfer_type !== undefined) {
+    const transferType = body.transfer_type.toString().trim().toLowerCase();
+    if (!['road', 'boat'].includes(transferType)) return json({ ok: false, error: 'transfer_type must be one of: road, boat' }, 400);
+    updates.push('transfer_type = ?'); values.push(transferType);
+  }
+  if (body.boat_adult_fare_fjd !== undefined) {
+    updates.push('boat_adult_fare_fjd = ?'); values.push(body.boat_adult_fare_fjd === null ? null : Number(body.boat_adult_fare_fjd));
+  }
+  if (body.boat_child_fare_fjd !== undefined) {
+    updates.push('boat_child_fare_fjd = ?'); values.push(body.boat_child_fare_fjd === null ? null : Number(body.boat_child_fare_fjd));
+  }
+  if (body.boat_land_leg_fare_fjd !== undefined) {
+    updates.push('boat_land_leg_fare_fjd = ?'); values.push(body.boat_land_leg_fare_fjd === null ? null : Number(body.boat_land_leg_fare_fjd));
+  }
+  if (body.boat_operator_name !== undefined) {
+    updates.push('boat_operator_name = ?'); values.push(body.boat_operator_name ? body.boat_operator_name.toString().trim() : null);
+  }
+  if (body.boat_fare_sourced_at !== undefined) {
+    updates.push('boat_fare_sourced_at = ?'); values.push(body.boat_fare_sourced_at ? body.boat_fare_sourced_at.toString().trim() : null);
+  }
+  if (body.boat_fare_source_note !== undefined) {
+    updates.push('boat_fare_source_note = ?'); values.push(body.boat_fare_source_note ? body.boat_fare_source_note.toString().trim() : null);
+  }
 
   if (updates.length === 0) return json({ ok: false, error: 'No fields to update.' }, 400);
 
@@ -1887,7 +1932,10 @@ async function handleAdminDestinationEdit(request, env, destinationId) {
   await env.DB.prepare(`UPDATE destinations SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
 
   const row = await env.DB.prepare(
-    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
+    `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone,
+            d.transfer_type, d.pricing_status, d.boat_adult_fare_fjd, d.boat_child_fare_fjd,
+            d.boat_land_leg_fare_fjd, d.boat_operator_name, d.boat_fare_sourced_at, d.boat_fare_source_note
+     FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
   ).bind(destinationId).first();
 
   return json({ ok: true, destination: row }, 200);
@@ -2065,7 +2113,7 @@ async function checkQuoteRateLimit(env, ip) {
 // equivalent exists for a scheduled ferry). Total is the full bundled
 // fare Fiji Tour Transfers collects (confirmed real resale arrangement),
 // while land_leg_fare_fjd is carried separately for future commission use.
-async function handleBoatQuote(env, body) {
+async function handleBoatQuote(env, body, clientIp) {
   const destinationId = Number(body.destination_id);
   const adults = body.adults !== undefined ? Number(body.adults) : 1;
   const children = body.children !== undefined ? Number(body.children) : 0;
@@ -2077,7 +2125,7 @@ async function handleBoatQuote(env, body) {
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
   const dest = await env.DB.prepare(
-    `SELECT d.id, d.name, d.active, d.transfer_type, z.name AS zone_name,
+    `SELECT d.id, d.name, d.active, d.transfer_type, d.pricing_status, z.name AS zone_name,
             d.boat_adult_fare_fjd, d.boat_child_fare_fjd, d.boat_land_leg_fare_fjd, d.boat_operator_name
      FROM destinations d JOIN zones z ON z.id = d.zone_id WHERE d.id = ?`
   ).bind(destinationId).first();
@@ -2085,6 +2133,35 @@ async function handleBoatQuote(env, body) {
   if (!dest || !dest.active || dest.transfer_type !== 'boat') {
     return json({ ok: false, error: 'Unknown or unsupported boat destination_id.' }, 400);
   }
+
+  // Milestone 14: a real, named, guest-findable boat destination whose fare
+  // hasn't been sourced yet (South Sea Cruises' booking engine has no
+  // static rate sheet - see Milestone 13's own research - so this is a
+  // real, expected, non-error state, not an edge case). Never fabricate a
+  // price and never silently fail here - route into the same real
+  // escalation/WhatsApp-concierge flow Milestone 10 built for addresses
+  // Google can't resolve, so the guest sees "we'll confirm your price"
+  // rather than a dead end. Reuses the exact needs_manual_confirmation
+  // response shape the frontend already renders for that path.
+  if (dest.pricing_status !== 'sourced') {
+    const { escalation } = await createEscalation(env, {
+      source: 'guest',
+      triggerType: 'boat_pricing_pending',
+      context: `Boat transfer price requested for "${dest.name}" (${dest.zone_name}) - fare not yet sourced.`,
+      sourceIp: clientIp,
+    });
+    return json({
+      ok: true,
+      outcome: 'needs_manual_confirmation',
+      transfer_type: 'boat',
+      destination_id: dest.id,
+      destination_name: dest.name,
+      message: `We're confirming your real-time price for ${dest.name} via WhatsApp.`,
+      escalation_id: escalation.id,
+      whatsapp_link: buildConciergeWhatsAppLink('boat_pricing_pending', dest.name),
+    }, 200);
+  }
+
   if (children > 0 && dest.boat_child_fare_fjd === null) {
     return json({ ok: false, error: `${dest.name} does not accept children on this transfer.` }, 400);
   }
@@ -2127,7 +2204,7 @@ async function handleQuoteCreate(request, env) {
   // destination_id instead of address, since this is a known destination,
   // not free text.
   if (body.destination_id !== undefined && body.destination_id !== null) {
-    return handleBoatQuote(env, body);
+    return handleBoatQuote(env, body, clientIp);
   }
 
   const addressRaw = (body.address || '').toString().trim();
@@ -2292,7 +2369,7 @@ async function handleQuoteCreate(request, env) {
 // ═══════════════════════════════════════════════════════════════
 
 const ESCALATION_SOURCES = ['guest', 'driver'];
-const ESCALATION_TRIGGER_TYPES = ['geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other'];
+const ESCALATION_TRIGGER_TYPES = ['geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other', 'boat_pricing_pending'];
 
 // Same real number already live on nadiairporttransfers.com's WhatsApp
 // buttons (wa.me/61478886145) - confirmed with James this is intentionally
@@ -2314,6 +2391,7 @@ function buildConciergeWhatsAppLink(triggerType, contextText, direction = 'from_
     wallet_dispute: 'Hi, I have a question about my driver wallet balance.',
     app_issue: "Hi, I'm having a problem with the driver app.",
     other: 'Hi, I need some help with my Nadi Airport transfer.',
+    boat_pricing_pending: "Hi, I'd like to book a boat transfer to my resort and need the current price confirmed.",
   }[triggerType] || 'Hi, I need some help with my Nadi Airport transfer.';
   const message = contextText ? `${preface} Details: ${contextText}` : preface;
   return `https://wa.me/${CONCIERGE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;

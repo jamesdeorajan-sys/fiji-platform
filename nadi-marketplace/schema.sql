@@ -371,3 +371,19 @@ ALTER TABLE bookings ADD COLUMN commission_base_fjd REAL;
 
 INSERT INTO zones (name) VALUES ('Mamanuca Islands');
 INSERT INTO zones (name) VALUES ('Yasawa Islands');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 14 additions — pricing_status for boat destinations, so a
+-- resort can be added as a real, guest-findable destination the moment
+-- its identity/zone is known, before its fare is sourced. See
+-- migrations/milestone14-boat-pricing-status.sql for the migration
+-- actually run against the live database.
+-- ═══════════════════════════════════════════════════════════════
+
+-- NULL = not a boat destination (every existing road row). 'sourced' =
+-- boat_adult_fare_fjd etc. are real and usable. 'pending' = a real,
+-- identified boat destination with no fare yet - /quote routes these into
+-- the Milestone 10 escalation/WhatsApp flow instead of computing a price.
+ALTER TABLE destinations ADD COLUMN pricing_status TEXT;
+
+INSERT INTO zones (name) VALUES ('Beqa Lagoon');
