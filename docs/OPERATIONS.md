@@ -191,7 +191,50 @@ reached the Worker. Confirmed the rules are correctly scoped: 7 rapid requests t
 unrelated path on the same subdomain) all returned real `200`s, untouched. Test data cleaned up,
 re-verified `0`.
 
-## 6. Explicitly NOT done — flagged for a dedicated security-hardening session
+## 6. Boat-transfer fare recency (Milestone 13)
+
+Unlike `fuel_index` (Milestone 5), which has a real 5-minute cron polling a government price-control
+PDF for changes, the 22 Mamanuca/Yasawa boat-transfer fares (`destinations.boat_adult_fare_fjd` /
+`boat_child_fare_fjd`) have **no automated re-check today** — only a `boat_fare_sourced_at` timestamp
+recording when each was captured. This is a real gap, not an oversight: no operator (South Sea
+Cruises, Awesome Adventures/Yasawa Fiji) publishes fares via an API or a static, scrapable page —
+every fare was captured by manually driving South Sea Cruises' own JS-heavy booking engine
+(`bookings.southseacruisesfiji.com`) through its From/To → Services → Fares steps, per destination,
+per real, dated fetch (documented per-row in `boat_fare_source_note`). There is nothing here a
+Worker cron can reliably scrape unattended — the widget's DOM structure, session handling, and lack
+of a stable API contract make headless automation both fragile and disproportionate to the actual
+frequency these fares change.
+
+**Recommended cadence: monthly manual re-verification**, not the fuel index's 5-minute polling.
+Rationale: these are commercial, operator-set fares (not the fuel index's government-regulated,
+gazette-published price), so they don't change on a predictable schedule the way fuel prices do —
+but they aren't static either (the South Sea Cruises site itself references periodic fuel
+surcharges layered onto base fares). Monthly is frequent enough to catch a fare change well within
+a normal booking-to-travel window, without demanding a re-check cadence this manual process can't
+realistically sustain.
+
+**Process** (until/unless a scrapable fare source appears):
+1. On or near the 25th of each month, an admin re-runs the same manual booking-engine walkthrough
+   used to source the original 22 fares (Port Denarau → each destination, standard class, one
+   adult) and compares the displayed fare to the live `boat_adult_fare_fjd` / `boat_child_fare_fjd`
+   values via `GET /admin/destinations`.
+2. Any changed fare gets updated via `PATCH /admin/destinations/:id` (the same Milestone 7 admin
+   endpoint used to create these rows), with `boat_fare_sourced_at` and `boat_fare_source_note`
+   refreshed to the new capture date.
+3. Any destination not re-verified within 45 days should be treated as stale — a real, cited fare
+   that's over six weeks old is a genuine business risk (Fiji Tour Transfers bundles and collects
+   this fare directly, per the Milestone 13 resale-arrangement confirmation), not a "close enough."
+
+**Not yet built — flagged, not implemented this milestone**: a real automated reminder is possible
+without needing to scrape the operator's site at all, by reusing the health-monitoring cron and
+WhatsApp-alerting infrastructure already live from Milestone 8. That cron could be extended to check
+`MIN(boat_fare_sourced_at)` across active `transfer_type='boat'` destinations each run and WhatsApp
+`admin_alert_phone` once any fare crosses the 45-day staleness threshold, the same pattern already
+used for fuel-index and system-health alerts. This is a genuinely small addition to existing,
+already-tested infrastructure — recommended as a fast-follow, not built here because it wasn't part
+of this milestone's explicit scope.
+
+## 7. Explicitly NOT done — flagged for a dedicated security-hardening session
 
 Stated plainly, not glossed over: these are real gaps, not oversights, and not addressed because
 they're genuinely separate scope, not because they're low-value.
