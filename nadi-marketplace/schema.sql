@@ -320,8 +320,13 @@ INSERT INTO platform_settings (key, value) VALUES ('quote_rate_limit_max_per_day
 CREATE TABLE escalations (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL CHECK (source IN ('guest', 'driver')),
+  -- 'boat_pricing_pending' added by milestone14b-escalation-trigger-type-fix.sql -
+  -- worker.js's ESCALATION_TRIGGER_TYPES was updated for Milestone 14 but this
+  -- CHECK constraint, a separate independent enforcement point, was missed
+  -- initially - real live-test caught it (SQLITE_CONSTRAINT_CHECK on every
+  -- pending boat quote) before it reached a real guest.
   trigger_type TEXT NOT NULL CHECK (trigger_type IN (
-    'geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other'
+    'geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other', 'boat_pricing_pending'
   )),
   context TEXT,
   booking_id INTEGER REFERENCES bookings(id),
