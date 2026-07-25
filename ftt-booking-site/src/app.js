@@ -244,13 +244,35 @@ function getPublishedPriceMap() {
   return _publishedPriceMap;
 }
 
+// BUGFIX: the 7 Mamanuca/Yasawa "boat transfer" destination options (data-
+// hotel text ends "— boat ex Port Denarau") are a LAND-only drop-off at Port
+// Denarau Marina - the boat/ferry onward to the actual island is a separate
+// product this site has never sold, matching the option text itself ("...
+// transfer (via Port Denarau)"). Their data-lat/lng were already correctly
+// set to the marina's own coordinates, but lookupPublishedPrices() didn't
+// know to treat them as the marina route, so they fell through to the raw
+// TIER formula and showed a fabricated "estimate" instead of the real,
+// already-published Port Denarau Marina fare. No other boat-leg pricing
+// exists anywhere in this file to alias to instead - the marina fare IS the
+// correct price, since it's physically the same drive.
+const BOAT_TRANSFER_DEST_ALIASES = {
+  MUSKET_COVE_TRANSFER: 'PORT_DENARAU_MARINA',
+  LIKULIKU_TRANSFER: 'PORT_DENARAU_MARINA',
+  CASTAWAY_TRANSFER: 'PORT_DENARAU_MARINA',
+  MANA_ISLAND_TRANSFER: 'PORT_DENARAU_MARINA',
+  TOKORIKI_TRANSFER: 'PORT_DENARAU_MARINA',
+  VOMO_TRANSFER: 'PORT_DENARAU_MARINA',
+  YASAWA_ISLAND_TRANSFER: 'PORT_DENARAU_MARINA',
+};
+
 // Returns published one-way prices when the route is Nadi Airport ↔ a known
 // destination from ROUTES_DATA, otherwise null. Caller falls back to calcPrice.
 function lookupPublishedPrices(pickupVal, destVal) {
   if (!pickupVal || !destVal) return null;
   const map = getPublishedPriceMap();
+  const resolvedDestVal = BOAT_TRANSFER_DEST_ALIASES[destVal] || destVal;
   // Nadi Airport → hotel
-  if (pickupVal === 'NAN' && map[destVal]) return map[destVal];
+  if (pickupVal === 'NAN' && map[resolvedDestVal]) return map[resolvedDestVal];
   // Hotel → Nadi Airport (return leg, same published price)
   if (destVal === 'NAN' && map[pickupVal]) return map[pickupVal];
   return null;
