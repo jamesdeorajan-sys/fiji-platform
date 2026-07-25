@@ -119,9 +119,11 @@ const FCCC_PDF_LINK_RE = /href="(https:\/\/fccc\.gov\.fj\/wp-content\/uploads\/[
 // changing this reference now would silently invalidate rates nothing has
 // been built against yet.
 const FUEL_MULTIPLIER_BASELINE_FJD = 3.93;
-// Not yet submitted to Meta - same "draft, needs James to submit via
-// WhatsApp Manager's UI" state every other template started in. Admin-facing,
-// not driver-facing, so it's a new template rather than reusing any driver one.
+// Still not submitted to Meta as of 2026-07-25 - confirmed absent (not
+// assumed) via a real GET /admin/whatsapp/templates call against WABA
+// 4150314405223931, which lists every template that WABA actually has.
+// Admin-facing, not driver-facing, so it's a new template rather than
+// reusing any driver one.
 const FUEL_INDEX_ALERT_TEMPLATE = 'vakaviti_fuel_index_alert';
 const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 
@@ -145,20 +147,22 @@ const FUEL_INDEX_ALERT_LANG_CODE = 'en';
 // it matches most of the others.
 // ═══════════════════════════════════════════════════════════════
 const HEALTH_ALERT_TEMPLATE = 'vakaviti_ops_health_alert';
-// 'en' confirmed wrong via a real Graph API call (real 404: "template name
-// does not exist in en"). Also confirmed wrong empirically: en_US, en_GB.
-// WhatsApp Manager shows this template's language as "English (AUS)"
-// (confirmed via both the Template Insights and Edit Template views,
-// consistent, not a display-name artifact) - en_AU is the corresponding
-// Cloud API code by the same convention as en_US/en_GB, and is the best
-// real hypothesis, though it also 404'd on first two tries (~40 min
-// apart). Most likely explanation: a Meta-side propagation delay
-// following this template's edit on 22 Jul 2026 - WhatsApp Business
-// Platform can take hours to fully sync an edited template's translation
-// entry across all Graph API nodes, independent of the Manager UI's
-// "Active" status. Needs a real re-test after propagation clears - see
-// the Milestone 10 follow-up report for the full real-evidence trail.
-const HEALTH_ALERT_LANG_CODE = 'en_AU';
+// CORRECTED 2026-07-25: every prior comment here assumed this was a
+// language-code problem (tried en, en_US, en_GB, en_AU - all real 404s).
+// It isn't. GET /admin/whatsapp/templates (real Graph API call, WABA
+// 4150314405223931) lists every template this WABA actually has -
+// vakaviti_driver_welcome, vakaviti_booking_broadcast, vakaviti_driver_return
+// (all APPROVED, lang 'en'), vakaviti_driver_login_v2 (REJECTED, still
+// listed), vakaviti_lead_alert_v2, hello_world. vakaviti_ops_health_alert is
+// NOT in that list at all, under any language or status - REJECTED
+// templates still show up (see driver_login_v2), so this isn't a
+// rejected-and-hidden case either. It was never actually created/submitted
+// in this WABA (or was fully deleted after the "edited 22 Jul 2026" state
+// the old comment referenced) - no language code fixes this. Needs a real
+// template submitted and approved in WhatsApp Manager before this constant
+// means anything; the same is true of FUEL_INDEX_ALERT_TEMPLATE below,
+// confirmed absent from the same real list.
+const HEALTH_ALERT_LANG_CODE = 'en';
 
 export default {
   async fetch(request, env, ctx) {
@@ -459,15 +463,31 @@ async function handleAdminWhatsAppTemplatesList(request, env) {
   }
 
   try {
-    const phoneRes = await fetch(
-      `https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}?fields=whatsapp_business_account_id`,
-      { headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}` } }
-    );
-    const phoneBody = await phoneRes.json().catch(() => null);
-    if (!phoneRes.ok || !phoneBody?.whatsapp_business_account_id) {
-      return json({ ok: false, error: 'Could not resolve WABA id from WHATSAPP_PHONE_ID.', detail: phoneBody }, 502);
+    // ?waba_id=... lets the caller skip auto-discovery entirely (real gap
+    // found live: the Cloud API's phone-number node has no scalar
+    // whatsapp_business_account_id field - GET .../{phone-id}?fields=
+    // whatsapp_business_account_id returns a real 400 "(#100) Tried
+    // accessing nonexisting field"). Nested-field syntax is the documented
+    // correct form; tried first, with the override as a real fallback
+    // rather than a second guess.
+    const url = new URL(request.url);
+    let wabaId = url.searchParams.get('waba_id');
+
+    if (!wabaId) {
+      const phoneRes = await fetch(
+        `https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}?fields=whatsapp_business_account{id}`,
+        { headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}` } }
+      );
+      const phoneBody = await phoneRes.json().catch(() => null);
+      if (!phoneRes.ok || !phoneBody?.whatsapp_business_account?.id) {
+        return json({
+          ok: false,
+          error: 'Could not resolve WABA id from WHATSAPP_PHONE_ID. Pass ?waba_id=<id> explicitly (find it in WhatsApp Manager > Account overview) to skip auto-discovery.',
+          detail: phoneBody,
+        }, 502);
+      }
+      wabaId = phoneBody.whatsapp_business_account.id;
     }
-    const wabaId = phoneBody.whatsapp_business_account_id;
 
     const templatesRes = await fetch(
       `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,language,status,category&limit=100`,
