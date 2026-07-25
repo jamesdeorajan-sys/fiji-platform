@@ -177,6 +177,12 @@ const state = {
   // with both fields (only one is ever actually used for pricing, gated by
   // which end is CUSTOM_* and which is 'NAN').
   pickupQuoteResult: null,
+  // MILESTONE 13: real fixed-fare boat quote for the current
+  // BOAT_DESTINATION_IDS destination + passenger count. null until
+  // resolved; forDestValue/forAdults (inside the resolved object) guard
+  // against a stale response landing after the guest changed destination
+  // or passenger count.
+  boatQuoteResult: null,
   // Resolved marketplace zone for the current destination, ANY type (fixed
   // or custom) - used only for POST /bookings' destination_zone field, not
   // for pricing. null until resolved.
@@ -244,26 +250,81 @@ function getPublishedPriceMap() {
   return _publishedPriceMap;
 }
 
-// BUGFIX: the 7 Mamanuca/Yasawa "boat transfer" destination options (data-
-// hotel text ends "— boat ex Port Denarau") are a LAND-only drop-off at Port
-// Denarau Marina - the boat/ferry onward to the actual island is a separate
+// MILESTONE 13 SUPERSEDES THIS for the 5 destinations below: real,
+// live-sourced boat fares now exist (see BOAT_DESTINATION_IDS), so those 5
+// use the actual per-resort operator fare instead of this Port-Denarau
+// land-fare approximation. Musket Cove and Yasawa Island Resort aren't on
+// South Sea Cruises' standard network (private/resort-operated transfer -
+// need separate sourcing), so they keep this fallback: a LAND-only
+// drop-off at Port Denarau Marina - the boat/ferry onward is a separate
 // product this site has never sold, matching the option text itself ("...
 // transfer (via Port Denarau)"). Their data-lat/lng were already correctly
 // set to the marina's own coordinates, but lookupPublishedPrices() didn't
 // know to treat them as the marina route, so they fell through to the raw
 // TIER formula and showed a fabricated "estimate" instead of the real,
-// already-published Port Denarau Marina fare. No other boat-leg pricing
-// exists anywhere in this file to alias to instead - the marina fare IS the
-// correct price, since it's physically the same drive.
+// already-published Port Denarau Marina fare.
 const BOAT_TRANSFER_DEST_ALIASES = {
   MUSKET_COVE_TRANSFER: 'PORT_DENARAU_MARINA',
-  LIKULIKU_TRANSFER: 'PORT_DENARAU_MARINA',
-  CASTAWAY_TRANSFER: 'PORT_DENARAU_MARINA',
-  MANA_ISLAND_TRANSFER: 'PORT_DENARAU_MARINA',
-  TOKORIKI_TRANSFER: 'PORT_DENARAU_MARINA',
-  VOMO_TRANSFER: 'PORT_DENARAU_MARINA',
   YASAWA_ISLAND_TRANSFER: 'PORT_DENARAU_MARINA',
 };
+
+// MILESTONE 13: real per-resort boat fares, live-sourced from South Sea
+// Cruises' own booking engine (25 Jul 2026) - maps each destValue to its
+// real backend destinations.id row. Fares are per-passenger (adult/child),
+// not vehicle-tiered - there's no "minibus" equivalent for a scheduled
+// ferry. Every other Mamanuca/Yasawa destination not listed here either
+// falls back to BOAT_TRANSFER_DEST_ALIASES above, or (for anything not in
+// the dropdown at all) the existing needs_manual_confirmation flow via a
+// custom address.
+const BOAT_DESTINATION_IDS = {
+  MANA_ISLAND_TRANSFER: 50,
+  CASTAWAY_TRANSFER: 51,
+  LIKULIKU_TRANSFER: 52,
+  TOKORIKI_TRANSFER: 53,
+  VOMO_TRANSFER: 54,
+};
+
+let boatQuoteDebounceTimer = null;
+
+// Real, Google-Routes-free fixed fare for a sourced boat destination -
+// reads straight off the destination row server-side, no geocoding, no
+// Routes API cost. adults uses the existing passenger-count stepper
+// (state.passengers); this guest flow doesn't yet collect a separate
+// child count for boat trips specifically - flagged as a real follow-up,
+// not this pass's scope, so every passenger is currently quoted at the
+// adult fare.
+async function fetchBoatQuote(destinationId, adults) {
+  try {
+    const res = await fetch(`${NADI_API_BASE}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destination_id: destinationId, adults }),
+    });
+    const data = await res.json();
+    return data && data.ok ? data : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Fires whenever the current destination is one of the real-sourced boat
+// destinations - fetches (debounced) the real fare for the current
+// passenger count, caches it in state, then re-renders. No-op otherwise.
+function maybeFetchBoatQuote() {
+  const destVal = document.getElementById('destination')?.value;
+  const destId = BOAT_DESTINATION_IDS[destVal];
+  if (!destId) return;
+  const adults = state.passengers;
+  if (state.boatQuoteResult && state.boatQuoteResult.forDestValue === destVal && state.boatQuoteResult.forAdults === adults) return;
+  clearTimeout(boatQuoteDebounceTimer);
+  boatQuoteDebounceTimer = setTimeout(async () => {
+    const result = await fetchBoatQuote(destId, adults);
+    const currentDestVal = document.getElementById('destination')?.value;
+    if (currentDestVal !== destVal) return; // guest changed destination while this was in flight
+    state.boatQuoteResult = result ? { forDestValue: destVal, forAdults: adults, ...result } : null;
+    updatePricing();
+  }, 300);
+}
 
 // Returns published one-way prices when the route is Nadi Airport ↔ a known
 // destination from ROUTES_DATA, otherwise null. Caller falls back to calcPrice.
@@ -343,6 +404,19 @@ function computePrices(pickupVal, destVal, km) {
         source:  'quote'
       };
     }
+  }
+  // MILESTONE 13: real per-resort boat fare takes priority over the
+  // Port-Denarau-alias approximation below, for the subset of destinations
+  // already sourced. Deliberately NOT run through applyModifiers() - the
+  // night-surcharge/return-multiplier heuristics were fitted for car
+  // trips, not real scheduled-ferry fares, and this is exactly the "fake
+  // price" problem this milestone exists to fix. Same real one-way total
+  // shown regardless of trip type until a genuine return fare is sourced.
+  const boatDestId = BOAT_DESTINATION_IDS[destVal];
+  const bq = state.boatQuoteResult;
+  if (boatDestId && bq && bq.forDestValue === destVal && bq.forAdults === state.passengers) {
+    const total = bq.quoted_fare_fjd;
+    return { sedan: total, minivan: total, minibus: total, source: 'published' };
   }
   const pub = lookupPublishedPrices(pickupVal, destVal);
   if (pub) {
@@ -668,6 +742,10 @@ function updatePricing() {
   // its own pickup/destination combination is active with real address text.
   maybeDebounceCustomDestQuote();
   maybeDebounceCustomPickupQuote();
+  // MILESTONE 13: no-op unless the current destination is a sourced boat
+  // destination; fetches/re-fetches the real fare when destination or
+  // passenger count changes.
+  maybeFetchBoatQuote();
 
   // MILESTONE 11: a custom destination that /quote has determined needs a
   // human (garbage address, or a genuine water-transfer destination) never
@@ -987,6 +1065,10 @@ function refreshAfterCapacityChange() {
   const vdc = document.getElementById('vehicleDetailCards');
   const step2 = document.getElementById('step2');
   if (vdc && step2 && step2.style.display !== 'none') vdc.innerHTML = buildVehicleDetailCards();
+  // MILESTONE 13: a sourced boat destination's fare depends on adult
+  // count - re-fetch when passengers changes. No-op for every other
+  // destination. Fetch itself triggers updatePricing() once resolved.
+  maybeFetchBoatQuote();
   // Tour bundle total scales with passengers — re-run pricing so the summary
   // panel and confirmation card both reflect the new pax count.
   if (state.selectedTour) updatePricing();
@@ -1445,6 +1527,16 @@ function resolveConfirmedDestinationZone() {
     const q = state.quoteResult;
     return (addr && q && q.forAddress === addr && q.outcome === 'resolved') ? q.nearestZoneName : null;
   }
+  // MILESTONE 13: a sourced boat destination's real zone (e.g. "Mamanuca
+  // Islands") comes from the boat quote itself - the generic fixed-
+  // destination zone resolution below would otherwise resolve these to
+  // "Denarau" via AREA_ZONE_ALIASES['Port Denarau'], correct for the
+  // Port-Denarau-alias land-fare fallback but wrong for a real boat
+  // booking, where the destination genuinely is the island resort.
+  if (BOAT_DESTINATION_IDS[destVal]) {
+    const bq = state.boatQuoteResult;
+    return (bq && bq.forDestValue === destVal && bq.forAdults === state.passengers) ? bq.zone : null;
+  }
   return state.destZoneName;
 }
 
@@ -1470,12 +1562,29 @@ function resolveConfirmedPickupZone() {
 async function submitMarketplaceBooking(ref) {
   const pickupZone = resolveConfirmedPickupZone();
   const destinationZone = resolveConfirmedDestinationZone();
-  const t = calculateTotal();
   const firstName = document.getElementById('firstName')?.value.trim() || '';
   const lastName  = document.getElementById('lastName')?.value.trim() || '';
   const phone     = document.getElementById('phone')?.value.trim() || '';
 
-  if (!pickupZone || !destinationZone || !state.selectedVehicle || !t.final) {
+  // MILESTONE 13: a sourced boat destination bypasses calculateTotal()'s
+  // vehicle-tier/discount math entirely - the real bundled fare (land leg
+  // + boat operator's fare, confirmed real resale arrangement) is what
+  // Fiji Tour Transfers collects and owes the operator. Deliberately NOT
+  // eligible for the 10% loyalty discount: that discount is funded out of
+  // FTT's own margin on a normal transfer, but a chunk of a boat booking's
+  // total is money owed straight through to the boat operator - applying
+  // it here would mean FTT eating a real loss on someone else's fare.
+  const destVal = document.getElementById('destination')?.value;
+  const boatDestId = BOAT_DESTINATION_IDS[destVal];
+  const bq = state.boatQuoteResult;
+  const isBoatBooking = boatDestId && bq && bq.forDestValue === destVal && bq.forAdults === state.passengers;
+
+  const t = calculateTotal();
+  const quotedAmount = isBoatBooking ? bq.quoted_fare_fjd : t.final;
+  const vehicleType = isBoatBooking ? 'boat' : state.selectedVehicle;
+  const commissionBaseFjd = isBoatBooking ? bq.land_leg_fare_fjd : undefined;
+
+  if (!pickupZone || !destinationZone || !state.selectedVehicle || !quotedAmount) {
     // Not enough real, verified data to create a correct booking - skip
     // rather than send a guess. The guest's WhatsApp confirmation is
     // unaffected either way.
@@ -1487,12 +1596,13 @@ async function submitMarketplaceBooking(ref) {
     guest_phone: phone,
     pickup_zone: pickupZone,
     destination_zone: destinationZone,
-    vehicle_type: state.selectedVehicle,
+    vehicle_type: vehicleType,
     quoted_currency: 'FJD', // charging is always FJD - see the A4 currency-toggle note above
-    quoted_amount: t.final,
+    quoted_amount: quotedAmount,
     fx_rate_at_booking: 1,
-    distance_km: state.distanceKm,
+    distance_km: isBoatBooking ? null : state.distanceKm,
     payment_method: 'cash', // no payment is collected on this site today - guest pays the driver directly
+    ...(commissionBaseFjd !== undefined ? { commission_base_fjd: commissionBaseFjd } : {}),
   };
 
   try {
