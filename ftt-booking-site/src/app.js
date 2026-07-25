@@ -835,9 +835,17 @@ function updatePricing() {
   const fromName = p.name.replace(/^[✈⛵🏙📍]\s*/,'');
   const toName   = d.hotel || d.name;
   const isCustom = pickupVal === 'CUSTOM_PICKUP' || destVal === 'CUSTOM_DEST';
-  // Show "Estimate" caveat for custom locations OR for any route that fell
-  // back to the formula (e.g. hotel-to-hotel, Mamanuca pickups).
-  const isEstimate = isCustom || priced.source === 'estimate';
+  // BUGFIX (post-M12 real-UI regression check): this used to be
+  // `isCustom || priced.source === 'estimate'`, which mislabeled a real,
+  // resolved Google-backed /quote (priced.source === 'quote') as an
+  // "Estimate" identically to the genuine formula-fallback case - a real
+  // custom-address quote and the broken zone-centroid fallback were
+  // visually indistinguishable to the guest. lookupPublishedPrices() only
+  // ever matches fixed (non-custom) dropdown values, so priced.source can
+  // never be 'published' while isCustom is true - checking priced.source
+  // alone is a strict, safe narrowing, not a behavior change for any
+  // non-custom route.
+  const isEstimate = priced.source === 'estimate';
   if (document.getElementById('pricingRoute'))
     document.getElementById('pricingRoute').textContent = `${fromName} → ${toName}${suffix}`;
   if (document.getElementById('pricingMeta'))
