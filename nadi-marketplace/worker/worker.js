@@ -181,6 +181,17 @@ export default {
       return handleAdminBackupRun(request, env);
     }
 
+    // Diagnostic only, admin-authenticated, read-only against Meta's own
+    // Graph API - the authoritative source for a template's actual current
+    // approved language code (WhatsApp Manager's UI reflects the same data
+    // this reads directly). Built because the file's own template language
+    // constants have drifted from reality before (see DRIVER_WELCOME_LANG_CODE
+    // and HEALTH_ALERT_LANG_CODE's comments) and guessing codes one real send
+    // at a time is slow and can trip template-messaging rate limits.
+    if (request.method === 'GET' && url.pathname === '/admin/whatsapp/templates') {
+      return handleAdminWhatsAppTemplatesList(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/zones') {
       return handleZones(env);
     }
@@ -434,6 +445,43 @@ async function handleAdminHealthCheckRun(request, env) {
   if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
   const result = await runHealthCheckAlert(env);
   return json(result, 200);
+}
+
+// Two real Graph API calls, both read-only: (1) resolve WHATSAPP_PHONE_ID
+// to its parent WhatsApp Business Account id, (2) list that WABA's
+// message_templates. Returns name/language/status/category for every
+// template so a stale in-code language constant can be corrected against
+// ground truth instead of guessed via trial-and-error sends.
+async function handleAdminWhatsAppTemplatesList(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return json({ ok: false, error: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' }, 503);
+  }
+
+  try {
+    const phoneRes = await fetch(
+      `https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}?fields=whatsapp_business_account_id`,
+      { headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}` } }
+    );
+    const phoneBody = await phoneRes.json().catch(() => null);
+    if (!phoneRes.ok || !phoneBody?.whatsapp_business_account_id) {
+      return json({ ok: false, error: 'Could not resolve WABA id from WHATSAPP_PHONE_ID.', detail: phoneBody }, 502);
+    }
+    const wabaId = phoneBody.whatsapp_business_account_id;
+
+    const templatesRes = await fetch(
+      `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,language,status,category&limit=100`,
+      { headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}` } }
+    );
+    const templatesBody = await templatesRes.json().catch(() => null);
+    if (!templatesRes.ok) {
+      return json({ ok: false, error: 'Graph API templates list failed.', detail: templatesBody }, 502);
+    }
+
+    return json({ ok: true, waba_id: wabaId, templates: templatesBody.data || [] }, 200);
+  } catch (err) {
+    return json({ ok: false, error: err.message }, 500);
+  }
 }
 
 async function handleZones(env) {
@@ -841,10 +889,10 @@ async function sendDriverWelcomeWhatsApp(env, phone, driverName, token) {
 // or the welcome flow. Same body+button component shape as the welcome
 // template (body {{1}} = driver name, button {{1}} = token), since
 // vakaviti_driver_return has the same variable structure.
-// NOT YET LIVE-TESTED - vakaviti_driver_return is not Active yet as of this
-// commit. Do not call this in a way that actually sends until James confirms
-// approval and a live test (same discipline as every other template tonight)
-// has independently confirmed real delivery.
+// LIVE-TESTED 2026-07-25 (checkpoint regression pass): vakaviti_driver_return
+// is Active and confirmed delivering for real (Graph API 200, real wamid, to
+// a real device) - this comment previously said "not yet Active", which had
+// gone stale since an earlier commit.
 async function sendDriverReturnWhatsApp(env, phone, driverName, token) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
