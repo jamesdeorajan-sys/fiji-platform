@@ -209,6 +209,21 @@ export default {
       return handleGuestBookingCreate(request, env);
     }
 
+    // ── Milestone 15: guest price negotiation, in-house drivers only ──
+    if (request.method === 'POST' && url.pathname === '/negotiate') {
+      return handleNegotiationCreate(request, env);
+    }
+
+    const negotiationStatusMatch = url.pathname.match(/^\/negotiate\/(\d+)$/);
+    if (request.method === 'GET' && negotiationStatusMatch) {
+      return handleNegotiationStatus(request, env, Number(negotiationStatusMatch[1]));
+    }
+
+    const negotiationAcceptMatch = url.pathname.match(/^\/negotiate\/(\d+)\/accept-offer$/);
+    if (request.method === 'POST' && negotiationAcceptMatch) {
+      return handleNegotiationAcceptOffer(request, env, Number(negotiationAcceptMatch[1]));
+    }
+
     // ── Milestone 9: geocode + real-distance pricing for unlisted addresses ──
     if (request.method === 'POST' && url.pathname === '/quote') {
       return handleQuoteCreate(request, env);
@@ -267,6 +282,16 @@ export default {
     const statusMatch = url.pathname.match(/^\/driver\/bookings\/(\d+)\/status$/);
     if (request.method === 'POST' && statusMatch) {
       return handleDriverBookingStatus(request, env, Number(statusMatch[1]));
+    }
+
+    // ── Milestone 15: driver side of price negotiation ──
+    if (request.method === 'GET' && url.pathname === '/driver/negotiation-requests') {
+      return handleDriverNegotiationRequests(request, env);
+    }
+
+    const negotiationOfferMatch = url.pathname.match(/^\/driver\/negotiation-requests\/(\d+)\/offer$/);
+    if (request.method === 'POST' && negotiationOfferMatch) {
+      return handleDriverNegotiationOffer(request, env, Number(negotiationOfferMatch[1]));
     }
 
     if (request.method === 'POST' && url.pathname === '/admin/test-booking') {
@@ -1320,14 +1345,22 @@ async function handleAdminTestBooking(request, env) {
   return json({ ok: true, booking_id: bookingId, booking, broadcast }, 201);
 }
 
+// Milestone 15: factored out of broadcastBookingToDrivers so the new
+// negotiation-request broadcast (a real, separate notification - open
+// request, not a confirmed job) can reuse the exact same "who's actually
+// eligible" logic instead of a second, driftable copy of this query.
+async function findMatchingOnlineDrivers(env, pickupZone) {
+  const candidates = await env.DB.prepare(`SELECT id, name, phone, zones FROM drivers WHERE status = 'verified' AND online = 1`).all();
+  return (candidates.results || []).filter((d) => JSON.parse(d.zones || '[]').includes(pickupZone));
+}
+
 // Shared by handleAdminTestBooking and Milestone 6's public
 // handleGuestBookingCreate - one implementation of "who gets notified about
 // a new booking" so the two entry points can't silently drift apart. Same
 // query already verified in the Milestone 3 race-condition test (matching
 // zone-inclusion filter, same sendBookingBroadcastWhatsApp call).
 async function broadcastBookingToDrivers(env, booking) {
-  const candidates = await env.DB.prepare(`SELECT id, name, phone, zones FROM drivers WHERE status = 'verified' AND online = 1`).all();
-  const matching = (candidates.results || []).filter((d) => JSON.parse(d.zones || '[]').includes(booking.pickup_zone));
+  const matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
 
   const results = [];
   for (const d of matching) {
@@ -1378,34 +1411,19 @@ async function checkGuestBookingRateLimit(env, ip) {
   return { limited: count >= max, count, max, window_minutes: windowMinutes };
 }
 
-async function handleGuestBookingCreate(request, env) {
-  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
-
-  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const rateLimit = await checkGuestBookingRateLimit(env, clientIp);
-  if (rateLimit.limited) {
-    return json({ ok: false, error: 'Too many booking submissions from this connection. Please try again shortly.' }, 429);
-  }
-
-  let body;
-  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
-
-  const guestName = (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest';
-  const guestPhone = normalisePhone((body.guest_phone || '').toString());
-  const pickupZone = (body.pickup_zone || '').toString().trim();
-  const destinationZone = (body.destination_zone || '').toString().trim();
-  const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
-  const quotedCurrency = (body.quoted_currency || '').toString().trim().toUpperCase();
-  const quotedAmount = Number(body.quoted_amount);
-  const fxRate = body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1;
-  const distanceKm = body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null;
-  const paymentMethod = (body.payment_method || '').toString().trim().toLowerCase();
-  // Milestone 13: for a boat booking, the land-leg-only portion of the
-  // bundled quoted_amount - kept separate so a future commission pass
-  // never charges/credits a driver commission on the boat operator's
-  // pass-through fare. null for every ordinary road booking, unchanged.
-  const commissionBaseFjd = body.commission_base_fjd !== undefined && body.commission_base_fjd !== null ? Number(body.commission_base_fjd) : null;
-
+// Milestone 15: factored out of handleGuestBookingCreate so a negotiated
+// booking (guest accepted a driver's offer) goes through the exact same
+// validation/derivation as a normal fixed-fare booking - same bounds
+// checks, same server-derived fuel_multiplier_applied/settlement_amount_fjd,
+// never a hand-rolled parallel insert. assignedDriverId/status let the
+// caller create either an open job (null/'pending', the existing flow,
+// unchanged) or an already-agreed one (a known driver, 'accepted' - no
+// race needed, that driver already committed by making their offer).
+async function createBookingRecord(env, {
+  guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
+  quotedCurrency, quotedAmount, fxRate, paymentMethod, sourceIp,
+  commissionBaseFjd = null, assignedDriverId = null, status = 'pending',
+}) {
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
   if (!ALLOWED_VEHICLE_TYPES.includes(vehicleType)) errors.push(`vehicle_type must be one of: ${ALLOWED_VEHICLE_TYPES.join(', ')}`);
@@ -1420,7 +1438,7 @@ async function handleGuestBookingCreate(request, env) {
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
   if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
 
-  if (errors.length > 0) return json({ ok: false, errors }, 400);
+  if (errors.length > 0) return { ok: false, errors };
 
   const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
   const fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
@@ -1429,18 +1447,320 @@ async function handleGuestBookingCreate(request, env) {
   const insert = await env.DB.prepare(
     `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
        quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
-       payment_method, status, source_ip, commission_base_fjd)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+       payment_method, status, source_ip, commission_base_fjd, assigned_driver_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
-    quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied, paymentMethod, clientIp, commissionBaseFjd
+    quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied,
+    paymentMethod, status, sourceIp, commissionBaseFjd, assignedDriverId
   ).run();
 
   const bookingId = insert.meta.last_row_id;
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
-  const broadcast = await broadcastBookingToDrivers(env, booking);
+  return { ok: true, bookingId, booking };
+}
 
-  return json({ ok: true, booking_id: bookingId, booking, broadcast }, 201);
+async function handleGuestBookingCreate(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkGuestBookingRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many booking submissions from this connection. Please try again shortly.' }, 429);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const result = await createBookingRecord(env, {
+    guestName: (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest',
+    guestPhone: normalisePhone((body.guest_phone || '').toString()),
+    pickupZone: (body.pickup_zone || '').toString().trim(),
+    destinationZone: (body.destination_zone || '').toString().trim(),
+    vehicleType: (body.vehicle_type || '').toString().trim().toLowerCase(),
+    quotedCurrency: (body.quoted_currency || '').toString().trim().toUpperCase(),
+    quotedAmount: Number(body.quoted_amount),
+    fxRate: body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1,
+    distanceKm: body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null,
+    paymentMethod: (body.payment_method || '').toString().trim().toLowerCase(),
+    // Milestone 13: for a boat booking, the land-leg-only portion of the
+    // bundled quoted_amount - kept separate so a future commission pass
+    // never charges/credits a driver commission on the boat operator's
+    // pass-through fare. null for every ordinary road booking, unchanged.
+    commissionBaseFjd: body.commission_base_fjd !== undefined && body.commission_base_fjd !== null ? Number(body.commission_base_fjd) : null,
+    sourceIp: clientIp,
+  });
+  if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
+
+  const broadcast = await broadcastBookingToDrivers(env, result.booking);
+  return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast }, 201);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 15 — guest price negotiation, in-house drivers only. A guest
+// proposes their own price instead of accepting the fitted rate-card fare;
+// zone-matching online drivers can accept it as-is or counter with a
+// different number (one response each, enforced by negotiation_offers'
+// UNIQUE(request_id, driver_id)); the guest picks one offer to accept,
+// which creates a real bookings row via createBookingRecord() above -
+// same validation every fixed-fare booking already gets, on the actual
+// agreed price, never the original proposal or the reference fare.
+// ═══════════════════════════════════════════════════════════════
+
+async function checkNegotiationRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'negotiation_rate_limit_max_per_day', '5'));
+  const windowMinutes = Number(await getSetting(env, 'negotiation_rate_limit_window_minutes', '10'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM negotiation_requests WHERE source_ip = ? AND created_at > datetime('now', '-' || ? || ' minutes')`
+  ).bind(ip, windowMinutes).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max, window_minutes: windowMinutes };
+}
+
+async function handleNegotiationCreate(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkNegotiationRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many price proposals from this connection. Please try again shortly.' }, 429);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const guestName = (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest';
+  const guestPhone = normalisePhone((body.guest_phone || '').toString());
+  const pickupZone = (body.pickup_zone || '').toString().trim();
+  const destinationZone = (body.destination_zone || '').toString().trim();
+  const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
+  const distanceKm = body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null;
+  const passengers = body.passengers !== undefined && body.passengers !== null ? Number(body.passengers) : null;
+  const pickupDatetime = body.pickup_datetime ? body.pickup_datetime.toString().trim() : null;
+  const referenceFareFjd = Number(body.reference_fare_fjd);
+  const guestProposedAmountFjd = Number(body.guest_proposed_amount_fjd);
+
+  const errors = [];
+  if (!guestPhone) errors.push('a valid guest_phone is required');
+  // Boat excluded deliberately - a boat fare is a real third-party bundled
+  // price FTT doesn't set, negotiating it doesn't make sense.
+  if (!['sedan', 'minivan', 'minibus'].includes(vehicleType)) errors.push('vehicle_type must be one of: sedan, minivan, minibus');
+  if (distanceKm !== null && (!isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500)) errors.push('distance_km out of range');
+  if (passengers !== null && (!Number.isInteger(passengers) || passengers < 1 || passengers > 20)) errors.push('passengers must be an integer between 1 and 20');
+  if (!referenceFareFjd || !isFinite(referenceFareFjd) || referenceFareFjd <= 0 || referenceFareFjd > 5000) errors.push('reference_fare_fjd must be a positive number no greater than 5000');
+  if (!guestProposedAmountFjd || !isFinite(guestProposedAmountFjd) || guestProposedAmountFjd <= 0 || guestProposedAmountFjd > 5000) errors.push('guest_proposed_amount_fjd must be a positive number no greater than 5000');
+
+  const validZones = await getValidZoneNames(env);
+  if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
+  if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
+
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  const insert = await env.DB.prepare(
+    `INSERT INTO negotiation_requests (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
+       passengers, pickup_datetime, reference_fare_fjd, guest_proposed_amount_fjd, source_ip)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
+    passengers, pickupDatetime, referenceFareFjd, guestProposedAmountFjd, clientIp
+  ).run();
+
+  const requestId = insert.meta.last_row_id;
+  const negotiationRequest = await env.DB.prepare(`SELECT * FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+
+  // Reuses vakaviti_booking_broadcast as-is for this build (see the
+  // Milestone 15 report) - the guest's proposed price goes in the
+  // existing {{4}} fare slot. A dedicated negotiation template with
+  // clearer wording is a real, natural fast-follow, not a blocker: the
+  // driver has to open the app to see full context and respond either
+  // way, so nothing about accept/counter itself depends on the template.
+  const matching = await findMatchingOnlineDrivers(env, pickupZone);
+  const results = [];
+  for (const d of matching) {
+    const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, {
+      pickup_zone: pickupZone,
+      destination_zone: destinationZone,
+      vehicle_type: vehicleType,
+      quoted_currency: 'FJD',
+      quoted_amount: guestProposedAmountFjd,
+    });
+    results.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
+  }
+
+  return json({
+    ok: true,
+    request_id: requestId,
+    request: negotiationRequest,
+    broadcast: { matched_drivers: matching.length, results },
+  }, 201);
+}
+
+// Polling endpoint for the guest widget - no guest auth/session system
+// exists to push to, so the guest stays on a "waiting for driver" screen
+// that polls this. Lazy-expires the request on read rather than adding a
+// new cron trigger - a guest watching this poll is the only real
+// consumer, nothing to sweep proactively in the background.
+async function handleNegotiationStatus(request, env, requestId) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const negotiationRequest = await env.DB.prepare(`SELECT * FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+  if (!negotiationRequest) return json({ ok: false, error: 'Negotiation request not found.' }, 404);
+
+  if (negotiationRequest.status === 'open') {
+    const expiryMinutes = Number(await getSetting(env, 'negotiation_expiry_minutes', '20'));
+    const ageRow = await env.DB.prepare(
+      `SELECT (julianday('now') - julianday(created_at)) * 24 * 60 AS age_minutes FROM negotiation_requests WHERE id = ?`
+    ).bind(requestId).first();
+    if (ageRow && ageRow.age_minutes >= expiryMinutes) {
+      await env.DB.prepare(`UPDATE negotiation_requests SET status = 'expired' WHERE id = ? AND status = 'open'`).bind(requestId).run();
+      negotiationRequest.status = 'expired';
+    }
+  }
+
+  const offers = await env.DB.prepare(
+    `SELECT id, driver_id, offer_type, offer_amount_fjd, guest_decision, created_at FROM negotiation_offers WHERE request_id = ? ORDER BY created_at ASC`
+  ).bind(requestId).all();
+
+  return json({ ok: true, request: negotiationRequest, offers: offers.results || [] }, 200);
+}
+
+async function handleNegotiationAcceptOffer(request, env, requestId) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const offerId = Number(body.offer_id);
+  if (!Number.isInteger(offerId) || offerId <= 0) return json({ ok: false, error: 'offer_id must be a positive integer' }, 400);
+
+  const negotiationRequest = await env.DB.prepare(`SELECT * FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+  if (!negotiationRequest) return json({ ok: false, error: 'Negotiation request not found.' }, 404);
+  if (negotiationRequest.status !== 'open') {
+    return json({ ok: false, error: `This request is ${negotiationRequest.status}, cannot accept an offer.` }, 409);
+  }
+
+  const offer = await env.DB.prepare(`SELECT * FROM negotiation_offers WHERE id = ? AND request_id = ?`).bind(offerId, requestId).first();
+  if (!offer) return json({ ok: false, error: 'Offer not found for this request.' }, 404);
+  if (offer.guest_decision !== 'pending') {
+    return json({ ok: false, error: `This offer is already ${offer.guest_decision}.` }, 409);
+  }
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+
+  // The exact requirement #6 ask - the FINAL agreed price (this offer's
+  // amount, not the guest's original proposal, not reference_fare_fjd)
+  // goes through createBookingRecord(), the same validation/derivation
+  // every fixed-fare booking already uses. The driver is already known,
+  // so this skips 'pending'/broadcast entirely - status='accepted' with
+  // assignedDriverId pre-set, no accept race needed.
+  const result = await createBookingRecord(env, {
+    guestName: negotiationRequest.guest_name,
+    guestPhone: negotiationRequest.guest_phone,
+    pickupZone: negotiationRequest.pickup_zone,
+    destinationZone: negotiationRequest.destination_zone,
+    distanceKm: negotiationRequest.distance_km,
+    vehicleType: negotiationRequest.vehicle_type,
+    quotedCurrency: 'FJD',
+    quotedAmount: offer.offer_amount_fjd,
+    fxRate: 1,
+    paymentMethod: 'cash',
+    sourceIp: clientIp,
+    assignedDriverId: offer.driver_id,
+    status: 'accepted',
+  });
+  if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
+
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE negotiation_offers SET guest_decision = 'accepted' WHERE id = ?`).bind(offerId),
+    env.DB.prepare(`UPDATE negotiation_offers SET guest_decision = 'declined' WHERE request_id = ? AND id != ?`).bind(requestId, offerId),
+    env.DB.prepare(`UPDATE negotiation_requests SET status = 'accepted', booking_id = ? WHERE id = ?`).bind(result.bookingId, requestId),
+  ]);
+
+  // Admin visibility on the real, agreed outcome only - not on every
+  // intermediate offer, matching "same visibility as everything else"
+  // without paging James/Ben on every counter that comes in. Reuses
+  // sendHealthAlertWhatsApp() the same way sendEscalationAlert() does.
+  const alertPhone = await getSetting(env, 'admin_alert_phone', '');
+  const alert = alertPhone
+    ? await sendHealthAlertWhatsApp(env, alertPhone, `Negotiated booking #${result.bookingId} agreed: FJD ${offer.offer_amount_fjd} (${negotiationRequest.pickup_zone} -> ${negotiationRequest.destination_zone})`, sqliteNow())
+    : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
+
+  return json({ ok: true, booking_id: result.bookingId, booking: result.booking, alert }, 200);
+}
+
+// Same online+zone filter handleDriverJobs already uses for the fixed-job
+// feed, plus excludes requests this driver already responded to (a clean
+// UX filter - negotiation_offers' UNIQUE(request_id, driver_id) is the
+// real backstop against a second response, not this list).
+async function handleDriverNegotiationRequests(request, env) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+  if (!driver.online) return json({ requests: [], note: 'Go online to see available requests.' }, 200);
+
+  const driverZones = new Set(JSON.parse(driver.zones || '[]'));
+  const result = await env.DB.prepare(
+    `SELECT id, guest_name, pickup_zone, destination_zone, distance_km, vehicle_type, passengers,
+            pickup_datetime, reference_fare_fjd, guest_proposed_amount_fjd, status, created_at
+     FROM negotiation_requests WHERE status = 'open' ORDER BY created_at ASC LIMIT 20`
+  ).all();
+
+  const alreadyResponded = await env.DB.prepare(
+    `SELECT request_id FROM negotiation_offers WHERE driver_id = ?`
+  ).bind(driver.id).all();
+  const respondedIds = new Set((alreadyResponded.results || []).map((r) => r.request_id));
+
+  const requests = (result.results || [])
+    .filter((r) => driverZones.has(r.pickup_zone) && !respondedIds.has(r.id));
+  return json({ requests }, 200);
+}
+
+async function handleDriverNegotiationOffer(request, env, requestId) {
+  const driver = await requireDriver(request, env);
+  if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
+  if (!driver.online) return json({ error: 'Go online to respond to requests.' }, 403);
+
+  const target = await env.DB.prepare(`SELECT pickup_zone, status FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+  if (!target) return json({ error: 'Negotiation request not found.' }, 404);
+  const driverZones = new Set(JSON.parse(driver.zones || '[]'));
+  if (!driverZones.has(target.pickup_zone)) {
+    return json({ error: 'This request is outside your online zones.' }, 403);
+  }
+  if (target.status !== 'open') {
+    return json({ error: `This request is ${target.status}, no longer open.` }, 409);
+  }
+
+  const locked = await enforceWalletLockout(env, driver.id);
+  if (locked.locked) {
+    return json({ error: 'Wallet balance below the allowed threshold. Settle your balance before responding to requests.', balance_fjd: locked.balance_fjd, threshold_fjd: locked.threshold_fjd }, 403);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON.' }, 400); }
+  const offerType = (body.type || '').toString().trim().toLowerCase();
+  if (!['accept', 'counter'].includes(offerType)) return json({ error: "type must be 'accept' or 'counter'" }, 400);
+
+  let offerAmount;
+  if (offerType === 'accept') {
+    const req = await env.DB.prepare(`SELECT guest_proposed_amount_fjd FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+    offerAmount = req.guest_proposed_amount_fjd;
+  } else {
+    offerAmount = Number(body.amount_fjd);
+    if (!offerAmount || !isFinite(offerAmount) || offerAmount <= 0 || offerAmount > 5000) {
+      return json({ error: 'amount_fjd must be a positive number no greater than 5000 for a counter' }, 400);
+    }
+  }
+
+  try {
+    const insert = await env.DB.prepare(
+      `INSERT INTO negotiation_offers (request_id, driver_id, offer_type, offer_amount_fjd) VALUES (?, ?, ?, ?)`
+    ).bind(requestId, driver.id, offerType, offerAmount).run();
+    const offer = await env.DB.prepare(`SELECT * FROM negotiation_offers WHERE id = ?`).bind(insert.meta.last_row_id).first();
+    return json({ ok: true, offer }, 201);
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      return json({ error: 'You have already responded to this request.' }, 409);
+    }
+    throw err;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

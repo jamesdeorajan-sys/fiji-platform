@@ -392,3 +392,43 @@ INSERT INTO zones (name) VALUES ('Yasawa Islands');
 ALTER TABLE destinations ADD COLUMN pricing_status TEXT;
 
 INSERT INTO zones (name) VALUES ('Beqa Lagoon');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 15 additions — guest price negotiation, in-house drivers only.
+-- See migrations/milestone15-negotiation.sql for the migration actually
+-- run against the live database, including the full rationale for two new
+-- tables rather than a bookings.status value.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE negotiation_requests (
+  id INTEGER PRIMARY KEY,
+  guest_name TEXT,
+  guest_phone TEXT NOT NULL,
+  pickup_zone TEXT NOT NULL,
+  destination_zone TEXT NOT NULL,
+  distance_km REAL,
+  vehicle_type TEXT NOT NULL,
+  passengers INTEGER,
+  pickup_datetime TEXT,
+  reference_fare_fjd REAL NOT NULL,
+  guest_proposed_amount_fjd REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'expired', 'cancelled')),
+  booking_id INTEGER REFERENCES bookings(id),
+  source_ip TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE negotiation_offers (
+  id INTEGER PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES negotiation_requests(id),
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  offer_type TEXT NOT NULL CHECK (offer_type IN ('accept', 'counter')),
+  offer_amount_fjd REAL NOT NULL,
+  guest_decision TEXT NOT NULL DEFAULT 'pending' CHECK (guest_decision IN ('pending', 'accepted', 'declined')),
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(request_id, driver_id)
+);
+
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_expiry_minutes', '20');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_max_per_day', '5');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_window_minutes', '10');
