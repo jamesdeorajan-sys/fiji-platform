@@ -189,6 +189,18 @@ const state = {
   destZoneName: null,
   destZonePending: false,
   destZoneFetchedFor: null,
+  // MILESTONE 15: guest price negotiation. negotiationRequestId is null
+  // until POST /negotiate succeeds; negotiationPollTimer holds the
+  // setInterval id so it can always be cleared (reset, accept, expiry,
+  // or navigating away from the waiting screen). negotiationDeclinedOfferIds
+  // is client-side only - the backend has no decline endpoint, "declining"
+  // an offer just stops showing it to this guest (accepting a different
+  // offer server-side auto-declines every other one on that request).
+  negotiationRequestId: null,
+  negotiationPollTimer: null,
+  negotiationProposedAmount: null,
+  negotiationLastOffers: [],
+  negotiationDeclinedOfferIds: null,
 };
 
 // ─── DISTANCE HELPERS ────────────────────────────────────────────────────────
@@ -1689,6 +1701,229 @@ async function reportBookingSyncFailure(ref, payload, errorDetail) {
     // Last line of defense - nothing more to do client-side if even the
     // escalation call fails.
   }
+}
+
+// ─── MILESTONE 15: GUEST PRICE NEGOTIATION (in-house drivers only) ──────────
+// A guest can propose their own price instead of confirming the standard
+// fare; zone-matching online drivers accept it as-is or counter. Scoped to
+// exactly the two airport-anchored routes /quote and the marketplace sync
+// already cover (see submitMarketplaceBooking above) - road vehicle types
+// only, never a boat destination (a boat fare is a real third-party bundled
+// price, not FTT's to negotiate).
+function resolveNegotiationEligibility() {
+  const pickupVal = document.getElementById('pickup')?.value;
+  const destVal = document.getElementById('destination')?.value;
+  if (BOAT_DESTINATION_IDS[destVal]) return null;
+  if (!state.selectedVehicle) return null;
+  const isEligibleRoute = pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destVal === 'NAN');
+  if (!isEligibleRoute) return null;
+  const pickupZone = resolveConfirmedPickupZone();
+  const destinationZone = resolveConfirmedDestinationZone();
+  if (!pickupZone || !destinationZone) return null;
+  const t = calculateTotal();
+  if (!t.final || !isFinite(t.final)) return null;
+  return { pickupZone, destinationZone, vehicleType: state.selectedVehicle, referenceFare: t.final };
+}
+
+function showNegotiatePanel() {
+  const elig = resolveNegotiationEligibility();
+  if (!elig) {
+    alert("Sorry, proposing your own price isn't available for this route yet. Please confirm at the standard price, or message us directly on WhatsApp.");
+    return;
+  }
+  const refEl = document.getElementById('negotiateReferenceFare');
+  if (refEl) refEl.textContent = formatPrice(elig.referenceFare);
+  const errorBox = document.getElementById('negotiateError');
+  if (errorBox) errorBox.style.display = 'none';
+  const amountInput = document.getElementById('negotiateAmount');
+  if (amountInput) amountInput.value = '';
+  const toggle = document.getElementById('negotiateToggle');
+  const confirmActions = document.getElementById('step4ConfirmActions');
+  const panel = document.getElementById('negotiatePanel');
+  if (confirmActions) confirmActions.style.display = 'none';
+  if (panel) panel.style.display = 'block';
+}
+
+function hideNegotiatePanel() {
+  const confirmActions = document.getElementById('step4ConfirmActions');
+  const panel = document.getElementById('negotiatePanel');
+  if (panel) panel.style.display = 'none';
+  if (confirmActions) confirmActions.style.display = '';
+}
+
+async function submitNegotiation() {
+  const elig = resolveNegotiationEligibility();
+  const errorBox = document.getElementById('negotiateError');
+  const btn = document.getElementById('negotiateSubmitBtn');
+  const amountInput = document.getElementById('negotiateAmount');
+  const amount = Number(amountInput?.value);
+
+  const showError = (msg) => { if (errorBox) { errorBox.textContent = msg; errorBox.style.display = 'block'; } };
+
+  if (!elig) { showError('This route is no longer eligible for a custom price request.'); return; }
+  if (!amount || !isFinite(amount) || amount <= 0) { showError('Enter a valid proposed price.'); return; }
+
+  const firstName = document.getElementById('firstName')?.value.trim() || '';
+  const lastName  = document.getElementById('lastName')?.value.trim() || '';
+  const phone     = document.getElementById('phone')?.value.trim() || '';
+  if (!phone) { showError('A phone number is required — please go back and fill in your details.'); return; }
+
+  if (errorBox) errorBox.style.display = 'none';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  const payload = {
+    guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
+    guest_phone: phone,
+    pickup_zone: elig.pickupZone,
+    destination_zone: elig.destinationZone,
+    vehicle_type: elig.vehicleType,
+    passengers: state.passengers,
+    reference_fare_fjd: elig.referenceFare,
+    guest_proposed_amount_fjd: amount,
+  };
+
+  try {
+    const res = await fetch(`${NADI_API_BASE}/negotiate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      showError((data?.errors && data.errors[0]) || data?.error || 'Something went wrong sending your request. Please try again or confirm at the standard price.');
+      return;
+    }
+    state.negotiationRequestId = data.request_id;
+    state.negotiationProposedAmount = amount;
+    state.negotiationDeclinedOfferIds = new Set();
+    document.getElementById('negotiatePanel').style.display = 'none';
+    const waitAmountEl = document.getElementById('negotiateWaitingAmount');
+    if (waitAmountEl) waitAmountEl.textContent = formatPrice(amount);
+    const offersEl = document.getElementById('negotiateOffers');
+    if (offersEl) offersEl.innerHTML = '';
+    document.getElementById('negotiateWaiting').style.display = 'block';
+    startNegotiationPolling();
+  } catch (err) {
+    showError('Network error — please try again.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Send price request'; }
+  }
+}
+
+function startNegotiationPolling() {
+  stopNegotiationPolling();
+  pollNegotiationStatus();
+  state.negotiationPollTimer = setInterval(pollNegotiationStatus, 5000);
+}
+function stopNegotiationPolling() {
+  if (state.negotiationPollTimer) { clearInterval(state.negotiationPollTimer); state.negotiationPollTimer = null; }
+}
+
+async function pollNegotiationStatus() {
+  if (!state.negotiationRequestId) return;
+  try {
+    const res = await fetch(`${NADI_API_BASE}/negotiate/${state.negotiationRequestId}`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return;
+
+    if (data.request.status === 'accepted') {
+      stopNegotiationPolling();
+      showNegotiationSuccess(data.request.reference_fare_fjd, offerAmountForRequest(data));
+      return;
+    }
+    if (data.request.status === 'expired' || data.request.status === 'cancelled') {
+      stopNegotiationPolling();
+      showNegotiationExpired();
+      return;
+    }
+    state.negotiationLastOffers = data.offers || [];
+    renderNegotiationOffers(state.negotiationLastOffers);
+  } catch (err) {
+    // Transient network error - the next poll tick retries; nothing to surface mid-wait.
+  }
+}
+
+// The accepted offer's amount isn't echoed directly by GET /negotiate, but
+// it's the one offer with guest_decision='accepted' in the same response.
+function offerAmountForRequest(data) {
+  const accepted = (data.offers || []).find(o => o.guest_decision === 'accepted');
+  return accepted ? accepted.offer_amount_fjd : state.negotiationProposedAmount;
+}
+
+function renderNegotiationOffers(offers) {
+  const container = document.getElementById('negotiateOffers');
+  if (!container) return;
+  const pending = offers.filter(o => o.guest_decision === 'pending' && !state.negotiationDeclinedOfferIds?.has(o.id));
+  if (pending.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = pending.map(o => `
+    <div class="negotiate-offer-card">
+      <div>
+        <div class="negotiate-offer-label">${o.offer_type === 'accept' ? 'A driver accepted your price' : 'A driver countered with'}</div>
+        <div class="negotiate-offer-amount">${formatPrice(o.offer_amount_fjd)}</div>
+      </div>
+      <div class="negotiate-offer-actions">
+        <button class="btn-secondary" onclick="declineNegotiationOffer(${o.id})">Decline</button>
+        <button class="btn-primary" onclick="acceptNegotiationOffer(${o.id})">Accept</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function declineNegotiationOffer(offerId) {
+  if (!state.negotiationDeclinedOfferIds) state.negotiationDeclinedOfferIds = new Set();
+  state.negotiationDeclinedOfferIds.add(offerId);
+  renderNegotiationOffers(state.negotiationLastOffers || []);
+}
+
+async function acceptNegotiationOffer(offerId) {
+  if (!state.negotiationRequestId) return;
+  const container = document.getElementById('negotiateOffers');
+  if (container) container.style.pointerEvents = 'none';
+  try {
+    const res = await fetch(`${NADI_API_BASE}/negotiate/${state.negotiationRequestId}/accept-offer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offer_id: offerId }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      alert(data?.error || 'Could not accept this offer — it may have just expired. Please try another offer or wait for a new one.');
+      if (container) container.style.pointerEvents = '';
+      return;
+    }
+    stopNegotiationPolling();
+    showNegotiationSuccess(null, data.booking?.quoted_amount);
+  } catch (err) {
+    alert('Network error accepting this offer. Please try again.');
+    if (container) container.style.pointerEvents = '';
+  }
+}
+
+function showNegotiationExpired() {
+  const titleEl = document.getElementById('negotiateWaitingTitle');
+  if (titleEl) titleEl.textContent = 'No driver responded in time.';
+  const offersEl = document.getElementById('negotiateOffers');
+  if (offersEl) {
+    offersEl.innerHTML = `<p style="font-size:13px;color:var(--mid)">Your price request has expired. You can confirm at the standard price instead, or try proposing a different price.</p>`;
+  }
+}
+
+function cancelNegotiationWait() {
+  stopNegotiationPolling();
+  document.getElementById('negotiateWaiting').style.display = 'none';
+  const confirmActions = document.getElementById('step4ConfirmActions');
+  if (confirmActions) confirmActions.style.display = '';
+}
+
+function showNegotiationSuccess(_referenceFare, agreedAmount) {
+  document.getElementById('negotiateWaiting').style.display = 'none';
+  const widget = document.getElementById('bookingWidget');
+  if (widget) widget.style.display = 'none';
+  const amountEl = document.getElementById('negotiateSuccessAmount');
+  if (amountEl) amountEl.textContent = agreedAmount ? `Agreed price: ${formatPrice(agreedAmount)}` : '';
+  const success = document.getElementById('negotiateSuccess');
+  if (success) success.style.display = 'block';
+  document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Reset the booking flow without a full page reload — closes the Bula card

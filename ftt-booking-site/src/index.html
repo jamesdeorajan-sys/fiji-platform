@@ -746,11 +746,52 @@
             <strong>No payment needed now.</strong> You'll be contacted within 15 minutes to confirm availability and payment options. We accept credit card, bank transfer, and cash on arrival.
           </div>
         </div>
-        <div class="step-actions">
-          <button class="btn-secondary" onclick="goToStep(3)">← Back</button>
-          <button class="btn-primary btn-confirm" onclick="confirmBooking()">
-            ✓ Confirm booking request
-          </button>
+
+        <div id="step4ConfirmActions">
+          <div class="step-actions">
+            <button class="btn-secondary" onclick="goToStep(3)">← Back</button>
+            <button class="btn-primary btn-confirm" onclick="confirmBooking()">
+              ✓ Confirm booking request
+            </button>
+          </div>
+          <!-- MILESTONE 15: only shown for the routes /negotiate can actually
+               handle (see resolveNegotiationEligibility in app.js) - clicking
+               through when a route isn't eligible surfaces a plain message
+               rather than silently failing. -->
+          <div class="negotiate-toggle" id="negotiateToggle">
+            <a href="#" class="negotiate-toggle-link" onclick="showNegotiatePanel(); return false;">Or propose your own price instead →</a>
+          </div>
+        </div>
+
+        <!-- MILESTONE 15: guest-proposed price panel -->
+        <div class="negotiate-panel" id="negotiatePanel" style="display:none">
+          <h4 class="negotiate-panel-title">Propose your own price</h4>
+          <p class="negotiate-panel-sub">Our standard fare for this trip is <strong id="negotiateReferenceFare">—</strong>. Tell us what you'd like to pay and we'll put it to our available drivers — accept if one matches it, or see their counter-offer.</p>
+          <div class="field-group">
+            <label class="field-label">Your proposed price (FJD) *</label>
+            <input type="number" id="negotiateAmount" class="field-input" min="1" step="1" placeholder="e.g. 35">
+          </div>
+          <div class="negotiate-error" id="negotiateError" style="display:none"></div>
+          <div class="step-actions">
+            <button class="btn-secondary" onclick="hideNegotiatePanel()">← Back to standard price</button>
+            <button class="btn-primary" id="negotiateSubmitBtn" onclick="submitNegotiation()">Send price request</button>
+          </div>
+        </div>
+
+        <!-- MILESTONE 15: waiting-for-driver / offers panel -->
+        <div class="negotiate-waiting" id="negotiateWaiting" style="display:none">
+          <div class="negotiate-waiting-header">
+            <div class="negotiate-spinner"></div>
+            <div>
+              <div class="negotiate-waiting-title" id="negotiateWaitingTitle">Waiting for a driver to respond…</div>
+              <div class="negotiate-waiting-sub">You proposed <strong id="negotiateWaitingAmount">—</strong>. This usually takes a few minutes.</div>
+            </div>
+          </div>
+          <div class="negotiate-offers" id="negotiateOffers"></div>
+          <div class="step-actions">
+            <button class="btn-secondary" onclick="cancelNegotiationWait()">← Back</button>
+            <div></div>
+          </div>
         </div>
       </div>
 
@@ -821,6 +862,41 @@
           <a href="https://wa.me/61478886145?text=Hi%20Fiji%20Tour%20Transfers%2C%20I%27m%20saving%20your%20number%20for%20my%20Fiji%20trip%20%F0%9F%8C%BA" target="_blank" rel="noopener" class="btn-whatsapp">
             💬 Save us on WhatsApp
           </a>
+          <button class="btn-secondary" onclick="resetBooking()">Book another transfer</button>
+        </div>
+
+        <p class="bula-foot">
+          Vinaka vakalevu — see you in paradise! 🌺<br>
+          <em>The Fiji Tour Transfers team</em>
+        </p>
+      </div>
+    </div>
+
+    <!-- MILESTONE 15: shown once a negotiated price is actually accepted -
+         the real booking already exists server-side by this point (created
+         via the same /bookings path a fixed-fare confirm uses), so this is
+         confirmation, not a submission step. -->
+    <div class="bula-success" id="negotiateSuccess" style="display:none">
+      <div class="bula-success-inner">
+        <div class="bula-burst">
+          <div class="bula-flower">🌺</div>
+          <div class="bula-rays"></div>
+        </div>
+        <div class="bula-eyebrow">Bula Vinaka!</div>
+        <h2 class="bula-title">Your price was accepted — you're booked!</h2>
+        <div class="bula-ref" id="negotiateSuccessAmount"></div>
+
+        <p class="bula-lead">
+          A driver has agreed to your price. We've locked in your booking —
+          you'll be contacted before pickup to confirm the final details.
+        </p>
+
+        <a id="negotiateSuccessWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
+          Message us on WhatsApp →
+        </a>
+
+        <div class="bula-actions">
           <button class="btn-secondary" onclick="resetBooking()">Book another transfer</button>
         </div>
 
@@ -1082,7 +1158,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260725f-m14pending"></script>
+<script src="app.js?v=20260726a-m15negotiate"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>
