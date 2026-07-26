@@ -31,3 +31,6 @@ export interface AtomicAcceptanceStore {
     reason?: "already_assigned" | "offer_inactive";
   }>;
 }
+export interface DispatchRepository extends AtomicAcceptanceStore {
+  findOfferById(id: DispatchOfferId): Promise<DispatchOffer | undefined>;
+}

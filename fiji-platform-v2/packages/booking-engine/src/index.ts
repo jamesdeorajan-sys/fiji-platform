@@ -43,3 +43,12 @@ export interface BookingEvent {
   readonly occurredAt: IsoTimestamp;
   readonly actorId?: string;
 }
+export interface BookingRepository {
+  findById(id: BookingId): Promise<Booking | undefined>;
+  transition(
+    id: BookingId,
+    expected: BookingState,
+    next: BookingState,
+    event: BookingEvent,
+  ): Promise<Booking>;
+}

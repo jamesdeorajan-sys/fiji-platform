@@ -13,3 +13,7 @@ export interface Destination {
   readonly name: string;
   readonly active: boolean;
 }
+export interface DestinationRepository {
+  findById(id: DestinationId): Promise<Destination | undefined>;
+  findActiveBySlug(slug: string): Promise<Destination | undefined>;
+}

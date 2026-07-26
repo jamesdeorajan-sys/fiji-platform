@@ -19,6 +19,10 @@ export interface WalletTransaction {
   readonly kind: "credit" | "debit" | "commission" | "adjustment";
   readonly occurredAt: IsoTimestamp;
 }
+export interface WalletRepository {
+  findById(id: WalletId): Promise<Wallet | undefined>;
+  append(transaction: WalletTransaction): Promise<void>;
+}
 export const appendUnique = (
   ledger: readonly WalletTransaction[],
   tx: WalletTransaction,

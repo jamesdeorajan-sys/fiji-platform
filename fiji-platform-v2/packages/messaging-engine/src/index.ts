@@ -17,6 +17,12 @@ export interface MessageDelivery {
   readonly providerMessageId?: string;
   readonly verifiedAt?: IsoTimestamp;
 }
+export interface MessagingRepository {
+  findDeliveryById(
+    id: MessageDelivery["id"],
+  ): Promise<MessageDelivery | undefined>;
+  enqueue(delivery: MessageDelivery): Promise<void>;
+}
 export const isProductionReady = (
   template: MessageTemplate,
   delivery?: MessageDelivery,
