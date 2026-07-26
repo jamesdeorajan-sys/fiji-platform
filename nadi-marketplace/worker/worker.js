@@ -2373,6 +2373,12 @@ async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, dir
         travelMode: 'DRIVE',
         routingPreference: 'TRAFFIC_UNAWARE',
         units: 'METRIC',
+        // Disambiguates short/ambiguous text addresses (e.g. "Waila",
+        // "Namaka") to Fiji without altering the address string itself -
+        // confirmed via the real Routes API docs that regionCode is a
+        // top-level ccTLD hint the API applies during geocoding, not a
+        // display/formatting-only field.
+        regionCode: 'FJ',
       }),
     });
 
