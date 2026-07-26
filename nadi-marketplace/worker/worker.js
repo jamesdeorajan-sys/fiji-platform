@@ -2293,6 +2293,16 @@ async function handleAdminDestinationDeactivate(request, env, destinationId) {
 
 const GOOGLE_ROUTES_API_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const MAX_QUOTE_DISTANCE_KM = 300;
+// Real evidence (live diagnostic call): when Google can't place a text
+// address, it doesn't reliably fail - it can silently fall back to a
+// broad administrative area (country/region/province) and still report a
+// "successful" geocode. A route waypoint resolved to one of these is
+// never a real pickup/drop-off point, regardless of partialMatch.
+const LOW_CONFIDENCE_GEOCODE_TYPES = new Set([
+  'country',
+  'administrative_area_level_1',
+  'administrative_area_level_2',
+]);
 
 function normalizeAddressQuery(raw) {
   return (raw || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
@@ -2365,7 +2375,7 @@ async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, dir
         // routes.legs.startLocation added for Milestone 12: when the
         // free-text address is the ORIGIN (direction='to_airport'), its
         // resolved point is the first leg's start, not the last leg's end.
-        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.startLocation,routes.legs.endLocation,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction',
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.warnings,routes.legs.startLocation,routes.legs.endLocation,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction,geocodingResults',
       },
       body: JSON.stringify({
         origin,
@@ -2388,11 +2398,36 @@ async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, dir
     }
 
     const data = await res.json();
+
+    // Confidence gate - confirmed via a real, live diagnostic call (not
+    // assumed from docs) that computeRoutes DOES expose a geocoding
+    // confidence signal via the top-level geocodingResults field, contrary
+    // to what the old comment here claimed. Real evidence: "waila, fiji"
+    // and "Vuda Point, Fiji" - two unrelated real places Google couldn't
+    // actually place - both silently resolved to the SAME coordinate
+    // (Fiji's country-level centroid), with geocodingResults reporting
+    // type:["country","political"] and partialMatch:true for both. A
+    // genuinely resolved address (e.g. "namaka") reports neither. Treated
+    // as equivalent to "no route" below (never guesses a zone/price) -
+    // conservative by design: a driver going to the wrong place is a real
+    // safety problem, a guest routed to a human is a minor inconvenience.
+    const addressSideWaypoint = direction === 'to_airport'
+      ? data.geocodingResults?.origin
+      : data.geocodingResults?.destination;
+    const geocoderStatusCode = addressSideWaypoint?.geocoderStatus?.code;
+    const isLowConfidence = !addressSideWaypoint
+      || (geocoderStatusCode !== undefined && geocoderStatusCode !== 0)
+      || addressSideWaypoint.partialMatch === true
+      || (addressSideWaypoint.type || []).some((t) => LOW_CONFIDENCE_GEOCODE_TYPES.has(t));
+    if (isLowConfidence) {
+      return { ok: true, hasRoute: false };
+    }
+
     const route = data.routes && data.routes[0];
     if (!route) {
-      // A 200 with no routes: the geocoder understood the request enough
-      // to try, but no DRIVE route exists - the real signal this design
-      // uses for "needs a water transfer" (see file header comment).
+      // A 200 with no routes: the geocoder placed the address with real
+      // confidence (passed the check above) but no DRIVE route exists -
+      // the real signal this design uses for "needs a water transfer".
       return { ok: true, hasRoute: false };
     }
 
@@ -2594,14 +2629,15 @@ async function handleQuoteCreate(request, env) {
         whatsapp_link: buildConciergeWhatsAppLink('needs_manual_confirmation', addressRaw, direction),
       }, 200);
     } else if (!routeResult.hasRoute) {
-      // Google returned 200 with no routes array. This happens for both a
-      // real destination with no drivable route (e.g. an outer island) AND
-      // a garbage/nonexistent address - computeRoutes gives no geocoding
-      // confidence signal to tell them apart when there's no route at all.
-      // Per spec these are deliberately kept separate from the ferry/>300km
-      // case below (which requires Google to have found a REAL route worth
-      // trusting the distance/warnings on) - safest default here is manual
-      // confirmation, never guessing water-transfer OR a zone/price.
+      // hasRoute is false for two distinct real cases callGoogleRoutesApi
+      // deliberately collapses into one outcome here: (a) the address
+      // failed the confidence gate (low-confidence/fallback geocode - see
+      // LOW_CONFIDENCE_GEOCODE_TYPES) or (b) Google confidently placed the
+      // address but no DRIVE route exists (e.g. a real outer island).
+      // Both get the same safe treatment - never guessing water-transfer
+      // OR a zone/price - kept separate from the ferry/>300km case below
+      // (which requires Google to have found a REAL, confident route worth
+      // trusting the distance/warnings on).
       outcome = 'needs_manual_confirmation';
     } else if (routeResult.distanceKm > MAX_QUOTE_DISTANCE_KM || routeResult.hasFerryLeg) {
       outcome = 'needs_water_transfer';
