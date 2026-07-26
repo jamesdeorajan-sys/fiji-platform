@@ -60,6 +60,7 @@ const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
 // app.js), but a guest can always bypass client JS, so this check is the
 // one that actually matters.
 const NEGOTIATION_FLOOR_RATIO = 0.80;
+const NADI_AIRPORT_ZONE_NAME = 'Nadi Airport';
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
 const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
@@ -1540,43 +1541,79 @@ async function handleNegotiationCreate(request, env) {
   const pickupZone = (body.pickup_zone || '').toString().trim();
   const destinationZone = (body.destination_zone || '').toString().trim();
   const vehicleType = (body.vehicle_type || '').toString().trim().toLowerCase();
-  const distanceKm = body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null;
   const passengers = body.passengers !== undefined && body.passengers !== null ? Number(body.passengers) : null;
   const pickupDatetime = body.pickup_datetime ? body.pickup_datetime.toString().trim() : null;
-  const referenceFareFjd = Number(body.reference_fare_fjd);
   const guestProposedAmountFjd = Number(body.guest_proposed_amount_fjd);
+  // reference_fare_fjd is deliberately NEVER read from the request body -
+  // see the real fare computation below. Whatever a client sends for it is
+  // ignored entirely, not just bounds-checked.
 
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
   // Boat excluded deliberately - a boat fare is a real third-party bundled
   // price FTT doesn't set, negotiating it doesn't make sense.
   if (!['sedan', 'minivan', 'minibus'].includes(vehicleType)) errors.push('vehicle_type must be one of: sedan, minivan, minibus');
-  if (distanceKm !== null && (!isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500)) errors.push('distance_km out of range');
   if (passengers !== null && (!Number.isInteger(passengers) || passengers < 1 || passengers > 20)) errors.push('passengers must be an integer between 1 and 20');
-  if (!referenceFareFjd || !isFinite(referenceFareFjd) || referenceFareFjd <= 0 || referenceFareFjd > 5000) errors.push('reference_fare_fjd must be a positive number no greater than 5000');
   if (!guestProposedAmountFjd || !isFinite(guestProposedAmountFjd) || guestProposedAmountFjd <= 0 || guestProposedAmountFjd > 5000) errors.push('guest_proposed_amount_fjd must be a positive number no greater than 5000');
-  // Real floor enforcement, server-side - a client-side check alone is a
-  // hint a guest could always bypass by calling this endpoint directly.
-  if (isFinite(referenceFareFjd) && referenceFareFjd > 0 && isFinite(guestProposedAmountFjd)) {
-    const floorFjd = referenceFareFjd * NEGOTIATION_FLOOR_RATIO;
-    if (guestProposedAmountFjd < floorFjd) {
-      errors.push(`guest_proposed_amount_fjd must be at least ${Math.round(floorFjd * 100) / 100} (${Math.round(NEGOTIATION_FLOOR_RATIO * 100)}% of reference_fare_fjd)`);
-    }
-  }
 
   const validZones = await getValidZoneNames(env);
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
   if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
+  // Real, in-scope hardening: the guest widget only ever constructs this
+  // request for the two airport-anchored routes (see
+  // resolveNegotiationEligibility in app.js), but nothing stopped a direct
+  // API caller from submitting an arbitrary zone pair. Negotiated fares
+  // are scoped to airport-anchored routes only - enforce that server-side
+  // too, not just trust the client to have checked it.
+  if (errors.length === 0 && pickupZone !== NADI_AIRPORT_ZONE_NAME && destinationZone !== NADI_AIRPORT_ZONE_NAME) {
+    errors.push('one of pickup_zone or destination_zone must be Nadi Airport - negotiated fares are scoped to airport-anchored routes only');
+  }
 
   if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  // MILESTONE 16 real fix: reference_fare_fjd is computed here, server-side,
+  // from the same pricing_rules formula and a real Google-measured distance
+  // /quote itself relies on - never trusted from the client. Closes a real
+  // gap: a guest could previously submit a fake low reference_fare_fjd
+  // alongside a proportionally low-balled proposal and pass the 80% floor
+  // check against a number they invented. Both zones' coordinates are
+  // already-verified data (the zones table), not free text, so no
+  // geocoding confidence gate is needed here - only callGoogleRoutesApi's
+  // free-text address path needs that.
+  const remoteZoneName = pickupZone === NADI_AIRPORT_ZONE_NAME ? destinationZone : pickupZone;
+  const [airportZoneRow, remoteZoneRow] = await Promise.all([
+    env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = ?`).bind(NADI_AIRPORT_ZONE_NAME).first(),
+    env.DB.prepare(`SELECT lat, lng, remote_multiplier FROM zones WHERE name = ?`).bind(remoteZoneName).first(),
+  ]);
+  if (!airportZoneRow || !remoteZoneRow || airportZoneRow.lat === null || remoteZoneRow.lat === null) {
+    return json({ ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.' }, 503);
+  }
+  const realDistanceKm = await computeZoneToZoneDistanceKm(env, airportZoneRow.lat, airportZoneRow.lng, remoteZoneRow.lat, remoteZoneRow.lng);
+  if (realDistanceKm === null) {
+    return json({ ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.' }, 503);
+  }
+  const realReferenceFareFjd = await computeFareFjd(env, vehicleType, realDistanceKm, remoteZoneRow.remote_multiplier);
+  if (!realReferenceFareFjd) {
+    return json({ ok: false, error: 'No pricing rule found for this route and vehicle type.' }, 400);
+  }
+
+  // Real floor enforcement against the real, server-computed reference
+  // fare - not whatever the client claimed it was.
+  const floorFjd = realReferenceFareFjd * NEGOTIATION_FLOOR_RATIO;
+  if (guestProposedAmountFjd < floorFjd) {
+    return json({
+      ok: false,
+      errors: [`guest_proposed_amount_fjd must be at least ${Math.round(floorFjd * 100) / 100} (${Math.round(NEGOTIATION_FLOOR_RATIO * 100)}% of the real standard fare for this route, ${realReferenceFareFjd})`],
+    }, 400);
+  }
 
   const insert = await env.DB.prepare(
     `INSERT INTO negotiation_requests (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
        passengers, pickup_datetime, reference_fare_fjd, guest_proposed_amount_fjd, source_ip)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
-    guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
-    passengers, pickupDatetime, referenceFareFjd, guestProposedAmountFjd, clientIp
+    guestName, guestPhone, pickupZone, destinationZone, realDistanceKm, vehicleType,
+    passengers, pickupDatetime, realReferenceFareFjd, guestProposedAmountFjd, clientIp
   ).run();
 
   const requestId = insert.meta.last_row_id;
@@ -2353,6 +2390,39 @@ async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
   if (!rule) return null;
   const raw = rule.flagfall_fjd + rule.base_rate_fjd_per_km * distanceKm;
   return Math.round(raw * remoteMultiplier * 100) / 100;
+}
+
+// MILESTONE 16: real driving distance between two KNOWN zone coordinates
+// (used for /negotiate's server-computed reference fare) - both ends come
+// from the zones table, already-verified data, not free text, so this
+// skips geocoding/confidence-gating entirely and just asks Routes API for
+// the real distance between two location points.
+async function computeZoneToZoneDistanceKm(env, lat1, lng1, lat2, lng2) {
+  if (!env.GOOGLE_MAPS_API_KEY) return null;
+  try {
+    const res = await fetch(GOOGLE_ROUTES_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.distanceMeters',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: lat1, longitude: lng1 } } },
+        destination: { location: { latLng: { latitude: lat2, longitude: lng2 } } },
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+        units: 'METRIC',
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if (!route || !route.distanceMeters) return null;
+    return route.distanceMeters / 1000;
+  } catch (err) {
+    return null;
+  }
 }
 
 // Real Google Routes API call. Field mask requests warnings text
