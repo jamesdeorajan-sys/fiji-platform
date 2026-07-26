@@ -1223,6 +1223,7 @@ function goToStep(n) {
     const ph = document.getElementById('phone')?.value.trim();
     if (!fn || !ln || !em || !ph) { alert('Please fill in all required fields.'); return; }
     buildConfirmation();
+    renderFareTiers();
   }
   if (n === 2) {
     if (!state.selectedVehicle) { alert('Please select a vehicle first.'); return; }
@@ -1715,13 +1716,23 @@ async function reportBookingSyncFailure(ref, payload, errorDetail) {
   }
 }
 
-// ─── MILESTONE 15: GUEST PRICE NEGOTIATION (in-house drivers only) ──────────
+// ─── MILESTONE 15/16: GUEST PRICE NEGOTIATION (in-house drivers only) ───────
 // A guest can propose their own price instead of confirming the standard
 // fare; zone-matching online drivers accept it as-is or counter. Scoped to
 // exactly the two airport-anchored routes /quote and the marketplace sync
 // already cover (see submitMarketplaceBooking above) - road vehicle types
 // only, never a boat destination (a boat fare is a real third-party bundled
 // price, not FTT's to negotiate).
+//
+// MILESTONE 16: repositioned as two distinct product tiers (Standard /
+// Flexible) shown side by side, never a hidden toggle off the standard
+// price - the old framing risked implying the published fare is
+// negotiable by default. NEGOTIATION_FLOOR_RATIO must match the backend's
+// own floor exactly (handleNegotiationCreate in worker.js) - this
+// client-side value is a UX hint only; the real enforcement is
+// server-side, since a guest can always bypass client JS.
+const NEGOTIATION_FLOOR_RATIO = 0.80;
+
 function resolveNegotiationEligibility() {
   const pickupVal = document.getElementById('pickup')?.value;
   const destVal = document.getElementById('destination')?.value;
@@ -1737,30 +1748,38 @@ function resolveNegotiationEligibility() {
   return { pickupZone, destinationZone, vehicleType: state.selectedVehicle, referenceFare: t.final };
 }
 
-function showNegotiatePanel() {
+// Renders both tiers on entering step 4. Standard Fare always shows; the
+// Flexible Fare tier only appears when resolveNegotiationEligibility()
+// says this route/vehicle combo supports it. Defensively resets the
+// waiting/offers view too, in case a guest went back to an earlier step
+// mid-negotiation and returned - never leaves a stale poll running.
+function renderFareTiers() {
+  stopNegotiationPolling();
+  const waitingEl = document.getElementById('negotiateWaiting');
+  if (waitingEl) waitingEl.style.display = 'none';
+
+  const t = calculateTotal();
+  const priceEl = document.getElementById('standardFarePrice');
+  if (priceEl) priceEl.textContent = formatPrice(t.final);
+
   const elig = resolveNegotiationEligibility();
-  if (!elig) {
-    alert("Sorry, proposing your own price isn't available for this route yet. Please confirm at the standard price, or message us directly on WhatsApp.");
-    return;
-  }
-  const refEl = document.getElementById('negotiateReferenceFare');
-  if (refEl) refEl.textContent = formatPrice(elig.referenceFare);
+  const flexTier = document.getElementById('flexibleFareTier');
+  if (flexTier) flexTier.style.display = elig ? 'flex' : 'none';
+
+  const fareTiers = document.getElementById('fareTiers');
+  if (fareTiers) fareTiers.style.display = 'flex';
+
   const errorBox = document.getElementById('negotiateError');
   if (errorBox) errorBox.style.display = 'none';
   const amountInput = document.getElementById('negotiateAmount');
   if (amountInput) amountInput.value = '';
-  const toggle = document.getElementById('negotiateToggle');
-  const confirmActions = document.getElementById('step4ConfirmActions');
-  const panel = document.getElementById('negotiatePanel');
-  if (confirmActions) confirmActions.style.display = 'none';
-  if (panel) panel.style.display = 'block';
-}
 
-function hideNegotiatePanel() {
-  const confirmActions = document.getElementById('step4ConfirmActions');
-  const panel = document.getElementById('negotiatePanel');
-  if (panel) panel.style.display = 'none';
-  if (confirmActions) confirmActions.style.display = '';
+  if (elig) {
+    const floorAmount = Math.ceil(elig.referenceFare * NEGOTIATION_FLOOR_RATIO);
+    const hintEl = document.getElementById('flexibleFareFloorHint');
+    if (hintEl) hintEl.textContent = `Propose from ${formatPrice(floorAmount)}`;
+    if (amountInput) { amountInput.min = floorAmount; amountInput.placeholder = String(floorAmount); }
+  }
 }
 
 async function submitNegotiation() {
@@ -1774,6 +1793,13 @@ async function submitNegotiation() {
 
   if (!elig) { showError('This route is no longer eligible for a custom price request.'); return; }
   if (!amount || !isFinite(amount) || amount <= 0) { showError('Enter a valid proposed price.'); return; }
+  // Client-side floor check is a UX hint only - POST /negotiate below
+  // enforces the real floor server-side regardless of what this passes.
+  const floorAmount = elig.referenceFare * NEGOTIATION_FLOOR_RATIO;
+  if (amount < floorAmount) {
+    showError(`Your proposed fare must be at least ${formatPrice(Math.ceil(floorAmount))}.`);
+    return;
+  }
 
   const firstName = document.getElementById('firstName')?.value.trim() || '';
   const lastName  = document.getElementById('lastName')?.value.trim() || '';
@@ -1808,17 +1834,22 @@ async function submitNegotiation() {
     state.negotiationRequestId = data.request_id;
     state.negotiationProposedAmount = amount;
     state.negotiationDeclinedOfferIds = new Set();
-    document.getElementById('negotiatePanel').style.display = 'none';
+    const fareTiers = document.getElementById('fareTiers');
+    if (fareTiers) fareTiers.style.display = 'none';
     const waitAmountEl = document.getElementById('negotiateWaitingAmount');
     if (waitAmountEl) waitAmountEl.textContent = formatPrice(amount);
     const offersEl = document.getElementById('negotiateOffers');
     if (offersEl) offersEl.innerHTML = '';
+    const backBtn = document.getElementById('negotiateBackToStandardBtn');
+    if (backBtn) backBtn.style.display = 'none';
+    const titleEl = document.getElementById('negotiateWaitingTitle');
+    if (titleEl) titleEl.textContent = 'Waiting for a driver to respond…';
     document.getElementById('negotiateWaiting').style.display = 'block';
     startNegotiationPolling();
   } catch (err) {
     showError('Network error — please try again.');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Send price request'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Propose this fare'; }
   }
 }
 
@@ -1911,20 +1942,27 @@ async function acceptNegotiationOffer(offerId) {
   }
 }
 
+// MILESTONE 16: a real, clearly-labeled, always-reachable button - not just
+// copy implying a fallback exists. Clicking it (or "Back to fare options")
+// both call cancelNegotiationWait(), which genuinely restores the fare
+// tiers - the Standard Fare's "Confirm booking request" button is real and
+// functional the moment this renders, not a dead end.
 function showNegotiationExpired() {
   const titleEl = document.getElementById('negotiateWaitingTitle');
   if (titleEl) titleEl.textContent = 'No driver responded in time.';
   const offersEl = document.getElementById('negotiateOffers');
   if (offersEl) {
-    offersEl.innerHTML = `<p style="font-size:13px;color:var(--mid)">Your price request has expired. You can confirm at the standard price instead, or try proposing a different price.</p>`;
+    offersEl.innerHTML = `<p style="font-size:13px;color:var(--mid)">Your Flexible Fare request has expired. Your Standard Fare is still available.</p>`;
   }
+  const backBtn = document.getElementById('negotiateBackToStandardBtn');
+  if (backBtn) backBtn.style.display = 'inline-flex';
 }
 
 function cancelNegotiationWait() {
   stopNegotiationPolling();
   document.getElementById('negotiateWaiting').style.display = 'none';
-  const confirmActions = document.getElementById('step4ConfirmActions');
-  if (confirmActions) confirmActions.style.display = '';
+  const fareTiers = document.getElementById('fareTiers');
+  if (fareTiers) fareTiers.style.display = 'flex';
 }
 
 function showNegotiationSuccess(_referenceFare, agreedAmount) {

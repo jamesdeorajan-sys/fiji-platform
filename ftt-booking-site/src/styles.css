@@ -182,14 +182,25 @@ textarea.field-input{resize:vertical;min-height:80px}
 .btn-secondary{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--mid);border:1.5px solid var(--border);padding:12px 20px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-weight:500;font-size:14px;cursor:pointer;transition:var(--transition)}
 .btn-secondary:hover{border-color:var(--dark);color:var(--dark)}
 
-/* ─── MILESTONE 15: GUEST PRICE NEGOTIATION ──────────────────────────────── */
-.negotiate-toggle{text-align:center;margin-top:14px}
-.negotiate-toggle-link{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--ocean);text-decoration:none}
-.negotiate-toggle-link:hover{text-decoration:underline}
-.negotiate-panel{background:var(--sand);border:1px solid var(--sand-dark);border-radius:var(--radius-lg);padding:20px;margin-top:20px;animation:fadeIn .3s ease}
-.negotiate-panel-title{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:var(--dark);margin-bottom:6px}
-.negotiate-panel-sub{font-size:13px;line-height:1.5;color:var(--mid);margin-bottom:16px}
-.negotiate-error{font-size:13px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);padding:8px 12px;margin-top:12px}
+/* ─── MILESTONE 16: FARE TIERS (Standard / Flexible, side by side) ───────── */
+.fare-tiers{display:flex;gap:16px;margin:20px 0;align-items:stretch}
+.fare-tier{flex:1 1 0;min-width:0;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:20px;display:flex;flex-direction:column;gap:8px;animation:fadeIn .3s ease}
+.fare-tier-standard{border-color:var(--ocean);background:var(--ocean-light)}
+.fare-tier-label{font-family:'Sora',sans-serif;font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mid)}
+.fare-tier-standard .fare-tier-label{color:var(--ocean-dark)}
+.fare-tier-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.9rem;color:var(--ocean)}
+.fare-tier-sub{font-size:12px;color:var(--mid);margin-bottom:2px}
+.fare-tier-copy{font-size:13px;line-height:1.5;color:var(--mid);margin:0}
+.flexible-fare-input-row{display:flex;align-items:center;gap:6px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;transition:var(--transition)}
+.flexible-fare-input-row:focus-within{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+.flexible-fare-prefix{font-family:'Sora',sans-serif;font-weight:700;color:var(--mid);font-size:14px}
+.flexible-fare-input{flex:1;min-width:0;border:none;background:transparent;padding:10px 0;font-family:'DM Sans',sans-serif;font-size:16px;color:var(--dark)}
+.flexible-fare-input:focus{outline:none}
+.fare-tier-hint{font-size:11px;color:var(--cloud)}
+.fare-tier-fineprint{font-size:11px;line-height:1.4;color:var(--mid);margin:2px 0 0}
+.fare-tier .btn-primary,.fare-tier .btn-secondary{width:100%;justify-content:center;margin-top:auto}
+@media (max-width:640px){.fare-tiers{flex-direction:column}}
+.negotiate-error{font-size:13px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);padding:8px 12px;margin-top:4px}
 .negotiate-waiting{background:var(--sand);border:1px solid var(--sand-dark);border-radius:var(--radius-lg);padding:20px;margin-top:20px;animation:fadeIn .3s ease}
 .negotiate-waiting-header{display:flex;align-items:center;gap:14px}
 .negotiate-spinner{width:28px;height:28px;flex:0 0 auto;border:3px solid var(--sand-dark);border-top-color:var(--ocean);border-radius:50%;animation:negotiate-spin 0.9s linear infinite}

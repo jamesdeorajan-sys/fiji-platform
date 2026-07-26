@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260505a">
+<link rel="stylesheet" href="styles.css?v=20260726d-flexfare">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -747,38 +747,40 @@
           </div>
         </div>
 
-        <div id="step4ConfirmActions">
-          <div class="step-actions">
-            <button class="btn-secondary" onclick="goToStep(3)">← Back</button>
+        <!-- MILESTONE 16: two distinct fare tiers, shown side by side. The
+             Flexible Fare tier only appears when resolveNegotiationEligibility()
+             in app.js says this route/vehicle combo supports it - never shown
+             as a toggle/hidden option, so it can't read as "the standard fare
+             is negotiable by default." -->
+        <div class="fare-tiers" id="fareTiers">
+          <div class="fare-tier fare-tier-standard">
+            <div class="fare-tier-label">Standard Fare</div>
+            <div class="fare-tier-price" id="standardFarePrice">—</div>
+            <div class="fare-tier-sub">Instant confirmation · Guaranteed driver</div>
             <button class="btn-primary btn-confirm" onclick="confirmBooking()">
               ✓ Confirm booking request
             </button>
           </div>
-          <!-- MILESTONE 15: only shown for the routes /negotiate can actually
-               handle (see resolveNegotiationEligibility in app.js) - clicking
-               through when a route isn't eligible surfaces a plain message
-               rather than silently failing. -->
-          <div class="negotiate-toggle" id="negotiateToggle">
-            <a href="#" class="negotiate-toggle-link" onclick="showNegotiatePanel(); return false;">Or propose your own price instead →</a>
+          <div class="fare-tier fare-tier-flexible" id="flexibleFareTier" style="display:none">
+            <div class="fare-tier-label">Flexible Fare</div>
+            <p class="fare-tier-copy">Flexible on timing, or hoping for a better rate? Propose your fare — we'll check if a driver's available to take it.</p>
+            <div class="flexible-fare-input-row">
+              <span class="flexible-fare-prefix">FJ$</span>
+              <input type="number" id="negotiateAmount" class="flexible-fare-input" min="1" step="1" placeholder="0">
+            </div>
+            <div class="fare-tier-hint" id="flexibleFareFloorHint">Propose from FJ$—</div>
+            <div class="negotiate-error" id="negotiateError" style="display:none"></div>
+            <button class="btn-secondary" id="negotiateSubmitBtn" onclick="submitNegotiation()">Propose this fare</button>
+            <p class="fare-tier-fineprint">Subject to driver acceptance. If no driver accepts, your Standard Fare stays available.</p>
           </div>
         </div>
 
-        <!-- MILESTONE 15: guest-proposed price panel -->
-        <div class="negotiate-panel" id="negotiatePanel" style="display:none">
-          <h4 class="negotiate-panel-title">Propose your own price</h4>
-          <p class="negotiate-panel-sub">Our standard fare for this trip is <strong id="negotiateReferenceFare">—</strong>. Tell us what you'd like to pay and we'll put it to our available drivers — accept if one matches it, or see their counter-offer.</p>
-          <div class="field-group">
-            <label class="field-label">Your proposed price (FJD) *</label>
-            <input type="number" id="negotiateAmount" class="field-input" min="1" step="1" placeholder="e.g. 35">
-          </div>
-          <div class="negotiate-error" id="negotiateError" style="display:none"></div>
-          <div class="step-actions">
-            <button class="btn-secondary" onclick="hideNegotiatePanel()">← Back to standard price</button>
-            <button class="btn-primary" id="negotiateSubmitBtn" onclick="submitNegotiation()">Send price request</button>
-          </div>
+        <div class="step-actions">
+          <button class="btn-secondary" onclick="goToStep(3)">← Back</button>
+          <div></div>
         </div>
 
-        <!-- MILESTONE 15: waiting-for-driver / offers panel -->
+        <!-- MILESTONE 15/16: waiting-for-driver / offers panel -->
         <div class="negotiate-waiting" id="negotiateWaiting" style="display:none">
           <div class="negotiate-waiting-header">
             <div class="negotiate-spinner"></div>
@@ -789,8 +791,11 @@
           </div>
           <div class="negotiate-offers" id="negotiateOffers"></div>
           <div class="step-actions">
-            <button class="btn-secondary" onclick="cancelNegotiationWait()">← Back</button>
-            <div></div>
+            <button class="btn-secondary" onclick="cancelNegotiationWait()">← Back to fare options</button>
+            <!-- MILESTONE 16: a real, clearly-labeled fallback, not just copy
+                 implying one exists - shown once a request expires with no
+                 driver response (see showNegotiationExpired in app.js). -->
+            <button class="btn-primary" id="negotiateBackToStandardBtn" onclick="cancelNegotiationWait()" style="display:none">Book at Standard Fare instead</button>
           </div>
         </div>
       </div>
@@ -1158,7 +1163,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260726c-errmsgfix"></script>
+<script src="app.js?v=20260726d-flexfare"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>
