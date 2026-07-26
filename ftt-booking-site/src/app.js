@@ -1816,7 +1816,11 @@ async function submitNegotiation() {
     destination_zone: elig.destinationZone,
     vehicle_type: elig.vehicleType,
     passengers: state.passengers,
-    reference_fare_fjd: elig.referenceFare,
+    // reference_fare_fjd deliberately NOT sent - the backend computes its
+    // own real reference fare server-side (pricing_rules + a real driving
+    // distance) and ignores this field entirely if present. elig.referenceFare
+    // is still used above for the client-side "propose from" floor hint -
+    // a UX convenience only, never the real enforcement.
     guest_proposed_amount_fjd: amount,
   };
 
