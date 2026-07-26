@@ -1,0 +1,21 @@
+name = "fiji-platform-v2-api-local"
+main = "apps/api/src/index.ts"
+compatibility_date = "2026-07-25"
+
+# Local development uses Wrangler's local D1 emulation. Never use V1 bindings.
+[[d1_databases]]
+binding = "DB"
+database_name = "fiji-platform-v2-local-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[env.staging]
+name = "fiji-platform-v2-api-staging"
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "fiji-platform-v2-staging-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Future production is intentionally omitted: no name, IDs, routes, or bindings
+# may be added until an approved production-isolation review provisions resources.

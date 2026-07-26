@@ -1,0 +1,18 @@
+{
+  "name": "fiji-platform-v2",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "typecheck": "npx --yes tsc --noEmit",
+    "format": "npx --yes prettier --check .",
+    "format:write": "npx --yes prettier --write .",
+    "build": "npx --yes tsc --noEmit"
+  },
+  "devDependencies": {}
+}
