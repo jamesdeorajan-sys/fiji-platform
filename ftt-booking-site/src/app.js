@@ -71,7 +71,16 @@ function getDisplayCurrency() {
 function formatPrice(fjd) {
   const code = getDisplayCurrency();
   const rate = FX_RATES[code];
-  if (!rate || code === 'FJD') return `FJ$${fjd}`;
+  if (!rate || code === 'FJD') {
+    // Real bug found live: a server-computed fare (e.g. 141.96) can hit
+    // IEEE754 float imprecision after later arithmetic (discount
+    // subtraction) and display as "127.96000000000001" - previously
+    // invisible because every input here was always a clean whole-dollar
+    // integer (ROUTES_DATA or the formula fallback). Always round for
+    // display, regardless of source.
+    const rounded = Math.round(fjd * 100) / 100;
+    return `FJ$${rounded}`;
+  }
   const converted = Math.round(fjd * rate.factor);
   return `${rate.symbol}${converted}`;
 }
@@ -201,6 +210,10 @@ const state = {
   negotiationProposedAmount: null,
   negotiationLastOffers: [],
   negotiationDeclinedOfferIds: null,
+  // MILESTONE 16: guards a real-fare fetch against a stale response
+  // landing after the guest changed route/vehicle - same forAddress-guard
+  // pattern used elsewhere in this file.
+  negotiationFareFetchToken: null,
 };
 
 // ─── DISTANCE HELPERS ────────────────────────────────────────────────────────
@@ -1753,33 +1766,88 @@ function resolveNegotiationEligibility() {
 // says this route/vehicle combo supports it. Defensively resets the
 // waiting/offers view too, in case a guest went back to an earlier step
 // mid-negotiation and returned - never leaves a stale poll running.
+// MILESTONE 16: GET /reference-fare returns the exact same real,
+// server-computed number /negotiate will enforce as the floor basis - the
+// only source of truth this widget uses for the Flexible Fare hint AND
+// (once fetched) the Standard Fare price on eligible routes. Never
+// derived from the client's own published-price/formula estimate, which
+// can genuinely differ from the server's pricing_rules-derived fare for
+// the same route (found live: Shangri-La Yanuca was $116 client vs
+// $141.86 server).
+async function fetchRealReferenceFare(pickupZone, destinationZone, vehicleType) {
+  try {
+    const res = await fetch(`${NADI_API_BASE}/reference-fare?pickup_zone=${encodeURIComponent(pickupZone)}&destination_zone=${encodeURIComponent(destinationZone)}&vehicle_type=${encodeURIComponent(vehicleType)}`);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return null;
+    return data.reference_fare_fjd;
+  } catch (err) {
+    return null;
+  }
+}
+
 function renderFareTiers() {
   stopNegotiationPolling();
   const waitingEl = document.getElementById('negotiateWaiting');
   if (waitingEl) waitingEl.style.display = 'none';
 
-  const t = calculateTotal();
   const priceEl = document.getElementById('standardFarePrice');
-  if (priceEl) priceEl.textContent = formatPrice(t.final);
+  if (priceEl) priceEl.textContent = formatPrice(calculateTotal().final);
 
   const elig = resolveNegotiationEligibility();
   const flexTier = document.getElementById('flexibleFareTier');
-  if (flexTier) flexTier.style.display = elig ? 'flex' : 'none';
+  const hintEl = document.getElementById('flexibleFareFloorHint');
+  const amountInput = document.getElementById('negotiateAmount');
+  const submitBtn = document.getElementById('negotiateSubmitBtn');
 
   const fareTiers = document.getElementById('fareTiers');
   if (fareTiers) fareTiers.style.display = 'flex';
 
   const errorBox = document.getElementById('negotiateError');
   if (errorBox) errorBox.style.display = 'none';
-  const amountInput = document.getElementById('negotiateAmount');
   if (amountInput) amountInput.value = '';
 
-  if (elig) {
-    const floorAmount = Math.ceil(elig.referenceFare * NEGOTIATION_FLOOR_RATIO);
-    const hintEl = document.getElementById('flexibleFareFloorHint');
+  if (!elig) {
+    if (flexTier) flexTier.style.display = 'none';
+    return;
+  }
+
+  // Real-fare fetch is async; show a real loading state rather than the
+  // client's own (possibly wrong) estimate while it's in flight - a stale
+  // number briefly shown and then silently corrected is exactly the kind
+  // of inconsistency this fix exists to remove.
+  flexTier.style.display = 'flex';
+  if (hintEl) hintEl.textContent = 'Calculating real fare…';
+  if (amountInput) amountInput.disabled = true;
+  if (submitBtn) submitBtn.disabled = true;
+
+  // Guards against a slow response landing after the guest changed route -
+  // same pattern as the geocoding forAddress guards elsewhere in this file.
+  const fetchToken = { pickupZone: elig.pickupZone, destinationZone: elig.destinationZone, vehicleType: elig.vehicleType };
+  state.negotiationFareFetchToken = fetchToken;
+
+  fetchRealReferenceFare(elig.pickupZone, elig.destinationZone, elig.vehicleType).then((realFare) => {
+    if (state.negotiationFareFetchToken !== fetchToken) return; // stale - guest moved on
+    if (amountInput) amountInput.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+
+    if (realFare === null) {
+      // Can't get a reliable real number - don't show a possibly-wrong
+      // floor. Standard Fare booking is unaffected either way.
+      flexTier.style.display = 'none';
+      return;
+    }
+
+    // Root-cause fix, not just the hint: the Standard Fare tier for this
+    // specific booking now shows the SAME real number too, and everything
+    // downstream (confirmation card, WhatsApp message, the real /bookings
+    // submission) uses it - not two different fares sitting side by side.
+    state.prices[elig.vehicleType] = realFare;
+    if (priceEl) priceEl.textContent = formatPrice(calculateTotal().final);
+
+    const floorAmount = Math.ceil(realFare * NEGOTIATION_FLOOR_RATIO);
     if (hintEl) hintEl.textContent = `Propose from ${formatPrice(floorAmount)}`;
     if (amountInput) { amountInput.min = floorAmount; amountInput.placeholder = String(floorAmount); }
-  }
+  });
 }
 
 async function submitNegotiation() {
