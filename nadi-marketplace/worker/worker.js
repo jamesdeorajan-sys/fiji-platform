@@ -54,6 +54,12 @@ const JSON_CORS = {
 // handleQuoteCreate (the destination_id branch returns before it), but is
 // a real, valid vehicle_type for /bookings and admin test bookings.
 const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
+// MILESTONE 16: real floor on Flexible Fare proposals, enforced here -
+// server-side - not just as a client-side hint. Guest widget shows the
+// same ratio as a "propose from" UX hint (NEGOTIATION_FLOOR_RATIO in
+// app.js), but a guest can always bypass client JS, so this check is the
+// one that actually matters.
+const NEGOTIATION_FLOOR_RATIO = 0.80;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
 const DOC_URL_TTL_SECONDS = 3600; // signed doc URLs valid 1 hour
@@ -1549,6 +1555,14 @@ async function handleNegotiationCreate(request, env) {
   if (passengers !== null && (!Number.isInteger(passengers) || passengers < 1 || passengers > 20)) errors.push('passengers must be an integer between 1 and 20');
   if (!referenceFareFjd || !isFinite(referenceFareFjd) || referenceFareFjd <= 0 || referenceFareFjd > 5000) errors.push('reference_fare_fjd must be a positive number no greater than 5000');
   if (!guestProposedAmountFjd || !isFinite(guestProposedAmountFjd) || guestProposedAmountFjd <= 0 || guestProposedAmountFjd > 5000) errors.push('guest_proposed_amount_fjd must be a positive number no greater than 5000');
+  // Real floor enforcement, server-side - a client-side check alone is a
+  // hint a guest could always bypass by calling this endpoint directly.
+  if (isFinite(referenceFareFjd) && referenceFareFjd > 0 && isFinite(guestProposedAmountFjd)) {
+    const floorFjd = referenceFareFjd * NEGOTIATION_FLOOR_RATIO;
+    if (guestProposedAmountFjd < floorFjd) {
+      errors.push(`guest_proposed_amount_fjd must be at least ${Math.round(floorFjd * 100) / 100} (${Math.round(NEGOTIATION_FLOOR_RATIO * 100)}% of reference_fare_fjd)`);
+    }
+  }
 
   const validZones = await getValidZoneNames(env);
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
