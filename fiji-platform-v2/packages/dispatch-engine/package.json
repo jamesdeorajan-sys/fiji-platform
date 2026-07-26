@@ -1,0 +1,6 @@
+{
+  "name": "@fiji/dispatch-engine",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts"
+}
