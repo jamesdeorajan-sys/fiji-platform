@@ -5,6 +5,10 @@ export interface Guest {
   readonly displayName?: string;
   readonly createdAt: IsoTimestamp;
 }
+export interface GuestRepository {
+  findById(id: GuestId): Promise<Guest | undefined>;
+  insert(guest: Guest): Promise<void>;
+}
 export type ContactKind = "email" | "phone" | "whatsapp";
 export interface GuestContact {
   readonly guestId: GuestId;

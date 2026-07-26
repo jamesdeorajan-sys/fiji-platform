@@ -6,6 +6,10 @@ export interface Driver {
   readonly id: DriverId;
   readonly status: "onboarding" | "active" | "suspended" | "inactive";
 }
+export interface DriverRepository {
+  findById(id: DriverId): Promise<Driver | undefined>;
+  findActiveById(id: DriverId): Promise<Driver | undefined>;
+}
 export interface Vehicle {
   readonly id: VehicleId;
   readonly driverId: DriverId;

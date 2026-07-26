@@ -19,6 +19,10 @@ export interface Quote {
   readonly expiresAt: IsoTimestamp;
   readonly createdAt: IsoTimestamp;
 }
+export interface QuoteRepository {
+  findById(id: QuoteId): Promise<Quote | undefined>;
+  insertImmutable(quote: Quote): Promise<void>;
+}
 export interface QuoteComponent {
   readonly quoteId: QuoteId;
   readonly kind:
