@@ -221,6 +221,11 @@ export default {
       return handleNegotiationCreate(request, env);
     }
 
+    // ── Milestone 16: real reference-fare preview, before a proposal exists ──
+    if (request.method === 'GET' && url.pathname === '/reference-fare') {
+      return handleReferenceFarePreview(request, env);
+    }
+
     const negotiationStatusMatch = url.pathname.match(/^\/negotiate\/(\d+)$/);
     if (request.method === 'GET' && negotiationStatusMatch) {
       return handleNegotiationStatus(request, env, Number(negotiationStatusMatch[1]));
@@ -1524,6 +1529,59 @@ async function checkNegotiationRateLimit(env, ip) {
   return { limited: count >= max, count, max, window_minutes: windowMinutes };
 }
 
+// MILESTONE 16: a much higher-traffic limit than negotiation_rate_limit -
+// this is hit on every eligible step-4 render (a real fare preview), not
+// just on an actual proposal submit. Tracked in its own table so a burst
+// of previews doesn't skew negotiation_requests' own rate-limit counting.
+async function checkReferenceFareRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'reference_fare_rate_limit_max_per_day', '60'));
+  const windowMinutes = Number(await getSetting(env, 'reference_fare_rate_limit_window_minutes', '10'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM reference_fare_lookups WHERE source_ip = ? AND created_at > datetime('now', '-' || ? || ' minutes')`
+  ).bind(ip, windowMinutes).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max, window_minutes: windowMinutes };
+}
+
+// MILESTONE 16: lets the guest widget show the SAME real reference fare
+// /negotiate will actually enforce, before the guest ever submits a
+// proposal - closes the display-layer inconsistency between the client's
+// own published-price/formula estimate and the server's real number.
+// Public, GET, no guest identity needed (mirrors GET /destinations) -
+// this only ever returns a route-level fare, never anything guest- or
+// booking-specific.
+async function handleReferenceFarePreview(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkReferenceFareRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many fare lookups from this connection. Please try again shortly.' }, 429);
+  }
+
+  const url = new URL(request.url);
+  const pickupZone = (url.searchParams.get('pickup_zone') || '').trim();
+  const destinationZone = (url.searchParams.get('destination_zone') || '').trim();
+  const vehicleType = (url.searchParams.get('vehicle_type') || '').trim().toLowerCase();
+
+  const errors = [];
+  if (!['sedan', 'minivan', 'minibus'].includes(vehicleType)) errors.push('vehicle_type must be one of: sedan, minivan, minibus');
+  const validZones = await getValidZoneNames(env);
+  if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
+  if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
+  if (errors.length === 0 && pickupZone !== NADI_AIRPORT_ZONE_NAME && destinationZone !== NADI_AIRPORT_ZONE_NAME) {
+    errors.push('one of pickup_zone or destination_zone must be Nadi Airport - reference fares are scoped to airport-anchored routes only');
+  }
+  if (errors.length > 0) return json({ ok: false, errors }, 400);
+
+  await env.DB.prepare(`INSERT INTO reference_fare_lookups (source_ip) VALUES (?)`).bind(clientIp).run();
+
+  const result = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType);
+  if (!result.ok) return json({ ok: false, error: result.error }, result.status);
+
+  return json({ ok: true, reference_fare_fjd: result.referenceFareFjd, distance_km: result.distanceKm }, 200);
+}
+
 async function handleNegotiationCreate(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
@@ -1571,31 +1629,16 @@ async function handleNegotiationCreate(request, env) {
 
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
-  // MILESTONE 16 real fix: reference_fare_fjd is computed here, server-side,
-  // from the same pricing_rules formula and a real Google-measured distance
-  // /quote itself relies on - never trusted from the client. Closes a real
-  // gap: a guest could previously submit a fake low reference_fare_fjd
-  // alongside a proportionally low-balled proposal and pass the 80% floor
-  // check against a number they invented. Both zones' coordinates are
-  // already-verified data (the zones table), not free text, so no
-  // geocoding confidence gate is needed here - only callGoogleRoutesApi's
-  // free-text address path needs that.
-  const remoteZoneName = pickupZone === NADI_AIRPORT_ZONE_NAME ? destinationZone : pickupZone;
-  const [airportZoneRow, remoteZoneRow] = await Promise.all([
-    env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = ?`).bind(NADI_AIRPORT_ZONE_NAME).first(),
-    env.DB.prepare(`SELECT lat, lng, remote_multiplier FROM zones WHERE name = ?`).bind(remoteZoneName).first(),
-  ]);
-  if (!airportZoneRow || !remoteZoneRow || airportZoneRow.lat === null || remoteZoneRow.lat === null) {
-    return json({ ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.' }, 503);
+  // MILESTONE 16 real fix: reference_fare_fjd is computed here, server-side
+  // (see computeRealReferenceFare) - never trusted from the client. Closes
+  // a real gap: a guest could previously submit a fake low
+  // reference_fare_fjd alongside a proportionally low-balled proposal and
+  // pass the 80% floor check against a number they invented.
+  const refFareResult = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType);
+  if (!refFareResult.ok) {
+    return json({ ok: false, error: refFareResult.error }, refFareResult.status);
   }
-  const realDistanceKm = await computeZoneToZoneDistanceKm(env, airportZoneRow.lat, airportZoneRow.lng, remoteZoneRow.lat, remoteZoneRow.lng);
-  if (realDistanceKm === null) {
-    return json({ ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.' }, 503);
-  }
-  const realReferenceFareFjd = await computeFareFjd(env, vehicleType, realDistanceKm, remoteZoneRow.remote_multiplier);
-  if (!realReferenceFareFjd) {
-    return json({ ok: false, error: 'No pricing rule found for this route and vehicle type.' }, 400);
-  }
+  const { referenceFareFjd: realReferenceFareFjd, distanceKm: realDistanceKm } = refFareResult;
 
   // Real floor enforcement against the real, server-computed reference
   // fare - not whatever the client claimed it was.
@@ -2423,6 +2466,62 @@ async function computeZoneToZoneDistanceKm(env, lat1, lng1, lat2, lng2) {
   } catch (err) {
     return null;
   }
+}
+
+// MILESTONE 16: the real driving distance between two zones never changes
+// (fixed reference coordinates, not per-guest addresses) - cached
+// indefinitely rather than re-fetched from Google on every call. Canonical
+// alphabetical ordering so A->B and B->A share one cache row.
+async function getZoneDistanceKm(env, zoneAName, zoneBName, latA, lngA, latB, lngB) {
+  const [sortedA, sortedB, sortedLatA, sortedLngA, sortedLatB, sortedLngB] =
+    zoneAName <= zoneBName
+      ? [zoneAName, zoneBName, latA, lngA, latB, lngB]
+      : [zoneBName, zoneAName, latB, lngB, latA, lngA];
+
+  const cached = await env.DB.prepare(
+    `SELECT distance_km FROM zone_distance_cache WHERE zone_a = ? AND zone_b = ?`
+  ).bind(sortedA, sortedB).first();
+  if (cached) return cached.distance_km;
+
+  const distanceKm = await computeZoneToZoneDistanceKm(env, sortedLatA, sortedLngA, sortedLatB, sortedLngB);
+  if (distanceKm === null) return null;
+
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO zone_distance_cache (zone_a, zone_b, distance_km) VALUES (?, ?, ?)`
+  ).bind(sortedA, sortedB, distanceKm).run();
+  return distanceKm;
+}
+
+// MILESTONE 16: the single, shared source of truth for a real,
+// server-computed reference fare - used by both handleNegotiationCreate
+// (to enforce the real 80% floor) and handleReferenceFarePreview (so the
+// guest widget can show the SAME real number before ever submitting a
+// proposal, closing the display-layer inconsistency the client's own
+// separate published-price/formula estimate could otherwise show).
+// Assumes pickupZone/destinationZone are already validated real zone
+// names and that exactly one of them is Nadi Airport - callers must check
+// that themselves (both current callers already do, for their own reasons).
+async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType) {
+  const remoteZoneName = pickupZone === NADI_AIRPORT_ZONE_NAME ? destinationZone : pickupZone;
+  const [airportZoneRow, remoteZoneRow] = await Promise.all([
+    env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = ?`).bind(NADI_AIRPORT_ZONE_NAME).first(),
+    env.DB.prepare(`SELECT lat, lng, remote_multiplier FROM zones WHERE name = ?`).bind(remoteZoneName).first(),
+  ]);
+  if (!airportZoneRow || !remoteZoneRow || airportZoneRow.lat === null || remoteZoneRow.lat === null) {
+    return { ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.', status: 503 };
+  }
+  const distanceKm = await getZoneDistanceKm(
+    env, NADI_AIRPORT_ZONE_NAME, remoteZoneName,
+    airportZoneRow.lat, airportZoneRow.lng, remoteZoneRow.lat, remoteZoneRow.lng
+  );
+  if (distanceKm === null) {
+    return { ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.', status: 503 };
+  }
+  const referenceFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  if (!referenceFareFjd) {
+    return { ok: false, error: 'No pricing rule found for this route and vehicle type.', status: 400 };
+  }
+  return { ok: true, referenceFareFjd, distanceKm };
 }
 
 // Real Google Routes API call. Field mask requests warnings text

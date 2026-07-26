@@ -432,3 +432,27 @@ CREATE TABLE negotiation_offers (
 INSERT INTO platform_settings (key, value) VALUES ('negotiation_expiry_minutes', '20');
 INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_max_per_day', '5');
 INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_window_minutes', '10');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 16 additions — server-side reference fare for the Flexible
+-- Fare feature (never trust reference_fare_fjd from the client - see
+-- migrations/milestone16-reference-fare-cache.sql for the full rationale).
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE zone_distance_cache (
+  id INTEGER PRIMARY KEY,
+  zone_a TEXT NOT NULL,
+  zone_b TEXT NOT NULL,
+  distance_km REAL NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(zone_a, zone_b)
+);
+
+CREATE TABLE reference_fare_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_max_per_day', '60');
+INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_window_minutes', '10');
