@@ -530,7 +530,9 @@ async function fetchQuoteForAddress(addressText, direction = 'from_airport') {
         }).then(r => r.json()).catch(() => null)
       )
     );
-    if (!sedanRes || !sedanRes.ok) return { outcome: 'error' };
+    if (!sedanRes || !sedanRes.ok) {
+      return { outcome: 'error', message: "We couldn't confirm a price for that address right now. Try adding more detail (street, area, or resort name), or message us directly and we'll sort it out." };
+    }
     if (sedanRes.outcome === 'needs_manual_confirmation' || sedanRes.outcome === 'needs_water_transfer') {
       return {
         outcome: sedanRes.outcome,
@@ -550,9 +552,9 @@ async function fetchQuoteForAddress(addressText, direction = 'from_airport') {
         nearestZoneName: sedanRes.nearest_zone ? sedanRes.nearest_zone.name : null,
       };
     }
-    return { outcome: 'error' };
+    return { outcome: 'error', message: "We couldn't confirm a price for that address. Try adding more detail (street, area, or resort name), or message us directly and we'll sort it out." };
   } catch (err) {
-    return { outcome: 'error' };
+    return { outcome: 'error', message: "We couldn't confirm a price for that address. Try adding more detail (street, area, or resort name), or message us directly and we'll sort it out." };
   }
 }
 
@@ -568,7 +570,11 @@ function maybeDebounceCustomDestQuote() {
   if (pickupVal !== 'NAN' || destVal !== 'CUSTOM_DEST') return;
   const addr = document.getElementById('customDestAddress')?.value.trim();
   clearTimeout(quoteDebounceTimer);
-  if (!addr || addr.length < 8) return;
+  // BUGFIX: was `< 8` - blocked real, short Fijian place names ("Waila",
+  // "Namaka") from ever reaching /quote, with zero feedback to the guest.
+  // 3 is purely to skip firing on the first keystroke or two, not to gate
+  // on whether an address is "long enough" to be real.
+  if (!addr || addr.length < 3) return;
   if (state.quoteResult && state.quoteResult.forAddress === addr) return; // already have it
   quoteDebounceTimer = setTimeout(async () => {
     const result = await fetchQuoteForAddress(addr, 'from_airport');
@@ -591,7 +597,8 @@ function maybeDebounceCustomPickupQuote() {
   if (destVal !== 'NAN' || pickupVal !== 'CUSTOM_PICKUP') return;
   const addr = document.getElementById('customPickupAddress')?.value.trim();
   clearTimeout(pickupQuoteDebounceTimer);
-  if (!addr || addr.length < 8) return;
+  // BUGFIX: was `< 8` - see maybeDebounceCustomDestQuote() above for why.
+  if (!addr || addr.length < 3) return;
   if (state.pickupQuoteResult && state.pickupQuoteResult.forAddress === addr) return; // already have it
   pickupQuoteDebounceTimer = setTimeout(async () => {
     const result = await fetchQuoteForAddress(addr, 'to_airport');
@@ -799,17 +806,22 @@ function updatePricing() {
   const currentDestAddr = destVal === 'CUSTOM_DEST' ? document.getElementById('customDestAddress')?.value.trim() : null;
   const dq = state.quoteResult;
   if (pickupVal === 'NAN' && destVal === 'CUSTOM_DEST' && currentDestAddr && dq && dq.forAddress === currentDestAddr
-      && (dq.outcome === 'needs_manual_confirmation' || dq.outcome === 'needs_water_transfer')) {
+      && (dq.outcome === 'needs_manual_confirmation' || dq.outcome === 'needs_water_transfer' || dq.outcome === 'error')) {
     renderQuoteNeedsHuman(dq, `Nadi Airport → ${currentDestAddr}`);
     return;
   }
 
   // MILESTONE 12: symmetric check for a departing guest's custom pickup
   // address that /quote determined needs a human.
+  // BUGFIX: 'error' added to both checks above/below - a genuine /quote
+  // failure (network error, non-ok response) was previously silent: state
+  // updated but nothing ever rendered, leaving the guest looking at a
+  // stalled form with no explanation. Now shown the same real,
+  // human-fallback panel as the other two outcomes.
   const currentPickupAddr = pickupVal === 'CUSTOM_PICKUP' ? document.getElementById('customPickupAddress')?.value.trim() : null;
   const pq = state.pickupQuoteResult;
   if (destVal === 'NAN' && pickupVal === 'CUSTOM_PICKUP' && currentPickupAddr && pq && pq.forAddress === currentPickupAddr
-      && (pq.outcome === 'needs_manual_confirmation' || pq.outcome === 'needs_water_transfer')) {
+      && (pq.outcome === 'needs_manual_confirmation' || pq.outcome === 'needs_water_transfer' || pq.outcome === 'error')) {
     renderQuoteNeedsHuman(pq, `${currentPickupAddr} → Nadi Airport`);
     return;
   }
