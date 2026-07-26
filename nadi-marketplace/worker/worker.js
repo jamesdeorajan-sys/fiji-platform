@@ -1574,12 +1574,20 @@ async function handleReferenceFarePreview(request, env) {
   }
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
-  await env.DB.prepare(`INSERT INTO reference_fare_lookups (source_ip) VALUES (?)`).bind(clientIp).run();
-
   const result = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType);
   if (!result.ok) return json({ ok: false, error: result.error }, result.status);
 
-  return json({ ok: true, reference_fare_fjd: result.referenceFareFjd, distance_km: result.distanceKm }, 200);
+  // Real fix: only a genuine cache miss (a real, billable Google Routes API
+  // call) counts against the rate limit - a cache hit costs nothing, so it
+  // shouldn't consume the same daily allowance. Previously incremented
+  // unconditionally, which meant a guest re-visiting step 4 on an
+  // already-cached route (or several guests behind one hotel/NAT IP) could
+  // get falsely rate-limited for completely free requests.
+  if (!result.cacheHit) {
+    await env.DB.prepare(`INSERT INTO reference_fare_lookups (source_ip) VALUES (?)`).bind(clientIp).run();
+  }
+
+  return json({ ok: true, reference_fare_fjd: result.referenceFareFjd, distance_km: result.distanceKm, cached: result.cacheHit }, 200);
 }
 
 async function handleNegotiationCreate(request, env) {
@@ -2481,15 +2489,15 @@ async function getZoneDistanceKm(env, zoneAName, zoneBName, latA, lngA, latB, ln
   const cached = await env.DB.prepare(
     `SELECT distance_km FROM zone_distance_cache WHERE zone_a = ? AND zone_b = ?`
   ).bind(sortedA, sortedB).first();
-  if (cached) return cached.distance_km;
+  if (cached) return { distanceKm: cached.distance_km, cacheHit: true };
 
   const distanceKm = await computeZoneToZoneDistanceKm(env, sortedLatA, sortedLngA, sortedLatB, sortedLngB);
-  if (distanceKm === null) return null;
+  if (distanceKm === null) return { distanceKm: null, cacheHit: false };
 
   await env.DB.prepare(
     `INSERT OR IGNORE INTO zone_distance_cache (zone_a, zone_b, distance_km) VALUES (?, ?, ?)`
   ).bind(sortedA, sortedB, distanceKm).run();
-  return distanceKm;
+  return { distanceKm, cacheHit: false };
 }
 
 // MILESTONE 16: the single, shared source of truth for a real,
@@ -2510,7 +2518,7 @@ async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicl
   if (!airportZoneRow || !remoteZoneRow || airportZoneRow.lat === null || remoteZoneRow.lat === null) {
     return { ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.', status: 503 };
   }
-  const distanceKm = await getZoneDistanceKm(
+  const { distanceKm, cacheHit } = await getZoneDistanceKm(
     env, NADI_AIRPORT_ZONE_NAME, remoteZoneName,
     airportZoneRow.lat, airportZoneRow.lng, remoteZoneRow.lat, remoteZoneRow.lng
   );
@@ -2521,7 +2529,10 @@ async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicl
   if (!referenceFareFjd) {
     return { ok: false, error: 'No pricing rule found for this route and vehicle type.', status: 400 };
   }
-  return { ok: true, referenceFareFjd, distanceKm };
+  // cacheHit propagated so callers that meter real API-cost calls (see
+  // handleReferenceFarePreview) can tell a free cache read apart from a
+  // real, billable Google Routes API call.
+  return { ok: true, referenceFareFjd, distanceKm, cacheHit };
 }
 
 // Real Google Routes API call. Field mask requests warnings text
