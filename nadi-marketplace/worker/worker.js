@@ -310,6 +310,12 @@ export default {
       return handleAdminTestBooking(request, env);
     }
 
+    // ── double-dispatch fix: James/Ben manually arranging a driver via
+    // WhatsApp instead of the automated broadcast/accept flow ──
+    if (request.method === 'POST' && url.pathname === '/admin/bookings/manual-assign') {
+      return handleAdminManualAssign(request, env);
+    }
+
     // ── Milestone 4: wallet lockout + max-hours cap ──
     if (request.method === 'POST' && url.pathname === '/admin/max-hours-sweep') {
       return handleAdminMaxHoursSweep(request, env);
@@ -1264,6 +1270,83 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
 
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
   return json({ ok: true, won: true, booking }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANUAL ASSIGN — double-dispatch fix. James/Ben sometimes arrange a
+// driver directly over WhatsApp instead of the automated broadcast/
+// accept flow above. Without this, the automated system could still
+// independently dispatch a second, different driver to the same guest
+// while a human is mid-conversation - two real drivers turning up.
+// Reuses the exact atomic "winner-takes-it" guard from
+// handleDriverAcceptBooking() rather than a separate hold flag - same
+// invariant (assigned_driver_id written exactly once, by whoever gets
+// there first), just admin as a second possible writer alongside a
+// driver's own accept. Registered drivers only (confirmed with James
+// 2026-07-27: manually-arranged drivers are always already in the
+// drivers table) - no unregistered/external-driver path.
+// ═══════════════════════════════════════════════════════════════
+
+async function handleAdminManualAssign(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+
+  const driverId = Number(body.driver_id);
+  if (!Number.isInteger(driverId) || driverId <= 0) return json({ ok: false, error: 'driver_id must be a positive integer' }, 400);
+
+  const driver = await env.DB.prepare(`SELECT id, name, status FROM drivers WHERE id = ?`).bind(driverId).first();
+  if (!driver) return json({ ok: false, error: 'No driver found with that driver_id.' }, 404);
+  if (driver.status !== 'verified') return json({ ok: false, error: `Driver ${driver.name} is not verified (status: ${driver.status}).` }, 403);
+
+  // Path A - taking over a booking that already exists (e.g. the guest
+  // used the widget, is sitting in the pending/broadcast pool, and a
+  // human is now handling them directly instead).
+  if (body.booking_id !== undefined && body.booking_id !== null) {
+    const bookingId = Number(body.booking_id);
+    if (!Number.isInteger(bookingId) || bookingId <= 0) return json({ ok: false, error: 'booking_id must be a positive integer' }, 400);
+
+    const result = await env.DB.prepare(
+      `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted' WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
+    ).bind(driverId, bookingId).run();
+
+    const won = result.meta.changes === 1;
+    if (!won) {
+      const current = await env.DB.prepare(`SELECT assigned_driver_id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
+      if (!current) return json({ ok: false, error: 'Booking not found.' }, 404);
+      return json({ ok: false, won: false, reason: 'Booking already taken or no longer available.', current }, 409);
+    }
+
+    const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+    return json({ ok: true, won: true, booking }, 200);
+  }
+
+  // Path B - a guest arranged entirely over WhatsApp, no existing
+  // booking row at all. Creates it directly via createBookingRecord()
+  // with status='accepted' and assigned_driver_id pre-set, same pattern
+  // handleNegotiationAcceptOffer() already uses - it never enters the
+  // pending/broadcastable pool, so there's nothing for the automated
+  // system to race against.
+  const result = await createBookingRecord(env, {
+    guestName: (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest',
+    guestPhone: normalisePhone((body.guest_phone || '').toString()),
+    pickupZone: (body.pickup_zone || '').toString().trim(),
+    destinationZone: (body.destination_zone || '').toString().trim(),
+    vehicleType: (body.vehicle_type || '').toString().trim().toLowerCase(),
+    quotedCurrency: (body.quoted_currency || '').toString().trim().toUpperCase(),
+    quotedAmount: Number(body.quoted_amount),
+    fxRate: body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1,
+    distanceKm: body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null,
+    paymentMethod: (body.payment_method || '').toString().trim().toLowerCase(),
+    sourceIp: request.headers.get('CF-Connecting-IP') || 'unknown',
+    assignedDriverId: driverId,
+    status: 'accepted',
+  });
+  if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
+
+  return json({ ok: true, booking_id: result.bookingId, booking: result.booking }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════
