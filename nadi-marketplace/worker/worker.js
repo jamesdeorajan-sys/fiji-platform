@@ -1028,7 +1028,7 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
         template: {
           name: FUEL_INDEX_ALERT_TEMPLATE,
           language: { code: FUEL_INDEX_ALERT_LANG_CODE },
-          components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
+          components: [{ type: 'body', parameters: [{ type: 'text', parameter_name: 'alert_message', text: bodyText }] }],
         },
       }),
     });
@@ -1041,12 +1041,15 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
 
 // Same self-contained pattern as sendFuelIndexAlertWhatsApp - not built on
 // sendWhatsAppTemplate() for the same reason (hardcoded language constant).
-// vakaviti_ops_health_alert body: {{1}} = state ("DOWN"/"RECOVERED"),
-// {{2}} = timestamp. Two separate template parameters, not one freeform
-// string - matches the exact two-variable template submitted to Meta.
-// Getting this wrong (e.g. one combined {{1}}) would fail with a
-// parameter-count mismatch even after approval, so this was fixed to
-// match the submitted content BEFORE submission, not discovered after.
+// vakaviti_ops_health_alert body: {{alert_summary}} = state ("DOWN"/
+// "RECOVERED"), {{timestamp}} = timestamp. Two separate template
+// parameters, not one freeform string - matches the two-variable template
+// submitted to Meta. Real 2026-07-28 bug: the template was recreated in
+// WhatsApp Manager using NAMED variables, but Meta's Cloud API only
+// resolves a named variable if the request also carries a matching
+// parameter_name on that parameter - positional-only parameters (no
+// parameter_name) get rejected with 400 "(#100) Parameter name is missing
+// or empty" even though the values and count are otherwise correct.
 async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
@@ -1068,7 +1071,10 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
           language: { code: langCodeOverride || HEALTH_ALERT_LANG_CODE },
           components: [{
             type: 'body',
-            parameters: [{ type: 'text', text: state }, { type: 'text', text: timestamp }],
+            parameters: [
+              { type: 'text', parameter_name: 'alert_summary', text: state },
+              { type: 'text', parameter_name: 'timestamp', text: timestamp },
+            ],
           }],
         },
       }),
