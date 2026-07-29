@@ -1,4 +1,4 @@
-# nadiairporttransfers.com — robots.txt
+# book.fijidash.com — robots.txt
 # Fiji Dash — real-time driver dispatch marketplace
 
 User-agent: *
@@ -32,4 +32,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://nadiairporttransfers.com/sitemap.xml
+Sitemap: https://book.fijidash.com/sitemap.xml

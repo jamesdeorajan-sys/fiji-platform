@@ -1,7 +1,7 @@
 /**
  * Fiji Dash — Customer Chat Widget
  *
- * A floating chat widget that lives on every page of nadiairporttransfers.com.
+ * A floating chat widget that lives on every page of book.fijidash.com.
  *
  * Integration: a single <script src="/chat-widget.js"></script> tag in index.html.
  * The widget self-injects its DOM, styles, and event handlers when the script loads.

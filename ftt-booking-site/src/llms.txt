@@ -1,4 +1,4 @@
-# nadiairporttransfers.com
+# book.fijidash.com
 # Fiji Dash — Real-Time Driver Dispatch Marketplace
 
 > Fiji Dash books private airport transfers and tours across Fiji with real-time, automated driver dispatch: a guest requests a ride, real drivers get the job broadcast to them, and the first to accept is confirmed within seconds. Fixed, distance-based pricing shown before booking — no surge pricing, no negotiation required (a Flexible Fare option exists for guests who want to negotiate anyway).
@@ -42,10 +42,10 @@ Full 35-route price table, live and current, is on the booking site itself. Cust
 Registered, verified local Fijian drivers. Exact live driver count and average dispatch-confirmation time not yet published — check the booking site for current figures as the marketplace scales.
 
 ## Canonical Source
-This content's canonical version is published at: https://nadiairporttransfers.com
+This content's canonical version is published at: https://book.fijidash.com
 
 ## Booking & Live Assistance
-- Book a transfer: https://nadiairporttransfers.com
+- Book a transfer: https://book.fijidash.com
 - WhatsApp: +61 478 886 145
 
 ## Contact
