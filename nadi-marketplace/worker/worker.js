@@ -664,6 +664,15 @@ async function handleDriverSubmit(request, env) {
       `INSERT INTO vehicles (driver_id, type, plate, photo_url) VALUES (?, ?, ?, ?)`
     ).bind(driverId, vehicleType, plate, vehicleKey).run();
 
+    // Real ops alert, same mechanism as health-check/fuel-index/escalation
+    // alerts - not exposed in the response (this endpoint is public-facing,
+    // called directly by driver-join.html; same "don't leak admin-facing
+    // detail to the public caller" discipline already used for /escalate).
+    const applicationSummary = `New driver application: ${name} (${phone}), ${vehicleType}, plate ${plate}, zones: ${zones.join(', ')}.`;
+    for (const alertPhone of await getAdminAlertPhones(env)) {
+      await sendHealthAlertWhatsApp(env, alertPhone, applicationSummary, sqliteNow());
+    }
+
     return json({
       ok: true,
       driver_id: driverId,
@@ -1623,6 +1632,17 @@ async function handleGuestBookingCreate(request, env) {
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
   const broadcast = await broadcastBookingToDrivers(env, result.booking);
+
+  // Real ops alert, same mechanism as health-check/fuel-index/escalation
+  // alerts - not exposed in the response, same discipline as the driver-
+  // application alert above and every other admin-facing detail in this
+  // build that a public caller doesn't need to see.
+  const b = result.booking;
+  const bookingSummary = `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`;
+  for (const alertPhone of await getAdminAlertPhones(env)) {
+    await sendHealthAlertWhatsApp(env, alertPhone, bookingSummary, sqliteNow());
+  }
+
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast }, 201);
 }
 
@@ -1993,6 +2013,16 @@ async function handleDriverNegotiationOffer(request, env, requestId) {
 async function getSetting(env, key, fallback) {
   const row = await env.DB.prepare(`SELECT value FROM platform_settings WHERE key = ?`).bind(key).first();
   return row ? row.value : fallback;
+}
+
+// Single-recipient today (platform_settings.admin_alert_phone), returned as
+// a list so callers already loop over it - a future multi-recipient rollout
+// becomes a data change (more entries) rather than a rewrite of every call
+// site. Deliberately not multi-recipient yet, per instruction: confirm
+// single-number delivery works cleanly first.
+async function getAdminAlertPhones(env) {
+  const phone = await getSetting(env, 'admin_alert_phone', '');
+  return phone ? [phone] : [];
 }
 
 // Balance <= threshold (both negative-or-zero, threshold e.g. -150) means
