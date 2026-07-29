@@ -99,7 +99,7 @@ const DRIVER_RETURN_TEMPLATE = 'vakaviti_driver_return';
 const DRIVER_RETURN_LANG_CODE = 'en';
 // Custom domain, not the raw .pages.dev URL - Meta's link-safety classifier was
 // rejecting both driver-facing templates over the .pages.dev domain itself.
-const DRIVER_APP_URL = 'https://driver.vakaviti.ai/driver-app';
+const DRIVER_APP_URL = 'https://driver.fijidash.com/driver-app';
 
 // ═══════════════════════════════════════════════════════════════
 // MILESTONE 5 — fuel index (spec Section 7). FCCC's real petroleum page
