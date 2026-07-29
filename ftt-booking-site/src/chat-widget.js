@@ -1,5 +1,5 @@
 /**
- * Fiji Tour Transfers — Customer Chat Widget
+ * Fiji Dash — Customer Chat Widget
  *
  * A floating chat widget that lives on every page of nadiairporttransfers.com.
  *
@@ -29,7 +29,7 @@
   const WORKER_URL = 'https://fiji-chat-widget.helpronline.workers.dev/';
   const WHATSAPP_URL = 'https://wa.me/61478886145';
   const WHATSAPP_NUMBER = '+61 478 886 145';
-  const BRAND_NAME = 'Fiji Tour Transfers';
+  const BRAND_NAME = 'Fiji Dash';
 
   // The conversation history sent to the Worker. We keep this in memory
   // only — refresh the page and it's gone. This is intentional; cross-
@@ -314,7 +314,7 @@
         <span id="ftt-chat-tooltip">Ask us anything!</span>
       </button>
 
-      <div id="ftt-chat-panel" role="dialog" aria-label="Chat with Fiji Tour Transfers">
+      <div id="ftt-chat-panel" role="dialog" aria-label="Chat with Fiji Dash">
         <div id="ftt-chat-header">
           <div style="flex:1">
             <div id="ftt-chat-header-title">${BRAND_NAME}</div>

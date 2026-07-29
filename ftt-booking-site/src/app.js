@@ -1493,7 +1493,7 @@ function buildWhatsAppURL(ref) {
 
   const msg = [
     `*NEW BOOKING REQUEST*`,
-    `Fiji Tour Transfers`,
+    `Fiji Dash`,
     `Booking ref: *${ref}*`,
     `=====================================`,``,
     `*PASSENGER DETAILS*`,
@@ -1558,7 +1558,7 @@ function confirmBooking() {
   }
 
   // Generate the booking reference
-  const ref = 'FTT-' + Date.now().toString(36).toUpperCase().slice(-6);
+  const ref = 'FD-' + Date.now().toString(36).toUpperCase().slice(-6);
 
   // Pre-build the WhatsApp URL with the full booking details
   const waUrl = buildWhatsAppURL(ref);
@@ -1578,7 +1578,7 @@ function confirmBooking() {
   // doesn't have to retype it. Driver coordinator gets a clear request.
   const bulaModifyLink = document.getElementById('bulaModifyLink');
   if (bulaModifyLink) {
-    const modifyText = `Hi Fiji Tour Transfers, I'd like to modify booking ${ref}. The change I need is:`;
+    const modifyText = `Hi Fiji Dash, I'd like to modify booking ${ref}. The change I need is:`;
     bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
   }
 
@@ -1659,11 +1659,11 @@ async function submitMarketplaceBooking(ref) {
   // MILESTONE 13: a sourced boat destination bypasses calculateTotal()'s
   // vehicle-tier/discount math entirely - the real bundled fare (land leg
   // + boat operator's fare, confirmed real resale arrangement) is what
-  // Fiji Tour Transfers collects and owes the operator. Deliberately NOT
+  // Fiji Dash collects and owes the operator. Deliberately NOT
   // eligible for the 10% loyalty discount: that discount is funded out of
-  // FTT's own margin on a normal transfer, but a chunk of a boat booking's
+  // Fiji Dash's own margin on a normal transfer, but a chunk of a boat booking's
   // total is money owed straight through to the boat operator - applying
-  // it here would mean FTT eating a real loss on someone else's fare.
+  // it here would mean Fiji Dash eating a real loss on someone else's fare.
   const destVal = document.getElementById('destination')?.value;
   const boatDestId = BOAT_DESTINATION_IDS[destVal];
   const bq = state.boatQuoteResult;
@@ -1735,7 +1735,7 @@ async function reportBookingSyncFailure(ref, payload, errorDetail) {
 // exactly the two airport-anchored routes /quote and the marketplace sync
 // already cover (see submitMarketplaceBooking above) - road vehicle types
 // only, never a boat destination (a boat fare is a real third-party bundled
-// price, not FTT's to negotiate).
+// price, not Fiji Dash's to negotiate).
 //
 // MILESTONE 16: repositioned as two distinct product tiers (Standard /
 // Flexible) shown side by side, never a hidden toggle off the standard
