@@ -203,6 +203,15 @@ export default {
       return handleAdminWhatsAppTemplatesList(request, env);
     }
 
+    // Diagnostic only, admin-authenticated, read-only against Meta's own
+    // Graph API - real check for a hard cutover precondition (cutover-plan.md
+    // step 2): WHATSAPP_PHONE_ID must be a real production number before any
+    // guest-facing traffic, not Meta's test/sandbox number. display_phone_number
+    // is the authoritative answer, not something inferable from a send response.
+    if (request.method === 'GET' && url.pathname === '/admin/whatsapp/phone-info') {
+      return handleAdminWhatsAppPhoneInfo(request, env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/zones') {
       return handleZones(env);
     }
@@ -542,6 +551,26 @@ async function handleAdminWhatsAppTemplatesList(request, env) {
     }
 
     return json({ ok: true, waba_id: wabaId, templates: templatesBody.data || [] }, 200);
+  } catch (err) {
+    return json({ ok: false, error: err.message }, 500);
+  }
+}
+
+async function handleAdminWhatsAppPhoneInfo(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return json({ ok: false, error: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' }, 503);
+  }
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}?fields=display_phone_number,verified_name,quality_rating`,
+      { headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}` } }
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      return json({ ok: false, error: 'Graph API phone lookup failed.', detail: body }, 502);
+    }
+    return json({ ok: true, phone_info: body }, 200);
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
   }
