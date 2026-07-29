@@ -1,5 +1,5 @@
 /**
- * Nadi Airport Transfers — Driver Marketplace Backend
+ * Fiji Dash — Driver Marketplace Backend
  * nadi-dispatch-api
  *
  * Phase 1, Milestone 7: dynamic destinations system (Item 2) — moves
@@ -2784,7 +2784,7 @@ async function checkQuoteRateLimit(env, ip) {
 // per-passenger (adult/child), not per-vehicle-tier, matching how the
 // real operator actually prices these routes (confirmed: no "minibus"
 // equivalent exists for a scheduled ferry). Total is the full bundled
-// fare Fiji Tour Transfers collects (confirmed real resale arrangement),
+// fare Fiji Dash collects (confirmed real resale arrangement),
 // while land_leg_fare_fjd is carried separately for future commission use.
 async function handleBoatQuote(env, body, clientIp) {
   const destinationId = Number(body.destination_id);
