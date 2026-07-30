@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260726d-flexfare">
+<link rel="stylesheet" href="styles.css?v=20260730-confirmredesign">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -837,22 +837,32 @@
           </div>
         </div>
 
-        <!-- MILESTONE 16: two distinct fare tiers, shown side by side. The
-             Flexible Fare tier only appears when resolveNegotiationEligibility()
-             in app.js says this route/vehicle combo supports it - never shown
-             as a toggle/hidden option, so it can't read as "the standard fare
-             is negotiable by default." -->
-        <div class="fare-tiers" id="fareTiers">
-          <div class="fare-tier fare-tier-standard">
-            <div class="fare-tier-label">Standard Fare</div>
-            <div class="fare-tier-price" id="standardFarePrice">—</div>
-            <div class="fare-tier-sub">Instant confirmation · Guaranteed driver</div>
-            <button class="btn-primary btn-confirm" onclick="confirmBooking()">
-              ✓ Confirm booking request
-            </button>
+        <!-- REDESIGN (Confirm Step Redesign.dc.html): one consolidated price
+             block - breakdown, big total, and the primary confirm action
+             live together. Flexible Fare is demoted to a collapsed,
+             visually-secondary panel behind a text-link toggle, and (per
+             MILESTONE 16, unchanged) that toggle only appears at all when
+             resolveNegotiationEligibility() in app.js says this route/
+             vehicle combo supports it - still never presented as if the
+             Standard Fare is negotiable by default. -->
+        <div class="price-block" id="fareTiers">
+          <div id="priceBreakdown"></div>
+          <div class="price-total-row">
+            <div>
+              <div class="price-total-label">Total price</div>
+              <div class="price-total-sub">Instant confirmation · Guaranteed driver</div>
+            </div>
+            <div class="price-total-value" id="priceTotalValue">FJ$—</div>
           </div>
-          <div class="fare-tier fare-tier-flexible" id="flexibleFareTier" style="display:none">
-            <div class="fare-tier-label">Flexible Fare</div>
+          <button class="btn-primary btn-confirm" onclick="confirmBooking()">
+            ✓ Confirm booking request
+          </button>
+
+          <div class="flex-fare-toggle-row" id="flexFareToggleRow" style="display:none">
+            <button type="button" class="flex-fare-toggle" id="flexFareToggleBtn" onclick="toggleFlexibleFare()">Want to try for a better rate? →</button>
+          </div>
+
+          <div class="fare-tier-flexible" id="flexibleFareTier" style="display:none">
             <p class="fare-tier-copy">Flexible on timing, or hoping for a better rate? Propose your fare — we'll check if a driver's available to take it.</p>
             <div class="flexible-fare-input-row">
               <span class="flexible-fare-prefix">FJ$</span>
@@ -1079,6 +1089,13 @@
         <tbody id="routesTableBody"></tbody>
       </table>
     </div>
+
+    <!-- REDESIGN (Routes Table Mobile.dc.html): below 900px, replaces the
+         horizontal-scroll table above with a collapsed, alphabetical
+         2-column picker. Desktop table markup/styling untouched - this is
+         a separate container, shown/hidden purely by the existing 900px
+         breakpoint. -->
+    <div class="mobile-routes-list" id="routesMobileList"></div>
   </div>
 </section>
 
@@ -1253,7 +1270,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260729-fijidash-rebrand"></script>
+<script src="app.js?v=20260730-confirmredesign"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

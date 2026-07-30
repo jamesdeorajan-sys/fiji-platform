@@ -182,24 +182,29 @@ textarea.field-input{resize:vertical;min-height:80px}
 .btn-secondary{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--mid);border:1.5px solid var(--border);padding:12px 20px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-weight:500;font-size:14px;cursor:pointer;transition:var(--transition)}
 .btn-secondary:hover{border-color:var(--dark);color:var(--dark)}
 
-/* ─── MILESTONE 16: FARE TIERS (Standard / Flexible, side by side) ───────── */
-.fare-tiers{display:flex;gap:16px;margin:20px 0;align-items:stretch}
-.fare-tier{flex:1 1 0;min-width:0;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:20px;display:flex;flex-direction:column;gap:8px;animation:fadeIn .3s ease}
-.fare-tier-standard{border-color:var(--ocean);background:var(--ocean-light)}
-.fare-tier-label{font-family:'Sora',sans-serif;font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mid)}
-.fare-tier-standard .fare-tier-label{color:var(--ocean-dark)}
-.fare-tier-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.9rem;color:var(--ocean)}
-.fare-tier-sub{font-size:12px;color:var(--mid);margin-bottom:2px}
-.fare-tier-copy{font-size:13px;line-height:1.5;color:var(--mid);margin:0}
+/* ─── CONFIRM STEP REDESIGN: one consolidated price block ─────────────────
+   Replaces the old side-by-side Standard/Flexible fare-tier cards. See
+   design_handoff_booking_journey/Confirm Step Redesign.dc.html. */
+.price-block{background:var(--white);border:2px solid var(--ocean);border-radius:var(--radius-lg);padding:24px;margin:20px 0;display:flex;flex-direction:column;animation:fadeIn .3s ease}
+.price-block .confirm-row{padding:6px 0;border-bottom:none}
+.price-total-row{display:flex;justify-content:space-between;align-items:flex-end;padding-top:14px;margin-top:8px;border-top:1px solid var(--border-light)}
+.price-total-label{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:var(--dark)}
+.price-total-sub{font-size:12px;color:var(--mid);margin-top:2px}
+.price-total-value{font-family:'Sora',sans-serif;font-weight:700;font-size:2.1rem;color:var(--ocean);line-height:1}
+.price-block .btn-confirm{width:100%;justify-content:center;margin-top:18px}
+.flex-fare-toggle-row{text-align:center;margin-top:14px}
+.flex-fare-toggle{background:none;border:none;color:var(--ocean);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;padding:4px}
+.flex-fare-toggle:hover{color:var(--ocean-dark)}
+.fare-tier-flexible{margin-top:14px;padding:16px;background:#f8fafc;border:1px solid var(--border-light);border-radius:var(--radius-md);display:flex;flex-direction:column;gap:8px;animation:fadeIn .2s ease}
+.fare-tier-copy{font-size:12.5px;line-height:1.5;color:var(--mid);margin:0}
 .flexible-fare-input-row{display:flex;align-items:center;gap:6px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;transition:var(--transition)}
 .flexible-fare-input-row:focus-within{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
 .flexible-fare-prefix{font-family:'Sora',sans-serif;font-weight:700;color:var(--mid);font-size:14px}
-.flexible-fare-input{flex:1;min-width:0;border:none;background:transparent;padding:10px 0;font-family:'DM Sans',sans-serif;font-size:16px;color:var(--dark)}
+.flexible-fare-input{flex:1;min-width:0;border:none;background:transparent;padding:9px 0;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--dark)}
 .flexible-fare-input:focus{outline:none}
-.fare-tier-hint{font-size:11px;color:var(--cloud)}
+.fare-tier-hint{font-size:11px;color:var(--light)}
 .fare-tier-fineprint{font-size:11px;line-height:1.4;color:var(--mid);margin:2px 0 0}
-.fare-tier .btn-primary,.fare-tier .btn-secondary{width:100%;justify-content:center;margin-top:auto}
-@media (max-width:640px){.fare-tiers{flex-direction:column}}
+.fare-tier-flexible .btn-secondary{align-self:flex-start}
 .negotiate-error{font-size:13px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius-sm);padding:8px 12px;margin-top:4px}
 .negotiate-waiting{background:var(--sand);border:1px solid var(--sand-dark);border-radius:var(--radius-lg);padding:20px;margin-top:20px;animation:fadeIn .3s ease}
 .negotiate-waiting-header{display:flex;align-items:center;gap:14px}
@@ -289,6 +294,32 @@ textarea.field-input{resize:vertical;min-height:80px}
 .routes-table .area-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--ocean-light);color:var(--ocean)}
 .routes-table .btn-book{font-size:12px;font-weight:600;color:var(--ocean);border:1px solid var(--ocean);padding:5px 14px;border-radius:20px;white-space:nowrap;cursor:pointer;transition:var(--transition);background:transparent}
 .routes-table .btn-book:hover{background:var(--ocean);color:#fff}
+
+/* ─── MOBILE ROUTES & PRICING (<900px alternate to .routes-table-wrap) ─────
+   See design_handoff_booking_journey/Routes Table Mobile.dc.html. Desktop
+   table stays the default; this only takes over below the breakpoint. */
+.mobile-routes-list{display:none}
+.mobile-route-card{background:var(--white);border:1px solid var(--border-light);border-radius:14px;box-shadow:0 1px 4px rgba(15,25,35,.06);overflow:hidden}
+.mobile-route-header{width:100%;background:none;border:none;padding:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:6px;cursor:pointer;text-align:left;font-family:inherit}
+.mobile-route-name{font-family:'Sora',sans-serif;font-weight:700;font-size:13px;line-height:1.35;color:var(--dark);min-width:0}
+.mobile-route-chevron{flex-shrink:0;color:var(--light);font-size:11px;margin-top:2px}
+.mobile-route-body{padding:0 12px 12px;max-height:260px;overflow-y:auto}
+.mobile-route-area{display:inline-block;margin-bottom:8px;font-size:10px;font-weight:600;padding:3px 9px;border-radius:10px;background:var(--ocean-light);color:var(--ocean)}
+.mobile-route-meta{font-size:11px;color:var(--mid);margin-bottom:8px}
+.mobile-vehicle-picker{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.mobile-vehicle-row{display:flex;align-items:center;gap:8px;width:100%;background:var(--white);border:1.5px solid var(--border-light);border-radius:10px;padding:6px 8px;cursor:pointer;text-align:left;font-family:inherit;transition:var(--transition)}
+.mobile-vehicle-row.selected{background:var(--ocean-light);border-color:var(--ocean)}
+.mobile-vehicle-icon{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:13px}
+.mobile-vehicle-name{flex:1;min-width:0;font-family:'Sora',sans-serif;font-weight:700;font-size:11.5px;color:var(--dark)}
+.mobile-vehicle-price{flex-shrink:0;text-align:right}
+.mobile-vehicle-price-old{display:block;font-size:9.5px;color:#94a3b8;text-decoration:line-through}
+.mobile-vehicle-price-final{font-family:'Sora',sans-serif;font-weight:700;font-size:12.5px;color:var(--ocean)}
+.mobile-route-book{width:100%;background:var(--ocean);color:#fff;border:none;padding:8px;border-radius:8px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:12px;cursor:pointer}
+.mobile-route-book:hover{background:var(--ocean-dark)}
+@media(max-width:900px){
+  .routes-table-wrap{display:none}
+  .mobile-routes-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+}
 
 /* ─── TOURS ───────────────────────────────────────────────────────────────── */
 .tours-section{padding:80px 0;background:var(--sand)}

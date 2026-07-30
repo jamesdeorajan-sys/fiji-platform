@@ -168,6 +168,10 @@ const state = {
   tripType: 'one-way', passengers: 2, luggage: 2,
   selectedVehicle: null, extrasTotal: 0,
   prices: { sedan: 0, minivan: 0, minibus: 0 },
+  // Confirm-step redesign: Flexible Fare starts collapsed behind a text-link
+  // toggle rather than shown as an equal-weight card. Reset to false each
+  // time renderFareTiers() runs (i.e. every fresh entry to step 4).
+  showFlexibleFare: false,
   // selectedTour holds the full TOURS_DATA entry when a tour is in the booking,
   // null otherwise. Set by selectTour(), cleared by removeTourBanner().
   // Used by calculateTotal() to add tour cost (price × passengers) to the total.
@@ -1389,26 +1393,9 @@ function buildConfirmation() {
   const card = document.getElementById('confirmationCard');
   if (!card) return;
 
-  let totalRows = '';
-  // Three cases:
-  //  (a) Tour booking — show transfer line + tour line + total. No discount.
-  //  (b) Transfer-only with discount qualified (subtotal > FJ$50).
-  //  (c) Transfer-only, no discount (under threshold).
-  if (t.hasTour) {
-    const paxLabel = state.passengers === 1 ? 'person' : 'people';
-    totalRows = `
-      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${t.transferSubtotal}</span></div>
-      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${t.tourTotal}</span></div>
-      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
-  } else if (t.qualifies) {
-    totalRows = `
-      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${t.subtotal}</span></div>
-      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>
-      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
-  } else {
-    totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
-  }
-
+  // Redesign: pricing no longer ends this card - it lives once, in the
+  // single consolidated price block (see renderPriceBlock()). Trip details
+  // only here.
   card.innerHTML = [
     ['Passenger',       `${fn} ${ln}`],
     ['Contact',         `${em} · ${ph}`],
@@ -1421,8 +1408,35 @@ function buildConfirmation() {
     ['Distance',        `${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`],
     ['Trip type',       suffix],
     ['Special requests',notes],
-  ].map(([l,v]) => `<div class="confirm-row"><span class="confirm-label">${l}</span><span class="confirm-value">${v}</span></div>`).join('')
-  + totalRows;
+  ].map(([l,v]) => `<div class="confirm-row"><span class="confirm-label">${l}</span><span class="confirm-value">${v}</span></div>`).join('');
+
+  renderPriceBlock();
+}
+
+// Confirm-step redesign: the ONE place price appears - subtotal/discount
+// breakdown + big total. Shared by buildConfirmation() (first render, using
+// the client's own estimate) and renderFareTiers() (re-render once the real
+// server reference-fare fetch resolves) so there's exactly one
+// implementation of "how the breakdown renders," not two that could drift.
+function renderPriceBlock() {
+  const t = calculateTotal();
+  const breakdownEl = document.getElementById('priceBreakdown');
+  const totalEl = document.getElementById('priceTotalValue');
+  if (!breakdownEl || !totalEl) return;
+
+  let rows = '';
+  if (t.hasTour) {
+    const paxLabel = state.passengers === 1 ? 'person' : 'people';
+    rows = `
+      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${t.transferSubtotal}</span></div>
+      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${t.tourTotal}</span></div>`;
+  } else if (t.qualifies) {
+    rows = `
+      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${t.subtotal}</span></div>
+      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>`;
+  }
+  breakdownEl.innerHTML = rows;
+  totalEl.textContent = formatPrice(t.final);
 }
 
 // ─── WHATSAPP MESSAGE ────────────────────────────────────────────────────────
@@ -1785,37 +1799,45 @@ async function fetchRealReferenceFare(pickupZone, destinationZone, vehicleType) 
   }
 }
 
+// Redesign note: the toggle row's visibility is the ONLY thing gated by
+// eligibility here (resolveNegotiationEligibility() - unchanged logic,
+// still "never shown as if the standard fare is negotiable by default").
+// Whether the panel ITSELF is open is a separate, independent concern
+// (state.showFlexibleFare, flipped by toggleFlexibleFare()) - collapsed by
+// default on every fresh entry to step 4.
 function renderFareTiers() {
   stopNegotiationPolling();
   const waitingEl = document.getElementById('negotiateWaiting');
   if (waitingEl) waitingEl.style.display = 'none';
 
-  const priceEl = document.getElementById('standardFarePrice');
-  if (priceEl) priceEl.textContent = formatPrice(calculateTotal().final);
+  renderPriceBlock();
 
   const elig = resolveNegotiationEligibility();
+  const toggleRow = document.getElementById('flexFareToggleRow');
+  const toggleBtn = document.getElementById('flexFareToggleBtn');
   const flexTier = document.getElementById('flexibleFareTier');
   const hintEl = document.getElementById('flexibleFareFloorHint');
   const amountInput = document.getElementById('negotiateAmount');
   const submitBtn = document.getElementById('negotiateSubmitBtn');
 
-  const fareTiers = document.getElementById('fareTiers');
-  if (fareTiers) fareTiers.style.display = 'flex';
-
   const errorBox = document.getElementById('negotiateError');
   if (errorBox) errorBox.style.display = 'none';
   if (amountInput) amountInput.value = '';
 
+  state.showFlexibleFare = false;
+  if (flexTier) flexTier.style.display = 'none';
+  if (toggleBtn) toggleBtn.textContent = 'Want to try for a better rate? →';
+
   if (!elig) {
-    if (flexTier) flexTier.style.display = 'none';
+    if (toggleRow) toggleRow.style.display = 'none';
     return;
   }
+  if (toggleRow) toggleRow.style.display = 'block';
 
   // Real-fare fetch is async; show a real loading state rather than the
   // client's own (possibly wrong) estimate while it's in flight - a stale
   // number briefly shown and then silently corrected is exactly the kind
   // of inconsistency this fix exists to remove.
-  flexTier.style.display = 'flex';
   if (hintEl) hintEl.textContent = 'Calculating real fare…';
   if (amountInput) amountInput.disabled = true;
   if (submitBtn) submitBtn.disabled = true;
@@ -1833,21 +1855,32 @@ function renderFareTiers() {
     if (realFare === null) {
       // Can't get a reliable real number - don't show a possibly-wrong
       // floor. Standard Fare booking is unaffected either way.
-      flexTier.style.display = 'none';
+      if (toggleRow) toggleRow.style.display = 'none';
       return;
     }
 
-    // Root-cause fix, not just the hint: the Standard Fare tier for this
-    // specific booking now shows the SAME real number too, and everything
+    // Root-cause fix, not just the hint: the price block for this specific
+    // booking now shows the SAME real number too, and everything
     // downstream (confirmation card, WhatsApp message, the real /bookings
     // submission) uses it - not two different fares sitting side by side.
     state.prices[elig.vehicleType] = realFare;
-    if (priceEl) priceEl.textContent = formatPrice(calculateTotal().final);
+    renderPriceBlock();
 
     const floorAmount = Math.ceil(realFare * NEGOTIATION_FLOOR_RATIO);
     if (hintEl) hintEl.textContent = `Propose from ${formatPrice(floorAmount)}`;
     if (amountInput) { amountInput.min = floorAmount; amountInput.placeholder = String(floorAmount); }
   });
+}
+
+// Confirm-step redesign: Flexible Fare panel starts collapsed behind this
+// toggle. Only touches open/closed display - never re-fetches or
+// re-eligibility-checks (that's renderFareTiers()'s job on step entry).
+function toggleFlexibleFare() {
+  state.showFlexibleFare = !state.showFlexibleFare;
+  const flexTier = document.getElementById('flexibleFareTier');
+  const toggleBtn = document.getElementById('flexFareToggleBtn');
+  if (flexTier) flexTier.style.display = state.showFlexibleFare ? 'flex' : 'none';
+  if (toggleBtn) toggleBtn.textContent = state.showFlexibleFare ? 'Hide flexible fare ↑' : 'Want to try for a better rate? →';
 }
 
 async function submitNegotiation() {
@@ -2136,6 +2169,87 @@ function buildRoutesTable() {
       <td>${priceCell(r.m)}</td>
       <td><button class="btn-book" onclick="bookRoute(${i})">Book →</button></td>
     </tr>`).join('');
+
+  buildMobileRoutesList();
+}
+
+// REDESIGN (Routes Table Mobile.dc.html): <900px alternate view of the
+// same ROUTES_DATA, sorted alphabetically, collapsed by default. Per-row
+// open/closed and per-row selected vehicle are tracked here (not in the
+// main `state` object - this is display-only UI state for a picker, not
+// booking state), keyed by each route's REAL ROUTES_DATA index (origIdx)
+// so bookRoute(idx) - shared with the desktop table - keeps working
+// unchanged even though the display order here is alphabetical, not the
+// source array's order.
+const mobileRouteOpen = {};
+const mobileRouteVehicle = {};
+const MOBILE_VEHICLE_FIELD = { sedan: 's', minivan: 'v', minibus: 'm' };
+
+function buildMobileRoutesList() {
+  const container = document.getElementById('routesMobileList');
+  if (!container) return;
+
+  const sorted = ROUTES_DATA
+    .map((r, i) => ({ ...r, origIdx: i }))
+    .sort((a, b) => a.dest.localeCompare(b.dest));
+
+  container.innerHTML = sorted.map((r) => renderMobileRouteCard(r)).join('');
+}
+
+function renderMobileRouteCard(r) {
+  const idx = r.origIdx;
+  const isOpen = !!mobileRouteOpen[idx];
+  const body = isOpen ? `
+      <div class="mobile-route-body" id="mobileRouteBody-${idx}">
+        <span class="mobile-route-area">${r.area}</span>
+        <div class="mobile-route-meta">${r.km} km · ${r.time}</div>
+        <div class="mobile-vehicle-picker">${VEHICLES.map((v) => renderMobileVehicleRow(r, v)).join('')}</div>
+        <button type="button" class="mobile-route-book" onclick="bookRoute(${idx})">Book →</button>
+      </div>` : '';
+
+  return `
+    <div class="mobile-route-card" id="mobileRouteCard-${idx}">
+      <button type="button" class="mobile-route-header" onclick="toggleMobileRoute(${idx})">
+        <span class="mobile-route-name">${r.dest}</span>
+        <span class="mobile-route-chevron">${isOpen ? '▲' : '▼'}</span>
+      </button>
+      ${body}
+    </div>`;
+}
+
+function renderMobileVehicleRow(r, v) {
+  const idx = r.origIdx;
+  const selected = mobileRouteVehicle[idx] || 'sedan';
+  const isSel = selected === v.key;
+  const price = r[MOBILE_VEHICLE_FIELD[v.key]];
+  const showDiscount = price > DISCOUNT_THRESHOLD;
+  const finalPrice = showDiscount ? price - Math.round(price * DISCOUNT_RATE) : price;
+  return `
+    <button type="button" class="mobile-vehicle-row${isSel ? ' selected' : ''}" onclick="selectMobileVehicle(${idx},'${v.key}')">
+      <span class="mobile-vehicle-icon">${v.icon}</span>
+      <span class="mobile-vehicle-name">${v.name}</span>
+      <span class="mobile-vehicle-price">
+        ${showDiscount ? `<span class="mobile-vehicle-price-old">${formatPrice(price)}</span>` : ''}
+        <span class="mobile-vehicle-price-final">${formatPrice(finalPrice)}</span>
+      </span>
+    </button>`;
+}
+
+// Per-card toggle - multiple cards can stay open at once for comparison
+// (per the design's own rationale), so this only touches the one card's
+// state, not a shared "which card is open" single value.
+function toggleMobileRoute(idx) {
+  mobileRouteOpen[idx] = !mobileRouteOpen[idx];
+  const card = document.getElementById(`mobileRouteCard-${idx}`);
+  const r = ROUTES_DATA[idx];
+  if (card && r) card.outerHTML = renderMobileRouteCard({ ...r, origIdx: idx });
+}
+
+function selectMobileVehicle(idx, key) {
+  mobileRouteVehicle[idx] = key;
+  const card = document.getElementById(`mobileRouteCard-${idx}`);
+  const r = ROUTES_DATA[idx];
+  if (card && r) card.outerHTML = renderMobileRouteCard({ ...r, origIdx: idx });
 }
 
 // Pre-fills the booking form with a route from the table and scrolls to it
