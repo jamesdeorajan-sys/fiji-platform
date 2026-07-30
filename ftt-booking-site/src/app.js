@@ -1892,9 +1892,16 @@ function resolveNegotiationEligibility() {
 // can genuinely differ from the server's pricing_rules-derived fare for
 // the same route (found live: Shangri-La Yanuca was $116 client vs
 // $141.86 server).
-async function fetchRealReferenceFare(pickupZone, destinationZone, vehicleType) {
+// Real bug fix: this previously never told the server the trip type, so
+// GET /reference-fare always computed a one-way fare - for a return trip,
+// the correct return total got silently overwritten with the one-way
+// number the instant this resolved (renderFareTiers() below does
+// state.prices[vehicle] = realFare unconditionally). trip_type is now
+// required by the backend to reflect its meaning accurately - defaults
+// to 'one-way' server-side only for callers that omit it entirely.
+async function fetchRealReferenceFare(pickupZone, destinationZone, vehicleType, tripType) {
   try {
-    const res = await fetch(`${NADI_API_BASE}/reference-fare?pickup_zone=${encodeURIComponent(pickupZone)}&destination_zone=${encodeURIComponent(destinationZone)}&vehicle_type=${encodeURIComponent(vehicleType)}`);
+    const res = await fetch(`${NADI_API_BASE}/reference-fare?pickup_zone=${encodeURIComponent(pickupZone)}&destination_zone=${encodeURIComponent(destinationZone)}&vehicle_type=${encodeURIComponent(vehicleType)}&trip_type=${encodeURIComponent(tripType)}`);
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.ok) return null;
     return data.reference_fare_fjd;
@@ -1951,7 +1958,7 @@ function renderFareTiers() {
   const fetchToken = { pickupZone: elig.pickupZone, destinationZone: elig.destinationZone, vehicleType: elig.vehicleType };
   state.negotiationFareFetchToken = fetchToken;
 
-  fetchRealReferenceFare(elig.pickupZone, elig.destinationZone, elig.vehicleType).then((realFare) => {
+  fetchRealReferenceFare(elig.pickupZone, elig.destinationZone, elig.vehicleType, state.tripType).then((realFare) => {
     if (state.negotiationFareFetchToken !== fetchToken) return; // stale - guest moved on
     if (amountInput) amountInput.disabled = false;
     if (submitBtn) submitBtn.disabled = false;
@@ -2020,6 +2027,10 @@ async function submitNegotiation() {
     pickup_zone: elig.pickupZone,
     destination_zone: elig.destinationZone,
     vehicle_type: elig.vehicleType,
+    // Real bug fix: without this, the server's 80% floor was enforced
+    // against a one-way reference fare even for a return-trip proposal -
+    // see fetchRealReferenceFare's comment for the same root cause.
+    trip_type: state.tripType,
     passengers: state.passengers,
     // reference_fare_fjd deliberately NOT sent - the backend computes its
     // own real reference fare server-side (pricing_rules + a real driving
