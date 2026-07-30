@@ -1170,6 +1170,54 @@ re-verified `0`.
 endpoints implicated in guest widget integration were covered); Bot Fight Mode deliberately
 deferred as a judgment call, not a blocker; admin pages still have no Zero Trust/Access layer.
 
+## Milestone 17 — itinerary fields + a real zone-coordinate data fix
+
+Two real, verified fixes from a live bug report (return-trip booking to
+Robinson Crusoe Island reached WhatsApp with no return-leg detail at all,
+and the Flexible Fare toggle was missing on the Confirm step for that same
+booking).
+
+**Itinerary fields** — `bookings` previously stored zero itinerary detail
+(date/time/notes) for either leg of a trip. Added 6 nullable columns
+(`pickup_date`, `pickup_time`, `notes`, `return_date`, `return_time`,
+`return_pickup_location`) via `createBookingRecord()`, the shared insert
+path for all three booking-creation callers — only the public
+`POST /bookings` endpoint (what the guest widget calls) populates them.
+Migration run against the live DB (`migrations/milestone17-itinerary-fields.sql`,
+6/6 queries succeeded, all 5 existing rows confirmed still null on every
+new column). Verified end-to-end with a real `POST /bookings` call through
+the live public API, confirmed via direct D1 `SELECT`, malformed-date
+input confirmed rejected. Test row deleted after verification, count
+re-confirmed back at baseline.
+
+**Flexible Fare toggle investigation** — traced the reported "missing for
+return trips" regression and found it was **not** trip-type-related at
+all: reproduced the identical failure with the same route (Nadi Airport →
+Robinson Crusoe Island, minivan) set to one-way. The real cause was a bad
+zone centroid — `zones.Natadola` was stored at `(-18.2264, 177.3792)`, a
+point Google's Routes API can't resolve a DRIVE route to when queried
+zone-to-zone (used only by `computeRealReferenceFare`, the Flexible Fare
+negotiation floor) — even though real free-text addresses in the same area
+resolved fine via the separate `/quote` geocoding path used for the
+guest's actual booking price. Confirmed by testing every other zone with
+populated coordinates (Denarau, Lautoka, Suva, Momi Bay, Nadi, Nausori,
+Pacific Harbour, Rakiraki, Sigatoka, Sonaisali, Vuda Point, Wailoaloa) —
+all succeeded; only Natadola failed. `Mamanuca Islands`/`Yasawa Islands`
+are correctly null (boat-only, no road route).
+
+Fix (James's sign-off, since this is a live data correction, not an
+additive migration): updated Natadola's coordinate to `(-18.101017,
+177.319168)` — the real point Google resolved for "Natadola Beach, Fiji,"
+already proven routable via a completed `/quote` call before this fix was
+applied. Verified via direct D1 `SELECT` post-update, a real
+`/reference-fare` call for both sedan and minivan (previously failing,
+now `200 ok` with real fares), the `zone_distance_cache` row populated
+with a real, sane distance (54.718 km), and a full live-browser replay of
+the exact reported scenario (Nadi Airport → Robinson Crusoe Island,
+minivan, return trip) confirming the Flexible Fare toggle now renders
+with a real "Propose from FJ$125" floor. Test escalation and geocode-cache
+rows created during investigation were deleted afterward.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
