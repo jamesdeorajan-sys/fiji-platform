@@ -117,6 +117,9 @@ h4{font-size:1rem;font-weight:600}
 .step-line{flex:1;height:1px;background:var(--border-light);margin:0 8px}
 .booking-step{padding:28px 36px}
 .field-row{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:20px}
+/* Return-trip row's 3rd column (location text input) needs more room than
+   the default 1fr - ID selector so it wins over the base .field-row rule. */
+#returnTripFields{grid-template-columns:1fr auto 1.6fr}
 .field-group{display:flex;flex-direction:column;gap:6px}
 .field-label{font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:5px}
 .field-label svg{color:var(--ocean)}
@@ -440,6 +443,7 @@ textarea.field-input{resize:vertical;min-height:80px}
   .nav-links,.nav-phone{display:none}
   .hamburger{display:flex}
   .field-row{grid-template-columns:1fr;gap:14px}
+  #returnTripFields{grid-template-columns:1fr}
   .field-swap{display:flex;justify-content:center}
   .vehicle-cards,.vehicle-detail-cards{grid-template-columns:1fr}
   .how-grid{grid-template-columns:repeat(2,1fr)}

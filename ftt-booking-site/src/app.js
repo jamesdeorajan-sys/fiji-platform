@@ -889,6 +889,7 @@ function updatePricing() {
   state.durationMin = min;
   state.pickup      = p;
   state.destination = d;
+  syncReturnLocationDefault();
 
   // MILESTONE 11/12: fire the async real-zone lookup for FIXED destinations
   // (the custom-destination /quote call already fired above). Doesn't
@@ -1147,7 +1148,31 @@ function setTripType(type, btn) {
   state.tripType = type;
   document.querySelectorAll('.trip-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  updateReturnFieldsVisibility();
   if (state.distanceKm > 0) updatePricing();
+}
+
+// Return-trip fields are suppressed for tour bookings — a tour is already a
+// same-day round trip with its own itinerary; the separate return-leg
+// capture below is specifically for airport-transfer return bookings (the
+// gap that prompted this: a real return-trip booking came through with no
+// return date/time/pickup captured anywhere).
+function updateReturnFieldsVisibility() {
+  const show = state.tripType === 'return' && !bookingHasTour();
+  const el = document.getElementById('returnTripFields');
+  if (el) el.style.display = show ? '' : 'none';
+  if (show) syncReturnLocationDefault();
+}
+
+// Keeps #returnPickupLocation defaulted to the current outbound destination
+// as the guest fills in the form, without ever overwriting a value the
+// guest has actually typed themselves (dataset.dirty, set by the field's
+// own oninput handler).
+function syncReturnLocationDefault() {
+  const el = document.getElementById('returnPickupLocation');
+  if (!el || el.dataset.dirty === 'true') return;
+  const d = state.destination;
+  el.value = d ? (d.hotel || d.name || '') : '';
 }
 
 // ─── PAX / LUGGAGE ────────────────────────────────────────────────────────────
@@ -1250,6 +1275,15 @@ function goToStep(n) {
   }
   if (n === 2) {
     if (!state.selectedVehicle) { alert('Please select a vehicle first.'); return; }
+    // Real gap this closes: a return-trip booking previously reached
+    // WhatsApp/dispatch with no return date, time, or pickup location at
+    // all. Required here, mirroring the name/email/phone check at step 4.
+    if (state.tripType === 'return' && !bookingHasTour()) {
+      const rd = document.getElementById('returnDate')?.value;
+      const rt = document.getElementById('returnTime')?.value;
+      const rl = document.getElementById('returnPickupLocation')?.value.trim();
+      if (!rd || !rt || !rl) { alert('Please fill in your return date, return pickup time, and return pickup location.'); return; }
+    }
     // Capacity guard — checks both pax and luggage
     const v = VEHICLES.find(x => x.key === state.selectedVehicle);
     if (v && !vehicleFits(v)) {
@@ -1326,6 +1360,9 @@ function removeTourBanner() {
   removeTourBannerDOM();
   // Clear state so calculateTotal stops adding tour cost
   state.selectedTour = null;
+  // If trip type is still 'return' with the tour gone, this is now a real
+  // return-trip transfer booking - the return-leg fields should reappear.
+  updateReturnFieldsVisibility();
   // Re-run pricing so the loyalty discount can re-qualify now that the
   // booking is transfer-only again.
   updatePricing();
@@ -1355,6 +1392,9 @@ function selectTour(idx) {
     const active = state.tripType === 'return' ? txt.includes('return') : txt.includes('one');
     btn.classList.toggle('active', active);
   });
+  // Tour bookings never show the separate return-leg fields (see
+  // updateReturnFieldsVisibility) - state.selectedTour is already set above.
+  updateReturnFieldsVisibility();
 
   // Step 4: passengers
   state.passengers = b.passengers || 2;
@@ -1399,6 +1439,18 @@ function buildConfirmation() {
   const card = document.getElementById('confirmationCard');
   if (!card) return;
 
+  // Return-leg row - only for a real return-trip transfer booking (never
+  // shown/required for tours, see updateReturnFieldsVisibility). Lets the
+  // guest catch a missing return detail here before submitting, not after.
+  const returnRows = [];
+  if (state.tripType === 'return' && !bookingHasTour()) {
+    const returnDate = document.getElementById('returnDate')?.value;
+    const returnTime = document.getElementById('returnTime')?.value;
+    const returnLocation = document.getElementById('returnPickupLocation')?.value.trim();
+    const returnDateStr = returnDate ? new Date(returnDate+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'long',year:'numeric'}) : '—';
+    returnRows.push(['Return pickup', `${returnDateStr} at ${returnTime || '—'} · ${stripEmoji(returnLocation) || '—'}`]);
+  }
+
   // Redesign: pricing no longer ends this card - it lives once, in the
   // single consolidated price block (see renderPriceBlock()). Trip details
   // only here.
@@ -1413,6 +1465,7 @@ function buildConfirmation() {
     ['Flight number',   flight],
     ['Distance',        `${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`],
     ['Trip type',       suffix],
+    ...returnRows,
     ['Special requests',notes],
   ].map(([l,v]) => `<div class="confirm-row"><span class="confirm-label">${l}</span><span class="confirm-value">${v}</span></div>`).join('');
 
@@ -1511,6 +1564,27 @@ function buildWhatsAppURL(ref) {
       ]
     : [];
 
+  // Real gap this closes: a return-trip booking previously reached this
+  // message as just "Trip: Return" with no return-leg detail at all -
+  // nothing telling us when or where to collect the guest for the trip
+  // back. Never shown for a tour (see updateReturnFieldsVisibility).
+  const returnSection = (state.tripType === 'return' && !t.hasTour)
+    ? (() => {
+        const returnDate = document.getElementById('returnDate')?.value;
+        const returnTime = document.getElementById('returnTime')?.value || 'Not set';
+        const returnLocation = document.getElementById('returnPickupLocation')?.value.trim() || toName;
+        const returnDateStr = returnDate ? new Date(returnDate+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'long',year:'numeric'}) : 'Not set';
+        return [
+          ``,
+          `*RETURN JOURNEY*`,
+          `-------------------------------------`,
+          `Return date:   ${returnDateStr}`,
+          `Return pickup: ${returnTime}`,
+          `Return from:   ${stripEmoji(returnLocation)}`,
+        ];
+      })()
+    : [];
+
   const msg = [
     `*NEW BOOKING REQUEST*`,
     `Fiji Dash`,
@@ -1529,7 +1603,9 @@ function buildWhatsAppURL(ref) {
     `Date:     ${dateStr}`,
     `Pickup:   ${time}`,
     `Trip:     ${tripLabel}`,
-    `Distance: ${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`,``,
+    `Distance: ${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`,
+    ...returnSection,
+    ``,
     `*VEHICLE & PASSENGERS*`,
     `-------------------------------------`,
     `Vehicle:    ${vName}`,
