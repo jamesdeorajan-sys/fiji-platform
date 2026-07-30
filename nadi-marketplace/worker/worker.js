@@ -60,6 +60,18 @@ const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
 // app.js), but a guest can always bypass client JS, so this check is the
 // one that actually matters.
 const NEGOTIATION_FLOOR_RATIO = 0.80;
+// Real bug fix: computeRealReferenceFare() previously always computed a
+// one-way fare regardless of trip type, because neither GET /reference-fare
+// nor POST /negotiate ever received trip_type from the client. That meant
+// (a) the Flexible Fare price block silently overwrote a correct
+// return-trip total with the one-way reference fare the instant the async
+// fetch resolved, and (b) far worse, the negotiation floor for a
+// return-trip Flexible Fare proposal was enforced against the one-way
+// fare too - a guest (or driver) could get a real, accepted return-trip
+// booking at roughly 80% of the ONE-WAY price instead of 80% of the
+// correct return price, an actual exploitable underpricing gap, not just
+// a display bug. Must match app.js's own RETURN_MULTIPLIER exactly.
+const RETURN_MULTIPLIER = 1.85;
 const NADI_AIRPORT_ZONE_NAME = 'Nadi Airport';
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
@@ -1733,9 +1745,13 @@ async function handleReferenceFarePreview(request, env) {
   const pickupZone = (url.searchParams.get('pickup_zone') || '').trim();
   const destinationZone = (url.searchParams.get('destination_zone') || '').trim();
   const vehicleType = (url.searchParams.get('vehicle_type') || '').trim().toLowerCase();
+  // Real bug fix - see RETURN_MULTIPLIER's comment. Defaults to 'one-way'
+  // so this stays backward-compatible with any caller that doesn't send it.
+  const tripType = (url.searchParams.get('trip_type') || 'one-way').trim();
 
   const errors = [];
   if (!['sedan', 'minivan', 'minibus'].includes(vehicleType)) errors.push('vehicle_type must be one of: sedan, minivan, minibus');
+  if (!['one-way', 'return'].includes(tripType)) errors.push("trip_type must be one of: one-way, return");
   const validZones = await getValidZoneNames(env);
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
   if (!validZones.has(destinationZone)) errors.push(`unknown destination_zone: ${destinationZone}`);
@@ -1744,7 +1760,7 @@ async function handleReferenceFarePreview(request, env) {
   }
   if (errors.length > 0) return json({ ok: false, errors }, 400);
 
-  const result = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType);
+  const result = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType, tripType);
   if (!result.ok) return json({ ok: false, error: result.error }, result.status);
 
   // Real fix: only a genuine cache miss (a real, billable Google Routes API
@@ -1780,6 +1796,13 @@ async function handleNegotiationCreate(request, env) {
   const passengers = body.passengers !== undefined && body.passengers !== null ? Number(body.passengers) : null;
   const pickupDatetime = body.pickup_datetime ? body.pickup_datetime.toString().trim() : null;
   const guestProposedAmountFjd = Number(body.guest_proposed_amount_fjd);
+  // Real bug fix - see RETURN_MULTIPLIER's comment. Without this, the
+  // negotiation floor below was enforced against a one-way reference fare
+  // even for a return-trip proposal - a real, exploitable underpricing gap,
+  // not just a display bug (a driver could actually accept a return-trip
+  // job at ~80% of the one-way fare). Defaults to 'one-way' for
+  // backward-compatibility with any caller that doesn't send it.
+  const tripType = (body.trip_type || 'one-way').toString().trim();
   // reference_fare_fjd is deliberately NEVER read from the request body -
   // see the real fare computation below. Whatever a client sends for it is
   // ignored entirely, not just bounds-checked.
@@ -1789,6 +1812,7 @@ async function handleNegotiationCreate(request, env) {
   // Boat excluded deliberately - a boat fare is a real third-party bundled
   // price FTT doesn't set, negotiating it doesn't make sense.
   if (!['sedan', 'minivan', 'minibus'].includes(vehicleType)) errors.push('vehicle_type must be one of: sedan, minivan, minibus');
+  if (!['one-way', 'return'].includes(tripType)) errors.push("trip_type must be one of: one-way, return");
   if (passengers !== null && (!Number.isInteger(passengers) || passengers < 1 || passengers > 20)) errors.push('passengers must be an integer between 1 and 20');
   if (!guestProposedAmountFjd || !isFinite(guestProposedAmountFjd) || guestProposedAmountFjd <= 0 || guestProposedAmountFjd > 5000) errors.push('guest_proposed_amount_fjd must be a positive number no greater than 5000');
 
@@ -1812,7 +1836,7 @@ async function handleNegotiationCreate(request, env) {
   // a real gap: a guest could previously submit a fake low
   // reference_fare_fjd alongside a proportionally low-balled proposal and
   // pass the 80% floor check against a number they invented.
-  const refFareResult = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType);
+  const refFareResult = await computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType, tripType);
   if (!refFareResult.ok) {
     return json({ ok: false, error: refFareResult.error }, refFareResult.status);
   }
@@ -2689,7 +2713,7 @@ async function getZoneDistanceKm(env, zoneAName, zoneBName, latA, lngA, latB, ln
 // Assumes pickupZone/destinationZone are already validated real zone
 // names and that exactly one of them is Nadi Airport - callers must check
 // that themselves (both current callers already do, for their own reasons).
-async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType) {
+async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicleType, tripType = 'one-way') {
   const remoteZoneName = pickupZone === NADI_AIRPORT_ZONE_NAME ? destinationZone : pickupZone;
   const [airportZoneRow, remoteZoneRow] = await Promise.all([
     env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = ?`).bind(NADI_AIRPORT_ZONE_NAME).first(),
@@ -2705,10 +2729,16 @@ async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicl
   if (distanceKm === null) {
     return { ok: false, error: 'Could not compute a real fare for this route right now. Please try again shortly.', status: 503 };
   }
-  const referenceFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
-  if (!referenceFareFjd) {
+  const oneWayFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  if (!oneWayFareFjd) {
     return { ok: false, error: 'No pricing rule found for this route and vehicle type.', status: 400 };
   }
+  // Real bug fix (see RETURN_MULTIPLIER's own comment above) - this used to
+  // always be the one-way fare, silently wrong for any return-trip preview
+  // or negotiation floor.
+  const referenceFareFjd = tripType === 'return'
+    ? Math.round(oneWayFareFjd * RETURN_MULTIPLIER * 100) / 100
+    : oneWayFareFjd;
   // cacheHit propagated so callers that meter real API-cost calls (see
   // handleReferenceFarePreview) can tell a free cache read apart from a
   // real, billable Google Routes API call.
