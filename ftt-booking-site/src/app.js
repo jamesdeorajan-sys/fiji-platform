@@ -1785,6 +1785,12 @@ async function submitMarketplaceBooking(ref) {
     return;
   }
 
+  // Itinerary fields - informational only (never affect price/commission),
+  // but this is the actual fix for the return-trip gap: previously nothing
+  // sent to this endpoint carried date/time/notes for either leg. Return
+  // fields only sent for a real return-trip transfer (never a tour, matches
+  // updateReturnFieldsVisibility's gate everywhere else this condition appears).
+  const isReturnTransfer = state.tripType === 'return' && !bookingHasTour();
   const payload = {
     guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
     guest_phone: phone,
@@ -1796,6 +1802,14 @@ async function submitMarketplaceBooking(ref) {
     fx_rate_at_booking: 1,
     distance_km: isBoatBooking ? null : state.distanceKm,
     payment_method: 'cash', // no payment is collected on this site today - guest pays the driver directly
+    pickup_date: document.getElementById('travelDate')?.value || null,
+    pickup_time: document.getElementById('travelTime')?.value || null,
+    notes: document.getElementById('notes')?.value.trim() || null,
+    ...(isReturnTransfer ? {
+      return_date: document.getElementById('returnDate')?.value || null,
+      return_time: document.getElementById('returnTime')?.value || null,
+      return_pickup_location: document.getElementById('returnPickupLocation')?.value.trim() || null,
+    } : {}),
     ...(commissionBaseFjd !== undefined ? { commission_base_fjd: commissionBaseFjd } : {}),
   };
 
