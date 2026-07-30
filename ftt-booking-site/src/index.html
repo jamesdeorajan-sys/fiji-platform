@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260730-confirmredesign">
+<link rel="stylesheet" href="styles.css?v=20260730b-reorderwarequired">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -225,7 +225,6 @@
     </a>
   </div>
 </section>
-
 <!-- BOOKING ENGINE -->
 <section class="booking-section" id="booking">
   <div class="container">
@@ -918,15 +917,22 @@
         <div class="bula-ref" id="bulaRef"></div>
 
         <p class="bula-lead">
-          Your booking request has landed with our team. We'll confirm within
-          <strong>15 minutes</strong> via WhatsApp — please tap the button below to
-          send the full booking details so we can lock it in.
+          Your booking details are saved, but <strong>nothing has been sent to our team yet</strong>.
+          Tap the button below now — we can't process your booking until you do.
         </p>
 
-        <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn">
+        <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn" onclick="markWhatsAppTapped()">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-          Send booking via WhatsApp →
+          Send booking via WhatsApp — required →
         </a>
+
+        <!-- Real requirement, not a nicety: the bookings row exists in the
+             DB at this point regardless (status='pending'), but no human
+             sees it until this WhatsApp message actually sends - from the
+             guest's side, correctly, nothing happens without this tap. -->
+        <div class="bula-required-notice" id="bulaRequiredNotice">
+          ⚠️ <strong>Required:</strong> your booking is not sent to our team until you tap the button above.
+        </div>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
         <div class="bula-modify">
@@ -964,7 +970,7 @@
         </div>
 
         <div class="bula-actions">
-          <a href="https://wa.me/61478886145?text=Hi%20Fiji%20Tour%20Transfers%2C%20I%27m%20saving%20your%20number%20for%20my%20Fiji%20trip%20%F0%9F%8C%BA" target="_blank" rel="noopener" class="btn-whatsapp">
+          <a href="https://wa.me/61478886145?text=Hi%20Fiji%20Dash%2C%20I%27m%20saving%20your%20number%20for%20my%20Fiji%20trip%20%F0%9F%8C%BA" target="_blank" rel="noopener" class="btn-whatsapp">
             💬 Save us on WhatsApp
           </a>
           <button class="btn-secondary" onclick="resetBooking()">Book another transfer</button>
@@ -1014,7 +1020,64 @@
 
   </div>
 </section>
+<!-- ROUTES SECTION -->
+<section class="routes-section" id="routes">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">Transfer routes</span>
+      <h2>All routes &amp; major Fiji hotels — fixed FJ$ pricing</h2>
+      <p>Distance-based pricing in Fijian Dollars (FJD). The further you go, the lower your effective per-km rate. Don't see your hotel? Use the booking widget — pick "📍 Other / not listed" and type your address.</p>
+    </div>
+    <div class="promo-banner">
+      <span class="promo-icon">★</span>
+      <strong>10% OFF every booking over FJ$50</strong>
+      <span class="promo-sub">Discount applies automatically at checkout — visible on every quote</span>
+    </div>
+    <div class="routes-table-wrap">
+      <table class="routes-table">
+        <thead>
+          <tr>
+            <th>Destination / Area</th>
+            <th>Distance</th>
+            <th>Journey time</th>
+            <th>Sedan (1–3 pax)</th>
+            <th>Minivan (4–7 pax)</th>
+            <th>Minibus (8–12 pax)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="routesTableBody"></tbody>
+      </table>
+    </div>
 
+    <!-- REDESIGN (Routes Table Mobile.dc.html): below 900px, replaces the
+         horizontal-scroll table above with a collapsed, alphabetical
+         2-column picker. Desktop table markup/styling untouched - this is
+         a separate container, shown/hidden purely by the existing 900px
+         breakpoint. -->
+    <div class="mobile-routes-list" id="routesMobileList"></div>
+  </div>
+</section>
+<!-- REVIEWS -->
+<section class="reviews-section" id="reviews">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-eyebrow">Verified reviews</span>
+      <h2>What travellers say</h2>
+      <!-- VERIFY BEFORE DEPLOY: the "4.9 / 5" rating and "500+" count below
+           must match real Google Business / TripAdvisor / Facebook totals.
+           Australian Consumer Law and NZ Fair Trading Act treat unverifiable
+           review counts as misleading conduct. Update with actual figures
+           from each platform's dashboard before pushing live. -->
+      <div class="reviews-overall">
+        <div class="reviews-stars">★★★★★</div>
+        <div class="reviews-score">4.9 / 5</div>
+        <div class="reviews-count">Based on 500+ Google & TripAdvisor reviews</div>
+      </div>
+    </div>
+    <div class="reviews-grid" id="reviewsGrid"></div>
+  </div>
+</section>
 <!-- HOW IT WORKS -->
 <section class="how-section">
   <div class="container">
@@ -1059,46 +1122,6 @@
     </div>
   </div>
 </section>
-
-<!-- ROUTES SECTION -->
-<section class="routes-section" id="routes">
-  <div class="container">
-    <div class="section-header">
-      <span class="section-eyebrow">Transfer routes</span>
-      <h2>All routes &amp; major Fiji hotels — fixed FJ$ pricing</h2>
-      <p>Distance-based pricing in Fijian Dollars (FJD). The further you go, the lower your effective per-km rate. Don't see your hotel? Use the booking widget — pick "📍 Other / not listed" and type your address.</p>
-    </div>
-    <div class="promo-banner">
-      <span class="promo-icon">★</span>
-      <strong>10% OFF every booking over FJ$50</strong>
-      <span class="promo-sub">Discount applies automatically at checkout — visible on every quote</span>
-    </div>
-    <div class="routes-table-wrap">
-      <table class="routes-table">
-        <thead>
-          <tr>
-            <th>Destination / Area</th>
-            <th>Distance</th>
-            <th>Journey time</th>
-            <th>Sedan (1–3 pax)</th>
-            <th>Minivan (4–7 pax)</th>
-            <th>Minibus (8–12 pax)</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="routesTableBody"></tbody>
-      </table>
-    </div>
-
-    <!-- REDESIGN (Routes Table Mobile.dc.html): below 900px, replaces the
-         horizontal-scroll table above with a collapsed, alphabetical
-         2-column picker. Desktop table markup/styling untouched - this is
-         a separate container, shown/hidden purely by the existing 900px
-         breakpoint. -->
-    <div class="mobile-routes-list" id="routesMobileList"></div>
-  </div>
-</section>
-
 <!-- TOURS SECTION -->
 <section class="tours-section" id="tours">
   <div class="container">
@@ -1115,7 +1138,6 @@
     </div>
   </div>
 </section>
-
 <!-- COMPARE SECTION -->
 <section class="compare-section" id="compare">
   <div class="container">
@@ -1152,28 +1174,6 @@
     </div>
   </div>
 </section>
-
-<!-- REVIEWS -->
-<section class="reviews-section" id="reviews">
-  <div class="container">
-    <div class="section-header">
-      <span class="section-eyebrow">Verified reviews</span>
-      <h2>What travellers say</h2>
-      <!-- VERIFY BEFORE DEPLOY: the "4.9 / 5" rating and "500+" count below
-           must match real Google Business / TripAdvisor / Facebook totals.
-           Australian Consumer Law and NZ Fair Trading Act treat unverifiable
-           review counts as misleading conduct. Update with actual figures
-           from each platform's dashboard before pushing live. -->
-      <div class="reviews-overall">
-        <div class="reviews-stars">★★★★★</div>
-        <div class="reviews-score">4.9 / 5</div>
-        <div class="reviews-count">Based on 500+ Google & TripAdvisor reviews</div>
-      </div>
-    </div>
-    <div class="reviews-grid" id="reviewsGrid"></div>
-  </div>
-</section>
-
 <!-- FAQ -->
 <section class="faq-section" id="faq">
   <div class="container">
@@ -1270,7 +1270,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260730-confirmredesign"></script>
+<script src="app.js?v=20260730b-reorderwarequired"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

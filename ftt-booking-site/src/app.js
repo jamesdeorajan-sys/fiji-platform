@@ -172,6 +172,12 @@ const state = {
   // toggle rather than shown as an equal-weight card. Reset to false each
   // time renderFareTiers() runs (i.e. every fresh entry to step 4).
   showFlexibleFare: false,
+  // True once the guest has actually tapped "Send booking via WhatsApp" on
+  // the Bula success card. Gates the beforeunload leave-warning below -
+  // the DB row exists regardless, but no human sees the booking until this
+  // tap fires the real WhatsApp message, so from the guest's side this is
+  // the step that matters. Reset to false each time the success card shows.
+  bulaWaTapped: false,
   // selectedTour holds the full TOURS_DATA entry when a tour is in the booking,
   // null otherwise. Set by selectTour(), cleared by removeTourBanner().
   // Used by calculateTotal() to add tour cost (price × passengers) to the total.
@@ -1602,6 +1608,14 @@ function confirmBooking() {
   const bula = document.getElementById('bulaSuccess');
   if (bula) bula.style.display = 'block';
 
+  // Fresh entry to the success card - the WhatsApp tap is required again
+  state.bulaWaTapped = false;
+  const requiredNotice = document.getElementById('bulaRequiredNotice');
+  if (requiredNotice) {
+    requiredNotice.textContent = '⚠️ Required: your booking is not sent to our team until you tap the button above.';
+    requiredNotice.classList.remove('acknowledged');
+  }
+
   // Scroll to the top of the booking section so the success card is centered
   document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
 
@@ -2080,6 +2094,32 @@ function showNegotiationSuccess(_referenceFare, agreedAmount) {
   if (success) success.style.display = 'block';
   document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+// Called from the "Send booking via WhatsApp" button's onclick, right as the
+// wa.me link opens in a new tab. Marks the required step done so the
+// beforeunload warning below doesn't fire once the guest has actually sent it.
+function markWhatsAppTapped() {
+  state.bulaWaTapped = true;
+  const notice = document.getElementById('bulaRequiredNotice');
+  if (notice) {
+    notice.textContent = '✅ Sent — thanks! Our team will confirm on WhatsApp shortly.';
+    notice.classList.add('acknowledged');
+  }
+}
+
+// Real requirement, not a nicety: if the guest tries to leave (close tab,
+// navigate away, hit back) while the Bula success card is showing and they
+// have NOT tapped the WhatsApp button, warn them - the booking row exists in
+// the DB either way, but no human on our end sees it until that WhatsApp
+// message actually sends.
+window.addEventListener('beforeunload', function(e) {
+  const bula = document.getElementById('bulaSuccess');
+  if (bula && bula.style.display !== 'none' && !state.bulaWaTapped) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
 
 // Reset the booking flow without a full page reload — closes the Bula card
 // and reopens the booking widget, fresh state.

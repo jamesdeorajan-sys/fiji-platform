@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8811", "--directory", "docs/lagi-public-live-backup"],
       "port": 8811
+    },
+    {
+      "name": "guest-widget-local",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8812", "--directory", "ftt-booking-site/src"],
+      "port": 8812
     }
   ]
 }
