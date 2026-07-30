@@ -456,3 +456,21 @@ CREATE TABLE reference_fare_lookups (
 
 INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_max_per_day', '60');
 INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_window_minutes', '10');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 17 additions — itinerary fields. Bookings previously stored
+-- zero itinerary detail for either leg of a trip (only pricing/zone/
+-- vehicle/settlement data). Added after a real return-trip booking
+-- reached dispatch with no return date, time, or pickup location
+-- captured anywhere. See migrations/milestone17-itinerary-fields.sql for
+-- the migration actually run against the live database. All nullable —
+-- existing rows and the other two createBookingRecord() callers (admin
+-- test booking, negotiation accept-offer) are unaffected.
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE bookings ADD COLUMN pickup_date TEXT;
+ALTER TABLE bookings ADD COLUMN pickup_time TEXT;
+ALTER TABLE bookings ADD COLUMN notes TEXT;
+ALTER TABLE bookings ADD COLUMN return_date TEXT;
+ALTER TABLE bookings ADD COLUMN return_time TEXT;
+ALTER TABLE bookings ADD COLUMN return_pickup_location TEXT;

@@ -1540,6 +1540,16 @@ async function broadcastBookingToDrivers(env, booking) {
 // DDoS/bot-management layer is a separate, unrelated protection this
 // Worker doesn't configure). This is app-level spam friction, not a
 // security boundary - flagging that distinction explicitly per instruction.
+// Trims/caps an optional itinerary string, normalising '' to null so it's
+// stored as a real absence rather than an empty string. Shared by the
+// pickup_date/pickup_time/notes/return_* fields on the public booking
+// endpoint below.
+function normalisedItineraryString(v, maxLen) {
+  if (v === undefined || v === null) return null;
+  const s = v.toString().trim().slice(0, maxLen);
+  return s === '' ? null : s;
+}
+
 async function checkGuestBookingRateLimit(env, ip) {
   const max = Number(await getSetting(env, 'guest_booking_rate_limit_max', '5'));
   const windowMinutes = Number(await getSetting(env, 'guest_booking_rate_limit_window_minutes', '10'));
@@ -1562,6 +1572,14 @@ async function createBookingRecord(env, {
   guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
   quotedCurrency, quotedAmount, fxRate, paymentMethod, sourceIp,
   commissionBaseFjd = null, assignedDriverId = null, status = 'pending',
+  // Itinerary fields - informational only, never used for pricing/commission
+  // math. Added after a real return-trip booking reached dispatch with no
+  // return date, time, or pickup location captured anywhere - the bookings
+  // table previously stored zero itinerary detail for either leg. All
+  // optional/null by default so the two other callers (admin test booking,
+  // negotiation accept-offer) are unaffected.
+  pickupDate = null, pickupTime = null, notes = null,
+  returnDate = null, returnTime = null, returnPickupLocation = null,
 }) {
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
@@ -1572,6 +1590,12 @@ async function createBookingRecord(env, {
   if (distanceKm !== null && (!isFinite(distanceKm) || distanceKm < 0 || distanceKm > 500)) errors.push('distance_km out of range');
   if (!['cash', 'prepay'].includes(paymentMethod)) errors.push("payment_method must be 'cash' or 'prepay'");
   if (commissionBaseFjd !== null && (!isFinite(commissionBaseFjd) || commissionBaseFjd < 0 || commissionBaseFjd > quotedAmount)) errors.push('commission_base_fjd out of range');
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const TIME_RE = /^\d{2}:\d{2}$/;
+  if (pickupDate !== null && !DATE_RE.test(pickupDate)) errors.push('pickup_date must be in YYYY-MM-DD format');
+  if (pickupTime !== null && !TIME_RE.test(pickupTime)) errors.push('pickup_time must be in HH:MM format');
+  if (returnDate !== null && !DATE_RE.test(returnDate)) errors.push('return_date must be in YYYY-MM-DD format');
+  if (returnTime !== null && !TIME_RE.test(returnTime)) errors.push('return_time must be in HH:MM format');
 
   const validZones = await getValidZoneNames(env);
   if (!validZones.has(pickupZone)) errors.push(`unknown pickup_zone: ${pickupZone}`);
@@ -1586,12 +1610,14 @@ async function createBookingRecord(env, {
   const insert = await env.DB.prepare(
     `INSERT INTO bookings (guest_name, guest_phone, pickup_zone, destination_zone, distance_km, vehicle_type,
        quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
-       payment_method, status, source_ip, commission_base_fjd, assigned_driver_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       payment_method, status, source_ip, commission_base_fjd, assigned_driver_id,
+       pickup_date, pickup_time, notes, return_date, return_time, return_pickup_location)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
     quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied,
-    paymentMethod, status, sourceIp, commissionBaseFjd, assignedDriverId
+    paymentMethod, status, sourceIp, commissionBaseFjd, assignedDriverId,
+    pickupDate, pickupTime, notes, returnDate, returnTime, returnPickupLocation
   ).run();
 
   const bookingId = insert.meta.last_row_id;
@@ -1628,6 +1654,12 @@ async function handleGuestBookingCreate(request, env) {
     // pass-through fare. null for every ordinary road booking, unchanged.
     commissionBaseFjd: body.commission_base_fjd !== undefined && body.commission_base_fjd !== null ? Number(body.commission_base_fjd) : null,
     sourceIp: clientIp,
+    pickupDate: normalisedItineraryString(body.pickup_date, 10),
+    pickupTime: normalisedItineraryString(body.pickup_time, 5),
+    notes: normalisedItineraryString(body.notes, 1000),
+    returnDate: normalisedItineraryString(body.return_date, 10),
+    returnTime: normalisedItineraryString(body.return_time, 5),
+    returnPickupLocation: normalisedItineraryString(body.return_pickup_location, 300),
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
