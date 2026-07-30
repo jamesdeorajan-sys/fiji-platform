@@ -48,6 +48,9 @@
   "priceRange": "FJ$15 - FJ$549"
 }
 </script>
+<!-- Organization sameAs is an intentional empty placeholder (schema audit
+     2026-07-30) - populate with the Google Business Profile and TripAdvisor
+     listing URLs once James has them set up, then add the Facebook page too. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -65,7 +68,8 @@
     "telephone": "+61-478-886-145",
     "contactType": "customer service",
     "availableLanguage": ["English"]
-  }
+  },
+  "sameAs": []
 }
 </script>
 <script type="application/ld+json">
@@ -1075,7 +1079,85 @@
         <div class="reviews-count">Based on 500+ Google & TripAdvisor reviews</div>
       </div>
     </div>
-    <div class="reviews-grid" id="reviewsGrid"></div>
+    <!-- Static-rendered so review text is crawlable without JS (crawler
+         audit 2026-07-30 found this content invisible to non-JS fetches).
+         Mirrors REVIEWS_DATA in app.js exactly - buildReviews() re-renders
+         this same markup on JS-enabled browsers, so keep the two in sync
+         if reviews are ever edited. -->
+    <div class="reviews-grid" id="reviewsGrid">
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Driver was waiting in arrivals with our name. Shell lei, cold water, and a supermarket stop on the way. Couldn't have been easier arriving with two kids after a 10-hour flight from Sydney."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#0066cc">SM</div>
+          <div>
+            <div class="review-name">Sarah M.</div>
+            <div class="review-location">Sydney, AU</div>
+            <div class="review-source">Google review · Verified</div>
+          </div>
+        </div>
+      </div>
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Junior Ali drove us from the airport to Coral Coast — 90 minutes and the whole time he was sharing stories about the villages we passed. Spotless vehicle, on time, genuinely friendly."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#00b386">MT</div>
+          <div>
+            <div class="review-name">Mark T.</div>
+            <div class="review-location">Auckland, NZ</div>
+            <div class="review-source">TripAdvisor review · Verified</div>
+          </div>
+        </div>
+      </div>
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Booked online from Melbourne — easy process. Driver met us at arrivals with a sign, helped with all bags, waited patiently while we stopped at the ATM. Will use again on every Fiji trip."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#7c3aed">J&amp;</div>
+          <div>
+            <div class="review-name">James &amp; Kel</div>
+            <div class="review-location">Melbourne, AU</div>
+            <div class="review-source">Google review · Verified</div>
+          </div>
+        </div>
+      </div>
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Transferred 8 of us from Nadi to Port Denarau in a large clean Toyota van. Kids seats provided without asking. Excellent communication, arrived on time, competitive pricing. Highly recommend."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#b45309">TW</div>
+          <div>
+            <div class="review-name">The Williamson Family</div>
+            <div class="review-location">Brisbane, AU</div>
+            <div class="review-source">Google review · Verified</div>
+          </div>
+        </div>
+      </div>
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Used for both airport pickup and the Sigatoka Sand Dunes day tour. The guide was knowledgeable about the archaeology — genuinely one of the highlights of our Fiji trip."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#dc2626">CH</div>
+          <div>
+            <div class="review-name">Claire H.</div>
+            <div class="review-location">London, UK</div>
+            <div class="review-source">TripAdvisor review · Verified</div>
+          </div>
+        </div>
+      </div>
+      <div class="review-card">
+        <div class="review-stars">★★★★★</div>
+        <div class="review-text">"Booked a return transfer Nadi to Pacific Harbour for our shark dive trip. Driver was 15 minutes early both ways. Even texted to confirm the morning of. Absolutely faultless."</div>
+        <div class="review-author">
+          <div class="review-avatar" style="background:#059669">R&amp;</div>
+          <div>
+            <div class="review-name">Ryan &amp; Sophie</div>
+            <div class="review-location">Wellington, NZ</div>
+            <div class="review-source">Google review · Verified</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 <!-- HOW IT WORKS -->
