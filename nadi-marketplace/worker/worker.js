@@ -1700,15 +1700,41 @@ async function createBookingRecord(env, {
               }
             }
           }
-          // Fixed zone-pair, transfer + extras only: this IS the price.
-          // Zero client trust from here on - quoted_amount is REPLACED,
-          // not just checked, closing off both the display-drift bug
-          // class and any client-side tampering.
-          if (Math.abs(quotedAmount - serverFjdDiscounted) > 0.02) {
-            console.warn(`[pricing-drift] client sent ${quotedAmount}, server computed ${serverFjdDiscounted} for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType} - replacing with the server number`);
+          // Real gap found via live testing after this shipped (James,
+          // checking an unrelated applyExtras question): computeAuthoritativePrice
+          // always uses the pricing_rules FORMULA (computeFareFjd), but the
+          // client's real quoted_amount for a known route (e.g. Nadi Airport
+          // -> Denarau) comes from a separate, curated PUBLISHED price table
+          // (ROUTES_DATA, client-only - the server has no representation of
+          // it at all). The two are close but not identical (e.g. $49
+          // published vs $47.87 formula for that exact route) - full-replace
+          // was silently overriding a real guest's real, published, agreed
+          // price with a different number from a different source. That's
+          // exactly the class of drift this whole initiative exists to
+          // prevent, just from the server side this time.
+          //
+          // Narrowed to a sanity band rather than full replace (a real,
+          // named v1.1 follow-up to fully close: port the published price
+          // table server-side so full-replace can return - see the
+          // README). Band is tighter than custom-address's 0.7x-3x
+          // (published-vs-formula drift observed so far is a few percent,
+          // not a real distance difference) but still generous enough not
+          // to false-positive on normal route-to-route variation.
+          //
+          // Within the band, the client's number is genuinely trusted and
+          // KEPT (it's the real published price, not overridden by the
+          // formula approximation - this is the actual fix). Outside the
+          // band is a different situation entirely - not legitimate
+          // published-price drift anymore, either tampering or a genuinely
+          // broken reference - and still falls back to the safe server
+          // number, so this narrowing doesn't reopen the tampering gap
+          // Step 4 closed; it just widens the untouched zone around a
+          // real guest's real published price.
+          if (quotedAmount < serverFjdDiscounted * 0.8 || quotedAmount > serverFjdDiscounted * 1.3) {
+            console.warn(`[pricing-drift] client sent ${quotedAmount}, outside the plausible published-price range (formula reference ${serverFjdDiscounted}) for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType} - replacing with the server number`);
+            quotedAmount = serverFjdDiscounted;
           }
-          quotedAmount = serverFjdDiscounted;
-          distanceKm = authoritative.distanceKm; // same source that drove the price - keep the stored distance consistent with it
+          distanceKm = authoritative.distanceKm; // server-derived distance is still trustworthy independent of which price source is used
         } else if (isCustomAddress && !hasTour) {
           // Real gap found during Step 4 planning: the server can't yet
           // re-derive a custom address's exact geocoded distance (no
