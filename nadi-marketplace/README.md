@@ -1349,6 +1349,29 @@ in Milestone 17) now share one named, tested, server-authoritative
 pricing pipeline with a real runtime guardrail behind it, rather than
 depending on a human noticing the next wrong number.
 
+**Post-Milestone-18 fix — fixed-route full-replace was overriding real
+published prices.** Found via live testing while James was checking an
+unrelated `applyExtras()` question (that question's own answer: extras
+are correct, $8/$24 flat, verified directly against deployed code — the
+non-additive deltas he saw were the loyalty discount's own well-understood
+whole-dollar-rounded behavior, not a bug). Root cause:
+`computeAuthoritativePrice()` always used the `pricing_rules` FORMULA,
+but a real guest's quoted price for a known route comes from a separate,
+curated PUBLISHED price table the server has no representation of at
+all (e.g. FJ$49 published vs FJ$47.87 formula for Nadi Airport ->
+Denarau, sedan) — full-replace was silently overriding a real guest's
+real, agreed price with a different number. Fixed zone-pair bookings
+now use a sanity band (0.8x-1.3x, tighter than custom-address's
+0.7x-3x) instead of full replace: within the band the client's real
+number is kept; outside it, still falls back to the safe server number
+(so this doesn't reopen the tampering gap Step 4 closed - it just
+widens the untouched zone around a real published price). Named v1.1
+follow-up to fully close: port the published price table server-side.
+Verified live (real published price kept, genuinely tampered price
+still replaced, the exact extras scenario that surfaced this now
+matches the client exactly), test data cleaned up, baseline
+re-confirmed, zero regression on the existing 43-test suite.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
