@@ -1245,10 +1245,33 @@ was itself wrong on first run (a one-way number mislabeled as "return" in
 the plan) - caught immediately by the suite, exactly the failure mode
 it's meant to catch. Run via `node --test nadi-marketplace/worker/pricing.test.js`.
 
-Remaining steps (extract `pricing.js` with named steps, unit tests for
-each step, flip the `POST /bookings` trust boundary, add the runtime
-guardrail) tracked and not yet started - see the approved plan for full
-detail on scope, sequencing, and the explicit carve-outs (admin-test
+**Steps 2+3 (done)**: `nadi-marketplace/worker/pricing.mjs` — the 7 named
+pricing steps (`resolveDistanceKm`, `computeBaseFare`,
+`applyZoneMultiplier`, `applyTripTypeMultiplier`, `applyNightSurcharge`,
+`applyLoyaltyDiscount`, `computeFinalTotal`) plus `computeBoatFare` and
+the Recommendation 4 guardrail (`assertSanePricing`, defined and tested
+now, not wired into the real request path until Step 4). `.mjs`
+extension deliberately, not `.js` — makes it an unambiguous ES module by
+extension alone with no `package.json` needed anywhere in the repo,
+keeping the "zero new dependencies" decision from the approved plan
+intact. `worker.js`'s `computeFareFjd()`, `computeRealReferenceFare()`,
+and `handleBoatQuote()` now call these named functions instead of each
+carrying its own inline copy of the formula — a pure structural refactor,
+confirmed zero behavior change by deploying it and re-running the full
+Step-1 integration suite against the live API afterward (all 10 still
+passing). 24 new unit tests in `pricing-steps.test.mjs` covering each
+step's normal/boundary/bad-input cases, including one that directly
+reproduces the exact Milestone 17 failure mode (a return total that
+collapsed to ~1x the one-way fare) and confirms `assertSanePricing`
+would have caught it. Full local suite: 28 unit + 10 integration = 38
+tests, all passing, zero database side effects (confirmed via direct D1
+query before and after).
+
+Remaining steps (flip the `POST /bookings` trust boundary, wire the
+runtime guardrail into the real request path) **paused for review before
+starting** — Step 4 is the piece that actually changes how real live
+bookings get priced, per James's explicit ask. See the approved plan for
+full detail on scope, sequencing, and the explicit carve-outs (admin-test
 booking, negotiation accept-offer, tours/extras deferred to v2) that keep
 this from breaking currently-working flows.
 

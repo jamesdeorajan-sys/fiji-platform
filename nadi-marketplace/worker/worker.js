@@ -42,6 +42,15 @@
  * report for the exact content submitted and current approval status.
  */
 
+// Milestone 18 (server-authoritative pricing, Recommendation 2): the
+// named, individually-testable pricing steps live in pricing.mjs, shared
+// with the Node test suite (pricing.test.js / pricing-steps.test.mjs) -
+// this file no longer has its own separate copy of the fare formula.
+import {
+  RETURN_MULTIPLIER, computeBaseFare, applyZoneMultiplier,
+  applyTripTypeMultiplier, computeFinalTotal, computeBoatFare,
+} from './pricing.mjs';
+
 const JSON_CORS = {
   'Access-Control-Allow-Origin': '*',
   // PATCH added for Milestone 7's destination edit endpoint - every prior
@@ -60,18 +69,6 @@ const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
 // app.js), but a guest can always bypass client JS, so this check is the
 // one that actually matters.
 const NEGOTIATION_FLOOR_RATIO = 0.80;
-// Real bug fix: computeRealReferenceFare() previously always computed a
-// one-way fare regardless of trip type, because neither GET /reference-fare
-// nor POST /negotiate ever received trip_type from the client. That meant
-// (a) the Flexible Fare price block silently overwrote a correct
-// return-trip total with the one-way reference fare the instant the async
-// fetch resolved, and (b) far worse, the negotiation floor for a
-// return-trip Flexible Fare proposal was enforced against the one-way
-// fare too - a guest (or driver) could get a real, accepted return-trip
-// booking at roughly 80% of the ONE-WAY price instead of 80% of the
-// correct return price, an actual exploitable underpricing gap, not just
-// a display bug. Must match app.js's own RETURN_MULTIPLIER exactly.
-const RETURN_MULTIPLIER = 1.85;
 const NADI_AIRPORT_ZONE_NAME = 'Nadi Airport';
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB per photo
@@ -1745,8 +1742,9 @@ async function handleReferenceFarePreview(request, env) {
   const pickupZone = (url.searchParams.get('pickup_zone') || '').trim();
   const destinationZone = (url.searchParams.get('destination_zone') || '').trim();
   const vehicleType = (url.searchParams.get('vehicle_type') || '').trim().toLowerCase();
-  // Real bug fix - see RETURN_MULTIPLIER's comment. Defaults to 'one-way'
-  // so this stays backward-compatible with any caller that doesn't send it.
+  // Real bug fix (Milestone 17) - see applyTripTypeMultiplier's comment in
+  // pricing.mjs. Defaults to 'one-way' so this stays backward-compatible
+  // with any caller that doesn't send it.
   const tripType = (url.searchParams.get('trip_type') || 'one-way').trim();
 
   const errors = [];
@@ -1796,9 +1794,10 @@ async function handleNegotiationCreate(request, env) {
   const passengers = body.passengers !== undefined && body.passengers !== null ? Number(body.passengers) : null;
   const pickupDatetime = body.pickup_datetime ? body.pickup_datetime.toString().trim() : null;
   const guestProposedAmountFjd = Number(body.guest_proposed_amount_fjd);
-  // Real bug fix - see RETURN_MULTIPLIER's comment. Without this, the
-  // negotiation floor below was enforced against a one-way reference fare
-  // even for a return-trip proposal - a real, exploitable underpricing gap,
+  // Real bug fix (Milestone 17) - see applyTripTypeMultiplier's comment in
+  // pricing.mjs. Without this, the negotiation floor below was enforced
+  // against a one-way reference fare even for a return-trip proposal - a
+  // real, exploitable underpricing gap,
   // not just a display bug (a driver could actually accept a return-trip
   // job at ~80% of the one-way fare). Defaults to 'one-way' for
   // backward-compatibility with any caller that doesn't send it.
@@ -2636,6 +2635,10 @@ async function findNearestZone(env, lat, lng) {
   return nearest;
 }
 
+// Milestone 18: the DB lookup (which pricing_rules row applies) stays
+// here - the actual formula (steps 2-3-7 of pricing.mjs) is now the same
+// named, independently-unit-tested functions the pricing test suite
+// exercises directly, not a separate inline copy.
 async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
   const rule = await env.DB.prepare(
     `SELECT base_rate_fjd_per_km, flagfall_fjd FROM pricing_rules
@@ -2643,8 +2646,9 @@ async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
      ORDER BY distance_min_km DESC LIMIT 1`
   ).bind(vehicleType, distanceKm, distanceKm).first();
   if (!rule) return null;
-  const raw = rule.flagfall_fjd + rule.base_rate_fjd_per_km * distanceKm;
-  return Math.round(raw * remoteMultiplier * 100) / 100;
+  const baseFare = computeBaseFare({ flagfallFjd: rule.flagfall_fjd, baseRateFjdPerKm: rule.base_rate_fjd_per_km, distanceKm });
+  const withZoneMultiplier = applyZoneMultiplier(baseFare, remoteMultiplier);
+  return computeFinalTotal(withZoneMultiplier);
 }
 
 // MILESTONE 16: real driving distance between two KNOWN zone coordinates
@@ -2733,12 +2737,10 @@ async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicl
   if (!oneWayFareFjd) {
     return { ok: false, error: 'No pricing rule found for this route and vehicle type.', status: 400 };
   }
-  // Real bug fix (see RETURN_MULTIPLIER's own comment above) - this used to
-  // always be the one-way fare, silently wrong for any return-trip preview
-  // or negotiation floor.
-  const referenceFareFjd = tripType === 'return'
-    ? Math.round(oneWayFareFjd * RETURN_MULTIPLIER * 100) / 100
-    : oneWayFareFjd;
+  // Milestone 17 bug fix, now via the named step (pricing.mjs) instead of
+  // an inline ternary - this used to always be the one-way fare, silently
+  // wrong for any return-trip preview or negotiation floor.
+  const referenceFareFjd = computeFinalTotal(applyTripTypeMultiplier(oneWayFareFjd, tripType));
   // cacheHit propagated so callers that meter real API-cost calls (see
   // handleReferenceFarePreview) can tell a free cache read apart from a
   // real, billable Google Routes API call.
@@ -2931,7 +2933,11 @@ async function handleBoatQuote(env, body, clientIp) {
     return json({ ok: false, error: `${dest.name} does not accept children on this transfer.` }, 400);
   }
 
-  const totalFjd = Math.round((adults * dest.boat_adult_fare_fjd + children * (dest.boat_child_fare_fjd || 0)) * 100) / 100;
+  // Milestone 18: same computeBoatFare() (pricing.mjs) that /bookings will
+  // use once the trust-boundary flip lands - one formula, not two copies.
+  const totalFjd = computeBoatFare({
+    adults, children, adultFareFjd: dest.boat_adult_fare_fjd, childFareFjd: dest.boat_child_fare_fjd,
+  });
 
   return json({
     ok: true,
