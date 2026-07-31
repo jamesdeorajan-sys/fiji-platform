@@ -1218,6 +1218,40 @@ minivan, return trip) confirming the Flexible Fare toggle now renders
 with a real "Propose from FJ$125" floor. Test escalation and geocode-cache
 rows created during investigation were deleted afterward.
 
+## Milestone 18 — server-authoritative pricing (in progress, plan approved)
+
+Following the Milestone 17 return-multiplier bug, James asked for a written
+scope-and-risk assessment before committing days to fixing the underlying
+pattern (price computed/displayed in more than one place, drifting
+silently). Full plan covering Recommendations 1–4 (server-authoritative
+`POST /bookings`, named/testable pricing steps, an automated regression
+suite, and a runtime sanity guardrail) was written, reviewed, and approved
+before any implementation started.
+
+**Step 1 (done)**: `nadi-marketplace/worker/pricing.test.js` — a
+regression + scenario suite written against TODAY's already-correct
+behavior, before the refactor, so it's a real safety net rather than
+retrofitted proof. Deliberately side-effect-free (every test either only
+reads, or exercises a below-floor `/negotiate` rejection that never
+reaches an `INSERT`) — safe to run repeatedly with no cleanup step. 10
+tests: the 6 scenarios from the original review (one-way short/long,
+return short/long, negotiated Flexible Fare, custom address) plus 4
+explicit historical-bug regressions (the return-multiplier bug fixed in
+Milestone 17, twice — the core `1.85x` invariant and the "trip_type must
+change the number" check — plus the static-$25-floor bug and the
+Total-vs-Standard-Fare drift bug, both regression-guarded at the API
+level). All 10 passing against the live API; one test's expected value
+was itself wrong on first run (a one-way number mislabeled as "return" in
+the plan) - caught immediately by the suite, exactly the failure mode
+it's meant to catch. Run via `node --test nadi-marketplace/worker/pricing.test.js`.
+
+Remaining steps (extract `pricing.js` with named steps, unit tests for
+each step, flip the `POST /bookings` trust boundary, add the runtime
+guardrail) tracked and not yet started - see the approved plan for full
+detail on scope, sequencing, and the explicit carve-outs (admin-test
+booking, negotiation accept-offer, tours/extras deferred to v2) that keep
+this from breaking currently-working flows.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
