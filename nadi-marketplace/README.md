@@ -1308,11 +1308,46 @@ test bookings and the temporary rate-limit bump used to run them cleanly
 were reverted, baseline re-confirmed. Full suite: **43/43 passing
 against the live deployment** (33 unit + 10 integration).
 
-Remaining step (wire the runtime guardrail — `assertSanePricing`,
-already written and unit-tested — into the real request path, routing a
-failed sanity check to the existing `createEscalation()` alert instead
-of silently creating a bad-priced booking) is the next piece of this
-initiative, not yet started.
+**Step 5 (done) — Milestone 18 complete.** `assertSanePricing()` is now
+wired into the live request path, two ways, both routing a failure to the
+existing `createEscalation()` WhatsApp-alert path rather than silently
+creating a bad-priced booking:
+
+1. **Return-ratio check** (the fixed zone-pair full-replace path): a
+   second `computeAuthoritativePrice()` call with `tripType` forced to
+   `'one-way'` gives an apples-to-apples comparison (same extras on both
+   sides), then the ratio is checked against `[1.5x, 2.2x]`. This is the
+   actual last line of defense the Milestone 17 return-multiplier bug
+   needed — if that exact bug class ever reappears, this catches it
+   before a guest is quoted or a driver dispatched a collapsed price.
+2. **Tour-remainder check**: previously only logged a warning and still
+   created the booking anyway — now actually blocks it.
+
+Deliberately **not** added to the automated `pricing.test.js` suite that
+runs before every deploy — triggering the guardrail fires a real
+escalation and WhatsApp alert, so an automated test exercising it would
+page the team on every routine pre-deploy check. The pure logic stays
+covered by `assertSanePricing`'s own unit tests; the live wiring was
+verified manually instead:
+
+- Underpriced tour ($50 vs a $69.08 verified transfer): correctly
+  blocked, `bookings` count unchanged, `escalations` went 10 → 11 with a
+  real, correctly-detailed record.
+- Valid tour remainder ($119.08, same route): still succeeds normally.
+- Normal return-trip booking: still succeeds at the correct $114.80 —
+  the new guardrail doesn't false-positive on a legitimate booking.
+- `escalations` re-confirmed unchanged (not 12) after the two successful
+  bookings — no false-positive alerts.
+- All test data deleted afterward, baseline fully re-confirmed (6
+  bookings, 10 escalations). Full 43-test suite re-run against the new
+  deployment, zero regression.
+
+This closes all four recommendations from James's original
+pricing-safety review — the static-$25-floor bug, the Total-vs-Standard-
+Fare drift bug, and the return-multiplier bug (all three already fixed
+in Milestone 17) now share one named, tested, server-authoritative
+pricing pipeline with a real runtime guardrail behind it, rather than
+depending on a human noticing the next wrong number.
 
 ## Branch
 
