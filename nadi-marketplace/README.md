@@ -1267,13 +1267,52 @@ would have caught it. Full local suite: 28 unit + 10 integration = 38
 tests, all passing, zero database side effects (confirmed via direct D1
 query before and after).
 
-Remaining steps (flip the `POST /bookings` trust boundary, wire the
-runtime guardrail into the real request path) **paused for review before
-starting** — Step 4 is the piece that actually changes how real live
-bookings get priced, per James's explicit ask. See the approved plan for
-full detail on scope, sequencing, and the explicit carve-outs (admin-test
-booking, negotiation accept-offer, tours/extras deferred to v2) that keep
-this from breaking currently-working flows.
+**Step 4 (done)**: `POST /bookings` is now server-authoritative for the
+class of booking that matters most — `createBookingRecord()`'s new
+`computeAuthoritativePrice()` fully replaces `quoted_amount` for a fixed
+zone-pair transfer (with exactly-verified extras), sanity-bounds it for
+custom-address and boat bookings (both real, named v1.1 gaps: neither an
+address's exact geocoded distance nor a boat's passenger split reaches
+this endpoint yet), and verifies only the transfer+extras portion for a
+tour booking (the tour cost itself has no server-side pricing data,
+out of scope until v2). `admin_test_booking` and `negotiation_accept_offer`
+explicitly marked `verificationMode: 'trusted'` — unaffected, by design.
+
+Two real, second-order gaps caught by James's pre-Step-4 review before any
+code was written (not discovered as bugs afterward): extras (child seat
++FJ$8, surfboard +FJ$24) are fixed constants, not open-ended like tours,
+so they're exactly verified via a new `applyExtras()` step rather than
+folded into the tour's soft bound; and custom-address bookings can't be
+fully re-derived without the raw address text, which never reaches this
+endpoint today, so they get the same sanity-bound treatment as tours
+rather than a false claim of full authority.
+
+A third real bug was caught by live testing itself, after code was
+written: `applyLoyaltyDiscount()` initially rounded the discount to the
+nearest cent, but the client's `calculateTotal()` rounds it to the
+nearest whole dollar — using cent precision meant the authoritative
+replacement price didn't actually match what the guest was shown and
+agreed to. Fixed in the same pass, locked in with a unit test using the
+exact real numbers that exposed it.
+
+Verified extensively against the live API post-deploy: fixed-route
+booking with a tampered price correctly replaced with the real
+discounted fare; fixed-route with both extras selected correctly
+computed exactly (reproduced 3x for stability, after one isolated,
+non-reproducing anomaly traced to normal deploy-propagation timing, not
+a code defect); a tour booking with a valid remainder kept as sent; a
+tour booking with a negative remainder still created (not yet blocked —
+that's Recommendation 4, the next step); custom-address bookings within
+and outside the sanity band both kept as sent, never replaced. All 11
+test bookings and the temporary rate-limit bump used to run them cleanly
+were reverted, baseline re-confirmed. Full suite: **43/43 passing
+against the live deployment** (33 unit + 10 integration).
+
+Remaining step (wire the runtime guardrail — `assertSanePricing`,
+already written and unit-tested — into the real request path, routing a
+failed sanity check to the existing `createEscalation()` alert instead
+of silently creating a bad-priced booking) is the next piece of this
+initiative, not yet started.
 
 ## Branch
 
