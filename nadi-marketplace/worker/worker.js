@@ -48,7 +48,8 @@
 // this file no longer has its own separate copy of the fare formula.
 import {
   RETURN_MULTIPLIER, computeBaseFare, applyZoneMultiplier,
-  applyTripTypeMultiplier, computeFinalTotal, computeBoatFare,
+  applyTripTypeMultiplier, applyNightSurcharge, applyExtras,
+  applyLoyaltyDiscount, computeFinalTotal, computeBoatFare,
 } from './pricing.mjs';
 
 const JSON_CORS = {
@@ -1589,6 +1590,16 @@ async function createBookingRecord(env, {
   // negotiation accept-offer) are unaffected.
   pickupDate = null, pickupTime = null, notes = null,
   returnDate = null, returnTime = null, returnPickupLocation = null,
+  // Milestone 18 (Recommendation 1) - see computeAuthoritativePrice's own
+  // header comment for the full scope/tier reasoning. verificationMode
+  // defaults to 'trusted' (today's existing behavior, unchanged) so the
+  // two other callers (admin test booking, negotiation accept-offer - both
+  // already have their own, different, already-correct trust model) are
+  // completely unaffected without having to pass anything new at all.
+  // Only handleGuestBookingCreate passes 'authoritative'.
+  verificationMode = 'trusted',
+  tripType = 'one-way', isCustomAddress = false, hasTour = false,
+  hasChildSeat = false, hasSurfboard = false,
 }) {
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
@@ -1612,6 +1623,89 @@ async function createBookingRecord(env, {
 
   if (errors.length > 0) return { ok: false, errors };
 
+  // Milestone 18 (Recommendation 1) - the actual trust-boundary flip.
+  // isBoatBooking mirrors the existing commission_base_fjd convention:
+  // that field is only ever set for boat bookings (see its own comment
+  // below), so its presence is already a reliable signal, no new field
+  // needed to detect this case.
+  let pricingNote = null;
+  const isBoatBooking = vehicleType === 'boat';
+  if (verificationMode === 'authoritative') {
+    if (isBoatBooking) {
+      // Real gap found during Step 4 planning: a boat fare depends on the
+      // adult/child passenger split, which never reaches this endpoint
+      // today - full server recompute isn't possible without that field
+      // (a named v1.1 follow-up). Lightweight consistency check instead:
+      // the bundled total must be at least the already-verified land-leg
+      // portion, and both must be positive.
+      if (commissionBaseFjd !== null && quotedAmount < commissionBaseFjd) {
+        pricingNote = `boat booking quoted_amount (${quotedAmount}) is less than its own verified land-leg portion (${commissionBaseFjd})`;
+        console.warn(`[pricing-sanity] ${pricingNote} - ${pickupZone} -> ${destinationZone}`);
+      }
+    } else {
+      const authoritative = await computeAuthoritativePrice(env, {
+        pickupZone, destinationZone, vehicleType, tripType, pickupTime, hasChildSeat, hasSurfboard,
+      });
+      if (!authoritative.ok) {
+        // Real-evidence fallback, not a new failure mode: if the server
+        // can't compute a reference price right now (e.g. a transient
+        // Google Routes API hiccup), keep trusting the client's number
+        // rather than turning a previously-always-succeeding booking flow
+        // into a new way to fail. Logged for visibility either way.
+        console.warn(`[pricing-authoritative-unavailable] ${authoritative.error} - ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType}, falling back to client-trusted quoted_amount`);
+      } else {
+        // Real bug caught by live testing before this shipped: the client's
+        // calculateTotal() applies the 10% loyalty discount (subtotal >
+        // FJ$50, transfer-only) to what the guest actually sees and agrees
+        // to - computeAuthoritativePrice() deliberately returns the
+        // PRE-discount figure (see its own comment), so it must be applied
+        // here, matching the client's exact whole-dollar rounding
+        // (applyLoyaltyDiscount's own comment). hasTour=false is correct
+        // for both non-tour branches below; the tour branch uses the raw,
+        // undiscounted serverFjd, matching calculateTotal()'s own rule
+        // that a tour booking never qualifies for this discount.
+        const serverFjd = authoritative.transferPlusExtrasFjd;
+        const serverFjdDiscounted = applyLoyaltyDiscount(serverFjd, false).finalFjd;
+        if (!hasTour && !isCustomAddress) {
+          // Fixed zone-pair, transfer + extras only: this IS the price.
+          // Zero client trust from here on - quoted_amount is REPLACED,
+          // not just checked, closing off both the display-drift bug
+          // class and any client-side tampering.
+          if (Math.abs(quotedAmount - serverFjdDiscounted) > 0.02) {
+            console.warn(`[pricing-drift] client sent ${quotedAmount}, server computed ${serverFjdDiscounted} for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType} - replacing with the server number`);
+          }
+          quotedAmount = serverFjdDiscounted;
+          distanceKm = authoritative.distanceKm; // same source that drove the price - keep the stored distance consistent with it
+        } else if (isCustomAddress && !hasTour) {
+          // Real gap found during Step 4 planning: the server can't yet
+          // re-derive a custom address's exact geocoded distance (no
+          // address text reaches this endpoint) - a named v1.1 follow-up.
+          // Sanity floor/ceiling instead of full replace: a real
+          // point-to-point distance is usually >= the zone-centroid
+          // distance, sometimes notably more, so 0.7x-3x is a deliberately
+          // wide band, not a tight tolerance.
+          if (quotedAmount < serverFjdDiscounted * 0.7 || quotedAmount > serverFjdDiscounted * 3) {
+            pricingNote = `custom-address quoted_amount (${quotedAmount}) is outside the plausible range for this route (zone-floor reference ${serverFjdDiscounted})`;
+            console.warn(`[pricing-sanity] ${pricingNote} - ${pickupZone} -> ${destinationZone}`);
+          }
+        }
+        if (hasTour) {
+          // Tour cost itself has zero server-side pricing data (out of
+          // scope until v2) - only the transfer+extras portion is
+          // verified. The remainder must be non-negative; no upper bound
+          // yet (TOURS_DATA prices vary widely by tour). Raw serverFjd
+          // (undiscounted) is correct here - a tour booking never
+          // qualifies for the loyalty discount, matching the client.
+          const remainder = quotedAmount - serverFjd;
+          if (remainder < 0) {
+            pricingNote = `tour booking quoted_amount (${quotedAmount}) is less than its own verified transfer+extras portion (${serverFjd})`;
+            console.warn(`[pricing-sanity] ${pricingNote} - ${pickupZone} -> ${destinationZone}`);
+          }
+        }
+      }
+    }
+  }
+
   const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
   const fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
   const settlementAmountFjd = Math.round(quotedAmount * fxRate * 100) / 100;
@@ -1631,7 +1725,11 @@ async function createBookingRecord(env, {
 
   const bookingId = insert.meta.last_row_id;
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
-  return { ok: true, bookingId, booking };
+  // pricingNote is never blocking (see the tiered logic above) - surfaced
+  // here so a caller can decide whether to also raise a real ops alert.
+  // Wiring that alert (Recommendation 4's escalation routing) is the next
+  // step, not this one.
+  return { ok: true, bookingId, booking, pricingNote };
 }
 
 async function handleGuestBookingCreate(request, env) {
@@ -1669,6 +1767,18 @@ async function handleGuestBookingCreate(request, env) {
     returnDate: normalisedItineraryString(body.return_date, 10),
     returnTime: normalisedItineraryString(body.return_time, 5),
     returnPickupLocation: normalisedItineraryString(body.return_pickup_location, 300),
+    // Milestone 18 (Recommendation 1) - the only caller that opts into
+    // server-authoritative pricing. tripType/hasChildSeat/hasSurfboard/
+    // hasTour/isCustomAddress are new fields the guest widget now sends
+    // (see app.js's submitMarketplaceBooking) specifically so this trust-
+    // boundary flip has what it needs - see computeAuthoritativePrice's
+    // own comment for exactly how each is used.
+    verificationMode: 'authoritative',
+    tripType: (body.trip_type || 'one-way').toString().trim() === 'return' ? 'return' : 'one-way',
+    isCustomAddress: body.is_custom_address === true,
+    hasTour: body.has_tour === true,
+    hasChildSeat: body.has_child_seat === true,
+    hasSurfboard: body.has_surfboard === true,
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
@@ -1961,6 +2071,13 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
     sourceIp: clientIp,
     assignedDriverId: offer.driver_id,
     status: 'accepted',
+    // Milestone 18 - explicit, not just the default. This price is
+    // intentionally different from the standard fare (that's the whole
+    // point of negotiation) and is already independently verified via
+    // the trip-type-aware floor check at negotiation-create time -
+    // re-running the standard-fare check here would incorrectly flag a
+    // legitimate negotiated price.
+    verificationMode: 'trusted',
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
@@ -2745,6 +2862,62 @@ async function computeRealReferenceFare(env, pickupZone, destinationZone, vehicl
   // handleReferenceFarePreview) can tell a free cache read apart from a
   // real, billable Google Routes API call.
   return { ok: true, referenceFareFjd, distanceKm, cacheHit };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MILESTONE 18 — server-authoritative pricing (Recommendation 1). The
+// single source of truth POST /bookings uses to verify (or, for the
+// confidently-authoritative case, fully replace) whatever quoted_amount
+// the client sent. Deliberately reuses computeRealReferenceFare's exact
+// zone-to-zone distance resolution (zone_distance_cache, independent of
+// anything the client sends) rather than trusting a client-supplied
+// distance_km - this is what makes the fixed-zone-pair case genuinely
+// tamper-proof, not just "recomputed from client-supplied inputs."
+//
+// Scope, decided during Step 4 planning (both real gaps James caught
+// before code was written - see the approved plan's Recommendation 1
+// section for the full reasoning):
+//   - Fixed zone-pair road transfers: this IS the authoritative price.
+//   - Custom-address / boat bookings: this becomes a FLOOR/consistency
+//     check only, not a full replace - the server can't yet re-derive a
+//     custom address's exact geocoded distance (no address text reaches
+//     this endpoint) or a boat's exact adult/child fare split (no
+//     passenger count reaches this endpoint either). Both are real,
+//     named v1.1 follow-ups, not silently dropped.
+//   - Tours: only the transfer+extras portion is ever verified here: the
+//     tour cost itself has zero server-side pricing data (TOURS_DATA is
+//     client-only) and is out of scope until v2.
+// ═══════════════════════════════════════════════════════════════
+async function computeAuthoritativePrice(env, { pickupZone, destinationZone, vehicleType, tripType, pickupTime, hasChildSeat, hasSurfboard }) {
+  const remoteZoneName = pickupZone === NADI_AIRPORT_ZONE_NAME ? destinationZone : pickupZone;
+  const [airportZoneRow, remoteZoneRow] = await Promise.all([
+    env.DB.prepare(`SELECT lat, lng FROM zones WHERE name = ?`).bind(NADI_AIRPORT_ZONE_NAME).first(),
+    env.DB.prepare(`SELECT lat, lng, remote_multiplier FROM zones WHERE name = ?`).bind(remoteZoneName).first(),
+  ]);
+  if (!airportZoneRow || !remoteZoneRow || airportZoneRow.lat === null || remoteZoneRow.lat === null) {
+    return { ok: false, error: 'Could not resolve zone coordinates for authoritative pricing.' };
+  }
+  const { distanceKm } = await getZoneDistanceKm(
+    env, NADI_AIRPORT_ZONE_NAME, remoteZoneName,
+    airportZoneRow.lat, airportZoneRow.lng, remoteZoneRow.lat, remoteZoneRow.lng
+  );
+  if (distanceKm === null) {
+    return { ok: false, error: 'Could not resolve a real distance for authoritative pricing.' };
+  }
+  const oneWayFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  if (!oneWayFareFjd) {
+    return { ok: false, error: 'No pricing rule found for this route and vehicle type.' };
+  }
+  const withTripType = applyTripTypeMultiplier(oneWayFareFjd, tripType);
+  const withNightSurcharge = applyNightSurcharge(withTripType, pickupTime);
+  const withExtras = applyExtras(withNightSurcharge, { hasChildSeat, hasSurfboard });
+  // Loyalty discount is deliberately NOT applied here - this function
+  // returns the pre-discount transfer+extras baseline used for both the
+  // exact-replace case (discount applied once, below, on the final
+  // combined figure - matching calculateTotal()'s existing behavior of
+  // discounting transfer+extras+tour together) and the tour-remainder
+  // floor check, where discount timing doesn't matter for a >= comparison.
+  return { ok: true, transferPlusExtrasFjd: computeFinalTotal(withExtras), distanceKm };
 }
 
 // Real Google Routes API call. Field mask requests warnings text

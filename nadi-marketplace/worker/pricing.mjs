@@ -84,15 +84,37 @@ export function applyNightSurcharge(fareFjd, pickupTime) {
   return isNightPickup(pickupTime) ? fareFjd * (1 + NIGHT_SURCHARGE) : fareFjd;
 }
 
+// ─── Step 6a: extras ──────────────────────────────────────────────────────
+// Added during Step 4 planning (James caught the gap before code was
+// written): the two paid extras are fixed constants, not open-ended like
+// tours, so they get exactly verified here rather than folded into a
+// soft-bounded remainder. Must match app.js's updateExtras() exactly -
+// same "no shared build step" caveat as RETURN_MULTIPLIER above.
+export const CHILD_SEAT_FJD = 8;
+export const SURFBOARD_FJD = 24;
+export function applyExtras(fareFjd, { hasChildSeat, hasSurfboard }) {
+  let total = fareFjd;
+  if (hasChildSeat) total += CHILD_SEAT_FJD;
+  if (hasSurfboard) total += SURFBOARD_FJD;
+  return total;
+}
+
 // ─── Step 6: loyalty discount ────────────────────────────────────────────
 // Mirrors calculateTotal()'s existing rule: 10% off transfer-only
 // subtotals over FJ$50. hasTour suppresses it entirely (a tour already
 // carries its own listed discount, matching app.js's own reasoning).
+// Real bug caught by live Step-4 testing: the discount itself rounds to
+// the nearest WHOLE DOLLAR in the client (Math.round(subtotal *
+// DISCOUNT_RATE), no /100) - not the nearest cent. Using cent precision
+// here produced an authoritative price that silently didn't match what
+// the guest was actually shown/agreed to (e.g. $69.08 replaced with
+// itself instead of the real $62.08 the guest saw, a 10%+ overcharge on
+// the stored record). Matched exactly now, not "close enough."
 export function applyLoyaltyDiscount(subtotalFjd, hasTour) {
   if (hasTour || subtotalFjd <= DISCOUNT_THRESHOLD_FJD) {
     return { discountFjd: 0, finalFjd: Math.round(subtotalFjd * 100) / 100 };
   }
-  const discountFjd = Math.round(subtotalFjd * DISCOUNT_RATE * 100) / 100;
+  const discountFjd = Math.round(subtotalFjd * DISCOUNT_RATE);
   return { discountFjd, finalFjd: Math.round((subtotalFjd - discountFjd) * 100) / 100 };
 }
 

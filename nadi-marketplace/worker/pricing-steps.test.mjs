@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RETURN_MULTIPLIER, resolveDistanceKm, computeBaseFare, applyZoneMultiplier,
-  applyTripTypeMultiplier, isNightPickup, applyNightSurcharge,
+  applyTripTypeMultiplier, isNightPickup, applyNightSurcharge, applyExtras,
   applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing,
 } from './pricing.mjs';
 
@@ -91,6 +91,20 @@ test('applyNightSurcharge: +20% at night, unchanged in the day', () => {
   assert.equal(applyNightSurcharge(100, '14:00'), 100);
 });
 
+// ─── Step 6a: extras (added during Step 4 planning) ─────────────────────
+test('applyExtras: neither extra selected leaves the fare unchanged', () => {
+  assert.equal(applyExtras(100, { hasChildSeat: false, hasSurfboard: false }), 100);
+});
+test('applyExtras: child seat adds exactly FJ$8', () => {
+  assert.equal(applyExtras(100, { hasChildSeat: true, hasSurfboard: false }), 108);
+});
+test('applyExtras: surfboard adds exactly FJ$24', () => {
+  assert.equal(applyExtras(100, { hasChildSeat: false, hasSurfboard: true }), 124);
+});
+test('applyExtras: both together add exactly FJ$32, not a bundled/discounted amount', () => {
+  assert.equal(applyExtras(100, { hasChildSeat: true, hasSurfboard: true }), 132);
+});
+
 // ─── Step 6: loyalty discount ────────────────────────────────────────────
 test('applyLoyaltyDiscount: 10% off a transfer-only subtotal over the threshold', () => {
   const { discountFjd, finalFjd } = applyLoyaltyDiscount(100, false);
@@ -106,6 +120,17 @@ test('applyLoyaltyDiscount: a tour booking never gets the loyalty discount, rega
   const { discountFjd, finalFjd } = applyLoyaltyDiscount(500, true);
   assert.equal(discountFjd, 0);
   assert.equal(finalFjd, 500);
+});
+test('applyLoyaltyDiscount: the discount itself rounds to the nearest WHOLE DOLLAR, not the nearest cent — the exact real bug caught by live Step 4 testing', () => {
+  // Math.round(69.08 * 0.10) = Math.round(6.908) = 7, not 6.91 - this is
+  // the real Nadi Airport <-> Denarau minivan one-way fare, and this exact
+  // case is what exposed the mismatch: cent-rounding produced an
+  // authoritative price ($69.08, i.e. no discount applied at all in the
+  // original bug) that silently didn't match what the guest actually saw
+  // and agreed to ($62.08, real client behavior, calculateTotal()).
+  const { discountFjd, finalFjd } = applyLoyaltyDiscount(69.08, false);
+  assert.equal(discountFjd, 7);
+  assert.equal(finalFjd, 62.08);
 });
 
 // ─── Step 7: final total rounding ────────────────────────────────────────
