@@ -1791,6 +1791,19 @@ async function submitMarketplaceBooking(ref) {
   // fields only sent for a real return-trip transfer (never a tour, matches
   // updateReturnFieldsVisibility's gate everywhere else this condition appears).
   const isReturnTransfer = state.tripType === 'return' && !bookingHasTour();
+
+  // Milestone 18 (Recommendation 1, server-authoritative pricing): the
+  // backend now recomputes/verifies quoted_amount itself for fixed
+  // zone-pair transfers, and needs these to do it correctly - trip_type
+  // (the exact Milestone 17 bug), has_child_seat/has_surfboard (the two
+  // paid extras, real fixed amounts, no longer silently bundled into one
+  // opaque number), has_tour and is_custom_address (both narrow the
+  // server to a sanity-check instead of a full replace, since it can't
+  // yet independently verify a tour's cost or a custom address's exact
+  // distance - see computeAuthoritativePrice's own comment, worker.js).
+  const pickupVal = document.getElementById('pickup')?.value;
+  const isCustomAddress = pickupVal === 'CUSTOM_PICKUP' || destVal === 'CUSTOM_DEST';
+
   const payload = {
     guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
     guest_phone: phone,
@@ -1805,6 +1818,11 @@ async function submitMarketplaceBooking(ref) {
     pickup_date: document.getElementById('travelDate')?.value || null,
     pickup_time: document.getElementById('travelTime')?.value || null,
     notes: document.getElementById('notes')?.value.trim() || null,
+    trip_type: state.tripType === 'return' ? 'return' : 'one-way',
+    has_child_seat: !!document.getElementById('extra-seat')?.checked,
+    has_surfboard: !!document.getElementById('extra-surf')?.checked,
+    has_tour: bookingHasTour(),
+    is_custom_address: isCustomAddress,
     ...(isReturnTransfer ? {
       return_date: document.getElementById('returnDate')?.value || null,
       return_time: document.getElementById('returnTime')?.value || null,
