@@ -1396,6 +1396,71 @@ a missing and an invalid token; the actual "log in and see real data"
 step is James's own to do — that credential was never available to
 verify with directly, by design.
 
+## Milestone 19 — `booking_events` audit trail
+
+James's own follow-up to the admin bookings list above, scoped down
+from a broader "add a bookings table + a multi-channel event dispatcher"
+ask, with the corrections explained in his own words: `bookings` already
+exists live with real data (real guests, wallet transactions,
+escalations, vehicles all foreign-keyed to it) — this is additive, a new
+table alongside it, not a replacement; and a pluggable multi-channel
+dispatcher is more abstraction than the platform needs today, since
+WhatsApp is the only real notification channel that exists — deferred
+until there's a real second channel to plug into it. Plain JS
+throughout, matching `worker.js`/`pricing.mjs` — no TypeScript
+introduced for just this piece.
+
+**Schema** (`migrations/milestone19-booking-events.sql`, mirrored into
+`schema.sql`): `booking_events(id, booking_id FK, event_type,
+previous_status, new_status, actor, metadata JSON, created_at)` + an
+index on `booking_id`. `event_type` deliberately has no CHECK
+constraint (unlike `escalations.trigger_type`) — this is an audit log,
+not a strict state machine.
+
+**Logging** (`logBookingEvent()`, new helper): swallows its own errors,
+since a logging failure must never break a real transition. Wired at
+every real status-transition point already in the code — booking
+creation (`createBookingRecord()`, covering guest-create, negotiation
+accept-offer, and admin manual-assign's new-booking path, each passing
+an explicit `actor`; plus `handleAdminTestBooking()`'s own raw insert),
+driver accept and admin manual-assign's existing-booking path (both log
+`accepted`), the driver status-update endpoint (`en_route`/`completed`),
+and `createEscalation()` (logs `escalated` whenever a real `bookingId`
+is attached). `cancelled` is a supported-but-unused `event_type` value —
+named honestly rather than faked, since no cancellation flow exists
+anywhere in this codebase yet.
+
+**Notification**: `completed` now alerts `admin_alert_phone` via the
+exact existing `sendHealthAlertWhatsApp()`/`getAdminAlertPhones()`
+pattern the booking-creation alert already uses — no new abstraction
+layer, per the scoped-down ask. `cancelled` isn't wired, same reasoning
+as above.
+
+**Admin view**: `admin-bookings.html` gains an "Events" column — expand
+a row to lazy-load its chronological event history via the new `GET
+/admin/bookings/:id/events` (same `requireAdmin()` gate), cached in
+memory per booking so re-expanding never re-fetches. Not a new page.
+
+Verified: migration applied to the live D1 database, `booking_events`
+table + index confirmed via direct `PRAGMA` query. Zero regression on
+the existing 43-test suite after deploy. Real end-to-end test via the
+public `POST /bookings` path: a `created` row appeared with the correct
+`event_type`/`new_status`/`actor`, confirmed via direct D1 `SELECT`; the
+new events endpoint correctly 401s without a valid token. Test booking
+and its event row deleted afterward, baseline re-confirmed (11
+bookings, 0 `booking_events`). `admin-bookings.html`'s expand/collapse UI
+verified in a real browser against the live API — real 401 error path,
+mock rendering of all three real event shapes (created/accepted/
+escalated), collapse — zero console errors.
+
+Not live-tested (no admin/driver credentials available, by design, same
+limitation already flagged for `admin-bookings.html` itself):
+`handleDriverAcceptBooking`, `handleAdminManualAssign`, and
+`handleDriverBookingStatus`'s logging calls are code-reviewed and
+syntax-checked but call the same already-proven `logBookingEvent()`
+helper with different literal arguments — James's own use of the driver
+app / admin panel will be the real first exercise of those paths.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
