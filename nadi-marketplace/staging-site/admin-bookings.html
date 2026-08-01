@@ -37,6 +37,17 @@
   .status-cancelled { background: #fdeaea; color: var(--red); }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
   .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .expand-btn { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--ocean); }
+  .events-row td { background: #f7f2e8; padding: 0; }
+  .events-wrap { padding: 12px 16px; }
+  .events-wrap .loading, .events-wrap .empty-events { color: #888; font-size: 12px; padding: 6px 0; }
+  .event-list { list-style: none; margin: 0; padding: 0; }
+  .event-item { display: flex; gap: 10px; padding: 6px 0; font-size: 12px; border-bottom: 1px dashed var(--line); }
+  .event-item:last-child { border-bottom: none; }
+  .event-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ocean); min-width: 90px; }
+  .event-detail { flex: 1; color: #444; }
+  .event-time { color: #999; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -162,6 +173,7 @@
             <th>Driver</th>
             <th>Pickup</th>
             <th>Created</th>
+            <th>Events</th>
           </tr>
         </thead>
         <tbody>
@@ -176,11 +188,89 @@
               <td>${escHtml(b.driver_name || '—')}</td>
               <td>${b.pickup_date ? escHtml(b.pickup_date) + (b.pickup_time ? ' ' + escHtml(b.pickup_time) : '') : '—'}</td>
               <td class="meta">${escHtml(b.created_at)}</td>
+              <td><button class="expand-btn" data-booking-id="${b.id}" onclick="toggleEvents(${b.id}, this)">▸ View</button></td>
+            </tr>
+            <tr class="events-row" id="events-row-${b.id}" style="display:none">
+              <td colspan="10"><div class="events-wrap" id="events-wrap-${b.id}"></div></td>
             </tr>
           `).join('')}
         </tbody>
       </table>
     `;
+  }
+
+  // Point 4 of the ask: expand a row to show its event history, rather
+  // than a whole new page. Lazy-loaded on first expand, cached in
+  // memory afterward - collapsing and re-expanding the same row never
+  // re-fetches.
+  const eventsCache = {};
+
+  function eventTypeLabel(type) {
+    return String(type || '').replace(/_/g, ' ');
+  }
+
+  function describeEvent(e) {
+    const parts = [];
+    if (e.previous_status && e.new_status) parts.push(`${e.previous_status} → ${e.new_status}`);
+    else if (e.new_status) parts.push(`→ ${e.new_status}`);
+    if (e.actor) parts.push('by ' + e.actor);
+    if (e.metadata) {
+      try {
+        const meta = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata;
+        const bits = Object.entries(meta).map(([k, v]) => `${k}: ${v}`);
+        if (bits.length) parts.push(bits.join(', '));
+      } catch (err) { /* metadata already parsed or malformed - skip silently, not worth erroring the whole row over */ }
+    }
+    return parts.join(' — ');
+  }
+
+  function renderEvents(bookingId, events) {
+    const wrap = document.getElementById('events-wrap-' + bookingId);
+    if (!wrap) return;
+    if (events.length === 0) {
+      wrap.innerHTML = '<div class="empty-events">No events recorded for this booking.</div>';
+      return;
+    }
+    wrap.innerHTML = '<ul class="event-list">' + events.map(e => `
+      <li class="event-item">
+        <span class="event-type">${escHtml(eventTypeLabel(e.event_type))}</span>
+        <span class="event-detail">${escHtml(describeEvent(e))}</span>
+        <span class="event-time">${escHtml(e.created_at)}</span>
+      </li>
+    `).join('') + '</ul>';
+  }
+
+  async function toggleEvents(bookingId, btnEl) {
+    const row = document.getElementById('events-row-' + bookingId);
+    const isOpen = row.style.display !== 'none';
+    if (isOpen) {
+      row.style.display = 'none';
+      btnEl.textContent = '▸ View';
+      return;
+    }
+    row.style.display = 'table-row';
+    btnEl.textContent = '▾ Hide';
+
+    if (eventsCache[bookingId]) {
+      renderEvents(bookingId, eventsCache[bookingId]);
+      return;
+    }
+    const wrap = document.getElementById('events-wrap-' + bookingId);
+    wrap.innerHTML = '<div class="loading">Loading events…</div>';
+    try {
+      const res = await fetch(API_URL + '/admin/bookings/' + bookingId + '/events', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        wrap.innerHTML = '<div class="empty-events">Could not load events (status ' + res.status + ').</div>';
+        return;
+      }
+      const data = await res.json();
+      eventsCache[bookingId] = data.events || [];
+      renderEvents(bookingId, eventsCache[bookingId]);
+    } catch (e) {
+      wrap.innerHTML = '<div class="empty-events">Connection error loading events.</div>';
+    }
   }
 
   tryLoad();

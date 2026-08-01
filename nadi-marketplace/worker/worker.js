@@ -335,6 +335,13 @@ export default {
       return handleAdminListBookings(request, env, url);
     }
 
+    // ── Milestone 19: per-booking event history, for admin-bookings.html's
+    // expand-a-row view ──
+    const bookingEventsMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/events$/);
+    if (request.method === 'GET' && bookingEventsMatch) {
+      return handleAdminListBookingEvents(request, env, Number(bookingEventsMatch[1]));
+    }
+
     // ── double-dispatch fix: James/Ben manually arranging a driver via
     // WhatsApp instead of the automated broadcast/accept flow ──
     if (request.method === 'POST' && url.pathname === '/admin/bookings/manual-assign') {
@@ -906,6 +913,30 @@ async function handleAdminListBookings(request, env, url) {
   return json({ bookings: result.results || [] }, 200);
 }
 
+// Point 4 of the ask: a basic admin view of events for a given booking -
+// an expand-a-row addition to admin-bookings.html, not a whole new page.
+// Chronological (oldest first) - reads as a real timeline/history, not a
+// most-recent-first activity feed.
+async function handleAdminListBookingEvents(request, env, bookingId) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ events: [] }, 503);
+
+  const booking = await env.DB.prepare(`SELECT id FROM bookings WHERE id = ?`).bind(bookingId).first();
+  if (!booking) return json({ ok: false, error: 'Booking not found.' }, 404);
+
+  const result = await env.DB.prepare(
+    `SELECT id, event_type, previous_status, new_status, actor, metadata, created_at
+     FROM booking_events WHERE booking_id = ? ORDER BY created_at ASC, id ASC`
+  ).bind(bookingId).all();
+
+  const events = (result.results || []).map(e => ({
+    ...e,
+    metadata: e.metadata ? JSON.parse(e.metadata) : null,
+  }));
+
+  return json({ booking_id: bookingId, events }, 200);
+}
+
 async function handleAdminApprove(request, env, driverId) {
   if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
@@ -1371,6 +1402,7 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
   }
 
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+  await logBookingEvent(env, { bookingId, eventType: 'accepted', previousStatus: 'pending', newStatus: 'accepted', actor: `driver:${driver.id}` });
   return json({ ok: true, won: true, booking }, 200);
 }
 
@@ -1422,6 +1454,10 @@ async function handleAdminManualAssign(request, env) {
     }
 
     const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+    await logBookingEvent(env, {
+      bookingId, eventType: 'accepted', previousStatus: 'pending', newStatus: 'accepted', actor: 'admin',
+      metadata: { assigned_driver_id: driverId, via: 'manual_assign' },
+    });
     return json({ ok: true, won: true, booking }, 200);
   }
 
@@ -1445,6 +1481,7 @@ async function handleAdminManualAssign(request, env) {
     sourceIp: request.headers.get('CF-Connecting-IP') || 'unknown',
     assignedDriverId: driverId,
     status: 'accepted',
+    actor: 'admin', // manually arranged over WhatsApp, no existing booking row - an admin action created this
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
@@ -1470,7 +1507,8 @@ async function handleDriverBookingStatus(request, env, bookingId) {
   if (!['en_route', 'completed'].includes(newStatus)) return json({ error: "status must be 'en_route' or 'completed'" }, 400);
 
   const booking = await env.DB.prepare(
-    `SELECT id, assigned_driver_id, status, payment_method, settlement_amount_fjd, commission_rate FROM bookings WHERE id = ?`
+    `SELECT id, assigned_driver_id, status, payment_method, settlement_amount_fjd, commission_rate, pickup_zone, destination_zone
+     FROM bookings WHERE id = ?`
   ).bind(bookingId).first();
   if (!booking) return json({ error: 'Booking not found.' }, 404);
   if (booking.assigned_driver_id !== driver.id) return json({ error: 'This booking is not assigned to you.' }, 403);
@@ -1481,10 +1519,26 @@ async function handleDriverBookingStatus(request, env, bookingId) {
   }
 
   await env.DB.prepare(`UPDATE bookings SET status = ? WHERE id = ?`).bind(newStatus, bookingId).run();
+  await logBookingEvent(env, { bookingId, eventType: newStatus, previousStatus: booking.status, newStatus, actor: `driver:${driver.id}` });
 
   let commission = null;
   if (newStatus === 'completed' && booking.payment_method === 'cash') {
     commission = await accrueCommission(env, booking);
+  }
+
+  // Real gap James flagged: 'completed'/'cancelled' had no admin
+  // notification at all - only booking creation did. No 'cancelled' path
+  // exists yet (see booking_events' own migration comment), so this only
+  // covers 'completed' for now. Reuses the exact same
+  // sendHealthAlertWhatsApp/getAdminAlertPhones pattern the creation
+  // alert already uses - no new abstraction, per the explicit ask.
+  if (newStatus === 'completed') {
+    const completedSummary = `Booking #${bookingId} completed: ${driver.name || 'driver ' + driver.id}, `
+      + `${booking.pickup_zone} -> ${booking.destination_zone}, FJD ${booking.settlement_amount_fjd}`
+      + (commission ? `, commission FJD ${commission.commission_fjd}` : '') + '.';
+    for (const alertPhone of await getAdminAlertPhones(env)) {
+      await sendHealthAlertWhatsApp(env, alertPhone, completedSummary, sqliteNow());
+    }
   }
 
   return json({ ok: true, booking_id: bookingId, status: newStatus, commission }, 200);
@@ -1538,6 +1592,11 @@ async function handleAdminTestBooking(request, env) {
   const bookingId = insert.meta.last_row_id;
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
   const broadcast = await broadcastBookingToDrivers(env, booking);
+
+  // Milestone 19 - this endpoint has its own raw INSERT (predates
+  // createBookingRecord), not the shared insert path, so it needs its
+  // own logBookingEvent() call rather than getting one for free.
+  await logBookingEvent(env, { bookingId, eventType: 'created', previousStatus: null, newStatus: 'pending', actor: 'admin', metadata: { via: 'admin_test_booking' } });
 
   return json({ ok: true, booking_id: bookingId, booking, broadcast }, 201);
 }
@@ -1618,6 +1677,22 @@ async function checkGuestBookingRateLimit(env, ip) {
   return { limited: count >= max, count, max, window_minutes: windowMinutes };
 }
 
+// Milestone 19: additive audit trail (booking_events) - never blocks or
+// fails the real transition it's logging. A logging failure here must
+// never break dispatch/wallet/booking logic, so this swallows its own
+// errors rather than propagating them. metadata is stored as JSON text
+// (or null) - the column itself imposes no shape, callers pass whatever
+// context is useful for that event.
+async function logBookingEvent(env, { bookingId, eventType, previousStatus = null, newStatus = null, actor = null, metadata = null }) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO booking_events (booking_id, event_type, previous_status, new_status, actor, metadata) VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(bookingId, eventType, previousStatus, newStatus, actor, metadata ? JSON.stringify(metadata) : null).run();
+  } catch (err) {
+    console.warn(`[booking-events] failed to log '${eventType}' for booking ${bookingId}: ${err.message}`);
+  }
+}
+
 // Milestone 15: factored out of handleGuestBookingCreate so a negotiated
 // booking (guest accepted a driver's offer) goes through the exact same
 // validation/derivation as a normal fixed-fare booking - same bounds
@@ -1648,6 +1723,12 @@ async function createBookingRecord(env, {
   verificationMode = 'trusted',
   tripType = 'one-way', isCustomAddress = false, hasTour = false,
   hasChildSeat = false, hasSurfboard = false,
+  // Milestone 19 - who/what is actually creating this row. Each of the
+  // three callers (guest create, negotiation accept-offer, admin manual-
+  // assign) knows this for itself, so it's passed explicitly rather than
+  // guessed from other fields. 'system' is a deliberately honest fallback
+  // for any future caller that forgets to set it, not a real actor.
+  actor = 'system',
 }) {
   const errors = [];
   if (!guestPhone) errors.push('a valid guest_phone is required');
@@ -1846,6 +1927,12 @@ async function createBookingRecord(env, {
 
   const bookingId = insert.meta.last_row_id;
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
+
+  await logBookingEvent(env, {
+    bookingId, eventType: 'created', previousStatus: null, newStatus: status, actor,
+    metadata: assignedDriverId ? { assigned_driver_id: assignedDriverId } : null,
+  });
+
   // pricingNote is never blocking (see the tiered logic above) - surfaced
   // here so a caller can decide whether to also raise a real ops alert.
   // Wiring that alert (Recommendation 4's escalation routing) is the next
@@ -1900,6 +1987,7 @@ async function handleGuestBookingCreate(request, env) {
     hasTour: body.has_tour === true,
     hasChildSeat: body.has_child_seat === true,
     hasSurfboard: body.has_surfboard === true,
+    actor: 'guest', // the public guest widget - a real guest's own booking submission
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
@@ -2199,6 +2287,7 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
     // re-running the standard-fare check here would incorrectly flag a
     // legitimate negotiated price.
     verificationMode: 'trusted',
+    actor: 'guest', // the guest's own tap accepting a driver's counter-offer created this row
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
@@ -3511,6 +3600,16 @@ async function createEscalation(env, { source, triggerType, context, bookingId =
   ).bind(source, triggerType, context, bookingId, driverId, sourceIp).run();
   const escalation = { id: insert.meta.last_row_id, source, trigger_type: triggerType, context };
   const alert = await sendEscalationAlert(env, escalation);
+  // Milestone 19 - only when this escalation actually relates to a real
+  // booking (most don't - a /quote geocode failure has no bookingId at
+  // all). previous_status/new_status are null: an escalation doesn't
+  // change the booking's own status, it just flags it for a human.
+  if (bookingId) {
+    await logBookingEvent(env, {
+      bookingId, eventType: 'escalated', actor: source,
+      metadata: { escalation_id: escalation.id, trigger_type: triggerType },
+    });
+  }
   return { escalation, alert };
 }
 

@@ -474,3 +474,25 @@ ALTER TABLE bookings ADD COLUMN notes TEXT;
 ALTER TABLE bookings ADD COLUMN return_date TEXT;
 ALTER TABLE bookings ADD COLUMN return_time TEXT;
 ALTER TABLE bookings ADD COLUMN return_pickup_location TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 19 additions — booking_events audit trail. Additive only,
+-- the bookings table itself is unchanged. See
+-- migrations/milestone19-booking-events.sql for the migration actually
+-- run against the live database, including the full rationale for why
+-- event_type has no CHECK constraint and why 'cancelled' is a
+-- supported-but-currently-unused value.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE booking_events (
+  id INTEGER PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id),
+  event_type TEXT NOT NULL,
+  previous_status TEXT,
+  new_status TEXT,
+  actor TEXT,
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_booking_events_booking_id ON booking_events(booking_id);
