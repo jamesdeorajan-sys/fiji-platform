@@ -1372,6 +1372,30 @@ still replaced, the exact extras scenario that surfaced this now
 matches the client exactly), test data cleaned up, baseline
 re-confirmed, zero regression on the existing 43-test suite.
 
+## Admin bookings list (`admin-bookings.html` + `GET /admin/bookings`)
+
+Real gap James found and checked directly: no admin panel or API to
+list/view bookings at all — `admin-drivers.html` only manages driver
+applications, `destinations-admin.html` only manages zones, and the only
+existing `/admin/bookings` endpoint was `POST manual-assign`, no `GET`
+list. He had no way to see his own bookings without asking us to query
+D1 directly — which is exactly what happened moments earlier the same
+session, needing to urgently identify two real bookings in his driver's
+job feed before he accepted either (both confirmed real, not test data —
+distinguishable by their real pickup date/time and a phone number that
+doesn't match any test-data pattern used this build).
+
+`handleAdminListBookings()`: same `requireAdmin()` gate every other
+`/admin/*` endpoint uses, bounded (`limit` 1–200, default 50 — a
+dashboard view, not an export tool), optional `?status=` filter, newest
+first, includes a `driver_name` join. `admin-bookings.html`: same
+token-gate + table pattern as `destinations-admin.html`, same Pages
+project (git-connected auto-deploy). Read-only for now, matching the
+ask. Verified live: `GET /admin/bookings` correctly returns 401 for both
+a missing and an invalid token; the actual "log in and see real data"
+step is James's own to do — that credential was never available to
+verify with directly, by design.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
