@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Bookings</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gateErr { color: var(--red); font-size: 13px; margin-top: 8px; display: none; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar label { font-size: 13px; color: #666; }
+  .toolbar select, .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar button { cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f2ece0; font-weight: 600; color: #666; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .route { font-weight: 600; }
+  .meta { color: #888; font-size: 12px; margin-top: 2px; }
+  .price { font-weight: 700; white-space: nowrap; }
+  .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .status-pending { background: #fdf3e0; color: var(--amber); }
+  .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
+  .status-completed { background: #e5f5ea; color: var(--green); }
+  .status-cancelled { background: #fdeaea; color: var(--red); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter the admin token to view bookings.</p>
+  <input type="password" id="tokenInput" placeholder="Admin token">
+  <button id="gateBtn">Enter</button>
+  <div id="gateErr">Invalid token or connection error.</div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Bookings</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <div class="toolbar">
+    <label for="statusFilter">Status</label>
+    <select id="statusFilter">
+      <option value="">All</option>
+      <option value="pending">Pending</option>
+      <option value="accepted">Accepted</option>
+      <option value="en_route">En route</option>
+      <option value="completed">Completed</option>
+    </select>
+    <button id="refreshBtn">Refresh</button>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadBookings();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      document.getElementById('gateErr').style.display = 'block';
+    }
+  });
+
+  document.getElementById('statusFilter').addEventListener('change', loadBookings);
+  document.getElementById('refreshBtn').addEventListener('click', loadBookings);
+
+  async function loadBookings() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const status = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
+      const qs = status ? '?status=' + encodeURIComponent(status) : '';
+      const res = await fetch(API_URL + '/admin/bookings' + qs, {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load bookings (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderBookings(data.bookings || []);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function formatMoney(amount, currency) {
+    if (amount == null) return '—';
+    return currency + ' ' + Number(amount).toFixed(2);
+  }
+
+  function renderBookings(bookings) {
+    const subline = document.getElementById('subline');
+    subline.textContent = bookings.length + ' booking' + (bookings.length === 1 ? '' : 's') +
+      ' (most recent 200 max, filtered by status above)';
+
+    const listEl = document.getElementById('list');
+    if (bookings.length === 0) {
+      listEl.innerHTML = '<div class="empty">No bookings match this filter.</div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Driver</th>
+            <th>Pickup</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bookings.map(b => `
+            <tr>
+              <td>#${b.id}</td>
+              <td>${escHtml(b.guest_name)}<div class="meta">${escHtml(b.guest_phone || '—')}</div></td>
+              <td class="route">${escHtml(b.pickup_zone)} → ${escHtml(b.destination_zone)}<div class="meta">${b.distance_km != null ? Number(b.distance_km).toFixed(1) + ' km' : '—'}</div></td>
+              <td>${escHtml(b.vehicle_type)}</td>
+              <td class="price">${formatMoney(b.quoted_amount, b.quoted_currency)}<div class="meta">${escHtml(b.payment_method || '—')}</div></td>
+              <td><span class="status-badge status-${escHtml(b.status)}">${escHtml(b.status)}</span></td>
+              <td>${escHtml(b.driver_name || '—')}</td>
+              <td>${b.pickup_date ? escHtml(b.pickup_date) + (b.pickup_time ? ' ' + escHtml(b.pickup_time) : '') : '—'}</td>
+              <td class="meta">${escHtml(b.created_at)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  tryLoad();
+</script>
+</body>
+</html>

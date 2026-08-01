@@ -329,6 +329,12 @@ export default {
       return handleAdminTestBooking(request, env);
     }
 
+    // ── real gap James flagged: no way to see his own bookings without
+    // asking us to query D1 directly. Read-only list, admin-bookings.html ──
+    if (request.method === 'GET' && url.pathname === '/admin/bookings') {
+      return handleAdminListBookings(request, env, url);
+    }
+
     // ── double-dispatch fix: James/Ben manually arranging a driver via
     // WhatsApp instead of the automated broadcast/accept flow ──
     if (request.method === 'POST' && url.pathname === '/admin/bookings/manual-assign') {
@@ -856,6 +862,48 @@ async function handleAdminListDrivers(request, env, url) {
   }
 
   return json({ status, drivers }, 200);
+}
+
+// Real gap James flagged directly: no admin panel or API to list/view
+// bookings at all - admin-drivers.html only manages driver applications,
+// destinations-admin.html only manages zones, and the only existing
+// /admin/bookings endpoint was POST manual-assign, no GET list. He had
+// no way to see his own bookings without asking us to query D1 directly.
+// Read-only for now (matches the ask) - a real driver_name JOIN is
+// included since "who's this assigned to" is exactly the kind of context
+// that motivated this page, at no real added cost over the base query.
+async function handleAdminListBookings(request, env, url) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ bookings: [] }, 503);
+
+  // Bounded, not unlimited - this is a dashboard view, not an export tool.
+  // Real range: 1-200, defaults to 50 (a full day or two of real traffic
+  // at current volume, per the live bookings count seen this session).
+  const requestedLimit = Number(url.searchParams.get('limit'));
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 && requestedLimit <= 200 ? requestedLimit : 50;
+  const status = url.searchParams.get('status'); // optional filter, e.g. ?status=pending
+
+  const conditions = [];
+  const params = [];
+  if (status) {
+    conditions.push('b.status = ?');
+    params.push(status);
+  }
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit);
+
+  const result = await env.DB.prepare(
+    `SELECT b.id, b.guest_name, b.guest_phone, b.pickup_zone, b.destination_zone, b.distance_km,
+            b.vehicle_type, b.quoted_currency, b.quoted_amount, b.payment_method, b.status,
+            b.pickup_date, b.pickup_time, b.created_at, d.name AS driver_name
+     FROM bookings b
+     LEFT JOIN drivers d ON d.id = b.assigned_driver_id
+     ${whereClause}
+     ORDER BY b.created_at DESC
+     LIMIT ?`
+  ).bind(...params).all();
+
+  return json({ bookings: result.results || [] }, 200);
 }
 
 async function handleAdminApprove(request, env, driverId) {
