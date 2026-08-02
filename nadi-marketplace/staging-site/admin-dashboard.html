@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Dashboard</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gateErr { color: var(--red); font-size: 13px; margin-top: 8px; display: none; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .card .n { font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .card .n.warn { color: var(--amber); }
+  .card .n.alert { color: var(--red); }
+  .card .l { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
+
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .status-breakdown { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .status-chip { background: #fffdf8; border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; font-size: 13px; }
+  .status-chip b { margin-left: 4px; }
+
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f2ece0; font-weight: 600; color: #666; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .route { font-weight: 600; }
+  .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .status-pending { background: #fdf3e0; color: var(--amber); }
+  .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
+  .status-completed { background: #e5f5ea; color: var(--green); }
+  .status-cancelled { background: #fdeaea; color: var(--red); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter the admin token to view the dashboard.</p>
+  <input type="password" id="tokenInput" placeholder="Admin token">
+  <button id="gateBtn">Enter</button>
+  <div id="gateErr">Invalid token or connection error.</div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Dashboard</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <div class="toolbar">
+    <button id="refreshBtn">Refresh</button>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2>Bookings by status</h2>
+  <div class="status-breakdown" id="statusBreakdown"></div>
+
+  <h2>Upcoming transfers</h2>
+  <div id="upcoming"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadStats();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      document.getElementById('gateErr').style.display = 'block';
+    }
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', loadStats);
+
+  async function loadStats() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/dashboard-stats', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load dashboard (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderStats(data);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function renderStats(data) {
+    document.getElementById('subline').textContent = 'Last updated ' + new Date().toLocaleTimeString();
+
+    document.getElementById('cards').innerHTML = `
+      <div class="card"><div class="n">${data.bookings_today}</div><div class="l">Bookings today</div></div>
+      <div class="card"><div class="n ${data.unassigned_bookings > 0 ? 'warn' : ''}">${data.unassigned_bookings}</div><div class="l">Unassigned bookings</div></div>
+      <div class="card"><div class="n ${data.active_escalations > 0 ? 'alert' : ''}">${data.active_escalations}</div><div class="l">Active escalations</div></div>
+      <div class="card"><div class="n">${data.upcoming_transfers.length}</div><div class="l">Upcoming transfers</div></div>
+    `;
+
+    const statuses = Object.entries(data.bookings_by_status || {});
+    const statusEl = document.getElementById('statusBreakdown');
+    statusEl.innerHTML = statuses.length === 0
+      ? '<div class="empty">No bookings yet.</div>'
+      : statuses.map(([status, count]) => `
+          <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
+        `).join('');
+
+    renderUpcoming(data.upcoming_transfers || []);
+  }
+
+  function renderUpcoming(transfers) {
+    const el = document.getElementById('upcoming');
+    if (transfers.length === 0) {
+      el.innerHTML = '<div class="empty">No upcoming transfers with a scheduled pickup date.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Pickup</th>
+            <th>ID</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Status</th>
+            <th>Driver</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transfers.map(t => `
+            <tr>
+              <td>${escHtml(t.pickup_date)}${t.pickup_time ? ' ' + escHtml(t.pickup_time) : ''}</td>
+              <td>#${t.id}</td>
+              <td>${escHtml(t.guest_name)}</td>
+              <td class="route">${escHtml(t.pickup_zone)} → ${escHtml(t.destination_zone)}</td>
+              <td>${escHtml(t.vehicle_type)}</td>
+              <td><span class="status-badge status-${escHtml(t.status)}">${escHtml(t.status)}</span></td>
+              <td>${escHtml(t.driver_name || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  tryLoad();
+</script>
+</body>
+</html>

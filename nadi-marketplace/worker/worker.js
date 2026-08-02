@@ -348,6 +348,16 @@ export default {
       return handleAdminManualAssign(request, env);
     }
 
+    // ── Milestone 20: operational dashboard metrics, admin-dashboard.html ──
+    if (request.method === 'GET' && url.pathname === '/admin/dashboard-stats') {
+      return handleAdminDashboardStats(request, env);
+    }
+
+    // ── Milestone 21: staff escalation queue, admin-escalations.html ──
+    if (request.method === 'GET' && url.pathname === '/admin/escalations') {
+      return handleAdminListEscalations(request, env, url);
+    }
+
     // ── Milestone 4: wallet lockout + max-hours cap ──
     if (request.method === 'POST' && url.pathname === '/admin/max-hours-sweep') {
       return handleAdminMaxHoursSweep(request, env);
@@ -935,6 +945,77 @@ async function handleAdminListBookingEvents(request, env, bookingId) {
   }));
 
   return json({ booking_id: bookingId, events }, 200);
+}
+
+// Milestone 20: operational dashboard - all metrics read from existing
+// tables, nothing new stored. "Unassigned" reuses the exact same
+// definition handleDriverJobs already uses for the live driver feed
+// (status = 'pending' AND assigned_driver_id IS NULL), so this number
+// always agrees with what drivers are actually seeing. "Upcoming
+// transfers" is pickup_date/pickup_time, not created_at - when the ride
+// is scheduled, not when it was booked.
+async function handleAdminDashboardStats(request, env) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ error: 'Database unavailable.' }, 503);
+
+  const [todayResult, byStatusResult, unassignedResult, escalationsResult, upcomingResult] = await env.DB.batch([
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE date(created_at) = date('now')`),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM bookings GROUP BY status`),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE status = 'pending' AND assigned_driver_id IS NULL`),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM escalations WHERE resolved = 0`),
+    env.DB.prepare(
+      `SELECT b.id, b.guest_name, b.pickup_zone, b.destination_zone, b.vehicle_type, b.status,
+              b.pickup_date, b.pickup_time, d.name AS driver_name
+       FROM bookings b
+       LEFT JOIN drivers d ON d.id = b.assigned_driver_id
+       WHERE b.pickup_date >= date('now')
+       ORDER BY b.pickup_date ASC, b.pickup_time ASC
+       LIMIT 20`
+    ),
+  ]);
+
+  const bookingsByStatus = {};
+  for (const row of byStatusResult.results || []) bookingsByStatus[row.status] = row.count;
+
+  return json({
+    bookings_today: todayResult.results?.[0]?.count || 0,
+    bookings_by_status: bookingsByStatus,
+    unassigned_bookings: unassignedResult.results?.[0]?.count || 0,
+    active_escalations: escalationsResult.results?.[0]?.count || 0,
+    upcoming_transfers: upcomingResult.results || [],
+  }, 200);
+}
+
+// Milestone 21: read-only staff queue for the real, live escalations
+// table (Milestone 10) - until now the only way to see an open
+// escalation was the WhatsApp alert at the moment it fired, or a direct
+// D1 query. Defaults to open (resolved = 0) since that's the actual
+// work queue; ?resolved=1 available for looking back at history.
+// escalations has no priority column today - honestly reflected here by
+// simply not returning one, rather than fabricating a value.
+async function handleAdminListEscalations(request, env, url) {
+  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ escalations: [] }, 503);
+
+  const requestedLimit = Number(url.searchParams.get('limit'));
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 && requestedLimit <= 200 ? requestedLimit : 50;
+  const resolvedParam = url.searchParams.get('resolved');
+  const resolved = resolvedParam === '1' ? 1 : 0; // default: open queue
+
+  const result = await env.DB.prepare(
+    `SELECT e.id, e.source, e.trigger_type, e.context, e.booking_id, e.driver_id,
+            e.created_at, e.resolved,
+            b.pickup_zone, b.destination_zone, b.guest_name AS booking_guest_name,
+            d.name AS driver_name
+     FROM escalations e
+     LEFT JOIN bookings b ON b.id = e.booking_id
+     LEFT JOIN drivers d ON d.id = e.driver_id
+     WHERE e.resolved = ?
+     ORDER BY e.created_at DESC
+     LIMIT ?`
+  ).bind(resolved, limit).all();
+
+  return json({ escalations: result.results || [] }, 200);
 }
 
 async function handleAdminApprove(request, env, driverId) {
