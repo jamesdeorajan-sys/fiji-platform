@@ -1461,6 +1461,84 @@ syntax-checked but call the same already-proven `logBookingEvent()`
 helper with different literal arguments — James's own use of the driver
 app / admin panel will be the real first exercise of those paths.
 
+## Milestones 20-21 — operational dashboard + escalation staff queue
+
+Items 2 and 3 of the follow-up build order, shipped together (both
+read-only GET admin endpoints, no interdependency).
+
+`GET /admin/dashboard-stats` + `admin-dashboard.html`: bookings today
+(`date(created_at) = today`), bookings by status, unassigned bookings,
+active escalations, and upcoming transfers by `pickup_date`/
+`pickup_time` — all computed from existing tables, nothing new stored.
+"Unassigned" deliberately reuses the exact definition
+`handleDriverJobs` already uses for the live driver feed (`status =
+'pending' AND assigned_driver_id IS NULL`), so this number always
+agrees with what drivers are actually seeing rather than being a
+second, potentially-drifting definition of the same concept.
+
+`GET /admin/escalations` + `admin-escalations.html`: read-only staff
+queue for the real, live `escalations` table (Milestone 10) — until now
+the only way to see an open escalation was the WhatsApp alert at the
+moment it fired, or a direct D1 query. Defaults to the open queue
+(`resolved = 0`); `?resolved=1` looks back at history. Joins bookings
+and drivers for real context. `escalations` has no priority column in
+the live schema — reflected honestly by not returning one, rather than
+fabricating a value. Assignment-to-staff-member is scoped out per the
+ask's own "fast-follow, not required in this first pass."
+
+Verified: both endpoints deployed, confirmed 401 without a valid token
+and with a deliberately wrong one, against the live API. Zero
+regression on the 43-test suite. Both pages verified in a real browser:
+real 401 error path against the live API, then full UI rendering
+confirmed via direct render-function calls with representative mock
+data — zero console errors. The actual "log in and see real data" step
+is James's own to do, same as every other admin page — the real
+`ADMIN_TOKEN` was never available to verify with directly, by design.
+
+## Milestone 22 — guest-notification trigger on driver assignment
+
+Item 4 of the follow-up build order. Built and wired now, expected to
+stay dormant/unused in production until two separate real-world
+conditions are both met: the `vakaviti_guest_driver_assigned` template
+is submitted and approved in WhatsApp Manager (not yet done, as of this
+commit — same starting state `vakaviti_fuel_index_alert` and
+`vakaviti_ops_health_alert` were in before James submitted them), and
+`WHATSAPP_PHONE_ID` points at a real production number rather than the
+current test number. That's expected, not a bug, per the ask.
+
+`sendGuestDriverAssignedWhatsApp(env, booking, driverName)`: a booking-
+shaped wrapper around the existing `sendWhatsAppTemplate()` helper — the
+same pattern `sendBookingBroadcastWhatsApp` already uses one function
+above it in the file. No new dispatcher/abstraction layer. Body params:
+guest name, driver name, vehicle type, route (`pickup_zone ->
+destination_zone`), and pickup date/time (falls back to "time to be
+confirmed" when neither `pickup_date` nor `pickup_time` was captured on
+the booking). If `booking.guest_phone` is empty or invalid,
+`sendWhatsAppTemplate`'s own existing guard already no-ops it safely —
+no new validation needed here.
+
+Called at every real point in `worker.js` where a booking transitions to
+having a real assigned driver: `handleDriverAcceptBooking` (driver's own
+accept), `handleAdminManualAssign`'s both paths (taking over an existing
+booking, and a WhatsApp-arranged booking created pre-assigned), and
+`handleNegotiationAcceptOffer` (which additionally fetches the assigned
+driver's name fresh, since `negotiation_offers` only stores `driver_id`
+— the other three call sites already have the name on hand from an
+earlier query in the same request).
+
+Verified: syntax-checked, deployed, zero regression on the 43-test suite
+(re-run against the live deployment). Not live-triggered end-to-end — no
+admin/driver credentials available to actually accept a booking or
+manually assign a driver, the same standing limitation as every other
+admin/driver-gated path this build. Since `WHATSAPP_TOKEN`/
+`WHATSAPP_PHONE_ID` are already configured (pointing at the test
+number), a real accept/assign happening in production from this point
+forward will genuinely attempt a Graph API call using this new template
+— expected to fail (template not yet submitted), same harmless,
+already-established state `FUEL_INDEX_ALERT_TEMPLATE` and
+`HEALTH_ALERT_TEMPLATE` sat in before their own submission, not a new
+risk this introduces.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
