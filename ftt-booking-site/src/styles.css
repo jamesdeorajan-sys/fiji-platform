@@ -61,6 +61,13 @@ h4{font-size:1rem;font-weight:600}
 .nav-right{display:flex;align-items:center;gap:1rem;margin-left:auto}
 .nav-phone{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--dark)}
 .nav-phone svg{color:var(--teal)}
+/* WhatsApp's own brand green, deliberately not --ocean/--teal - reads as a
+   distinct "skip straight to a human" action, separate from the AI chat
+   widget's ocean-blue circular launcher (bottom-right) and from the site's
+   own brand palette used everywhere else in the nav. */
+.nav-whatsapp{display:flex;align-items:center;gap:6px;background:#25D366;color:#fff;padding:8px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:var(--transition)}
+.nav-whatsapp:hover{background:#1EBE5A;transform:translateY(-1px)}
+.nav-whatsapp svg{flex-shrink:0}
 .btn-nav{background:var(--ocean);color:#fff;padding:8px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:var(--transition)}
 .btn-nav:hover{background:var(--ocean-dark);transform:translateY(-1px)}
 .hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
@@ -441,6 +448,8 @@ textarea.field-input{resize:vertical;min-height:80px}
 /* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
 @media(max-width:900px){
   .nav-links,.nav-phone{display:none}
+  .nav-whatsapp{padding:8px;gap:0}
+  .nav-whatsapp span{display:none}
   .hamburger{display:flex}
   .field-row{grid-template-columns:1fr;gap:14px}
   #returnTripFields{grid-template-columns:1fr}
