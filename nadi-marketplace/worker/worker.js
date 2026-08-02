@@ -148,6 +148,19 @@ const ADMIN_LOGIN_PHONE = '+61413335007';
 const ADMIN_LOGIN_TEMPLATE = 'vakaviti_admin_login';
 const ADMIN_LOGIN_LANG_CODE = 'en';
 
+// Milestone 24 - PIN login, alongside the magic-link flow above (not a
+// replacement) - the magic link was designed for the many-drivers case
+// and adds real friction (template approval, WhatsApp delivery) for a
+// single-admin problem that doesn't need any of it. 6-digit minimum
+// enforced at set-time (handleAdminSetPin); this is the smallest a PIN
+// is accepted, not the space it's brute-forced over - PIN_MAX_ATTEMPTS/
+// PIN_LOCKOUT_MINUTES below are the real defence against a small
+// keyspace, not the digit count alone.
+const PIN_MIN_DIGITS = 6;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MINUTES = 15;
+const PIN_PBKDF2_ITERATIONS = 100000;
+
 // ═══════════════════════════════════════════════════════════════
 // MILESTONE 5 — fuel index (spec Section 7). FCCC's real petroleum page
 // (verified live, not assumed from the spec's description of it) is a list
@@ -366,6 +379,15 @@ export default {
     // pasting ADMIN_TOKEN on every admin-*.html page ──
     if (request.method === 'POST' && url.pathname === '/admin/login') {
       return handleAdminLogin(request, env);
+    }
+
+    // ── Milestone 24: admin PIN login - a third, WhatsApp-independent
+    // option alongside the static ADMIN_TOKEN and the magic link above ──
+    if (request.method === 'POST' && url.pathname === '/admin/login-pin') {
+      return handleAdminLoginPin(request, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/admin/set-pin') {
+      return handleAdminSetPin(request, env);
     }
 
     if (request.method === 'POST' && url.pathname === '/admin/test-booking') {
@@ -846,6 +868,51 @@ function timingSafeEqual(a, b) {
   let result = 0;
   for (let i = 0; i < a.length; i++) result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return result === 0;
+}
+
+// Milestone 24 - PIN hashing. A 6-digit PIN has only a million possible
+// values, far too small for an unsalted single-round hash (a rainbow
+// table over that whole space is trivial to build) - same category of
+// care as any password, per instruction. PBKDF2 (Web Crypto, built into
+// the Workers runtime, no dependency) with a random salt per PIN and a
+// real iteration count. Stored as one self-describing string,
+// "pbkdf2$<iterations>$<saltHex>$<hashHex>", so a future change to
+// PIN_PBKDF2_ITERATIONS never has to guess how an existing value was
+// produced - verification always reads the iteration count and salt
+// back out of the stored string itself, never assumes the current
+// constant applies to an old hash.
+function bytesToHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return bytes;
+}
+
+async function derivePinHash(pin, saltBytes, iterations) {
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return bytesToHex(new Uint8Array(bits));
+}
+
+async function hashPinForStorage(pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePinHash(pin, salt, PIN_PBKDF2_ITERATIONS);
+  return `pbkdf2$${PIN_PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${hash}`;
+}
+
+async function verifyPinAgainstStoredHash(pin, stored) {
+  const parts = (stored || '').split('$');
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
+  const iterations = Number(parts[1]);
+  if (!Number.isInteger(iterations) || iterations <= 0) return false;
+  const candidateHash = await derivePinHash(pin, hexToBytes(parts[2]), iterations);
+  return timingSafeEqual(candidateHash, parts[3]);
 }
 
 async function handleDocServe(request, env, url) {
@@ -1490,6 +1557,122 @@ async function handleAdminLogin(request, env) {
 
   const whatsappResult = await sendAdminLoginWhatsApp(env, phone, token);
   return json({ ok: true, message: 'If this number is authorized, a login link has been sent.', whatsapp: whatsappResult }, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Milestone 24 - ADMIN PIN LOGIN. A third option alongside the static
+// env.ADMIN_TOKEN and the magic-link flow above, not a replacement for
+// either. Reuses admin_login_tokens for session issuance exactly as
+// handleAdminLogin does above - the only difference is what proves the
+// requester is really James (a correct PIN, verified server-side,
+// instead of control of a WhatsApp number) - so once past that check,
+// login is issued identically.
+// ═══════════════════════════════════════════════════════════════
+
+// Gated by the existing requireAdmin() - no bootstrapping problem, since
+// James already has the static ADMIN_TOKEN (or a magic-link session) to
+// set his first PIN with. The assistant building this never sees or
+// chooses the PIN value - it only ever exists as this request's body on
+// James's own machine and as a salted hash here after.
+async function handleAdminSetPin(request, env) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const pin = (body.pin || '').toString().trim();
+  if (!/^\d+$/.test(pin) || pin.length < PIN_MIN_DIGITS || pin.length > 12) {
+    return json({ ok: false, error: `PIN must be ${PIN_MIN_DIGITS}-12 digits, numbers only.` }, 400);
+  }
+
+  const hash = await hashPinForStorage(pin);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('admin_pin_hash', ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+    ).bind(hash),
+    // A newly-set PIN gets a clean slate - any lockout from guesses
+    // against the OLD PIN shouldn't carry over and lock James out of
+    // his own brand-new one.
+    env.DB.prepare(`UPDATE platform_settings SET value = '0' WHERE key = 'admin_pin_failed_attempts'`),
+    env.DB.prepare(`UPDATE platform_settings SET value = '' WHERE key = 'admin_pin_locked_until'`),
+  ]);
+
+  return json({ ok: true }, 200);
+}
+
+// Public - this IS the authentication step, so it can't itself require
+// requireAdmin(). The real protection is the PIN check + the lockout
+// below, not a network-level gate.
+async function handleAdminLoginPin(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const pin = (body.pin || '').toString().trim();
+
+  const storedHash = await getSetting(env, 'admin_pin_hash', '');
+  if (!storedHash) return json({ ok: false, error: 'PIN not configured yet.' }, 400);
+
+  // Global (not per-IP) lockout - deliberate, see the migration's own
+  // comment: one admin, one PIN, a global throttle is simpler and more
+  // protective than per-IP tracking (an attacker spreading guesses
+  // across many IPs still hits the same limit).
+  const lockedUntil = await getSetting(env, 'admin_pin_locked_until', '');
+  if (lockedUntil) {
+    // julianday(), not a raw string '>' compare - admin_login_tokens'
+    // expires_at check elsewhere in this file compares an ISO
+    // "...T...Z" value against datetime('now')'s "YYYY-MM-DD HH:MM:SS"
+    // format with plain '>', which is a byte-wise string compare, not a
+    // real time comparison ('T' > ' ' in ASCII beats any HH:MM:SS
+    // difference) - confirmed live via a direct D1 query while building
+    // this. That's a pre-existing, separate issue in the token-expiry
+    // checks (out of scope for this change, flagged not fixed here);
+    // this NEW lockout check is written correctly from the start.
+    const row = await env.DB.prepare(
+      `SELECT (julianday(?) > julianday(datetime('now'))) AS still_locked,
+              CAST((julianday(?) - julianday(datetime('now'))) * 1440 AS INTEGER) AS minutes_left`
+    ).bind(lockedUntil, lockedUntil).first();
+    if (row && row.still_locked) {
+      return json({ ok: false, error: `Too many attempts. Try again in ${Math.max(1, row.minutes_left)} minute(s).` }, 429);
+    }
+  }
+
+  const valid = pin ? await verifyPinAgainstStoredHash(pin, storedHash) : false;
+
+  if (valid) {
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE platform_settings SET value = '0' WHERE key = 'admin_pin_failed_attempts'`),
+      env.DB.prepare(`UPDATE platform_settings SET value = '' WHERE key = 'admin_pin_locked_until'`),
+    ]);
+    const token = crypto.randomUUID().replace(/-/g, '');
+    const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000).toISOString();
+    await env.DB.prepare(`INSERT INTO admin_login_tokens (token, expires_at) VALUES (?, ?)`).bind(token, expiresAt).run();
+    return json({ ok: true, token }, 200);
+  }
+
+  // Increment-then-read, not RETURNING (unused elsewhere in this file -
+  // matches the same two-step pattern fuel_confirmed_accurate_count's
+  // own increment already uses, rather than introducing an unproven-here
+  // SQL feature for a security-relevant counter).
+  await env.DB.prepare(
+    `UPDATE platform_settings SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), updated_at = datetime('now') WHERE key = 'admin_pin_failed_attempts'`
+  ).run();
+  const attempts = Number(await getSetting(env, 'admin_pin_failed_attempts', String(PIN_MAX_ATTEMPTS)));
+
+  if (attempts >= PIN_MAX_ATTEMPTS) {
+    const newLockUntil = new Date(Date.now() + PIN_LOCKOUT_MINUTES * 60 * 1000).toISOString();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO platform_settings (key, value, updated_at) VALUES ('admin_pin_locked_until', ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      ).bind(newLockUntil),
+      env.DB.prepare(`UPDATE platform_settings SET value = '0' WHERE key = 'admin_pin_failed_attempts'`),
+    ]);
+    return json({ ok: false, error: `Too many attempts. Try again in ${PIN_LOCKOUT_MINUTES} minute(s).` }, 429);
+  }
+
+  return json({ ok: false, error: 'Incorrect PIN.', attempts_remaining: PIN_MAX_ATTEMPTS - attempts }, 401);
 }
 
 async function handleDriverMe(request, env) {

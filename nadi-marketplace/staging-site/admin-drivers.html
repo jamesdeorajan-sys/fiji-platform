@@ -19,6 +19,8 @@
   #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
   #gateMsg.ok { color: #2e8b57; }
   #gateMsg.err { color: #c83e3e; }
+  .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
+  #phoneLoginWrap { margin-top: 14px; text-align: left; }
   .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
   .toolbar button { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--ocean); }
   .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
@@ -46,10 +48,15 @@
 
 <div id="gate">
   <h1>Admin login</h1>
-  <p class="sub">Enter your phone number to receive a login link via WhatsApp.</p>
-  <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
-  <button id="loginBtn">Send login link</button>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
   <div id="gateMsg"></div>
+  <button id="showPhoneLoginBtn" type="button" class="link-btn">Or send a login link via WhatsApp instead</button>
+  <div id="phoneLoginWrap" style="display:none;">
+    <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+    <button id="loginBtn">Send login link</button>
+  </div>
 </div>
 
 <div class="wrap" id="main" style="display:none;">
@@ -88,11 +95,47 @@
     return false;
   }
 
-  // Milestone 23 - phone-number magic-link login, replacing the raw
-  // ADMIN_TOKEN paste. POST /admin/login is intentionally generic
-  // either way (same privacy-by-default posture as driver login) - a
-  // real login link only actually arrives via WhatsApp for the one
-  // authorized number.
+  // Milestone 24 - PIN login, the default/primary path now: no WhatsApp
+  // dependency, works the moment a PIN is set (via admin-dashboard.html).
+  // POST /admin/login-pin returns the token directly in the response
+  // (unlike the magic link, there's no WhatsApp round-trip to wait on).
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!pin) return;
+    document.getElementById('pinLoginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        ADMIN_TOKEN = data.token;
+        sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+        document.getElementById('pinInput').value = '';
+        await tryLoad();
+      } else {
+        msgEl.className = 'err';
+        msgEl.textContent = data.error || 'Something went wrong.';
+        msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('pinLoginBtn').disabled = false;
+    }
+  });
+
+  // Milestone 23 - phone-number magic-link login, kept as a secondary
+  // option (collapsed by default) alongside the PIN above. POST
+  // /admin/login is intentionally generic either way (same
+  // privacy-by-default posture as driver login) - a real login link
+  // only actually arrives via WhatsApp for the one authorized number.
+  document.getElementById('showPhoneLoginBtn').addEventListener('click', () => {
+    document.getElementById('phoneLoginWrap').style.display = 'block';
+    document.getElementById('showPhoneLoginBtn').style.display = 'none';
+  });
+
   document.getElementById('loginBtn').addEventListener('click', async () => {
     const phone = document.getElementById('phoneInput').value.trim();
     const msgEl = document.getElementById('gateMsg');

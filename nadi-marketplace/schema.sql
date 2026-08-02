@@ -513,3 +513,16 @@ CREATE TABLE admin_login_tokens (
 );
 
 CREATE INDEX idx_booking_events_booking_id ON booking_events(booking_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 24 additions — admin PIN login, alongside the magic-link
+-- flow above. No new table - a PIN system for exactly one admin is
+-- three scalar values, which platform_settings already exists to hold.
+-- See migrations/milestone24-admin-pin.sql for the migration actually
+-- run against the live database, including the full rationale for the
+-- self-describing hash format and the global (not per-IP) lockout.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_hash', '');
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_failed_attempts', '0');
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_locked_until', '');
