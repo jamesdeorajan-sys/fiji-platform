@@ -111,6 +111,19 @@ const DRIVER_RETURN_LANG_CODE = 'en';
 // rejecting both driver-facing templates over the .pages.dev domain itself.
 const DRIVER_APP_URL = 'https://driver.fijidash.com/driver-app';
 
+// Milestone 22 - guest-facing "your driver is confirmed" notification.
+// Not yet submitted to Meta as of this commit (same starting state
+// FUEL_INDEX_ALERT_TEMPLATE and HEALTH_ALERT_TEMPLATE were in before
+// James submitted them via WhatsApp Manager's UI) - the real send will
+// 404/reject until it is, which is expected, not a bug. Also blocked on
+// WHATSAPP_PHONE_ID still pointing at the test number rather than a real
+// production WhatsApp number - both must be true before a real guest
+// would ever receive this. 'en' is a starting guess only, same caveat as
+// every other template constant in this file - verify independently
+// once approved, never assume it carries over.
+const GUEST_DRIVER_ASSIGNED_TEMPLATE = 'vakaviti_guest_driver_assigned';
+const GUEST_DRIVER_ASSIGNED_LANG_CODE = 'en';
+
 // ═══════════════════════════════════════════════════════════════
 // MILESTONE 5 — fuel index (spec Section 7). FCCC's real petroleum page
 // (verified live, not assumed from the spec's description of it) is a list
@@ -1210,6 +1223,30 @@ async function sendBookingBroadcastWhatsApp(env, phone, booking) {
   ]);
 }
 
+// Milestone 22, point 4 of the follow-up build order: guest gets driver
+// name/vehicle/pickup info once a real driver is assigned. Same
+// booking-shaped-wrapper-around-sendWhatsAppTemplate pattern as
+// sendBookingBroadcastWhatsApp directly above - no new dispatcher/
+// abstraction layer. Called at every real point in this file where a
+// booking transitions to having a real assigned driver (driver accept,
+// admin manual-assign both paths, negotiation accept-offer) - if
+// booking.guest_phone is empty or invalid, sendWhatsAppTemplate's own
+// existing guard already no-ops it safely.
+async function sendGuestDriverAssignedWhatsApp(env, booking, driverName) {
+  const pickupSummary = booking.pickup_date
+    ? `${booking.pickup_date}${booking.pickup_time ? ' ' + booking.pickup_time : ''}`
+    : 'time to be confirmed';
+  // vakaviti_guest_driver_assigned body: {{1}} guest name, {{2}} driver name,
+  // {{3}} vehicle type, {{4}} route, {{5}} pickup date/time
+  return sendWhatsAppTemplate(env, booking.guest_phone, GUEST_DRIVER_ASSIGNED_TEMPLATE, GUEST_DRIVER_ASSIGNED_LANG_CODE, [
+    booking.guest_name || 'Guest',
+    driverName || 'your driver',
+    booking.vehicle_type,
+    `${booking.pickup_zone} -> ${booking.destination_zone}`,
+    pickupSummary,
+  ]);
+}
+
 // Not built on sendWhatsAppTemplate() - that function hardcodes
 // BOOKING_BROADCAST_LANG_CODE internally rather than taking a language code
 // as a parameter, so reusing it here would silently send this template under
@@ -1484,6 +1521,7 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
 
   const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
   await logBookingEvent(env, { bookingId, eventType: 'accepted', previousStatus: 'pending', newStatus: 'accepted', actor: `driver:${driver.id}` });
+  await sendGuestDriverAssignedWhatsApp(env, booking, driver.name);
   return json({ ok: true, won: true, booking }, 200);
 }
 
@@ -1539,6 +1577,7 @@ async function handleAdminManualAssign(request, env) {
       bookingId, eventType: 'accepted', previousStatus: 'pending', newStatus: 'accepted', actor: 'admin',
       metadata: { assigned_driver_id: driverId, via: 'manual_assign' },
     });
+    await sendGuestDriverAssignedWhatsApp(env, booking, driver.name);
     return json({ ok: true, won: true, booking }, 200);
   }
 
@@ -1565,6 +1604,7 @@ async function handleAdminManualAssign(request, env) {
     actor: 'admin', // manually arranged over WhatsApp, no existing booking row - an admin action created this
   });
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
+  await sendGuestDriverAssignedWhatsApp(env, result.booking, driver.name);
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking }, 201);
 }
@@ -2377,6 +2417,13 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
     env.DB.prepare(`UPDATE negotiation_offers SET guest_decision = 'declined' WHERE request_id = ? AND id != ?`).bind(requestId, offerId),
     env.DB.prepare(`UPDATE negotiation_requests SET status = 'accepted', booking_id = ? WHERE id = ?`).bind(result.bookingId, requestId),
   ]);
+
+  // Milestone 22 - negotiation_offers only stores driver_id, not a name,
+  // so the assigned driver's name is fetched fresh here (the other three
+  // call sites of sendGuestDriverAssignedWhatsApp already have it on
+  // hand from an earlier query in the same request).
+  const assignedDriver = await env.DB.prepare(`SELECT name FROM drivers WHERE id = ?`).bind(offer.driver_id).first();
+  await sendGuestDriverAssignedWhatsApp(env, result.booking, assignedDriver?.name);
 
   // Admin visibility on the real, agreed outcome only - not on every
   // intermediate offer, matching "same visibility as everything else"
