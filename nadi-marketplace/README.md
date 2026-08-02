@@ -1607,6 +1607,72 @@ the admin login link needs either that allowlist updated or the real
 production WhatsApp number in place, the same production-readiness gap
 already flagged for Milestone 22's guest-notification trigger.
 
+## Milestone 24 — admin PIN login
+
+A third option alongside the static `ADMIN_TOKEN` and the Milestone 23
+magic link, per James's own reasoning: there is exactly one admin, and
+the magic-link flow (built for the many-drivers case) adds real
+friction — template approval, WhatsApp delivery, allow-list membership —
+for a single-user problem that doesn't need any of it. Neither existing
+path is removed; the PIN is now the default/primary option on every
+admin gate, with the magic link demoted to a collapsed "or send a login
+link via WhatsApp instead" secondary.
+
+No new table — a PIN system for exactly one admin is three scalar
+values, held in `platform_settings` (`admin_pin_hash`,
+`admin_pin_failed_attempts`, `admin_pin_locked_until`), same pattern as
+`admin_alert_phone` and every existing rate-limit setting.
+
+**Hashing**: PBKDF2 (Web Crypto, built into the Workers runtime, zero
+new dependency), 100,000 iterations, a random 16-byte salt per PIN,
+stored as one self-describing string
+`pbkdf2$<iterations>$<saltHex>$<hashHex>`. A 6-digit PIN has only a
+million possible values — far too small for an unsalted single-round
+hash — same category of care as any password. The assistant building
+this never saw or chose James's real PIN.
+
+**Rate limiting**: global (not per-IP) lockout after 5 failed attempts,
+15 minutes — one admin, one PIN, so a global throttle is simpler and
+more protective than per-IP tracking. Setting a new PIN clears any
+existing lockout/attempt count.
+
+**Real bug caught and fixed before shipping**: comparing a JS
+`toISOString()` value (`"...T...Z"`) against SQLite's `datetime('now')`
+(`"YYYY-MM-DD HH:MM:SS"`) with a plain `>` is a byte-wise **string**
+comparison, not a real time comparison — `'T'` always beats `' '` in
+ASCII regardless of the actual time that follows, confirmed live via a
+direct D1 query while building this. Fixed by wrapping both sides in
+`julianday()`. This exact pattern already exists in `driver_login_tokens`'
+and `admin_login_tokens`' own expiry checks (`requireDriver`/
+`requireAdmin`) — flagged, not fixed here (out of scope for this
+change; fails toward "stays logged in longer than intended," not toward
+breaking a real login, so nothing is currently broken by it) — a named
+follow-up.
+
+**Two endpoints**: `POST /admin/set-pin` (gated by the existing
+`requireAdmin()`) and `POST /admin/login-pin` (public — this *is* the
+auth step; issues a token via the exact same `admin_login_tokens`
+insert `handleAdminLogin` already uses, skipping WhatsApp entirely).
+`admin-dashboard.html` gains a "Set/change PIN" panel in its toolbar.
+
+**Verified live end-to-end**, using a legitimate admin session obtained
+the same way Milestone 23's own verification did (never the real
+`ADMIN_TOKEN`): `set-pin` accepted a valid PIN and correctly rejected a
+too-short one, a non-numeric one, and an unauthenticated request;
+`login-pin` with the correct PIN issued a real token confirmed to grant
+real admin access; 5 wrong-PIN attempts correctly locked out for 15
+minutes with `attempts_remaining` counting down correctly; the lockout
+correctly blocked even the *correct* PIN while active (the real proof
+the fixed `julianday()` comparison works); setting a new PIN cleared the
+lockout immediately. Browser-verified on `admin-dashboard.html`: PIN
+gate renders as primary, the WhatsApp-link toggle works, a real PIN
+login through the actual UI logged in with zero console errors, the
+mismatch guard blocked non-matching PINs, and Log out cleared the
+session. All test tokens deleted and `admin_pin_hash` reset back to
+empty (unconfigured) afterward, per instruction — James sets his own
+real PIN from a clean, empty state. Zero regression on the 43-test
+suite.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
