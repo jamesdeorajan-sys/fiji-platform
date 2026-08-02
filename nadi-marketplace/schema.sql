@@ -495,4 +495,21 @@ CREATE TABLE booking_events (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 23 additions — admin phone-number magic-link login.
+-- Mirrors driver_login_tokens (Milestone 2) exactly, minus a foreign
+-- key to an "admins" table - there isn't one. See
+-- migrations/milestone23-admin-login.sql for the migration actually run
+-- against the live database, including the full rationale for why the
+-- one authorized phone number is hardcoded in worker.js rather than
+-- stored anywhere editable.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE admin_login_tokens (
+  id INTEGER PRIMARY KEY,
+  token TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX idx_booking_events_booking_id ON booking_events(booking_id);

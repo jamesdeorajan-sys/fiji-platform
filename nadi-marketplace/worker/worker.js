@@ -124,6 +124,30 @@ const DRIVER_APP_URL = 'https://driver.fijidash.com/driver-app';
 const GUEST_DRIVER_ASSIGNED_TEMPLATE = 'vakaviti_guest_driver_assigned';
 const GUEST_DRIVER_ASSIGNED_LANG_CODE = 'en';
 
+// Milestone 23 - admin magic-link login. Exactly one phone number is
+// ever authorized to receive/use an admin login link. Deliberately
+// hardcoded here rather than in platform_settings or any DB table - an
+// admin-editable setting can't be the thing gating who is allowed to
+// become an admin (a logged-in admin could otherwise repoint it to
+// themselves). Matches AU_MOBILE_PHONE_RE above (+614 + 8 digits), so
+// normaliseDriverPhone() - already built for driver login - normalises
+// any of the equivalent input forms (leading 0, no +61, etc.) to this
+// exact same E.164 string with no separate parsing logic needed here.
+const ADMIN_LOGIN_PHONE = '+61413335007';
+// Not yet submitted to Meta as of this commit - same starting state
+// every other not-yet-submitted template in this file was in before its
+// own submission (see GUEST_DRIVER_ASSIGNED_TEMPLATE above). Real send
+// will fail until James submits and Meta approves it; the token is
+// still issued either way, same as every other login-link send in this
+// file - a WhatsApp delivery failure never blocks the underlying login
+// flow from working via a manually-copied link. When submitting: same
+// body+button shape as vakaviti_driver_return, button URL configured in
+// WhatsApp Manager as https://driver.fijidash.com/admin-dashboard.html?token={{1}}
+// (same Pages project/custom-domain DRIVER_APP_URL above uses - the
+// staging-site/ directory serves the admin pages too).
+const ADMIN_LOGIN_TEMPLATE = 'vakaviti_admin_login';
+const ADMIN_LOGIN_LANG_CODE = 'en';
+
 // ═══════════════════════════════════════════════════════════════
 // MILESTONE 5 — fuel index (spec Section 7). FCCC's real petroleum page
 // (verified live, not assumed from the spec's description of it) is a list
@@ -338,6 +362,12 @@ export default {
       return handleDriverNegotiationOffer(request, env, Number(negotiationOfferMatch[1]));
     }
 
+    // ── Milestone 23: admin magic-link login request, replaces manually
+    // pasting ADMIN_TOKEN on every admin-*.html page ──
+    if (request.method === 'POST' && url.pathname === '/admin/login') {
+      return handleAdminLogin(request, env);
+    }
+
     if (request.method === 'POST' && url.pathname === '/admin/test-booking') {
       return handleAdminTestBooking(request, env);
     }
@@ -544,7 +574,7 @@ async function runHealthCheckAlert(env) {
 }
 
 async function handleAdminHealthCheckRun(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   const result = await runHealthCheckAlert(env);
   return json(result, 200);
 }
@@ -555,7 +585,7 @@ async function handleAdminHealthCheckRun(request, env) {
 // template so a stale in-code language constant can be corrected against
 // ground truth instead of guessed via trial-and-error sends.
 async function handleAdminWhatsAppTemplatesList(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return json({ ok: false, error: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' }, 503);
   }
@@ -603,7 +633,7 @@ async function handleAdminWhatsAppTemplatesList(request, env) {
 }
 
 async function handleAdminWhatsAppPhoneInfo(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return json({ ok: false, error: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' }, 503);
   }
@@ -852,14 +882,26 @@ async function handleDocServe(request, env, url) {
 // ADMIN — auth, list, approve, reject
 // ═══════════════════════════════════════════════════════════════
 
-function requireAdmin(request, env) {
+// Milestone 23 - now async: the static env.ADMIN_TOKEN break-glass
+// secret (set via `wrangler secret put`, unchanged) is checked first and
+// still works exactly as before - this is additive, not a replacement.
+// A valid, unexpired admin_login_tokens row (issued only to
+// ADMIN_LOGIN_PHONE via handleAdminLogin) is the second, now-preferred
+// way in, mirroring requireDriver()'s own DB-lookup shape below.
+async function requireAdmin(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
-  return !!(token && env.ADMIN_TOKEN && timingSafeEqual(token, env.ADMIN_TOKEN));
+  if (!token) return false;
+  if (env.ADMIN_TOKEN && timingSafeEqual(token, env.ADMIN_TOKEN)) return true;
+  if (!env.DB) return false;
+  const row = await env.DB.prepare(
+    `SELECT id FROM admin_login_tokens WHERE token = ? AND expires_at > datetime('now')`
+  ).bind(token).first();
+  return !!row;
 }
 
 async function handleAdminListDrivers(request, env, url) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ drivers: [] }, 503);
 
   const status = url.searchParams.get('status') || 'pending';
@@ -903,7 +945,7 @@ async function handleAdminListDrivers(request, env, url) {
 // included since "who's this assigned to" is exactly the kind of context
 // that motivated this page, at no real added cost over the base query.
 async function handleAdminListBookings(request, env, url) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ bookings: [] }, 503);
 
   // Bounded, not unlimited - this is a dashboard view, not an export tool.
@@ -941,7 +983,7 @@ async function handleAdminListBookings(request, env, url) {
 // Chronological (oldest first) - reads as a real timeline/history, not a
 // most-recent-first activity feed.
 async function handleAdminListBookingEvents(request, env, bookingId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ events: [] }, 503);
 
   const booking = await env.DB.prepare(`SELECT id FROM bookings WHERE id = ?`).bind(bookingId).first();
@@ -968,7 +1010,7 @@ async function handleAdminListBookingEvents(request, env, bookingId) {
 // transfers" is pickup_date/pickup_time, not created_at - when the ride
 // is scheduled, not when it was booked.
 async function handleAdminDashboardStats(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ error: 'Database unavailable.' }, 503);
 
   const [todayResult, byStatusResult, unassignedResult, escalationsResult, upcomingResult] = await env.DB.batch([
@@ -1007,7 +1049,7 @@ async function handleAdminDashboardStats(request, env) {
 // escalations has no priority column today - honestly reflected here by
 // simply not returning one, rather than fabricating a value.
 async function handleAdminListEscalations(request, env, url) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ escalations: [] }, 503);
 
   const requestedLimit = Number(url.searchParams.get('limit'));
@@ -1032,7 +1074,7 @@ async function handleAdminListEscalations(request, env, url) {
 }
 
 async function handleAdminApprove(request, env, driverId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const driver = await env.DB.prepare(`SELECT id, name, phone, status FROM drivers WHERE id = ?`).bind(driverId).first();
@@ -1058,7 +1100,7 @@ async function handleAdminApprove(request, env, driverId) {
 }
 
 async function handleAdminReject(request, env, driverId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const driver = await env.DB.prepare(`SELECT id FROM drivers WHERE id = ?`).bind(driverId).first();
@@ -1198,6 +1240,45 @@ async function sendDriverReturnWhatsApp(env, phone, driverName, token) {
           language: { code: DRIVER_RETURN_LANG_CODE },
           components: [
             { type: 'body', parameters: [{ type: 'text', text: driverName || 'Driver' }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
+          ],
+        },
+      }),
+    });
+    const bodyText = await res.text().catch(() => '');
+    return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
+// Milestone 23 - admin login link. Same body+button component shape as
+// sendDriverWelcomeWhatsApp/sendDriverReturnWhatsApp (body {{1}} = a
+// fixed label since there's no per-admin name to personalise with, only
+// one admin; button {{1}} = token) - fully self-contained per the same
+// "zero shared code between templates" instruction those two follow,
+// not built on sendWhatsAppTemplate().
+async function sendAdminLoginWhatsApp(env, phone, token) {
+  if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
+    return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
+  }
+  const cleanNumber = (phone || '').replace(/[^0-9]/g, '');
+  if (!cleanNumber || cleanNumber.length < 8) {
+    return { attempted: false, reason: 'Phone number invalid for WhatsApp send.' };
+  }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: cleanNumber,
+        type: 'template',
+        template: {
+          name: ADMIN_LOGIN_TEMPLATE,
+          language: { code: ADMIN_LOGIN_LANG_CODE },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: 'Fiji Dash Admin' }] },
             { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
           ],
         },
@@ -1382,6 +1463,35 @@ async function handleDriverLogin(request, env) {
   return json({ ok: true, message: 'If this number is a verified driver, a login link has been sent.', whatsapp: whatsappResult }, 200);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Milestone 23 - ADMIN LOGIN (magic link request). Same shape as
+// handleDriverLogin directly above - phone in, generic response either
+// way, real WhatsApp send only on a match - except the "match" here is
+// a single hardcoded phone number (ADMIN_LOGIN_PHONE), not a DB lookup
+// across many registered numbers, since there is exactly one admin.
+// ═══════════════════════════════════════════════════════════════
+
+async function handleAdminLogin(request, env) {
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const phone = normaliseDriverPhone((body.phone || '').toString());
+
+  // Generic response either way, same privacy-by-default posture as
+  // handleDriverLogin - no row is written, and no WhatsApp send is
+  // attempted, for any number other than the one hardcoded admin phone.
+  if (!phone || phone !== ADMIN_LOGIN_PHONE) {
+    return json({ ok: true, message: 'If this number is authorized, a login link has been sent.' }, 200);
+  }
+
+  const token = crypto.randomUUID().replace(/-/g, '');
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_SECONDS * 1000).toISOString();
+  await env.DB.prepare(`INSERT INTO admin_login_tokens (token, expires_at) VALUES (?, ?)`).bind(token, expiresAt).run();
+
+  const whatsappResult = await sendAdminLoginWhatsApp(env, phone, token);
+  return json({ ok: true, message: 'If this number is authorized, a login link has been sent.', whatsapp: whatsappResult }, 200);
+}
+
 async function handleDriverMe(request, env) {
   const driver = await requireDriver(request, env);
   if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
@@ -1541,7 +1651,7 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
 // ═══════════════════════════════════════════════════════════════
 
 async function handleAdminManualAssign(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   let body;
@@ -1671,7 +1781,7 @@ async function handleDriverBookingStatus(request, env, bookingId) {
 // ═══════════════════════════════════════════════════════════════
 
 async function handleAdminTestBooking(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   let body;
@@ -2613,7 +2723,7 @@ async function enforceMaxHoursCap(env) {
 }
 
 async function handleAdminMaxHoursSweep(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
   const result = await enforceMaxHoursCap(env);
   return json({ ok: true, ...result }, 200);
@@ -2670,7 +2780,7 @@ async function checkFuelIndexUpdate(env) {
 }
 
 async function handleAdminFuelIndexCheck(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   const result = await checkFuelIndexUpdate(env);
   return json(result, result.ok ? 200 : 500);
 }
@@ -2682,7 +2792,7 @@ async function handleAdminFuelIndexCheck(request, env) {
 // live fuel_index baseline and queues a fuel_index_pending row - does NOT
 // touch the live fuel_index table. That only happens on an explicit confirm.
 async function handleAdminFuelIndexSubmit(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   let body;
@@ -2728,7 +2838,7 @@ async function handleAdminFuelIndexSubmit(request, env) {
 // not branched on - per instruction it stays false regardless for the first
 // 2-3 months, so every path here requires this explicit call either way.
 async function handleAdminFuelIndexConfirm(request, env, pendingId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const pending = await env.DB.prepare(`SELECT * FROM fuel_index_pending WHERE id = ?`).bind(pendingId).first();
@@ -2751,7 +2861,7 @@ async function handleAdminFuelIndexConfirm(request, env, pendingId) {
 }
 
 async function handleAdminFuelIndexReject(request, env, pendingId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const pending = await env.DB.prepare(`SELECT id, status FROM fuel_index_pending WHERE id = ?`).bind(pendingId).first();
@@ -2804,6 +2914,7 @@ const BACKUP_TABLES = [
   'zones', 'drivers', 'vehicles', 'destinations',
   'fuel_index', 'fuel_index_pending', 'platform_settings', 'pricing_rules',
   'bookings', 'wallets', 'wallet_transactions', 'driver_login_tokens',
+  'admin_login_tokens',
 ];
 
 async function runD1Backup(env) {
@@ -2829,7 +2940,7 @@ async function runD1Backup(env) {
 }
 
 async function handleAdminBackupRun(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   const result = await runD1Backup(env);
   return json(result, result.ok ? 201 : 500);
 }
@@ -2868,7 +2979,7 @@ async function handleDestinationsPublic(env) {
 }
 
 async function handleAdminDestinationsList(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ destinations: [] }, 503);
   const result = await env.DB.prepare(
     `SELECT d.id, d.name, d.type, d.active, d.display_order, z.name AS zone
@@ -2879,7 +2990,7 @@ async function handleAdminDestinationsList(request, env) {
 }
 
 async function handleAdminDestinationCreate(request, env) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   let body;
@@ -2935,7 +3046,7 @@ async function handleAdminDestinationCreate(request, env) {
 }
 
 async function handleAdminDestinationEdit(request, env, destinationId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const existing = await env.DB.prepare(`SELECT id FROM destinations WHERE id = ?`).bind(destinationId).first();
@@ -3025,7 +3136,7 @@ async function handleAdminDestinationEdit(request, env, destinationId) {
 // valid) - same pattern as driver approve/reject being their own endpoints
 // rather than forcing every admin action through one generic PATCH.
 async function handleAdminDestinationDeactivate(request, env, destinationId) {
-  if (!requireAdmin(request, env)) return json({ error: 'Unauthorized.' }, 401);
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const existing = await env.DB.prepare(`SELECT id FROM destinations WHERE id = ?`).bind(destinationId).first();

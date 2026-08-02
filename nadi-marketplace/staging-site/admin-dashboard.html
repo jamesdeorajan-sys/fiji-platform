@@ -15,7 +15,10 @@
   #gate { max-width: 360px; margin: 80px auto; text-align: center; }
   #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
   #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
-  #gateErr { color: var(--red); font-size: 13px; margin-top: 8px; display: none; }
+  #gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
+  #gateMsg.ok { color: var(--green); }
+  #gateMsg.err { color: var(--red); }
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; cursor: pointer; font-weight: 600; }
@@ -52,10 +55,10 @@
 
 <div id="gate">
   <h1>Admin login</h1>
-  <p class="sub">Enter the admin token to view the dashboard.</p>
-  <input type="password" id="tokenInput" placeholder="Admin token">
-  <button id="gateBtn">Enter</button>
-  <div id="gateErr">Invalid token or connection error.</div>
+  <p class="sub">Enter your phone number to receive a login link via WhatsApp.</p>
+  <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+  <button id="loginBtn">Send login link</button>
+  <div id="gateMsg"></div>
 </div>
 
 <div class="wrap" id="main" style="display:none;">
@@ -64,6 +67,7 @@
 
   <div class="toolbar">
     <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn" type="button">Log out</button>
   </div>
 
   <div class="err-banner" id="errBanner"></div>
@@ -85,6 +89,20 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      ADMIN_TOKEN = tokenFromLink;
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    await tryLoad();
+  }
+
   async function tryLoad() {
     if (!ADMIN_TOKEN) return false;
     const ok = await loadStats();
@@ -96,14 +114,36 @@
     return false;
   }
 
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
-    const ok = await tryLoad();
-    if (ok) {
-      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
-    } else {
-      document.getElementById('gateErr').style.display = 'block';
+  // Milestone 23 - phone-number magic-link login, replacing the raw
+  // ADMIN_TOKEN paste. POST /admin/login is intentionally generic
+  // either way (same privacy-by-default posture as driver login) - a
+  // real login link only actually arrives via WhatsApp for the one
+  // authorized number.
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
     }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('nadi_admin_token');
+    ADMIN_TOKEN = '';
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
   });
 
   document.getElementById('refreshBtn').addEventListener('click', loadStats);
@@ -195,7 +235,7 @@
     `;
   }
 
-  tryLoad();
+  init();
 </script>
 </body>
 </html>
