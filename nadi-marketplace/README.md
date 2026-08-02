@@ -1673,6 +1673,43 @@ empty (unconfigured) afterward, per instruction — James sets his own
 real PIN from a clean, empty state. Zero regression on the 43-test
 suite.
 
+## Milestone 24 follow-up — restored the admin-token login option
+
+Real blocker James hit directly: `admin-dashboard.html`'s login screen
+only offered a PIN field (correctly rejecting since none was set yet)
+and the WhatsApp-link fallback (still hitting the unsubmitted
+`vakaviti_admin_login` template) — there was no visible way to log in
+with the static `ADMIN_TOKEN` he already has, so he couldn't reach the
+Set/change PIN panel to set his first PIN at all.
+
+Confirmed directly via a real browser load of the live deployed page
+*before* touching anything: the raw-token input was fully removed, not
+hidden — Milestone 23 replaced it with the phone-number magic-link
+gate, and Milestone 24 only added the PIN option on top of that. The
+static-token path itself was never actually removed from the backend
+(`requireAdmin()` has accepted it unchanged this whole time) — only the
+UI to use it disappeared. Zero `worker.js` changes needed; pure
+frontend fix, applied identically to all 5 admin pages.
+
+Adds a third, collapsed "Or log in with an admin token" option
+alongside PIN (primary) and the WhatsApp link (secondary) — reveals a
+password-type token input + Enter button, submits by setting
+`ADMIN_TOKEN` and calling the page's own existing `tryLoad()` (the same
+function the magic-link `?token=` flow already uses to validate by
+actually attempting to load real data).
+
+Verified live against the real deployed page
+(`driver.fijidash.com/admin-dashboard.html`): confirmed the gap first
+(no token option anywhere), then after the fix — the option is visible,
+a deliberately wrong token correctly shows "Invalid token or connection
+error," and a real valid session token (obtained the same
+never-touch-the-real-secret way as every other verification this
+build) logged in successfully with live dashboard data and zero console
+errors, proving the exact code path a real static token would also
+take. All test tokens deleted afterward, baseline re-confirmed (only
+James's own real token remains); `admin_pin_hash` confirmed still
+unconfigured/untouched.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
