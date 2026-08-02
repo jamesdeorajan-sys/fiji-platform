@@ -20,7 +20,7 @@
   #gateMsg.ok { color: var(--green); }
   #gateMsg.err { color: var(--red); }
   .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
-  #phoneLoginWrap { margin-top: 14px; text-align: left; }
+  #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; cursor: pointer; font-weight: 600; }
@@ -72,6 +72,11 @@
   <div id="phoneLoginWrap" style="display:none;">
     <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
     <button id="loginBtn">Send login link</button>
+  </div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
   </div>
 </div>
 
@@ -197,6 +202,38 @@
     } finally {
       document.getElementById('loginBtn').disabled = false;
     }
+  });
+
+  // Real gap found live: the static env.ADMIN_TOKEN break-glass path
+  // (requireAdmin() has always accepted it, unchanged since Milestone 23)
+  // had no UI left to use it through at all - the raw-token input was
+  // removed when the magic link replaced it, and never restored. James
+  // was locked out of setting his first PIN, since neither the PIN field
+  // (correctly empty/unset) nor the WhatsApp link (template not yet
+  // submitted) could get him in. This restores a third, collapsed option
+  // using the token he already has - no backend change needed, since
+  // requireAdmin() already accepts it.
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => {
+    document.getElementById('tokenLoginWrap').style.display = 'block';
+    document.getElementById('showTokenLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const token = document.getElementById('tokenInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!token) return;
+    document.getElementById('tokenLoginBtn').disabled = true;
+    ADMIN_TOKEN = token;
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      ADMIN_TOKEN = '';
+      msgEl.className = 'err';
+      msgEl.textContent = 'Invalid token or connection error.';
+      msgEl.style.display = 'block';
+    }
+    document.getElementById('tokenLoginBtn').disabled = false;
   });
 
   document.getElementById('logoutBtn').addEventListener('click', () => {
