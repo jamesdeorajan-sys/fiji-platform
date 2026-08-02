@@ -1539,6 +1539,74 @@ already-established state `FUEL_INDEX_ALERT_TEMPLATE` and
 `HEALTH_ALERT_TEMPLATE` sat in before their own submission, not a new
 risk this introduces.
 
+## Milestone 23 — admin phone-number magic-link login
+
+Replaces the raw `ADMIN_TOKEN` paste on all 5 admin pages
+(`admin-bookings.html`, `admin-dashboard.html`, `admin-escalations.html`,
+`admin-drivers.html`, `destinations-admin.html` — all five used the
+identical raw-token gate pattern, sharing one `sessionStorage` key) with
+the exact same phone-in/WhatsApp-link/token-out flow already built and
+proven for driver login. James stops manually generating and pasting a
+token via the Cloudflare dashboard — he requests a link to his own
+WhatsApp instead.
+
+Restricted to exactly one phone number, `+61413335007`, hardcoded as
+`ADMIN_LOGIN_PHONE` — not a `platform_setting` or DB-stored value, since
+an admin-editable setting can't be the thing gating who is allowed to
+become an admin in the first place.
+
+Additive: new `admin_login_tokens` table (mirrors `driver_login_tokens`
+minus a `driver_id` FK — there's no admins table), added to
+`BACKUP_TABLES` for the same reason `driver_login_tokens` already is.
+`requireAdmin()` is now async and checks two valid credentials, not a
+replacement of one: the existing static `env.ADMIN_TOKEN` (unchanged,
+still the break-glass path) OR a valid, unexpired `admin_login_tokens`
+row. All 21 call sites updated to await it — mechanical and
+behavior-preserving, confirmed via the 43-test suite and a live 401
+check against an already-existing admin endpoint post-deploy.
+
+`sendAdminLoginWhatsApp()` mirrors `sendDriverReturnWhatsApp`'s exact
+body+button shape. `vakaviti_admin_login` is not yet submitted to Meta
+— the token is issued either way, so a login link can still be shared
+manually if needed before the template is approved.
+
+Every admin page's gate replaced with the same phone-input +
+magic-link-consumption pattern `driver-app.html` already uses (`?token=`
+query param → `sessionStorage` → stripped from the URL), plus a new "Log
+out" button (a real gap this change itself creates — previously there
+was no login/logout concept, just re-pasting a token). `sessionStorage`
+deliberately kept, not switched to `driver-app.html`'s `localStorage` —
+admin access is higher-privilege than driver access.
+
+**Verified live end-to-end**: `POST /admin/login` with `+61413335007`
+returned `ok:true` and issued exactly one row in `admin_login_tokens`
+(confirmed via direct D1 `SELECT`); the same request with a different
+number returned the identical generic response but created zero rows —
+the real security boundary, not just the HTTP response. The real issued
+token was then used as a Bearer credential against `GET
+/admin/dashboard-stats` and returned real live data (200); a
+one-character-different token on the same endpoint correctly 401'd.
+Browser-verified against the real live API on `admin-dashboard.html`:
+gate renders, a wrong-number request shows the generic message with no
+console errors, and navigating with a real `?token=` from a fresh
+request logged in for real (live dashboard data rendered, URL stripped,
+Log out correctly cleared the session). `admin-drivers.html`
+spot-checked for the toolbar/logout placement on a page that had no
+pre-existing toolbar. All test tokens deleted afterward, baseline
+re-confirmed (0 rows). Zero regression on the 43-test suite.
+
+**Real, honest finding surfaced during this verification, not fixed
+here** (out of scope for this change): the real WhatsApp send attempt to
+`+61413335007` failed with Meta error 131030 "Recipient phone number not
+in allowed list" — the current `WHATSAPP_PHONE_ID` is a Meta test
+number, which only delivers to phone numbers explicitly added to its
+allowed recipient list, a separate gate from template approval. The
+login flow itself is unaffected (the token is issued and usable
+regardless of WhatsApp delivery success) — but real WhatsApp delivery of
+the admin login link needs either that allowlist updated or the real
+production WhatsApp number in place, the same production-readiness gap
+already flagged for Milestone 22's guest-notification trigger.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
