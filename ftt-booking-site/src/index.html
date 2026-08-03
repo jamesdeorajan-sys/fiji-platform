@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260802b-removephone">
+<link rel="stylesheet" href="styles.css?v=20260804a-realreviews">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -37,17 +37,20 @@
     "latitude": "-17.7552",
     "longitude": "177.4441"
   },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "reviewCount": "500",
-    "bestRating": "5"
-  },
   "areaServed": ["Nadi","Nadi Airport","Wailoaloa","Denarau","Sonaisali","Vuda Point","Lautoka","Momi Bay","Natadola","Sigatoka","Coral Coast","Pacific Harbour","Ba","Rakiraki","Suva","Nausori"],
   "openingHours": "Mo-Su 00:00-24:00",
   "priceRange": "FJ$15 - FJ$549"
 }
 </script>
+<!-- aggregateRating removed from the LocalBusiness block above (pre-launch
+     review, 2026-08-04) - it asserted ratingValue 4.9 / reviewCount 500
+     with zero backing (no sameAs link to a real Google Business/TripAdvisor
+     listing, see the comment below). Google's own structured-data
+     guidelines require aggregateRating to reflect genuine, verifiable
+     reviews; Australian Consumer Law / NZ Fair Trading Act treat an
+     unverifiable review count as misleading conduct (the exact language
+     already used in the visible reviews-section comment below, before
+     this fix). Re-add only once real, checkable numbers exist. -->
 <!-- Organization sameAs is an intentional empty placeholder (schema audit
      2026-07-30) - populate with the Google Business Profile and TripAdvisor
      listing URLs once James has them set up, then add the Facebook page too. -->
@@ -195,7 +198,7 @@
   <div class="hero-content">
     <div class="hero-badge">
       <span class="badge-dot"></span>
-      500+ five-star reviews · 100% Fijian-owned · Available 24/7
+      100% Fijian-owned · Available 24/7
     </div>
     <h1 class="hero-h1">
       Your Fiji transfer,<br>
@@ -205,7 +208,7 @@
     <div class="hero-trust">
       <a class="trust-item trust-link" href="#reviews">
         <div class="trust-stars">★★★★★</div>
-        <div class="trust-label">4.9 Google · read reviews →</div>
+        <div class="trust-label">Read our reviews →</div>
       </a>
       <div class="trust-div"></div>
       <div class="trust-item">
@@ -1098,16 +1101,13 @@
     <div class="section-header">
       <span class="section-eyebrow">Verified reviews</span>
       <h2>What travellers say</h2>
-      <!-- VERIFY BEFORE DEPLOY: the "4.9 / 5" rating and "500+" count below
-           must match real Google Business / TripAdvisor / Facebook totals.
-           Australian Consumer Law and NZ Fair Trading Act treat unverifiable
-           review counts as misleading conduct. Update with actual figures
-           from each platform's dashboard before pushing live. -->
-      <div class="reviews-overall">
-        <div class="reviews-stars">★★★★★</div>
-        <div class="reviews-score">4.9 / 5</div>
-        <div class="reviews-count">Based on 500+ Google & TripAdvisor reviews</div>
-      </div>
+      <!-- Pre-launch review, 2026-08-04: removed the "4.9 / 5" rating and
+           "500+ Google & TripAdvisor reviews" line that used to be here -
+           this is exactly the unverifiable-review-count risk the previous
+           version of this comment warned about (Australian Consumer Law /
+           NZ Fair Trading Act), never actually replaced with real figures
+           before going live. Re-add once real, checkable numbers exist
+           from each platform's own dashboard. -->
     </div>
     <!-- Static-rendered so review text is crawlable without JS (crawler
          audit 2026-07-30 found this content invisible to non-JS fetches).
@@ -1382,7 +1382,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260802b-removephone"></script>
+<script src="app.js?v=20260804a-realreviews"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

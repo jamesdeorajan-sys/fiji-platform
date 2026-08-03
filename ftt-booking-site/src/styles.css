@@ -365,10 +365,6 @@ textarea.field-input{resize:vertical;min-height:80px}
 .reviews-section .section-header h2{color:#fff}
 .reviews-section .section-eyebrow{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
 .reviews-section .section-header p{color:rgba(255,255,255,.5)}
-.reviews-overall{display:flex;align-items:center;gap:12px;justify-content:center;margin-top:12px}
-.reviews-stars{color:#fbbf24;font-size:20px;letter-spacing:2px}
-.reviews-score{font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:700;color:#fff}
-.reviews-count{font-size:13px;color:rgba(255,255,255,.5)}
 .reviews-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .review-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius-lg);padding:20px;transition:var(--transition)}
 .review-card:hover{background:rgba(255,255,255,.08)}
