@@ -526,3 +526,21 @@ CREATE INDEX idx_booking_events_booking_id ON booking_events(booking_id);
 INSERT INTO platform_settings (key, value) VALUES ('admin_pin_hash', '');
 INSERT INTO platform_settings (key, value) VALUES ('admin_pin_failed_attempts', '0');
 INSERT INTO platform_settings (key, value) VALUES ('admin_pin_locked_until', '');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 25 additions — rate limit for GET /negotiate/:id. See
+-- migrations/milestone25-negotiation-status-rate-limit.sql for the
+-- migration actually run against the live database, including the
+-- full rationale (a real, independently-found PII leak: this endpoint
+-- returned full guest PII to any unauthenticated caller for a
+-- sequential, guessable ID, with no rate limiting at all).
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_status_rate_limit_max', '300');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_status_rate_limit_window_minutes', '10');
+
+CREATE TABLE negotiation_status_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);

@@ -2455,6 +2455,23 @@ async function checkReferenceFareRateLimit(env, ip) {
   return { limited: count >= max, count, max, window_minutes: windowMinutes };
 }
 
+// Milestone 25 - real gap an independent security review found: GET
+// /negotiate/:id (a sequential, guessable ID, no auth - see its own
+// comment) had zero rate limiting, on top of leaking full guest PII
+// (fixed separately, see handleNegotiationStatus). 10-minute window, not
+// "per day" like most other limits here - this endpoint is continuously
+// polled (every 5s while a guest waits), so a daily cap would either be
+// pointlessly huge or would break a real guest's own wait.
+async function checkNegotiationStatusRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'negotiation_status_rate_limit_max', '300'));
+  const windowMinutes = Number(await getSetting(env, 'negotiation_status_rate_limit_window_minutes', '10'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM negotiation_status_lookups WHERE source_ip = ? AND created_at > datetime('now', '-' || ? || ' minutes')`
+  ).bind(ip, windowMinutes).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max, window_minutes: windowMinutes };
+}
+
 // MILESTONE 16: lets the guest widget show the SAME real reference fare
 // /negotiate will actually enforce, before the guest ever submits a
 // proposal - closes the display-layer inconsistency between the client's
@@ -2628,10 +2645,30 @@ async function handleNegotiationCreate(request, env) {
 // that polls this. Lazy-expires the request on read rather than adding a
 // new cron trigger - a guest watching this poll is the only real
 // consumer, nothing to sweep proactively in the background.
+//
+// Milestone 25 - two real gaps an independent security review found,
+// fixed together since they're the same endpoint: (1) this returned the
+// FULL negotiation_requests row via SELECT * - including guest_name,
+// guest_phone, and source_ip - to any unauthenticated caller, for a
+// sequential/guessable integer ID. No auth system exists for guests to
+// gate this behind (see the comment above), so the fix is to simply
+// never return more than the guest widget actually uses: confirmed via
+// app.js's own pollNegotiationStatus() that only .status and
+// .reference_fare_fjd are ever read from `request` - everything else,
+// including fields that aren't PII (pickup_zone, vehicle_type, etc.),
+// is trimmed too, on the same "don't expose what nothing consumes"
+// logic. (2) zero rate limiting - added via checkNegotiationStatusRateLimit.
 async function handleNegotiationStatus(request, env, requestId) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
-  const negotiationRequest = await env.DB.prepare(`SELECT * FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkNegotiationStatusRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many status checks from this connection. Please try again shortly.' }, 429);
+  }
+  await env.DB.prepare(`INSERT INTO negotiation_status_lookups (source_ip) VALUES (?)`).bind(clientIp).run();
+
+  const negotiationRequest = await env.DB.prepare(`SELECT id, status, created_at, reference_fare_fjd FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
   if (!negotiationRequest) return json({ ok: false, error: 'Negotiation request not found.' }, 404);
 
   if (negotiationRequest.status === 'open') {
@@ -2730,6 +2767,23 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, alert }, 200);
 }
 
+// Milestone 25 - real gap an independent review found: handleNegotiationStatus
+// (the guest's own polling endpoint, above) lazy-expires a request on
+// read, but handleDriverNegotiationRequests (below) never applied the
+// same check - a stale 'open' request only ever flipped to 'expired' if
+// the ORIGINAL guest happened to still be polling their own status. A
+// driver could see, and respond to, a negotiation request from a guest
+// who gave up and closed their browser hours (or days) ago. Bulk sweep,
+// not per-row lazy expiry - this is a list endpoint, not a single
+// lookup, and it's cheap (one UPDATE, only touches rows already overdue).
+async function expireStaleNegotiationRequests(env) {
+  const expiryMinutes = Number(await getSetting(env, 'negotiation_expiry_minutes', '20'));
+  await env.DB.prepare(
+    `UPDATE negotiation_requests SET status = 'expired'
+     WHERE status = 'open' AND (julianday('now') - julianday(created_at)) * 24 * 60 >= ?`
+  ).bind(expiryMinutes).run();
+}
+
 // Same online+zone filter handleDriverJobs already uses for the fixed-job
 // feed, plus excludes requests this driver already responded to (a clean
 // UX filter - negotiation_offers' UNIQUE(request_id, driver_id) is the
@@ -2738,6 +2792,8 @@ async function handleDriverNegotiationRequests(request, env) {
   const driver = await requireDriver(request, env);
   if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
   if (!driver.online) return json({ requests: [], note: 'Go online to see available requests.' }, 200);
+
+  await expireStaleNegotiationRequests(env);
 
   const driverZones = new Set(JSON.parse(driver.zones || '[]'));
   const result = await env.DB.prepare(
