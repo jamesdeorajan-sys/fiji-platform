@@ -1710,6 +1710,66 @@ take. All test tokens deleted afterward, baseline re-confirmed (only
 James's own real token remains); `admin_pin_hash` confirmed still
 unconfigured/untouched.
 
+## Milestone 25 — Tier 1 fixes from the combined pre-launch review
+
+Two independent reviews (this build's own comprehensive audit, and
+James's own parallel review) produced a combined, tiered fix list.
+This covers Tier 1 — the items flagged as real stranger-facing risk,
+required before any real strangers touch the build.
+
+**`GET /negotiate/:id` PII leak + rate limit** — the most serious
+finding of either review. `handleNegotiationStatus` returned the full
+`negotiation_requests` row (`SELECT *`) to any unauthenticated caller
+for a sequential, guessable ID, with zero rate limiting — guest name,
+phone, and IP for every negotiation ever created, scrapable by simply
+incrementing the ID. Fixed by trimming the response to only
+`{id, status, created_at, reference_fare_fjd}` (confirmed via `app.js`
+that nothing else is ever consumed) and adding
+`checkNegotiationStatusRateLimit()` + a new `negotiation_status_lookups`
+table (300/10min, mirroring the existing `reference_fare_lookups`
+pattern). Same pass also fixed `handleDriverNegotiationRequests` (the
+driver-facing list), which never applied the same lazy-expiry check
+`handleNegotiationStatus` already had — a stale `open` request only
+ever flipped to `expired` if the *original guest* was still polling
+their own status; a driver could see and respond to a request from a
+guest who'd given up hours ago. Fixed with a new
+`expireStaleNegotiationRequests()` bulk sweep.
+
+**Test data cleanup** — `negotiation_requests` was 100% test data (all
+5 rows, one literally named "Live Test Negotiate," the rest James's own
+real phone numbers from a single manual testing session), 4 of 5 still
+`open`. `escalations` was 10 of 11 duplicate "Nanuya Lailai Island"
+geocode-failure rows (several with identical same-second timestamps —
+clearly repeated manual testing, not organic retries) plus one more
+(`#11`) with the same source IP as the confirmed-test negotiation rows,
+same day — treated as test data too on that evidence. All deleted;
+`admin/dashboard-stats` confirmed `active_escalations` correctly
+dropped to 0.
+
+Fabricated review statistics and the guest-site double-submit guard are
+documented in `ftt-booking-site`'s own history (`guest-widget-integration-preview`
+branch) — both are guest-site changes, not backend.
+
+**Real, unresolved blocker found while shipping the double-submit fix**:
+the guest site's custom domain (`book.fijidash.com`) appears to have a
+Cloudflare edge cache on `.js`/`.css` assets that doesn't match the
+Pages project's own `_headers` file (`max-age=3600`) — the live
+response showed `max-age=14400` (4 hours) with `cf-cache-status: HIT`,
+and the query-string cache-busting convention used throughout this
+build (`?v=...`) does not reliably bypass it. Confirmed via the
+deployment's own immutable preview URL (which always showed the correct,
+fresh content) vs. the custom domain (which kept serving stale `.js`
+content well after a confirmed-successful Production deploy). This
+looks like a zone-level Cloudflare Cache Rule outside what `wrangler`
+or the Pages project's own `_headers` can control — needs either a
+manual cache purge (Cloudflare dashboard, Caching → Configuration) or
+an API token with cache-purge permission, neither of which this session
+has access to. Real implication: **any future `.js`/`.css`-only change
+to the guest site may not take effect on the real domain for up to 4
+hours after deploy**, even though the deploy itself succeeds
+correctly — verify against the deployment's own unique `*.pages.dev`
+URL first if a fix needs to be confirmed live quickly.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.
