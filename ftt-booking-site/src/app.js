@@ -178,6 +178,13 @@ const state = {
   // tap fires the real WhatsApp message, so from the guest's side this is
   // the step that matters. Reset to false each time the success card shows.
   bulaWaTapped: false,
+  // Double-submit guard for confirmBooking() - set true on entry and
+  // deliberately NOT reset after a successful run (a real booking widget
+  // only gets to submit once; see confirmBooking()'s own comment for why
+  // resetting it would defeat the guard). Only reset on the one path
+  // where no booking was actually created: the flight-number prompt
+  // decline, so the guest can still submit normally afterward.
+  confirmBookingInFlight: false,
   // selectedTour holds the full TOURS_DATA entry when a tour is in the booking,
   // null otherwise. Set by selectTour(), cleared by removeTourBanner().
   // Used by calculateTotal() to add tour cost (price × passengers) to the total.
@@ -1629,6 +1636,25 @@ function buildWhatsAppURL(ref) {
 
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
 function confirmBooking() {
+  // Real gap found by an independent pre-launch review: zero double-submit
+  // protection existed here. Two click events dispatched close together
+  // (a fast double-click, or the classic mobile double-tap event-firing
+  // quirk) both still ran this whole function - each generating its own
+  // booking reference and its own real POST /bookings via
+  // submitMarketplaceBooking() below, i.e. two independent real bookings
+  // for what the guest experienced as one tap. Guarded with a state flag
+  // checked first, before anything else runs (so it also covers a
+  // double-click landing on the flight-number confirm() dialog itself) -
+  // reset on the one early-return path below so a guest who declines
+  // that dialog can still submit normally afterward, and reset again at
+  // the end for the same reason (belt and suspenders - nothing today
+  // re-shows the booking widget after success, but this doesn't rely on
+  // that staying true).
+  if (state.confirmBookingInFlight) return;
+  state.confirmBookingInFlight = true;
+  const confirmBtn = document.querySelector('.btn-confirm');
+  if (confirmBtn) confirmBtn.disabled = true;
+
   // A1: Soft-required flight number for Nadi Airport arrivals.
   // We don't block submission, but if pickup is NAN and the customer left
   // the flight field blank, we surface a one-time confirmation prompt.
@@ -1644,6 +1670,8 @@ function confirmBooking() {
       + 'Continue anyway?'
     );
     if (!proceed) {
+      state.confirmBookingInFlight = false;
+      if (confirmBtn) confirmBtn.disabled = false;
       // Focus the field so they can fill it in
       document.getElementById('flightNum')?.focus();
       document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1709,6 +1737,18 @@ function confirmBooking() {
   if (pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN')) {
     submitMarketplaceBooking(ref).catch(() => {});
   }
+
+  // Deliberately NOT reset here. confirmBooking() is fully synchronous -
+  // two click events queued close together (the exact double-click/
+  // double-tap case this guard exists for) are still processed one at a
+  // time by the browser's event loop, so if this ran to completion and
+  // reset the flag, a second already-queued click would sail straight
+  // through and create a second real booking, reproducing the original
+  // bug. Once a real submission has gone through, this booking widget's
+  // job is done - the flag stays true for the rest of its lifecycle. The
+  // ONE legitimate "let them try again" path (the flight-number prompt
+  // decline, above) resets it explicitly because no booking was actually
+  // created there.
 }
 
 // Resolves the destination_zone for THIS specific confirm - computed fresh
