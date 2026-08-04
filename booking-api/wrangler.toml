@@ -1,0 +1,11 @@
+name = "fiji-booking-api-phase1"
+main = "src/worker.js"
+compatibility_date = "2026-08-03"
+
+# This is a non-production placeholder. Creating/binding a Cloudflare D1 database
+# is a separate, explicitly approved staging or production action.
+[[d1_databases]]
+binding = "BOOKINGS_DB"
+database_name = "REPLACE_WITH_NON_PRODUCTION_DATABASE"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
