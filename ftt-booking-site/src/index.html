@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260804b-nodblsubmit">
+<link rel="stylesheet" href="styles.css?v=20260804c-whatsappcapture">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -605,6 +605,13 @@
               </select>
             </div>
           </div>
+          <div class="field-row">
+            <div class="field-group" style="flex:1;min-width:0">
+              <label class="field-label">Your WhatsApp number</label>
+              <input type="tel" id="customPickupWhatsapp" class="field-input" placeholder="e.g. +679 XXX XXXX" oninput="updatePricing()">
+              <span class="field-hint">Needed so we can reach you if we have to confirm this address manually.</span>
+            </div>
+          </div>
         </div>
 
         <!-- CUSTOM DESTINATION PANEL -->
@@ -636,6 +643,13 @@
                 <option value="BA"               data-lat="-17.5310" data-lng="177.6700">Ba</option>
                 <option value="RAKIRAKI"         data-lat="-17.4200" data-lng="178.0000">Rakiraki / Volivoli</option>
               </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group" style="flex:1;min-width:0">
+              <label class="field-label">Your WhatsApp number</label>
+              <input type="tel" id="customDestWhatsapp" class="field-input" placeholder="e.g. +679 XXX XXXX" oninput="updatePricing()">
+              <span class="field-hint">Needed so we can reach you if we have to confirm this address manually.</span>
             </div>
           </div>
         </div>
@@ -1382,7 +1396,7 @@
   </div>
 </div>
 
-<script src="app.js?v=20260804b-nodblsubmit"></script>
+<script src="app.js?v=20260804c-whatsappcapture"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

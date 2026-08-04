@@ -549,14 +549,25 @@ let zoneResolveTimer = null;
 // direction: 'from_airport' (default, Milestone 11 - Nadi Airport -> address,
 // arriving guest) or 'to_airport' (Milestone 12 - address -> Nadi Airport,
 // departing guest).
-async function fetchQuoteForAddress(addressText, direction = 'from_airport') {
+// whatsapp: real gap found in review - if an address can't be auto-quoted,
+// the backend creates an escalation (needs_manual_confirmation/geocode_failed)
+// but had no way to identify or contact the guest, since no contact details
+// are collected until a later step the guest never reaches if the quote
+// fails here. guest_whatsapp is sent through so it lands in that
+// escalation's context. Optional, not required, at THIS layer - the
+// guest-facing gate lives in maybeDebounceCustomDestQuote/
+// maybeDebounceCustomPickupQuote below; resolveDestinationZoneAsync()
+// further down calls this same function for an unrelated internal
+// purpose (resolving a FIXED destination's zone) with no whatsapp to
+// send, and that path must keep working unchanged.
+async function fetchQuoteForAddress(addressText, direction = 'from_airport', whatsapp = '') {
   try {
     const [sedanRes, minivanRes, minibusRes] = await Promise.all(
       ['sedan', 'minivan', 'minibus'].map(vt =>
         fetch(`${NADI_API_BASE}/quote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: addressText, vehicle_type: vt, direction }),
+          body: JSON.stringify({ address: addressText, vehicle_type: vt, direction, guest_whatsapp: whatsapp }),
         }).then(r => r.json()).catch(() => null)
       )
     );
@@ -599,20 +610,30 @@ function maybeDebounceCustomDestQuote() {
   const destVal    = document.getElementById('destination')?.value;
   if (pickupVal !== 'NAN' || destVal !== 'CUSTOM_DEST') return;
   const addr = document.getElementById('customDestAddress')?.value.trim();
+  const whatsapp = document.getElementById('customDestWhatsapp')?.value.trim();
   clearTimeout(quoteDebounceTimer);
   // BUGFIX: was `< 8` - blocked real, short Fijian place names ("Waila",
   // "Namaka") from ever reaching /quote, with zero feedback to the guest.
   // 3 is purely to skip firing on the first keystroke or two, not to gate
   // on whether an address is "long enough" to be real.
   if (!addr || addr.length < 3) return;
-  if (state.quoteResult && state.quoteResult.forAddress === addr) return; // already have it
+  // Real gap found in review: if this address can't be auto-quoted, the
+  // resulting escalation had no way to identify or contact the guest.
+  // WhatsApp number is required before the lookup fires at all, same
+  // gate as the address-length check above.
+  if (!whatsapp) return;
+  // Keyed on BOTH address and whatsapp - if the guest corrects a typo in
+  // their number after an address already failed, this should re-fire and
+  // create a fresh escalation with the corrected number, not silently
+  // keep serving the stale (wrong-number) result.
+  if (state.quoteResult && state.quoteResult.forAddress === addr && state.quoteResult.forWhatsapp === whatsapp) return; // already have it
   quoteDebounceTimer = setTimeout(async () => {
-    const result = await fetchQuoteForAddress(addr, 'from_airport');
+    const result = await fetchQuoteForAddress(addr, 'from_airport', whatsapp);
     // Guard against a slow response landing after the guest changed the
     // address again in the meantime.
     const currentAddr = document.getElementById('customDestAddress')?.value.trim();
     if (currentAddr !== addr) return;
-    state.quoteResult = { forAddress: addr, ...result };
+    state.quoteResult = { forAddress: addr, forWhatsapp: whatsapp, ...result };
     updatePricing();
   }, 800);
 }
@@ -626,15 +647,18 @@ function maybeDebounceCustomPickupQuote() {
   const destVal    = document.getElementById('destination')?.value;
   if (destVal !== 'NAN' || pickupVal !== 'CUSTOM_PICKUP') return;
   const addr = document.getElementById('customPickupAddress')?.value.trim();
+  const whatsapp = document.getElementById('customPickupWhatsapp')?.value.trim();
   clearTimeout(pickupQuoteDebounceTimer);
   // BUGFIX: was `< 8` - see maybeDebounceCustomDestQuote() above for why.
   if (!addr || addr.length < 3) return;
-  if (state.pickupQuoteResult && state.pickupQuoteResult.forAddress === addr) return; // already have it
+  // Same required-before-lookup-fires gate as maybeDebounceCustomDestQuote().
+  if (!whatsapp) return;
+  if (state.pickupQuoteResult && state.pickupQuoteResult.forAddress === addr && state.pickupQuoteResult.forWhatsapp === whatsapp) return; // already have it
   pickupQuoteDebounceTimer = setTimeout(async () => {
-    const result = await fetchQuoteForAddress(addr, 'to_airport');
+    const result = await fetchQuoteForAddress(addr, 'to_airport', whatsapp);
     const currentAddr = document.getElementById('customPickupAddress')?.value.trim();
     if (currentAddr !== addr) return;
-    state.pickupQuoteResult = { forAddress: addr, ...result };
+    state.pickupQuoteResult = { forAddress: addr, forWhatsapp: whatsapp, ...result };
     updatePricing();
   }, 800);
 }
