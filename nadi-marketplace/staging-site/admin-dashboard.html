@@ -108,6 +108,9 @@
   <h2>Negotiations by status</h2>
   <div class="status-breakdown" id="negotiationBreakdown"></div>
 
+  <h2>Drivers offline mid-job</h2>
+  <div id="offlineMidJob"></div>
+
   <h2>Upcoming transfers</h2>
   <div id="upcoming"></div>
 </div>
@@ -327,6 +330,7 @@
       <div class="card"><div class="n ${data.unassigned_bookings > 0 ? 'warn' : ''}">${data.unassigned_bookings}</div><div class="l">Unassigned bookings</div></div>
       <div class="card"><div class="n ${data.stale_unassigned_bookings > 0 ? 'alert' : ''}">${data.stale_unassigned_bookings}</div><div class="l">Stale unassigned (${data.booking_stale_after_minutes}+ min)</div></div>
       <div class="card"><div class="n ${data.active_escalations > 0 ? 'alert' : ''}">${data.active_escalations}</div><div class="l">Active escalations</div></div>
+      <div class="card"><div class="n ${data.drivers_offline_mid_job > 0 ? 'alert' : ''}">${data.drivers_offline_mid_job}</div><div class="l">Drivers offline mid-job</div></div>
       <div class="card"><div class="n">${data.upcoming_transfers.length}</div><div class="l">Upcoming transfers</div></div>
     `;
 
@@ -349,7 +353,47 @@
           <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
         `).join('');
 
+    renderOfflineMidJob(data.offline_mid_job || []);
     renderUpcoming(data.upcoming_transfers || []);
+  }
+
+  // Milestone 30 - real gap the combined review found: a driver going
+  // offline (POST /driver/online) is never blocked while they still have
+  // a booking 'accepted' or 'en_route' - deliberately not blocked
+  // server-side either (a driver may have a real reason, like a dead
+  // phone or an emergency), so this is the surfacing half of the fix: a
+  // human needs to see it and call the driver or the guest. Driver phone
+  // is a tel: link since that's the actual next action here.
+  function renderOfflineMidJob(rows) {
+    const el = document.getElementById('offlineMidJob');
+    if (rows.length === 0) {
+      el.innerHTML = '<div class="empty">No drivers currently offline with an active job.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Booking</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Status</th>
+            <th>Driver</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>#${r.id}</td>
+              <td>${escHtml(r.guest_name)}<div class="meta">${escHtml(r.guest_phone || '—')}</div></td>
+              <td class="route">${escHtml(r.pickup_zone)} → ${escHtml(r.destination_zone)}</td>
+              <td><span class="status-badge status-${escHtml(r.status)}">${escHtml(r.status)}</span></td>
+              <td>${escHtml(r.driver_name)}<div class="meta"><a href="tel:${escHtml(r.driver_phone || '')}">${escHtml(r.driver_phone || '—')}</a></div></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
   }
 
   function renderUpcoming(transfers) {

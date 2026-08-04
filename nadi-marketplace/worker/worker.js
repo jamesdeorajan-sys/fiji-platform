@@ -1117,7 +1117,7 @@ async function handleAdminDashboardStats(request, env) {
   // is_stale in handleAdminListBookings above.
   const staleAfterMinutes = Number(await getSetting(env, 'booking_stale_after_minutes', '30'));
 
-  const [todayResult, byStatusResult, unassignedResult, staleUnassignedResult, escalationsResult, negotiationsByStatusResult, upcomingResult] = await env.DB.batch([
+  const [todayResult, byStatusResult, unassignedResult, staleUnassignedResult, escalationsResult, negotiationsByStatusResult, offlineMidJobResult, upcomingResult] = await env.DB.batch([
     env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE date(created_at) = date('now')`),
     env.DB.prepare(`SELECT status, COUNT(*) AS count FROM bookings GROUP BY status`),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE status = 'pending' AND assigned_driver_id IS NULL`),
@@ -1128,6 +1128,24 @@ async function handleAdminDashboardStats(request, env) {
     ).bind(staleAfterMinutes),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM escalations WHERE resolved = 0`),
     env.DB.prepare(`SELECT status, COUNT(*) AS count FROM negotiation_requests GROUP BY status`),
+    // Milestone 30 - real gap the combined review found: nothing stopped,
+    // or even flagged, a driver going offline (POST /driver/online,
+    // handleDriverOnline) while still assigned to a booking that's
+    // 'accepted' or 'en_route' - the guest is mid-trip or waiting for
+    // pickup with a driver the platform itself no longer considers
+    // reachable. Deliberately NOT blocked at the toggle - a driver may
+    // have a real reason (phone died, emergency) and trapping them online
+    // would be worse - this is the "surface it" half of the ask, so a
+    // human can call the driver or the guest.
+    env.DB.prepare(
+      `SELECT b.id, b.guest_name, b.guest_phone, b.pickup_zone, b.destination_zone, b.status,
+              d.id AS driver_id, d.name AS driver_name, d.phone AS driver_phone
+       FROM bookings b
+       JOIN drivers d ON d.id = b.assigned_driver_id
+       WHERE b.status IN ('accepted', 'en_route') AND d.online = 0
+       ORDER BY b.created_at ASC
+       LIMIT 20`
+    ),
     env.DB.prepare(
       `SELECT b.id, b.guest_name, b.pickup_zone, b.destination_zone, b.vehicle_type, b.status,
               b.pickup_date, b.pickup_time, d.name AS driver_name
@@ -1145,6 +1163,8 @@ async function handleAdminDashboardStats(request, env) {
   const negotiationsByStatus = {};
   for (const row of negotiationsByStatusResult.results || []) negotiationsByStatus[row.status] = row.count;
 
+  const offlineMidJob = offlineMidJobResult.results || [];
+
   return json({
     bookings_today: todayResult.results?.[0]?.count || 0,
     bookings_by_status: bookingsByStatus,
@@ -1153,6 +1173,8 @@ async function handleAdminDashboardStats(request, env) {
     booking_stale_after_minutes: staleAfterMinutes,
     active_escalations: escalationsResult.results?.[0]?.count || 0,
     negotiations_by_status: negotiationsByStatus,
+    drivers_offline_mid_job: offlineMidJob.length,
+    offline_mid_job: offlineMidJob,
     upcoming_transfers: upcomingResult.results || [],
   }, 200);
 }
