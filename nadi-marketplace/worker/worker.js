@@ -2829,7 +2829,7 @@ async function handleDriverNegotiationOffer(request, env, requestId) {
   if (!driver) return json({ error: 'Unauthorized or expired session.' }, 401);
   if (!driver.online) return json({ error: 'Go online to respond to requests.' }, 403);
 
-  const target = await env.DB.prepare(`SELECT pickup_zone, status FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
+  const target = await env.DB.prepare(`SELECT pickup_zone, status, reference_fare_fjd FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
   if (!target) return json({ error: 'Negotiation request not found.' }, 404);
   const driverZones = new Set(JSON.parse(driver.zones || '[]'));
   if (!driverZones.has(target.pickup_zone)) {
@@ -2857,6 +2857,26 @@ async function handleDriverNegotiationOffer(request, env, requestId) {
     offerAmount = Number(body.amount_fjd);
     if (!offerAmount || !isFinite(offerAmount) || offerAmount <= 0 || offerAmount > 5000) {
       return json({ error: 'amount_fjd must be a positive number no greater than 5000 for a counter' }, 400);
+    }
+    // Milestone 26 - real gap an independent pre-launch review found: a
+    // driver's counter had no floor at all, unlike the guest's own
+    // original proposal (handleNegotiationCreate's NEGOTIATION_FLOOR_RATIO
+    // check, below). handleNegotiationAcceptOffer's own comment claims the
+    // final agreed price is "already independently verified via the
+    // trip-type-aware floor check at negotiation-create time" - true for
+    // an 'accept' offer (echoes the guest's own already-checked proposal,
+    // untouched above), but never actually true for a 'counter' until this
+    // fix - a driver could counter at any amount from just above $0 to
+    // $5000 with zero server-side sanity check, and if the guest accepted
+    // it, a real booking was created at that price with nothing having
+    // verified it against the route's real value. Same floor, same ratio,
+    // same reference fare the guest's own proposal was checked against
+    // (already stored on this exact request row) - not a new rule.
+    const floorFjd = target.reference_fare_fjd * NEGOTIATION_FLOOR_RATIO;
+    if (offerAmount < floorFjd) {
+      return json({
+        error: `amount_fjd must be at least ${Math.round(floorFjd * 100) / 100} (${Math.round(NEGOTIATION_FLOOR_RATIO * 100)}% of the real standard fare for this route, ${target.reference_fare_fjd})`,
+      }, 400);
     }
   }
 
