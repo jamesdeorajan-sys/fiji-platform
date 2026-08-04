@@ -4023,6 +4023,19 @@ async function handleQuoteCreate(request, env) {
   // text means two different real journeys depending on this, so it must
   // never be inferred or defaulted away once present.
   const direction = (body.direction || 'from_airport').toString().trim();
+  // Real gap the combined review found: when a custom address can't be
+  // auto-quoted, the escalation created below had no way to identify or
+  // contact the guest - no contact details are collected until a later
+  // booking step the guest never reaches if the quote fails here. The
+  // guest widget's custom-address step now collects this and sends it as
+  // guest_whatsapp. Deliberately NOT required/validated here (no `errors`
+  // entry) - resolveDestinationZoneAsync() (app.js) calls this same
+  // endpoint for an unrelated internal purpose (resolving a FIXED
+  // destination's zone) with no guest WhatsApp number to send, and that
+  // path must keep working unchanged. Reuses normalisePhone() - same loose
+  // validation already used for guest_phone elsewhere - so a present-but-
+  // garbage value doesn't get treated as real.
+  const guestWhatsapp = normalisePhone((body.guest_whatsapp || '').toString());
 
   const errors = [];
   if (!addressRaw) errors.push('address is required');
@@ -4064,7 +4077,14 @@ async function handleQuoteCreate(request, env) {
       const { escalation: geoFailEscalation } = await createEscalation(env, {
         source: 'guest',
         triggerType: 'geocode_failed',
-        context: `Quote request for "${addressRaw}" (${direction}) could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
+        // guestWhatsapp goes FIRST, not appended at the end - the WhatsApp
+        // alert James actually receives (sendEscalationAlert) truncates
+        // this whole string to 200 chars, and addressRaw alone can be up
+        // to 300 chars. Putting the number first guarantees it survives
+        // truncation regardless of how long the address text is - the
+        // entire point of this fix is that James can always reach the
+        // guest, not just for short addresses.
+        context: `${guestWhatsapp ? `Guest WhatsApp: ${guestWhatsapp}. ` : ''}Quote request for "${addressRaw}" (${direction}) could not be geocoded (${routeResult.reason || 'unknown reason'}).`,
         sourceIp: clientIp,
       });
       return json({
@@ -4132,7 +4152,9 @@ async function handleQuoteCreate(request, env) {
     const { escalation: manualConfEscalation } = await createEscalation(env, {
       source: 'guest',
       triggerType: 'needs_manual_confirmation',
-      context: `Quote request for "${addressRaw}" (${direction}) needs manual confirmation.`,
+      // guestWhatsapp first - see the identical note in the geocode_failed
+      // branch above (sendEscalationAlert truncates to 200 chars).
+      context: `${guestWhatsapp ? `Guest WhatsApp: ${guestWhatsapp}. ` : ''}Quote request for "${addressRaw}" (${direction}) needs manual confirmation.`,
       sourceIp: clientIp,
     });
     return json({
