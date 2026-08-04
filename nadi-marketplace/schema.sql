@@ -544,3 +544,22 @@ CREATE TABLE negotiation_status_lookups (
   source_ip TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 28 additions — rate limit for POST /drivers. See
+-- migrations/milestone28-driver-submit-rate-limit.sql for the migration
+-- actually run against the live database. POST /negotiate/:id/accept-offer
+-- was fixed in the same milestone but needed no new table/settings — it
+-- reuses the existing checkGuestBookingRateLimit() / guest_booking_rate_limit_*
+-- settings already defined above (Milestone 13), since it writes to the
+-- same `bookings` table via the same source_ip column.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('driver_submit_rate_limit_max', '5');
+INSERT INTO platform_settings (key, value) VALUES ('driver_submit_rate_limit_window_minutes', '60');
+
+CREATE TABLE driver_submit_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);

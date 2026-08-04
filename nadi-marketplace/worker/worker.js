@@ -692,6 +692,13 @@ async function handleDriverSubmit(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
   if (!env.DOCS) return json({ ok: false, error: 'Document storage not available. R2 bucket is not yet bound to this Worker.' }, 503);
 
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkDriverSubmitRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many driver applications from this connection. Please try again later, or contact us directly if you need help applying.' }, 429);
+  }
+  await env.DB.prepare(`INSERT INTO driver_submit_lookups (source_ip) VALUES (?)`).bind(clientIp).run();
+
   let form;
   try {
     form = await request.formData();
@@ -2484,6 +2491,25 @@ async function checkNegotiationStatusRateLimit(env, ip) {
   return { limited: count >= max, count, max, window_minutes: windowMinutes };
 }
 
+// Milestone 28 - combined-review gap: POST /drivers (below) accepted up to
+// 3 file uploads to R2 with zero rate limiting - real cost/abuse exposure
+// (storage cost, and an unbounded flood of pending applications for an
+// admin to wade through). drivers has no source_ip column and adding one
+// to a live, populated table is a bigger change than this fix needs, so
+// this follows the reference_fare_lookups/negotiation_status_lookups
+// precedent: a small dedicated log table instead. Logged once per attempt
+// (including ones that fail validation) so a script retrying through
+// validation errors still counts against the limit - see call site.
+async function checkDriverSubmitRateLimit(env, ip) {
+  const max = Number(await getSetting(env, 'driver_submit_rate_limit_max', '5'));
+  const windowMinutes = Number(await getSetting(env, 'driver_submit_rate_limit_window_minutes', '60'));
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM driver_submit_lookups WHERE source_ip = ? AND created_at > datetime('now', '-' || ? || ' minutes')`
+  ).bind(ip, windowMinutes).first();
+  const count = row ? row.cnt : 0;
+  return { limited: count >= max, count, max, window_minutes: windowMinutes };
+}
+
 // MILESTONE 16: lets the guest widget show the SAME real reference fare
 // /negotiate will actually enforce, before the guest ever submits a
 // proposal - closes the display-layer inconsistency between the client's
@@ -2704,6 +2730,21 @@ async function handleNegotiationStatus(request, env, requestId) {
 async function handleNegotiationAcceptOffer(request, env, requestId) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
+  // Milestone 28 - combined-review gap: this is the only booking-CREATING
+  // endpoint that had no rate limit at all (handleGuestBookingCreate has
+  // had one since Milestone 13). Reuses that exact same check/table rather
+  // than adding a parallel one - it already counts every row in `bookings`
+  // by source_ip regardless of which endpoint created it, and this
+  // endpoint's createBookingRecord() call below writes sourceIp the same
+  // way, so this correctly caps "real bookings created per IP per window"
+  // across both booking-creating paths combined, not just this one in
+  // isolation.
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const rateLimit = await checkGuestBookingRateLimit(env, clientIp);
+  if (rateLimit.limited) {
+    return json({ ok: false, error: 'Too many booking submissions from this connection. Please try again shortly.' }, 429);
+  }
+
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
   const offerId = Number(body.offer_id);
@@ -2720,8 +2761,6 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
   if (offer.guest_decision !== 'pending') {
     return json({ ok: false, error: `This offer is already ${offer.guest_decision}.` }, 409);
   }
-
-  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
 
   // The exact requirement #6 ask - the FINAL agreed price (this offer's
   // amount, not the guest's original proposal, not reference_fare_fjd)
