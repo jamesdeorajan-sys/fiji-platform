@@ -41,6 +41,7 @@
   .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
   .status-completed { background: #e5f5ea; color: var(--green); }
   .status-cancelled { background: #fdeaea; color: var(--red); }
+  .stale-badge { display: inline-block; margin-left: 6px; border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #fdeaea; color: var(--red); }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
   .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
 
@@ -305,7 +306,7 @@
               <td class="route">${escHtml(b.pickup_zone)} → ${escHtml(b.destination_zone)}<div class="meta">${b.distance_km != null ? Number(b.distance_km).toFixed(1) + ' km' : '—'}</div></td>
               <td>${escHtml(b.vehicle_type)}</td>
               <td class="price">${formatMoney(b.quoted_amount, b.quoted_currency)}<div class="meta">${escHtml(b.payment_method || '—')}</div></td>
-              <td><span class="status-badge status-${escHtml(b.status)}">${escHtml(b.status)}</span></td>
+              <td><span class="status-badge status-${escHtml(b.status)}">${escHtml(b.status)}</span>${b.is_stale ? '<span class="stale-badge">Stale</span>' : ''}</td>
               <td>${escHtml(b.driver_name || '—')}</td>
               <td>${b.pickup_date ? escHtml(b.pickup_date) + (b.pickup_time ? ' ' + escHtml(b.pickup_time) : '') : '—'}</td>
               <td class="meta">${escHtml(b.created_at)}</td>

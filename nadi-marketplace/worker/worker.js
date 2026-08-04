@@ -423,6 +423,11 @@ export default {
       return handleAdminListEscalations(request, env, url);
     }
 
+    // ── Milestone 29: negotiation activity, admin-dashboard.html ──
+    if (request.method === 'GET' && url.pathname === '/admin/negotiations') {
+      return handleAdminListNegotiations(request, env, url);
+    }
+
     // ── Milestone 4: wallet lockout + max-hours cap ──
     if (request.method === 'POST' && url.pathname === '/admin/max-hours-sweep') {
       return handleAdminMaxHoursSweep(request, env);
@@ -1030,18 +1035,30 @@ async function handleAdminListBookings(request, env, url) {
   const status = url.searchParams.get('status'); // optional filter, e.g. ?status=pending
 
   const conditions = [];
-  const params = [];
+  const whereParams = [];
   if (status) {
     conditions.push('b.status = ?');
-    params.push(status);
+    whereParams.push(status);
   }
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  params.push(limit);
+
+  // Milestone 29 - real gap the combined review found: a 'pending', never-
+  // accepted booking had no way to be distinguished from one that's 3
+  // minutes old vs. 3 hours old and needs a human. is_stale is computed
+  // here, not stored - same definition handleAdminDashboardStats uses for
+  // its stale_unassigned_bookings count below, so the two can never drift.
+  // Bind order follows the ? placeholders left-to-right as they appear in
+  // the query TEXT below, not the order they're pushed here - the SELECT's
+  // is_stale threshold appears before the WHERE clause's status filter.
+  const staleAfterMinutes = Number(await getSetting(env, 'booking_stale_after_minutes', '30'));
+  const params = [staleAfterMinutes, ...whereParams, limit];
 
   const result = await env.DB.prepare(
     `SELECT b.id, b.guest_name, b.guest_phone, b.pickup_zone, b.destination_zone, b.distance_km,
             b.vehicle_type, b.quoted_currency, b.quoted_amount, b.payment_method, b.status,
-            b.pickup_date, b.pickup_time, b.created_at, d.name AS driver_name
+            b.pickup_date, b.pickup_time, b.created_at, d.name AS driver_name,
+            (b.status = 'pending' AND b.assigned_driver_id IS NULL
+             AND (julianday('now') - julianday(b.created_at)) * 24 * 60 >= ?) AS is_stale
      FROM bookings b
      LEFT JOIN drivers d ON d.id = b.assigned_driver_id
      ${whereClause}
@@ -1049,7 +1066,8 @@ async function handleAdminListBookings(request, env, url) {
      LIMIT ?`
   ).bind(...params).all();
 
-  return json({ bookings: result.results || [] }, 200);
+  const bookings = (result.results || []).map((b) => ({ ...b, is_stale: !!b.is_stale }));
+  return json({ bookings }, 200);
 }
 
 // Point 4 of the ask: a basic admin view of events for a given booking -
@@ -1087,11 +1105,29 @@ async function handleAdminDashboardStats(request, env) {
   if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ error: 'Database unavailable.' }, 503);
 
-  const [todayResult, byStatusResult, unassignedResult, escalationsResult, upcomingResult] = await env.DB.batch([
+  // Milestone 29 - same lazy-expiry sweep handleDriverNegotiationRequests
+  // already runs, so this dashboard's negotiations_by_status snapshot
+  // below reflects reality rather than showing 'open' requests nobody
+  // is actually going to see again.
+  await expireStaleNegotiationRequests(env);
+
+  // Real gap the combined review found: unassigned_bookings (below) counts
+  // every pending/unassigned booking whether it's 90 seconds old (normal)
+  // or 3 hours old (needs a human) - same blind spot, same fix, as
+  // is_stale in handleAdminListBookings above.
+  const staleAfterMinutes = Number(await getSetting(env, 'booking_stale_after_minutes', '30'));
+
+  const [todayResult, byStatusResult, unassignedResult, staleUnassignedResult, escalationsResult, negotiationsByStatusResult, upcomingResult] = await env.DB.batch([
     env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE date(created_at) = date('now')`),
     env.DB.prepare(`SELECT status, COUNT(*) AS count FROM bookings GROUP BY status`),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM bookings WHERE status = 'pending' AND assigned_driver_id IS NULL`),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM bookings
+       WHERE status = 'pending' AND assigned_driver_id IS NULL
+         AND (julianday('now') - julianday(created_at)) * 24 * 60 >= ?`
+    ).bind(staleAfterMinutes),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM escalations WHERE resolved = 0`),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM negotiation_requests GROUP BY status`),
     env.DB.prepare(
       `SELECT b.id, b.guest_name, b.pickup_zone, b.destination_zone, b.vehicle_type, b.status,
               b.pickup_date, b.pickup_time, d.name AS driver_name
@@ -1106,11 +1142,17 @@ async function handleAdminDashboardStats(request, env) {
   const bookingsByStatus = {};
   for (const row of byStatusResult.results || []) bookingsByStatus[row.status] = row.count;
 
+  const negotiationsByStatus = {};
+  for (const row of negotiationsByStatusResult.results || []) negotiationsByStatus[row.status] = row.count;
+
   return json({
     bookings_today: todayResult.results?.[0]?.count || 0,
     bookings_by_status: bookingsByStatus,
     unassigned_bookings: unassignedResult.results?.[0]?.count || 0,
+    stale_unassigned_bookings: staleUnassignedResult.results?.[0]?.count || 0,
+    booking_stale_after_minutes: staleAfterMinutes,
     active_escalations: escalationsResult.results?.[0]?.count || 0,
+    negotiations_by_status: negotiationsByStatus,
     upcoming_transfers: upcomingResult.results || [],
   }, 200);
 }
@@ -1145,6 +1187,47 @@ async function handleAdminListEscalations(request, env, url) {
   ).bind(resolved, limit).all();
 
   return json({ escalations: result.results || [] }, 200);
+}
+
+// Milestone 29 - real gap the combined review found: negotiation_requests
+// has had lazy auto-expiry since Milestone 25 (a stale 'open' request
+// flips to 'expired' after negotiation_expiry_minutes), but there was no
+// admin-facing view of negotiation activity at all - not counts, not a
+// list, nothing. A request could sit open, get responded to by a driver,
+// or silently expire, entirely outside admin's visibility. Mirrors
+// handleAdminListEscalations exactly: bounded limit, optional status
+// filter, sweep expiry first so this list is never showing a request as
+// 'open' when it's actually already timed out.
+async function handleAdminListNegotiations(request, env, url) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ negotiations: [] }, 503);
+
+  await expireStaleNegotiationRequests(env);
+
+  const requestedLimit = Number(url.searchParams.get('limit'));
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 && requestedLimit <= 200 ? requestedLimit : 50;
+  const status = url.searchParams.get('status'); // optional filter, e.g. ?status=open
+
+  const conditions = [];
+  const params = [];
+  if (status) {
+    conditions.push('n.status = ?');
+    params.push(status);
+  }
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit);
+
+  const result = await env.DB.prepare(
+    `SELECT n.id, n.guest_name, n.guest_phone, n.pickup_zone, n.destination_zone,
+            n.vehicle_type, n.status, n.reference_fare_fjd, n.guest_proposed_amount_fjd,
+            n.booking_id, n.created_at
+     FROM negotiation_requests n
+     ${whereClause}
+     ORDER BY n.created_at DESC
+     LIMIT ?`
+  ).bind(...params).all();
+
+  return json({ negotiations: result.results || [] }, 200);
 }
 
 async function handleAdminApprove(request, env, driverId) {

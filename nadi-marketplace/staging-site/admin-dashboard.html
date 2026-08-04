@@ -53,11 +53,12 @@
   tr:last-child td { border-bottom: none; }
   .route { font-weight: 600; }
   .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
-  .status-pending { background: #fdf3e0; color: var(--amber); }
+  .status-pending, .status-open { background: #fdf3e0; color: var(--amber); }
   .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
   .status-completed { background: #e5f5ea; color: var(--green); }
-  .status-cancelled { background: #fdeaea; color: var(--red); }
+  .status-cancelled, .status-expired { background: #fdeaea; color: var(--red); }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .stale-badge { display: inline-block; margin-left: 6px; border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #fdeaea; color: var(--red); }
 </style>
 </head>
 <body>
@@ -103,6 +104,9 @@
 
   <h2>Bookings by status</h2>
   <div class="status-breakdown" id="statusBreakdown"></div>
+
+  <h2>Negotiations by status</h2>
+  <div class="status-breakdown" id="negotiationBreakdown"></div>
 
   <h2>Upcoming transfers</h2>
   <div id="upcoming"></div>
@@ -321,6 +325,7 @@
     document.getElementById('cards').innerHTML = `
       <div class="card"><div class="n">${data.bookings_today}</div><div class="l">Bookings today</div></div>
       <div class="card"><div class="n ${data.unassigned_bookings > 0 ? 'warn' : ''}">${data.unassigned_bookings}</div><div class="l">Unassigned bookings</div></div>
+      <div class="card"><div class="n ${data.stale_unassigned_bookings > 0 ? 'alert' : ''}">${data.stale_unassigned_bookings}</div><div class="l">Stale unassigned (${data.booking_stale_after_minutes}+ min)</div></div>
       <div class="card"><div class="n ${data.active_escalations > 0 ? 'alert' : ''}">${data.active_escalations}</div><div class="l">Active escalations</div></div>
       <div class="card"><div class="n">${data.upcoming_transfers.length}</div><div class="l">Upcoming transfers</div></div>
     `;
@@ -330,6 +335,17 @@
     statusEl.innerHTML = statuses.length === 0
       ? '<div class="empty">No bookings yet.</div>'
       : statuses.map(([status, count]) => `
+          <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
+        `).join('');
+
+    // Milestone 29 - negotiation_requests already auto-expires in the
+    // background (Milestone 25); this is the first time admin can see
+    // any of that activity at all, even as just a status breakdown.
+    const negotiations = Object.entries(data.negotiations_by_status || {});
+    const negotiationEl = document.getElementById('negotiationBreakdown');
+    negotiationEl.innerHTML = negotiations.length === 0
+      ? '<div class="empty">No negotiation requests yet.</div>'
+      : negotiations.map(([status, count]) => `
           <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
         `).join('');
 

@@ -563,3 +563,15 @@ CREATE TABLE driver_submit_lookups (
   source_ip TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 29 additions — staleness surfacing for unaccepted bookings,
+-- and admin visibility into negotiation_requests (which already had
+-- lazy auto-expiry since Milestone 25, but zero admin-facing view). See
+-- migrations/milestone29-booking-staleness-and-negotiation-admin-view.sql
+-- for the migration actually run against the live database. No new
+-- tables needed for the negotiation-visibility half - GET
+-- /admin/negotiations reads the existing negotiation_requests table.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('booking_stale_after_minutes', '30');
