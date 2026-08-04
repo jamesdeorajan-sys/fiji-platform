@@ -1,0 +1,8 @@
+{
+  "name": "fiji-booking-api-phase1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
