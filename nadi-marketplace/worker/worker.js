@@ -2209,40 +2209,52 @@ async function createBookingRecord(env, {
         // that a tour booking never qualifies for this discount.
         const serverFjd = authoritative.transferPlusExtrasFjd;
         const serverFjdDiscounted = applyLoyaltyDiscount(serverFjd, false).finalFjd;
-        if (!hasTour && !isCustomAddress) {
-          // Recommendation 4: the real runtime guardrail, wired into the
-          // live path here - assertSanePricing (pricing.mjs) was written
-          // and unit-tested in Step 3 but never actually called until now.
-          // Only meaningful for a return trip (assertSanePricing is a
-          // no-op otherwise). A second computeAuthoritativePrice call
-          // (identical inputs, tripType forced to 'one-way') gives an
-          // apples-to-apples comparison with the same extras on both
-          // sides, so extras don't dilute the return/one-way ratio being
-          // checked. If it fails, the booking is NOT silently created
-          // with a bad price - it's blocked and routed to a real human
-          // via createEscalation(), the same alert path every other
-          // needs-manual-confirmation case already uses.
-          if (tripType === 'return') {
-            const oneWayEquivalent = await computeAuthoritativePrice(env, {
-              pickupZone, destinationZone, vehicleType, tripType: 'one-way', pickupTime, hasChildSeat, hasSurfboard,
+
+        // Milestone 26 - real gap an independent pre-launch review found:
+        // this guardrail (the actual Milestone 17 return-collapse fix)
+        // used to live INSIDE the "!hasTour && !isCustomAddress" branch
+        // below, so a return trip that also had a tour or a custom
+        // address got no independent verification that the return
+        // multiplier was actually applied - only the transfer-portion
+        // computation itself was return-aware, nothing double-checked it.
+        // Moved out here so it runs for every return-trip booking in
+        // authoritative mode, boat excluded (boat has no trip_type
+        // concept - see computeBoatFare). The tour-remainder and
+        // custom-address band checks below are independent, narrower
+        // checks layered ON TOP of this, not a replacement for it - this
+        // is Recommendation 4's actual runtime guardrail
+        // (assertSanePricing, pricing.mjs), only meaningful for a return
+        // trip (a no-op otherwise). A second computeAuthoritativePrice
+        // call (identical inputs, tripType forced to 'one-way') gives an
+        // apples-to-apples comparison with the same extras on both sides,
+        // so extras don't dilute the return/one-way ratio being checked.
+        // If it fails, the booking is NOT silently created with a bad
+        // price - it's blocked and routed to a real human via
+        // createEscalation(), the same alert path every other
+        // needs-manual-confirmation case already uses.
+        if (tripType === 'return') {
+          const oneWayEquivalent = await computeAuthoritativePrice(env, {
+            pickupZone, destinationZone, vehicleType, tripType: 'one-way', pickupTime, hasChildSeat, hasSurfboard,
+          });
+          if (oneWayEquivalent.ok) {
+            const saneCheck = assertSanePricing({
+              oneWayEquivalentFjd: oneWayEquivalent.transferPlusExtrasFjd,
+              finalTotalFjd: serverFjd,
+              tripType,
             });
-            if (oneWayEquivalent.ok) {
-              const saneCheck = assertSanePricing({
-                oneWayEquivalentFjd: oneWayEquivalent.transferPlusExtrasFjd,
-                finalTotalFjd: serverFjd,
-                tripType,
+            if (!saneCheck.sane) {
+              await createEscalation(env, {
+                source: 'guest',
+                triggerType: 'needs_manual_confirmation',
+                context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return total FJD ${serverFjd} vs one-way equivalent FJD ${oneWayEquivalent.transferPlusExtrasFjd}. Booking blocked, needs manual confirmation.`,
+                sourceIp,
               });
-              if (!saneCheck.sane) {
-                await createEscalation(env, {
-                  source: 'guest',
-                  triggerType: 'needs_manual_confirmation',
-                  context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return total FJD ${serverFjd} vs one-way equivalent FJD ${oneWayEquivalent.transferPlusExtrasFjd}. Booking blocked, needs manual confirmation.`,
-                  sourceIp,
-                });
-                return { ok: false, errors: ['Could not confirm a reliable price for this booking automatically. We\'ve alerted our team and will follow up via WhatsApp to confirm your fare.'] };
-              }
+              return { ok: false, errors: ['Could not confirm a reliable price for this booking automatically. We\'ve alerted our team and will follow up via WhatsApp to confirm your fare.'] };
             }
           }
+        }
+
+        if (!hasTour && !isCustomAddress) {
           // Real gap found via live testing after this shipped (James,
           // checking an unrelated applyExtras question): computeAuthoritativePrice
           // always uses the pricing_rules FORMULA (computeFareFjd), but the
