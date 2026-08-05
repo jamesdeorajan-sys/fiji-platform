@@ -124,6 +124,18 @@ const DRIVER_APP_URL = 'https://driver.fijidash.com/driver-app';
 const GUEST_DRIVER_ASSIGNED_TEMPLATE = 'vakaviti_guest_driver_assigned';
 const GUEST_DRIVER_ASSIGNED_LANG_CODE = 'en';
 
+// Milestone 31 - "your driver is on the way" guest notification, fired
+// when a booking transitions to en_route. Same not-yet-submitted starting
+// state as GUEST_DRIVER_ASSIGNED_TEMPLATE above - the real send will
+// 404/reject until James submits this to Meta via WhatsApp Manager and
+// it's approved, which is expected, not a bug. Wired in now (rather than
+// left undone) since the code side of this is genuinely easy and matches
+// the exact pattern already established for the driver-assigned template;
+// the Meta-approval step is the only remaining real dependency, same as
+// three other templates in this file already waiting on it.
+const GUEST_EN_ROUTE_TEMPLATE = 'vakaviti_guest_en_route';
+const GUEST_EN_ROUTE_LANG_CODE = 'en';
+
 // Milestone 23 - admin magic-link login. Exactly one phone number is
 // ever authorized to receive/use an admin login link. Deliberately
 // hardcoded here rather than in platform_settings or any DB table - an
@@ -333,6 +345,22 @@ export default {
       return handleAdminReject(request, env, Number(rejectMatch[1]));
     }
 
+    // ── Milestone 31: driver management gaps - suspend/reactivate/zones ──
+    const suspendMatch = url.pathname.match(/^\/admin\/drivers\/(\d+)\/suspend$/);
+    if (request.method === 'POST' && suspendMatch) {
+      return handleAdminSuspendDriver(request, env, Number(suspendMatch[1]));
+    }
+
+    const reactivateMatch = url.pathname.match(/^\/admin\/drivers\/(\d+)\/reactivate$/);
+    if (request.method === 'POST' && reactivateMatch) {
+      return handleAdminReactivateDriver(request, env, Number(reactivateMatch[1]));
+    }
+
+    const driverZonesMatch = url.pathname.match(/^\/admin\/drivers\/(\d+)\/zones$/);
+    if (request.method === 'POST' && driverZonesMatch) {
+      return handleAdminUpdateDriverZones(request, env, Number(driverZonesMatch[1]));
+    }
+
     // ── Milestone 3: driver PWA + dispatch ──
     if (request.method === 'POST' && url.pathname === '/driver/login') {
       return handleDriverLogin(request, env);
@@ -413,14 +441,31 @@ export default {
       return handleAdminManualAssign(request, env);
     }
 
+    // ── Milestone 31: admin cancel action, admin-bookings.html ──
+    const cancelBookingMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/cancel$/);
+    if (request.method === 'POST' && cancelBookingMatch) {
+      return handleAdminCancelBooking(request, env, Number(cancelBookingMatch[1]));
+    }
+
     // ── Milestone 20: operational dashboard metrics, admin-dashboard.html ──
     if (request.method === 'GET' && url.pathname === '/admin/dashboard-stats') {
       return handleAdminDashboardStats(request, env);
     }
 
+    // ── Milestone 31: financial/payout view, admin-financials.html ──
+    if (request.method === 'GET' && url.pathname === '/admin/financials') {
+      return handleAdminFinancials(request, env, url);
+    }
+
     // ── Milestone 21: staff escalation queue, admin-escalations.html ──
     if (request.method === 'GET' && url.pathname === '/admin/escalations') {
       return handleAdminListEscalations(request, env, url);
+    }
+
+    // ── Milestone 31: resolve action for admin-escalations.html ──
+    const resolveEscalationMatch = url.pathname.match(/^\/admin\/escalations\/(\d+)\/resolve$/);
+    if (request.method === 'POST' && resolveEscalationMatch) {
+      return handleAdminResolveEscalation(request, env, Number(resolveEscalationMatch[1]));
     }
 
     // ── Milestone 29: negotiation activity, admin-dashboard.html ──
@@ -1033,12 +1078,21 @@ async function handleAdminListBookings(request, env, url) {
   const requestedLimit = Number(url.searchParams.get('limit'));
   const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 && requestedLimit <= 200 ? requestedLimit : 50;
   const status = url.searchParams.get('status'); // optional filter, e.g. ?status=pending
+  // Milestone 31 - Tier 3 combined-review gap: no way to find a specific
+  // guest's booking(s) other than scrolling the full (up to 200-row) list.
+  // Basic substring match, not a real search index - fine at current
+  // volume, matches the "basic search" ask exactly.
+  const search = (url.searchParams.get('search') || '').trim();
 
   const conditions = [];
   const whereParams = [];
   if (status) {
     conditions.push('b.status = ?');
     whereParams.push(status);
+  }
+  if (search) {
+    conditions.push('(b.guest_name LIKE ? OR b.guest_phone LIKE ?)');
+    whereParams.push(`%${search}%`, `%${search}%`);
   }
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -1179,6 +1233,94 @@ async function handleAdminDashboardStats(request, env) {
   }, 200);
 }
 
+// Milestone 31 - Tier 3 combined-review gap: no financial/payout view
+// existed at all - "how much does the platform owe/is owed, and per
+// driver" was only ever answerable by a direct D1 query. Built entirely
+// from data that already exists (bookings.settlement_amount_fjd,
+// wallet_transactions, wallets) - nothing new stored, same "read-only
+// dashboard over existing tables" pattern as handleAdminDashboardStats.
+// "Driver earnings" = what the driver keeps in hand from a completed cash
+// trip (settlement_amount_fjd - today the only real payment_method).
+// "Commission owed" = the platform's cut, already tracked per-completion
+// by accrueCommission() as a negative wallet_transactions row. Current
+// wallet balance is always the live running total (not period-bound) -
+// it's the one number that HAS to reflect reality right now, not a
+// historical window. from/to are optional date bounds (inclusive,
+// YYYY-MM-DD) on created_at - defaults to all-time when omitted, since
+// real volume today is low enough that "all time" is itself a
+// reasonable, non-overwhelming default.
+async function handleAdminFinancials(request, env, url) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ error: 'Database unavailable.' }, 503);
+
+  const from = url.searchParams.get('from'); // YYYY-MM-DD, inclusive
+  const to = url.searchParams.get('to'); // YYYY-MM-DD, inclusive
+
+  const bookingDateConditions = ["b.status = 'completed'"];
+  const bookingDateParams = [];
+  if (from) { bookingDateConditions.push('date(b.created_at) >= ?'); bookingDateParams.push(from); }
+  if (to) { bookingDateConditions.push('date(b.created_at) <= ?'); bookingDateParams.push(to); }
+  const bookingWhere = bookingDateConditions.join(' AND ');
+
+  const txnDateConditions = [`wt.type = 'commission_owed'`];
+  const txnDateParams = [];
+  if (from) { txnDateConditions.push('date(wt.created_at) >= ?'); txnDateParams.push(from); }
+  if (to) { txnDateConditions.push('date(wt.created_at) <= ?'); txnDateParams.push(to); }
+  const txnWhere = txnDateConditions.join(' AND ');
+
+  const [totalsResult, byDriverEarningsResult, byDriverCommissionResult, walletsResult] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT
+         (SELECT COALESCE(SUM(b.settlement_amount_fjd), 0) FROM bookings b WHERE ${bookingWhere}) AS total_driver_earnings_fjd,
+         (SELECT COALESCE(SUM(-wt.amount_fjd), 0) FROM wallet_transactions wt WHERE ${txnWhere}) AS total_commission_owed_fjd`
+    ).bind(...bookingDateParams, ...txnDateParams),
+    env.DB.prepare(
+      `SELECT b.assigned_driver_id AS driver_id, COUNT(*) AS completed_bookings,
+              COALESCE(SUM(b.settlement_amount_fjd), 0) AS driver_earnings_fjd
+       FROM bookings b
+       WHERE ${bookingWhere} AND b.assigned_driver_id IS NOT NULL
+       GROUP BY b.assigned_driver_id`
+    ).bind(...bookingDateParams),
+    env.DB.prepare(
+      `SELECT wt.driver_id, COALESCE(SUM(-wt.amount_fjd), 0) AS commission_owed_fjd
+       FROM wallet_transactions wt
+       WHERE ${txnWhere}
+       GROUP BY wt.driver_id`
+    ).bind(...txnDateParams),
+    env.DB.prepare(`SELECT d.id AS driver_id, d.name AS driver_name, w.balance_fjd
+                     FROM drivers d LEFT JOIN wallets w ON w.driver_id = d.id`),
+  ]);
+
+  const earningsByDriver = {};
+  for (const row of byDriverEarningsResult.results || []) earningsByDriver[row.driver_id] = row;
+  const commissionByDriver = {};
+  for (const row of byDriverCommissionResult.results || []) commissionByDriver[row.driver_id] = row.commission_owed_fjd;
+
+  // Only drivers with activity in-period OR a non-zero current balance -
+  // an admin financial view showing every never-driven pending applicant
+  // at FJD 0 would just be noise.
+  const byDriver = (walletsResult.results || [])
+    .map((d) => ({
+      driver_id: d.driver_id,
+      driver_name: d.driver_name,
+      completed_bookings: earningsByDriver[d.driver_id]?.completed_bookings || 0,
+      driver_earnings_fjd: earningsByDriver[d.driver_id]?.driver_earnings_fjd || 0,
+      commission_owed_fjd: commissionByDriver[d.driver_id] || 0,
+      current_wallet_balance_fjd: d.balance_fjd ?? 0,
+    }))
+    .filter((d) => d.completed_bookings > 0 || d.current_wallet_balance_fjd !== 0)
+    .sort((a, b) => b.driver_earnings_fjd - a.driver_earnings_fjd);
+
+  const totals = totalsResult.results?.[0] || { total_driver_earnings_fjd: 0, total_commission_owed_fjd: 0 };
+
+  return json({
+    period: { from: from || null, to: to || null },
+    total_driver_earnings_fjd: totals.total_driver_earnings_fjd,
+    total_commission_owed_fjd: totals.total_commission_owed_fjd,
+    by_driver: byDriver,
+  }, 200);
+}
+
 // Milestone 21: read-only staff queue for the real, live escalations
 // table (Milestone 10) - until now the only way to see an open
 // escalation was the WhatsApp alert at the moment it fired, or a direct
@@ -1194,21 +1336,57 @@ async function handleAdminListEscalations(request, env, url) {
   const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 && requestedLimit <= 200 ? requestedLimit : 50;
   const resolvedParam = url.searchParams.get('resolved');
   const resolved = resolvedParam === '1' ? 1 : 0; // default: open queue
+  // Milestone 31 - Tier 3 combined-review gap, same ask as
+  // handleAdminListBookings' search above. escalations has no guest_name/
+  // guest_phone column of its own - most escalations here are address-
+  // lookup failures with no linked booking at all - so this matches
+  // against e.context (free text; since Milestone 28 that includes the
+  // guest's WhatsApp number when one was captured) as well as the linked
+  // booking's guest_name/guest_phone for the escalations that do have one.
+  const search = (url.searchParams.get('search') || '').trim();
+
+  const conditions = ['e.resolved = ?'];
+  const params = [resolved];
+  if (search) {
+    conditions.push('(e.context LIKE ? OR b.guest_name LIKE ? OR b.guest_phone LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  params.push(limit);
 
   const result = await env.DB.prepare(
     `SELECT e.id, e.source, e.trigger_type, e.context, e.booking_id, e.driver_id,
             e.created_at, e.resolved,
-            b.pickup_zone, b.destination_zone, b.guest_name AS booking_guest_name,
+            b.pickup_zone, b.destination_zone, b.guest_name AS booking_guest_name, b.guest_phone AS booking_guest_phone,
             d.name AS driver_name
      FROM escalations e
      LEFT JOIN bookings b ON b.id = e.booking_id
      LEFT JOIN drivers d ON d.id = e.driver_id
-     WHERE e.resolved = ?
+     WHERE ${conditions.join(' AND ')}
      ORDER BY e.created_at DESC
      LIMIT ?`
-  ).bind(resolved, limit).all();
+  ).bind(...params).all();
 
   return json({ escalations: result.results || [] }, 200);
+}
+
+// Milestone 31 - real gap Tier 3 of the combined review found: escalations
+// has had a resolved column since Milestone 10, and admin-escalations.html
+// (Milestone 21) has displayed it since it shipped, but there was never any
+// way to actually SET it - once created, an escalation stayed in the open
+// queue forever, with no path to "handled this, done." Deliberately just
+// a status flip, not a notes/reason field - nothing in the ask calls for
+// tracking why/how it was resolved, and 'other'/'app_issue' escalations
+// already lack any structured resolution data today.
+async function handleAdminResolveEscalation(request, env, escalationId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const escalation = await env.DB.prepare(`SELECT id, resolved FROM escalations WHERE id = ?`).bind(escalationId).first();
+  if (!escalation) return json({ ok: false, error: 'Escalation not found.' }, 404);
+  if (escalation.resolved) return json({ ok: true, id: escalationId, resolved: true, already: true }, 200);
+
+  await env.DB.prepare(`UPDATE escalations SET resolved = 1 WHERE id = ?`).bind(escalationId).run();
+  return json({ ok: true, id: escalationId, resolved: true }, 200);
 }
 
 // Milestone 29 - real gap the combined review found: negotiation_requests
@@ -1276,6 +1454,83 @@ async function handleAdminApprove(request, env, driverId) {
     status: 'verified',
     whatsapp: whatsappResult,
   }, 200);
+}
+
+// Milestone 31 - Tier 3 combined-review gap: drivers only ever had
+// approve/reject - once verified, there was no way to deactivate a
+// problem driver short of a direct D1 UPDATE. Only allowed FROM
+// 'verified' (suspending a pending/rejected driver doesn't mean anything -
+// they're already blocked). Every gate that matters (requireDriver's
+// login-token JOIN, handleDriverLogin, handleAdminManualAssign's
+// eligibility check, the broadcast candidate query) already filters on
+// status = 'verified' specifically, not "not rejected" - so flipping
+// status to 'suspended' alone immediately locks the driver out of every
+// real action with zero other code changes needed. online is also
+// cleared so admin views never show a suspended driver as available -
+// belt and suspenders, not load-bearing (every one of those same queries
+// already filters on status = 'verified' too).
+async function handleAdminSuspendDriver(request, env, driverId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const driver = await env.DB.prepare(`SELECT id, status FROM drivers WHERE id = ?`).bind(driverId).first();
+  if (!driver) return json({ ok: false, error: 'Driver not found.' }, 404);
+  if (driver.status !== 'verified') {
+    return json({ ok: false, error: `Only a verified driver can be suspended (current status: ${driver.status}).` }, 409);
+  }
+
+  await env.DB.prepare(`UPDATE drivers SET status = 'suspended', online = 0, online_since = NULL WHERE id = ?`).bind(driverId).run();
+  return json({ ok: true, driver_id: driverId, status: 'suspended' }, 200);
+}
+
+// Reverses handleAdminSuspendDriver. Deliberately does NOT re-run
+// handleAdminApprove's welcome-message/fresh-token flow - that's a
+// "welcome, you're a new driver" message, wrong for a reactivation. A
+// suspended-then-reactivated driver just logs back in via the existing
+// POST /driver/login returning-driver flow (DRIVER_RETURN_TEMPLATE),
+// same as any driver whose session had simply expired.
+async function handleAdminReactivateDriver(request, env, driverId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const driver = await env.DB.prepare(`SELECT id, status FROM drivers WHERE id = ?`).bind(driverId).first();
+  if (!driver) return json({ ok: false, error: 'Driver not found.' }, 404);
+  if (driver.status !== 'suspended') {
+    return json({ ok: false, error: `Only a suspended driver can be reactivated (current status: ${driver.status}).` }, 409);
+  }
+
+  await env.DB.prepare(`UPDATE drivers SET status = 'verified' WHERE id = ?`).bind(driverId).run();
+  return json({ ok: true, driver_id: driverId, status: 'verified' }, 200);
+}
+
+// Milestone 31 - admin-facing zone edit. Previously a driver's zones
+// were only ever settable by the driver themselves (handleDriverOnline,
+// each time they go online) or fixed at signup (handleDriverSubmit) -
+// no admin override existed for "this driver actually covers Suva too"
+// or correcting a driver's own typo/mistake. Same valid-zone-name
+// validation as both of those existing paths, via the same
+// getValidZoneNames() helper, so this can never write a zone name that
+// doesn't exist. Deliberately does not require the driver to be online
+// or verified - editing a pending/suspended driver's zones ahead of
+// approval/reactivation is a legitimate real use.
+async function handleAdminUpdateDriverZones(request, env, driverId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const driver = await env.DB.prepare(`SELECT id FROM drivers WHERE id = ?`).bind(driverId).first();
+  if (!driver) return json({ ok: false, error: 'Driver not found.' }, 404);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+  const zones = Array.isArray(body.zones) ? body.zones.map((z) => String(z).trim()).filter(Boolean) : [];
+  if (zones.length === 0) return json({ ok: false, error: 'At least one zone is required.' }, 400);
+
+  const validZones = await getValidZoneNames(env);
+  const invalid = zones.filter((z) => !validZones.has(z));
+  if (invalid.length > 0) return json({ ok: false, error: `unknown zone(s): ${invalid.join(', ')}` }, 400);
+
+  await env.DB.prepare(`UPDATE drivers SET zones = ? WHERE id = ?`).bind(JSON.stringify(zones), driverId).run();
+  return json({ ok: true, driver_id: driverId, zones }, 200);
 }
 
 async function handleAdminReject(request, env, driverId) {
@@ -1504,6 +1759,21 @@ async function sendGuestDriverAssignedWhatsApp(env, booking, driverName) {
     booking.vehicle_type,
     `${booking.pickup_zone} -> ${booking.destination_zone}`,
     pickupSummary,
+  ]);
+}
+
+// Milestone 31 - "your driver is on the way" - fired from
+// handleDriverBookingStatus when a booking transitions to en_route.
+// Mirrors sendGuestDriverAssignedWhatsApp's shape exactly (same guest
+// name/driver name/route pattern), one fewer parameter since the pickup
+// date/time isn't the relevant fact once the driver is already en route.
+async function sendGuestEnRouteWhatsApp(env, booking, driverName) {
+  // vakaviti_guest_en_route body: {{1}} guest name, {{2}} driver name,
+  // {{3}} route
+  return sendWhatsAppTemplate(env, booking.guest_phone, GUEST_EN_ROUTE_TEMPLATE, GUEST_EN_ROUTE_LANG_CODE, [
+    booking.guest_name || 'Guest',
+    driverName || 'Your driver',
+    `${booking.pickup_zone} -> ${booking.destination_zone}`,
   ]);
 }
 
@@ -1945,6 +2215,40 @@ async function handleDriverAcceptBooking(request, env, bookingId) {
 // drivers table) - no unregistered/external-driver path.
 // ═══════════════════════════════════════════════════════════════
 
+// Milestone 31 - Tier 3 combined-review gap: bookings had no cancelled
+// status or admin action to set one at all - a booking that needed to be
+// called off (guest changed plans, double-booked, genuinely unworkable)
+// had no real terminal state to reach short of a direct D1 UPDATE.
+// Scoped to cancel only, not general field-editing - the concrete ask was
+// "a real cancelled status and an admin action to set it"; editing price/
+// route/etc. after creation raises the same trust-boundary questions the
+// server-authoritative pricing work (Milestone 18) was built to close,
+// and isn't part of this pass. Blocked from 'completed' or already-
+// 'cancelled' - both are real terminal states, not something a cancel
+// action should ever override.
+async function handleAdminCancelBooking(request, env, bookingId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const booking = await env.DB.prepare(`SELECT id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
+  if (!booking) return json({ ok: false, error: 'Booking not found.' }, 404);
+  if (booking.status === 'completed' || booking.status === 'cancelled') {
+    return json({ ok: false, error: `Cannot cancel a booking that is already ${booking.status}.` }, 409);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch { /* reason is optional - a body-less POST is fine */ }
+  const reason = body && body.reason ? String(body.reason).slice(0, 500) : null;
+
+  await env.DB.prepare(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`).bind(bookingId).run();
+  await logBookingEvent(env, {
+    bookingId, eventType: 'cancelled', previousStatus: booking.status, newStatus: 'cancelled',
+    actor: 'admin', metadata: reason ? { reason } : null,
+  });
+
+  return json({ ok: true, booking_id: bookingId, status: 'cancelled' }, 200);
+}
+
 async function handleAdminManualAssign(request, env) {
   if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
@@ -2033,7 +2337,8 @@ async function handleDriverBookingStatus(request, env, bookingId) {
   if (!['en_route', 'completed'].includes(newStatus)) return json({ error: "status must be 'en_route' or 'completed'" }, 400);
 
   const booking = await env.DB.prepare(
-    `SELECT id, assigned_driver_id, status, payment_method, settlement_amount_fjd, commission_rate, pickup_zone, destination_zone
+    `SELECT id, assigned_driver_id, status, payment_method, settlement_amount_fjd, commission_rate,
+            pickup_zone, destination_zone, guest_name, guest_phone, vehicle_type
      FROM bookings WHERE id = ?`
   ).bind(bookingId).first();
   if (!booking) return json({ error: 'Booking not found.' }, 404);
@@ -2067,7 +2372,28 @@ async function handleDriverBookingStatus(request, env, bookingId) {
     }
   }
 
-  return json({ ok: true, booking_id: bookingId, status: newStatus, commission }, 200);
+  // Milestone 31 - Tier 3 combined-review gap: en_route had NO
+  // notification at all, admin or guest, unlike 'completed' above.
+  // Admin side mirrors 'completed' exactly (same alert mechanism). Guest
+  // side is real, "on the way" is genuinely useful to a waiting guest -
+  // sendGuestEnRouteWhatsApp() is wired in, but the template it sends
+  // (vakaviti_guest_en_route) isn't yet submitted to Meta, same starting
+  // state as GUEST_DRIVER_ASSIGNED_TEMPLATE - the real send will
+  // 404/reject until James submits and it's approved. Never blocks the
+  // status transition itself either way.
+  let guestNotified = null;
+  if (newStatus === 'en_route') {
+    const enRouteSummary = `Booking #${bookingId} en route: ${driver.name || 'driver ' + driver.id}, `
+      + `${booking.pickup_zone} -> ${booking.destination_zone}.`;
+    for (const alertPhone of await getAdminAlertPhones(env)) {
+      await sendHealthAlertWhatsApp(env, alertPhone, enRouteSummary, sqliteNow());
+    }
+    if (booking.guest_phone) {
+      guestNotified = await sendGuestEnRouteWhatsApp(env, booking, driver.name);
+    }
+  }
+
+  return json({ ok: true, booking_id: bookingId, status: newStatus, commission, guest_notified: guestNotified }, 200);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2756,30 +3082,49 @@ async function handleNegotiationCreate(request, env) {
   const requestId = insert.meta.last_row_id;
   const negotiationRequest = await env.DB.prepare(`SELECT * FROM negotiation_requests WHERE id = ?`).bind(requestId).first();
 
-  // Reuses vakaviti_booking_broadcast as-is for this build (see the
-  // Milestone 15 report) - the guest's proposed price goes in the
-  // existing {{4}} fare slot. A dedicated negotiation template with
-  // clearer wording is a real, natural fast-follow, not a blocker: the
-  // driver has to open the app to see full context and respond either
-  // way, so nothing about accept/counter itself depends on the template.
-  const matching = await findMatchingOnlineDrivers(env, pickupZone);
-  const results = [];
-  for (const d of matching) {
-    const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, {
-      pickup_zone: pickupZone,
-      destination_zone: destinationZone,
-      vehicle_type: vehicleType,
-      quoted_currency: 'FJD',
-      quoted_amount: guestProposedAmountFjd,
-    });
-    results.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
+  // Milestone 31 - decision made with James: route new negotiation
+  // requests to admin for manual human confirmation, not an automated
+  // driver-broadcast/self-serve-accept flow. Reasoning (James's own,
+  // recorded here since it explains why this isn't "just" removing a
+  // feature): there's currently only one real driver, so the multi-
+  // driver-competition mechanic the broadcast+accept flow exists to
+  // support doesn't apply yet. Replaces the previous
+  // findMatchingOnlineDrivers()/sendBookingBroadcastWhatsApp() driver
+  // broadcast with a single alert to admin_alert_phone, same
+  // getAdminAlertPhones()/sendHealthAlertWhatsApp() pipeline already used
+  // for new driver applications and completed/en_route bookings - no new
+  // send mechanism. James/Ben confirm a price with the guest directly over
+  // WhatsApp, then use the existing POST /admin/bookings/manual-assign
+  // (Milestone 15) to create the booking at the agreed price - no new
+  // endpoint needed for that half.
+  //
+  // The driver-facing negotiation endpoints (GET .../negotiate/requests,
+  // POST .../negotiate/:id/offer) are deliberately left in place, not
+  // deleted - they're a real, independent pull-based feed (a driver's own
+  // app polling for open requests in their zone), not wired to this
+  // broadcast at all, so removing the broadcast already achieves the
+  // actual goal (no driver is proactively alerted/prompted). Their real
+  // frontend consumer is the separate driver PWA (driver.fijidash.com),
+  // which this repo doesn't contain - deleting working, reachable server
+  // endpoints without visibility into what else might call them is a
+  // real, avoidable risk this pass doesn't need to take. Accepted residual
+  // risk, matching James's own "only one real driver today" framing: that
+  // driver could still self-serve accept a request via their own app if
+  // they happened to check it, racing against admin's manual-assign - a
+  // small, known gap, not a blocker to shipping the admin-alert half now.
+  const adminSummary = `New negotiation request #${requestId}: ${guestName} (${guestPhone}), `
+    + `${pickupZone} -> ${destinationZone}, ${vehicleType}, proposed FJD ${guestProposedAmountFjd} `
+    + `(reference fare FJD ${realReferenceFareFjd}).`;
+  const adminAlerts = [];
+  for (const alertPhone of await getAdminAlertPhones(env)) {
+    adminAlerts.push(await sendHealthAlertWhatsApp(env, alertPhone, adminSummary, sqliteNow()));
   }
 
   return json({
     ok: true,
     request_id: requestId,
     request: negotiationRequest,
-    broadcast: { matched_drivers: matching.length, results },
+    admin_alerts: adminAlerts,
   }, 201);
 }
 
