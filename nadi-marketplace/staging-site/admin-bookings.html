@@ -25,7 +25,8 @@
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .toolbar label { font-size: 13px; color: #666; }
-  .toolbar select, .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar select, .toolbar button, .toolbar input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar input { min-width: 220px; }
   .toolbar button { cursor: pointer; font-weight: 600; }
   .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -46,6 +47,8 @@
   .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
 
   .expand-btn { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--ocean); }
+  .cancel-btn { background: none; border: 1px solid var(--red); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--red); }
+  .cancel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .events-row td { background: #f7f2e8; padding: 0; }
   .events-wrap { padding: 12px 16px; }
   .events-wrap .loading, .events-wrap .empty-events { color: #888; font-size: 12px; padding: 6px 0; }
@@ -89,7 +92,9 @@
       <option value="accepted">Accepted</option>
       <option value="en_route">En route</option>
       <option value="completed">Completed</option>
+      <option value="cancelled">Cancelled</option>
     </select>
+    <input type="text" id="searchInput" placeholder="Search guest name or phone…">
     <button id="refreshBtn">Refresh</button>
     <button id="logoutBtn" type="button">Log out</button>
   </div>
@@ -234,6 +239,15 @@
   document.getElementById('statusFilter').addEventListener('change', loadBookings);
   document.getElementById('refreshBtn').addEventListener('click', loadBookings);
 
+  // Milestone 31 - debounced so typing a guest's name doesn't fire a
+  // request per keystroke, same 400ms-class delay used elsewhere in this
+  // codebase for similar free-text-triggered lookups.
+  let searchDebounceTimer = null;
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadBookings, 400);
+  });
+
   async function loadBookings() {
     const errBanner = document.getElementById('errBanner');
     errBanner.style.display = 'none';
@@ -241,7 +255,11 @@
     refreshBtn.disabled = true;
     try {
       const status = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
-      const qs = status ? '?status=' + encodeURIComponent(status) : '';
+      const search = document.getElementById('searchInput') ? document.getElementById('searchInput').value.trim() : '';
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      if (search) params.set('search', search);
+      const qs = params.toString() ? '?' + params.toString() : '';
       const res = await fetch(API_URL + '/admin/bookings' + qs, {
         headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
       });
@@ -274,7 +292,7 @@
   function renderBookings(bookings) {
     const subline = document.getElementById('subline');
     subline.textContent = bookings.length + ' booking' + (bookings.length === 1 ? '' : 's') +
-      ' (most recent 200 max, filtered by status above)';
+      ' (most recent 200 max, filtered by status/search above)';
 
     const listEl = document.getElementById('list');
     if (bookings.length === 0) {
@@ -296,24 +314,26 @@
             <th>Pickup</th>
             <th>Created</th>
             <th>Events</th>
+            <th>Cancel</th>
           </tr>
         </thead>
         <tbody>
           ${bookings.map(b => `
-            <tr>
+            <tr id="booking-row-${b.id}">
               <td>#${b.id}</td>
               <td>${escHtml(b.guest_name)}<div class="meta">${escHtml(b.guest_phone || '—')}</div></td>
               <td class="route">${escHtml(b.pickup_zone)} → ${escHtml(b.destination_zone)}<div class="meta">${b.distance_km != null ? Number(b.distance_km).toFixed(1) + ' km' : '—'}</div></td>
               <td>${escHtml(b.vehicle_type)}</td>
               <td class="price">${formatMoney(b.quoted_amount, b.quoted_currency)}<div class="meta">${escHtml(b.payment_method || '—')}</div></td>
-              <td><span class="status-badge status-${escHtml(b.status)}">${escHtml(b.status)}</span>${b.is_stale ? '<span class="stale-badge">Stale</span>' : ''}</td>
+              <td><span class="status-badge status-${escHtml(b.status)}" id="status-badge-${b.id}">${escHtml(b.status)}</span>${b.is_stale ? '<span class="stale-badge">Stale</span>' : ''}</td>
               <td>${escHtml(b.driver_name || '—')}</td>
               <td>${b.pickup_date ? escHtml(b.pickup_date) + (b.pickup_time ? ' ' + escHtml(b.pickup_time) : '') : '—'}</td>
               <td class="meta">${escHtml(b.created_at)}</td>
               <td><button class="expand-btn" data-booking-id="${b.id}" onclick="toggleEvents(${b.id}, this)">▸ View</button></td>
+              <td>${['completed', 'cancelled'].includes(b.status) ? '—' : `<button class="cancel-btn" data-booking-id="${b.id}" onclick="cancelBooking(${b.id}, this)">Cancel</button>`}</td>
             </tr>
             <tr class="events-row" id="events-row-${b.id}" style="display:none">
-              <td colspan="10"><div class="events-wrap" id="events-wrap-${b.id}"></div></td>
+              <td colspan="11"><div class="events-wrap" id="events-wrap-${b.id}"></div></td>
             </tr>
           `).join('')}
         </tbody>
@@ -392,6 +412,39 @@
       renderEvents(bookingId, eventsCache[bookingId]);
     } catch (e) {
       wrap.innerHTML = '<div class="empty-events">Connection error loading events.</div>';
+    }
+  }
+
+  // Milestone 31 - Tier 3 combined-review gap: no admin action existed to
+  // call off a booking short of a direct D1 UPDATE. confirm() since this
+  // is destructive-ish (not reversible through this UI) - matches the
+  // weight of the action without building a whole modal for it. Updates
+  // the row in place (status badge + removes the Cancel button) rather
+  // than a full reload, same pattern as resolveEscalation() on the
+  // escalations page.
+  async function cancelBooking(bookingId, btnEl) {
+    if (!confirm('Cancel booking #' + bookingId + '? This cannot be undone from this page.')) return;
+    btnEl.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/bookings/' + bookingId + '/cancel', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        btnEl.disabled = false;
+        alert(data.error || 'Could not cancel this booking.');
+        return;
+      }
+      const badge = document.getElementById('status-badge-' + bookingId);
+      if (badge) {
+        badge.textContent = 'cancelled';
+        badge.className = 'status-badge status-cancelled';
+      }
+      btnEl.outerHTML = '—';
+    } catch (e) {
+      btnEl.disabled = false;
+      alert('Connection error - could not cancel this booking.');
     }
   }
 
