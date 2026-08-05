@@ -24,7 +24,8 @@
 
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .toolbar label { font-size: 13px; color: #666; }
-  .toolbar select, .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar select, .toolbar button, .toolbar input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar input { min-width: 220px; }
   .toolbar button { cursor: pointer; font-weight: 600; }
   .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -40,6 +41,10 @@
   .esc-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #888; }
   .source-badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; background: #e6f0ff; color: var(--ocean); }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .esc-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
+  .resolve-btn { background: var(--green); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .resolve-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .resolved-tag { font-size: 12px; color: var(--green); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -72,6 +77,7 @@
       <option value="0">Open</option>
       <option value="1">Resolved</option>
     </select>
+    <input type="text" id="searchInput" placeholder="Search guest name, phone, or context…">
     <button id="refreshBtn">Refresh</button>
     <button id="logoutBtn" type="button">Log out</button>
   </div>
@@ -216,6 +222,12 @@
   document.getElementById('resolvedFilter').addEventListener('change', loadEscalations);
   document.getElementById('refreshBtn').addEventListener('click', loadEscalations);
 
+  let searchDebounceTimer = null;
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadEscalations, 400);
+  });
+
   async function loadEscalations() {
     const errBanner = document.getElementById('errBanner');
     errBanner.style.display = 'none';
@@ -223,7 +235,10 @@
     refreshBtn.disabled = true;
     try {
       const resolved = document.getElementById('resolvedFilter').value;
-      const res = await fetch(API_URL + '/admin/escalations?resolved=' + resolved, {
+      const search = document.getElementById('searchInput').value.trim();
+      const params = new URLSearchParams({ resolved });
+      if (search) params.set('search', search);
+      const res = await fetch(API_URL + '/admin/escalations?' + params.toString(), {
         headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
       });
       if (!res.ok) {
@@ -263,7 +278,7 @@
     }
 
     listEl.innerHTML = '<div class="queue">' + escalations.map(e => `
-      <div class="esc-card ${e.resolved ? 'resolved' : ''}">
+      <div class="esc-card ${e.resolved ? 'resolved' : ''}" id="esc-card-${e.id}">
         <div class="esc-top">
           <span class="esc-type">${escHtml(triggerTypeLabel(e.trigger_type))}</span>
           <span class="esc-time">${escHtml(e.created_at)}</span>
@@ -274,8 +289,44 @@
           ${e.booking_id ? `<span>Booking #${e.booking_id}${e.pickup_zone ? ': ' + escHtml(e.pickup_zone) + ' → ' + escHtml(e.destination_zone) : ''}${e.booking_guest_name ? ' (' + escHtml(e.booking_guest_name) + ')' : ''}</span>` : ''}
           ${e.driver_id ? `<span>Driver: ${escHtml(e.driver_name || ('#' + e.driver_id))}</span>` : ''}
         </div>
+        <div class="esc-bottom">
+          ${e.resolved
+            ? '<span class="resolved-tag">✓ Resolved</span>'
+            : `<button class="resolve-btn" data-escalation-id="${e.id}" onclick="resolveEscalation(${e.id}, this)">Resolve</button>`}
+        </div>
       </div>
     `).join('') + '</div>';
+  }
+
+  // Milestone 31 - the one action the queue was missing: closing an
+  // escalation out. Fades the card in place rather than re-fetching the
+  // whole list, since the open-queue view (the default) would otherwise
+  // need the resolved card to disappear, and the resolved-history view
+  // would need it to appear - simplest correct behavior for both is just
+  // reflecting the new state on the card itself.
+  async function resolveEscalation(id, btnEl) {
+    btnEl.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/escalations/' + id + '/resolve', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        btnEl.disabled = false;
+        alert(data.error || 'Could not resolve this escalation.');
+        return;
+      }
+      const card = document.getElementById('esc-card-' + id);
+      if (card) {
+        card.classList.add('resolved');
+        const bottom = card.querySelector('.esc-bottom');
+        if (bottom) bottom.innerHTML = '<span class="resolved-tag">✓ Resolved</span>';
+      }
+    } catch (e) {
+      btnEl.disabled = false;
+      alert('Connection error - could not resolve this escalation.');
+    }
   }
 
   init();
