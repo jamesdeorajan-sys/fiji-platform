@@ -2145,7 +2145,13 @@ async function submitNegotiation() {
     const backBtn = document.getElementById('negotiateBackToStandardBtn');
     if (backBtn) backBtn.style.display = 'none';
     const titleEl = document.getElementById('negotiateWaitingTitle');
-    if (titleEl) titleEl.textContent = 'Waiting for a driver to respond…';
+    // Milestone 31 (item 14) - this used to say "Waiting for a driver to
+    // respond" when a real driver broadcast fired on submit. That
+    // broadcast is gone now (negotiation requests route to admin for a
+    // real human WhatsApp conversation with the guest instead), so the
+    // old copy would be actively misleading - implying an in-app response
+    // is coming when the real next step is a WhatsApp message.
+    if (titleEl) titleEl.textContent = 'Waiting for us to confirm your price…';
     document.getElementById('negotiateWaiting').style.display = 'block';
     startNegotiationPolling();
   } catch (err) {
@@ -2251,7 +2257,11 @@ async function acceptNegotiationOffer(offerId) {
 // functional the moment this renders, not a dead end.
 function showNegotiationExpired() {
   const titleEl = document.getElementById('negotiateWaitingTitle');
-  if (titleEl) titleEl.textContent = 'No driver responded in time.';
+  // Milestone 31 (item 14) - same rewording as the waiting-title change
+  // above, for the same reason: no driver was ever going to respond in
+  // this flow now, so the old text no longer describes what actually
+  // happened.
+  if (titleEl) titleEl.textContent = "We didn't confirm your price in time.";
   const offersEl = document.getElementById('negotiateOffers');
   if (offersEl) {
     offersEl.innerHTML = `<p style="font-size:13px;color:var(--mid)">Your Flexible Fare request has expired. Your Standard Fare is still available.</p>`;
