@@ -56,7 +56,7 @@
   .status-pending, .status-open { background: #fdf3e0; color: var(--amber); }
   .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
   .status-completed { background: #e5f5ea; color: var(--green); }
-  .status-cancelled, .status-expired { background: #fdeaea; color: var(--red); }
+  .status-cancelled, .status-expired, .status-declined { background: #fdeaea; color: var(--red); }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
   .stale-badge { display: inline-block; margin-left: 6px; border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #fdeaea; color: var(--red); }
 </style>
@@ -107,6 +107,9 @@
 
   <h2>Negotiations by status</h2>
   <div class="status-breakdown" id="negotiationBreakdown"></div>
+
+  <h2>Open negotiation requests</h2>
+  <div id="openNegotiations"></div>
 
   <h2>Drivers offline mid-job</h2>
   <div id="offlineMidJob"></div>
@@ -355,6 +358,82 @@
 
     renderOfflineMidJob(data.offline_mid_job || []);
     renderUpcoming(data.upcoming_transfers || []);
+    loadOpenNegotiations();
+  }
+
+  async function loadOpenNegotiations() {
+    const el = document.getElementById('openNegotiations');
+    try {
+      const res = await fetch(API_URL + '/admin/negotiations?status=open', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) { el.innerHTML = '<div class="empty">Could not load negotiations.</div>'; return; }
+      const data = await res.json();
+      renderOpenNegotiations(data.negotiations || []);
+    } catch {
+      el.innerHTML = '<div class="empty">Connection error loading negotiations.</div>';
+    }
+  }
+
+  function renderOpenNegotiations(rows) {
+    const el = document.getElementById('openNegotiations');
+    if (rows.length === 0) {
+      el.innerHTML = '<div class="empty">No open negotiation requests.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Proposed</th>
+            <th>Reference fare</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="openNegotiationsBody">
+          ${rows.map(r => `
+            <tr data-id="${r.id}">
+              <td>${escHtml(r.guest_name)}<div class="meta">${escHtml(r.guest_phone || '—')}</div></td>
+              <td class="route">${escHtml(r.pickup_zone)} → ${escHtml(r.destination_zone)}</td>
+              <td>${escHtml(r.vehicle_type)}</td>
+              <td>${formatPriceFjd(r.guest_proposed_amount_fjd)}</td>
+              <td>${formatPriceFjd(r.reference_fare_fjd)}</td>
+              <td><button type="button" onclick="declineNegotiationRequest(${r.id})">Decline</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function formatPriceFjd(n) {
+    return n == null ? '—' : 'FJ$' + Number(n).toFixed(2);
+  }
+
+  // Real gap this fills: previously the only way to act on a negotiation
+  // was accept-offer (needs a driver's counter-offer to already exist)
+  // or manual-assign (needs a driver + agreed price picked). This is the
+  // one genuinely new "no" action - resolves instantly for the guest
+  // instead of waiting for negotiation_expiry_minutes to elapse.
+  async function declineNegotiationRequest(id) {
+    if (!confirm('Decline this negotiation request? The guest will be shown the standard fare instead.')) return;
+    try {
+      const res = await fetch(API_URL + '/negotiate/' + id + '/decline', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || 'Could not decline this request.');
+        return;
+      }
+      loadOpenNegotiations();
+    } catch {
+      alert('Connection error declining this request.');
+    }
   }
 
   // Milestone 30 - real gap the combined review found: a driver going
