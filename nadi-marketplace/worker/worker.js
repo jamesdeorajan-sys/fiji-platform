@@ -2290,12 +2290,48 @@ async function handleAdminManualAssign(request, env) {
     return json({ ok: true, won: true, booking }, 200);
   }
 
+  // Milestone 32 - real gap James found via his own live test: Path B is
+  // exactly the "guest arranged it over WhatsApp" case a negotiation
+  // request now resolves through (item 14's admin-alert routing), but it
+  // was completely disconnected from the negotiation_requests row that
+  // started it - it never updated that row's status or linked the new
+  // booking. GET /negotiate/:id (the guest's own polling endpoint) had no
+  // way to ever learn a real outcome happened, so the guest's "Waiting
+  // for us to confirm your price..." screen would hang until the
+  // existing negotiation_expiry_minutes lazy-expiry (default 20 min,
+  // enforced in handleNegotiationStatus itself) eventually flipped it to
+  // 'expired' - the guest would see "we didn't confirm your price in
+  // time" even after a real booking was already made.
+  //
+  // Optional negotiation_request_id, not a separate endpoint - chosen as
+  // the less invasive of the two options: reuses Path B's existing
+  // createBookingRecord() call as-is, just adds a linkage step after it
+  // succeeds. Allowed from 'open' OR 'expired' (not 'accepted' - already
+  // linked to a real booking, not 'cancelled') - James taking longer than
+  // the 20-minute window to close a WhatsApp negotiation is a real,
+  // expected case (a human conversation, not an API round-trip), and the
+  // booking should still be traceable back to the request that started
+  // it even if the guest's own screen already moved on.
+  let negotiationRequest = null;
+  if (body.negotiation_request_id !== undefined && body.negotiation_request_id !== null) {
+    const negotiationRequestId = Number(body.negotiation_request_id);
+    if (!Number.isInteger(negotiationRequestId) || negotiationRequestId <= 0) {
+      return json({ ok: false, error: 'negotiation_request_id must be a positive integer' }, 400);
+    }
+    negotiationRequest = await env.DB.prepare(`SELECT id, status FROM negotiation_requests WHERE id = ?`).bind(negotiationRequestId).first();
+    if (!negotiationRequest) return json({ ok: false, error: 'No negotiation request found with that negotiation_request_id.' }, 404);
+    if (!['open', 'expired'].includes(negotiationRequest.status)) {
+      return json({ ok: false, error: `This negotiation request is already ${negotiationRequest.status}, cannot link it to a new booking.` }, 409);
+    }
+  }
+
   // Path B - a guest arranged entirely over WhatsApp, no existing
   // booking row at all. Creates it directly via createBookingRecord()
   // with status='accepted' and assigned_driver_id pre-set, same pattern
   // handleNegotiationAcceptOffer() already uses - it never enters the
   // pending/broadcastable pool, so there's nothing for the automated
   // system to race against.
+  const quotedAmount = Number(body.quoted_amount);
   const result = await createBookingRecord(env, {
     guestName: (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest',
     guestPhone: normalisePhone((body.guest_phone || '').toString()),
@@ -2303,7 +2339,7 @@ async function handleAdminManualAssign(request, env) {
     destinationZone: (body.destination_zone || '').toString().trim(),
     vehicleType: (body.vehicle_type || '').toString().trim().toLowerCase(),
     quotedCurrency: (body.quoted_currency || '').toString().trim().toUpperCase(),
-    quotedAmount: Number(body.quoted_amount),
+    quotedAmount,
     fxRate: body.fx_rate_at_booking !== undefined ? Number(body.fx_rate_at_booking) : 1,
     distanceKm: body.distance_km !== undefined && body.distance_km !== null ? Number(body.distance_km) : null,
     paymentMethod: (body.payment_method || '').toString().trim().toLowerCase(),
@@ -2315,7 +2351,31 @@ async function handleAdminManualAssign(request, env) {
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
   await sendGuestDriverAssignedWhatsApp(env, result.booking, driver.name);
 
-  return json({ ok: true, booking_id: result.bookingId, booking: result.booking }, 201);
+  if (negotiationRequest) {
+    // A real negotiation_offers row, not just a status flip - the guest
+    // widget's own success screen (showNegotiationSuccess) reads the
+    // agreed price off the offer with guest_decision='accepted', not off
+    // the request's original guest_proposed_amount_fjd. Without a real
+    // offer row here, the guest would see the price THEY first proposed,
+    // not necessarily what was actually agreed over WhatsApp. Upsert
+    // (ON CONFLICT) rather than a plain INSERT - negotiation_offers has a
+    // UNIQUE(request_id, driver_id) constraint, and this driver could in
+    // theory already have a real offer row from their own (still-live,
+    // if less likely now) driver-app negotiation feed; this admin-
+    // confirmed price is the authoritative outcome either way.
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO negotiation_offers (request_id, driver_id, offer_type, offer_amount_fjd, guest_decision)
+         VALUES (?, ?, 'accept', ?, 'accepted')
+         ON CONFLICT(request_id, driver_id) DO UPDATE SET offer_type = 'accept', offer_amount_fjd = excluded.offer_amount_fjd, guest_decision = 'accepted'`
+      ).bind(negotiationRequest.id, driverId, quotedAmount),
+      env.DB.prepare(
+        `UPDATE negotiation_requests SET status = 'accepted', booking_id = ? WHERE id = ? AND status IN ('open', 'expired')`
+      ).bind(result.bookingId, negotiationRequest.id),
+    ]);
+  }
+
+  return json({ ok: true, booking_id: result.bookingId, booking: result.booking, negotiation_request_id: negotiationRequest ? negotiationRequest.id : null }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════
