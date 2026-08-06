@@ -317,6 +317,14 @@ export default {
       return handleNegotiationAcceptOffer(request, env, Number(negotiationAcceptMatch[1]));
     }
 
+    // Guest-comfort spec (2026-08-07): admin needs a real, active way to
+    // decline a guest's negotiation ask, instead of only accept-offer,
+    // manual-assign, or the passive negotiation_expiry_minutes timeout.
+    const negotiationDeclineMatch = url.pathname.match(/^\/negotiate\/(\d+)\/decline$/);
+    if (request.method === 'POST' && negotiationDeclineMatch) {
+      return handleNegotiationDecline(request, env, Number(negotiationDeclineMatch[1]));
+    }
+
     // ── Milestone 9: geocode + real-distance pricing for unlisted addresses ──
     if (request.method === 'POST' && url.pathname === '/quote') {
       return handleQuoteCreate(request, env);
@@ -3326,6 +3334,30 @@ async function handleNegotiationAcceptOffer(request, env, requestId) {
     : { attempted: false, reason: 'platform_settings.admin_alert_phone is not set.' };
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, alert }, 200);
+}
+
+// Guest-comfort spec (2026-08-07): admin-only, active decline for a
+// guest's negotiation ask. Mirrors handleNegotiationAcceptOffer's own
+// 404/409 guard shape exactly. Deliberately no booking row and no
+// WhatsApp alert here - admin already knows (they just declined it),
+// same "no alert on the non-event" logic already used elsewhere.
+async function handleNegotiationDecline(request, env, requestId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const negotiationRequest = await env.DB.prepare(
+    `SELECT id, status FROM negotiation_requests WHERE id = ?`
+  ).bind(requestId).first();
+  if (!negotiationRequest) return json({ ok: false, error: 'Negotiation request not found.' }, 404);
+  if (negotiationRequest.status !== 'open') {
+    return json({ ok: false, error: `This request is already ${negotiationRequest.status}, cannot decline.` }, 409);
+  }
+
+  await env.DB.prepare(
+    `UPDATE negotiation_requests SET status = 'declined' WHERE id = ? AND status = 'open'`
+  ).bind(requestId).run();
+
+  return json({ ok: true }, 200);
 }
 
 // Milestone 25 - real gap an independent review found: handleNegotiationStatus

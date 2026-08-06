@@ -412,7 +412,9 @@ CREATE TABLE negotiation_requests (
   pickup_datetime TEXT,
   reference_fare_fjd REAL NOT NULL,
   guest_proposed_amount_fjd REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'expired', 'cancelled')),
+  -- 'declined' added by milestone33-negotiation-decline.sql - admin's own
+  -- active decline action, distinct from the passive 'expired' timeout.
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'expired', 'cancelled', 'declined')),
   booking_id INTEGER REFERENCES bookings(id),
   source_ip TEXT,
   created_at TEXT DEFAULT (datetime('now'))
@@ -429,7 +431,10 @@ CREATE TABLE negotiation_offers (
   UNIQUE(request_id, driver_id)
 );
 
-INSERT INTO platform_settings (key, value) VALUES ('negotiation_expiry_minutes', '20');
+-- Value updated to 5 by milestone33-negotiation-decline.sql - this is the
+-- fallback for admin not responding in time, not the guest's expected real
+-- wait (a human replies on WhatsApp almost immediately in practice).
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_expiry_minutes', '5');
 INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_max_per_day', '5');
 INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_window_minutes', '10');
 
