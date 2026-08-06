@@ -227,6 +227,7 @@ const state = {
   negotiationProposedAmount: null,
   negotiationLastOffers: [],
   negotiationDeclinedOfferIds: null,
+  negotiationMidWaitTimer: null,
   // MILESTONE 16: guards a real-fare fetch against a stale response
   // landing after the guest changed route/vehicle - same forAddress-guard
   // pattern used elsewhere in this file.
@@ -2154,6 +2155,15 @@ async function submitNegotiation() {
     if (titleEl) titleEl.textContent = 'Waiting for us to confirm your price…';
     document.getElementById('negotiateWaiting').style.display = 'block';
     startNegotiationPolling();
+    // Guest-comfort spec (2026-08-07): a static spinner for the full
+    // negotiation_expiry_minutes wait (now 5 min) reads as broken past
+    // ~1-2 min. This swaps the subtext once, roughly at the halfway
+    // point, to show real progress without changing the actual timeout.
+    const subEl = document.getElementById('negotiateWaitingSub');
+    if (subEl) subEl.textContent = `You proposed ${formatPrice(amount)}. This usually takes a few minutes.`;
+    state.negotiationMidWaitTimer = setTimeout(() => {
+      if (subEl) subEl.textContent = 'Still checking with our team…';
+    }, 135000);
   } catch (err) {
     showError('Network error — please try again.');
   } finally {
@@ -2168,6 +2178,7 @@ function startNegotiationPolling() {
 }
 function stopNegotiationPolling() {
   if (state.negotiationPollTimer) { clearInterval(state.negotiationPollTimer); state.negotiationPollTimer = null; }
+  if (state.negotiationMidWaitTimer) { clearTimeout(state.negotiationMidWaitTimer); state.negotiationMidWaitTimer = null; }
 }
 
 async function pollNegotiationStatus() {
@@ -2182,7 +2193,7 @@ async function pollNegotiationStatus() {
       showNegotiationSuccess(data.request.reference_fare_fjd, offerAmountForRequest(data));
       return;
     }
-    if (data.request.status === 'expired' || data.request.status === 'cancelled') {
+    if (data.request.status === 'expired' || data.request.status === 'cancelled' || data.request.status === 'declined') {
       stopNegotiationPolling();
       showNegotiationExpired();
       return;
