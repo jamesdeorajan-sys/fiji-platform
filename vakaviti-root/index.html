@@ -17,16 +17,47 @@
 
 <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
-<!-- Organization Schema -->
+<!-- Organization Schema — canonical parent-entity anchor for the Vakaviti/ComeTo network -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "Organization",
+  "@id": "https://vakaviti.ai/#organization",
   "name": "Vakaviti.ai",
-  "alternateName": "Fiji Tourism Guide",
+  "alternateName": ["Fiji Tourism Guide", "Vakaviti AI"],
   "url": "https://vakaviti.ai",
-  "description": "Fiji's AI tourism partner network. Commission-free tours, transfers, and accommodation guides direct from local Fiji operators.",
-  "sameAs": ["https://lagi.vakaviti.ai"]
+  "description": "Vakaviti.ai is Fiji's AI tourism partner network, now expanding across the South Pacific — commission-free, verified operators, powered by Lagi AI concierge.",
+  "foundingLocation": {
+    "@type": "Place",
+    "name": "Fiji"
+  },
+  "areaServed": [
+    { "@type": "Country", "name": "Fiji" },
+    { "@type": "Country", "name": "Samoa" },
+    { "@type": "Country", "name": "Tonga" },
+    { "@type": "Country", "name": "Vanuatu" },
+    { "@type": "Country", "name": "Cook Islands" },
+    { "@type": "Country", "name": "Solomon Islands" }
+  ],
+  "sameAs": [
+    "https://lagi.vakaviti.ai",
+    "https://cometofiji.com",
+    "https://fijitourtransfers.com",
+    "https://nadiairporttransfers.com",
+    "https://natadolabayhorseriding.com",
+    "https://tourfiji.tours",
+    "https://cometosouthpacific.com"
+  ],
+  "subOrganization": [
+    { "@type": "Organization", "name": "ComeTo Fiji", "url": "https://cometofiji.com" },
+    { "@type": "Organization", "name": "ComeTo South Pacific", "url": "https://cometosouthpacific.com" }
+  ],
+  "knowsAbout": [
+    "Fiji tourism",
+    "South Pacific travel",
+    "commission-free travel booking",
+    "AI travel concierge"
+  ]
 }
 </script>
 
