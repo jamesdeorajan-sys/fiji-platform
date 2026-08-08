@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-08-09 — Methodology page + AboutPage schema
+
+**Branch:** `feature/methodology-page`
+**Commit:** (pending)
+**Depends on:** the Organization `@id` (`https://vakaviti.ai/#organization`) established in the `/network` build above — already live in production.
+
+### Shipped
+- ✅ New page `methodology.html` (served at `/methodology`) — editorial and verification standards page, matches `network.html`'s design system exactly (same CSS variables/components)
+- ✅ New `AboutPage` JSON-LD referencing the canonical Organization via `about`/`publisher` — no duplicate Organization block. `dateModified` set to the real publish date (2026-08-09), not a placeholder
+- ✅ Added `/methodology` to `sitemap.xml`, same convention as every other page
+
+### Corrected before shipping — real findings, not assumptions
+Two sections of the original draft spec were checked against this repo's actual documented systems and found to overstate real process. Both were rewritten before shipping rather than published as drafted:
+- **Operator Verification** — draft claimed an automated compliance system ("zone-manager process") cross-references operator claims against verifiable records, with ongoing re-checks and automatic removal on failure. `vakaviti-zone-manager` is actually a Cloudflare zone/DNS/SSL settings automation Worker (`docs/VAKAVITI-BRAIN.md`, Session 42) — unrelated to operator legitimacy. The real process (Session 55 writeup): operators apply via `join.vakaviti.ai` → `vakaviti-onboard` Worker → D1 `status='pending'` → a human on the team clicks a one-click activation link. Rewritten to describe this honestly as a human review step, not an automated licensing-verification system.
+- **Pricing Accuracy** — draft claimed automated, scheduled collection from fuel-linked official sources with a human-approval gate. The real source of truth (`docs/PRICING_MODEL.md`) is a fixed, documented distance-tiered formula, manually updated whenever rates or competitor pricing shift. Rewritten to describe the real, documented-formula process.
+- **Who's Behind This** — draft included a placeholder name ("Lipa") not confirmed by James. Corrected to the four confirmed real Fiji-based ops team members: Ben, Emma, Nia, Asilika.
+
+### Not shipped (deliberately out of scope)
+- "How we verify this" footer links from other content pages back to `/methodology` — flagged as its own future ticket, not built here.
+- The "last reviewed" date is currently set manually on each edit. Whether to auto-pull it from the last-commit date instead is still an open decision — see PR for James's confirmation.
+
+### Why
+`/network` established who Vakaviti is; `/methodology` establishes why it should be trusted — the credibility counterpart, targeting the "is this a qualified, checkable source" signal for both human readers and AI citation engines.
+
+---
+
 ## 2026-08-09 — Parent-entity `/network` page + canonical Organization schema
 
 **Branch:** `feature/network-parent-entity-page`
