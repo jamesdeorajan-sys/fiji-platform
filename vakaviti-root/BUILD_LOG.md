@@ -7,7 +7,7 @@
 ## 2026-08-09 — Homepage visual refresh (mobile-first, photography-led)
 
 **Branch:** `feature/homepage-visual-refresh`
-**Commit:** (pending)
+**Commit:** `8ac41ca`
 **Does not touch:** `/network`, `/methodology`, or the Organization JSON-LD in `index.html`'s `<head>` — confirmed byte-identical to `main` before and after this build.
 
 ### ⚠️ PLACEHOLDER IMAGERY — NOT A FINISHED STATE
