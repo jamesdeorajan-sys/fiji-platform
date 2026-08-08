@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-08-09 — Removed the redundant "Wider Network" journey-strip section
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** (pending)
+
+James caught this on live review of the preview: the "THE WIDER NETWORK — One Standard, Across the Pacific" section (a plain circles-and-a-line CSS strip, shipped in the `8ac41ca` entry below as the original spec's optional "simple visual journey" element) duplicated the same fact the new hero SVG map now shows more accurately — Fiji plus the same five satellite islands — just with no hub emphasis, no real projected positions, and plain outline circles instead of labeled markers.
+
+Removed entirely: the `<div class="section-label">The Wider Network</div>` block through the `.journey-strip` `<div>` (`index.html`), plus its CSS (`.network-teaser`, `.journey-strip`, `.journey-stop`, `.journey-dot`, `.journey-label` and their `.is-live` variants).
+
+**Supporting evidence for the removal, not the sole reason:** the strip's markup did list all 6 islands correctly (verified directly against the committed HTML — `Fiji, Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands` were all present in the DOM). What James saw as only 4 visible was consistent with the stale-preview issue investigated separately (an old commit-specific Cloudflare Pages URL, not the branch tip) — worth correcting for the record, since the real reason for removal is redundancy against the more accurate hero map, not a missing-island bug in the strip itself.
+
+**"See the full network" link:** not lost. `index.html`'s footer already links to `/network` independently (`<a href="/network">The Network</a>`, present since the original `/network` build) — no replacement link needed.
+
+### Verified
+- `.journey-strip` and all related CSS confirmed gone from the DOM/stylesheet
+- Footer `/network` link confirmed still present
+- Hero SVG and all 6 guide-card Unsplash images confirmed unaffected
+- Organization JSON-LD re-confirmed byte-identical to `main`
+
+---
+
 ## 2026-08-09 — Hero replaced with a custom SVG network map
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit to the homepage visual refresh below)
