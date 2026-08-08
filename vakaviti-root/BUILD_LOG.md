@@ -7,7 +7,8 @@
 ## 2026-08-09 — Parent-entity `/network` page + canonical Organization schema
 
 **Branch:** `feature/network-parent-entity-page`
-**Commit:** `78ff764` (+ follow-up fixes same branch)
+**Commits:** `78ff764` (initial build), `5c8f435` (review fixes: description wording, sitemap entry, this log)
+**PR:** [#9](https://github.com/jamesdeorajan-sys/fiji-platform/pull/9) — validated clean on schema.org's validator (0 errors, 0 warnings) and visually reviewed on the preview deployment before merge, approved by James
 
 ### Shipped
 - ✅ New page `network.html` (served at `/network`) — lists every property in the Vakaviti/ComeTo network across Fiji and the South Pacific, links to Lagi and the operator signup, matches the existing site's design system (same CSS variables/components as `index.html`)
