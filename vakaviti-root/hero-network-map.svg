@@ -44,7 +44,7 @@
   </g>
   <g>
     <circle cx="470.3" cy="330.8" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
-    <text x="470.3" y="362" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Tonga</text>
+    <text x="470.3" y="390" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Tonga</text>
   </g>
   <g>
     <circle cx="521.5" cy="217.9" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
@@ -60,7 +60,7 @@
   <circle cx="375.5" cy="284.5" r="20" fill="#e8693a" stroke="#f9f5ef" stroke-width="3"/>
   <text x="375.5" y="238" fill="#ffffff" font-family="Playfair Display, serif" font-weight="700" font-size="36" text-anchor="middle" letter-spacing="1">FIJI</text>
   <g>
-    <rect x="270.5" y="316" width="210" height="34" rx="17" fill="#f9f5ef"/>
-    <text x="375.5" y="338" fill="#0a3d52" font-family="DM Sans, sans-serif" font-weight="700" font-size="17" text-anchor="middle" letter-spacing="0.5">VAKAVITI NETWORK HQ</text>
+    <rect x="310.5" y="316" width="130" height="34" rx="17" fill="#f9f5ef"/>
+    <text x="375.5" y="338" fill="#0a3d52" font-family="DM Sans, sans-serif" font-weight="700" font-size="17" text-anchor="middle" letter-spacing="0.5">VAKAVITI HQ</text>
   </g>
 </svg>

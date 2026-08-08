@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** (pending)
+**File:** `vakaviti-root/hero-network-map.svg` only
+
+James caught this on live review: Tonga's label was partially obscured by the "VAKAVITI NETWORK HQ" badge beneath the Fiji marker. Verified with a bounding-box script rather than eyeballing a fix — computed each label/marker/badge's approximate glyph box (character-width estimate, cap-height/descender per font-size) and checked every pairwise overlap:
+
+- **Confirmed root cause #1:** Tonga's label (centered at x=470.3, y=362, font-size 30 — "Tonga" has a descending 'g') had a glyph box overlapping the badge rect (`x:[270.5,480.5], y:[316,350]`) by roughly 54×10 units.
+- **Confirmed root cause #2, worse than reported:** the script also found the badge's own text, "VAKAVITI NETWORK HQ," overlapping the **Tonga marker circle itself** (~16×13 units) — because the badge is painted after the satellite-markers group in the SVG's document order, it would have visually sat on top of and partially hidden Tonga's marker dot, not just crowded its label.
+
+Fixed both, verified together (not sequentially, since narrowing the badge for reason #2 could have reopened reason #1 or vice versa):
+- Moved Tonga's label from y=362 to y=390 — 18.4 units clear below the badge's bottom edge
+- Shortened the badge text from "VAKAVITI NETWORK HQ" to "VAKAVITI HQ" and narrowed the badge rect from 210 to 130 units wide (still centered under Fiji) — its right edge now sits 18.8 units clear of Tonga's marker
+
+Re-ran the full pairwise check (7 labels × each other, badge rect × every label, badge rect × every marker, badge text × every marker, every label × every foreign marker) after the fix: zero overlaps anywhere on the map. Since the hero image scales as `width:100%; height:auto` with matching intrinsic dimensions (no distortion), this is a single fix valid at every render width by construction — a viewBox-space collision (or its absence) doesn't change between mobile and desktop, only the pixel scale does.
+
+**Accessibility ask (alt text):** already in place, no change needed. `index.html`'s hero `<img>` already carries `alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands"`, added during the original SVG integration — verified present and matching the requested content before reporting this as done rather than assuming.
+
+---
+
 ## 2026-08-09 — Removed the redundant "Wider Network" journey-strip section
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
