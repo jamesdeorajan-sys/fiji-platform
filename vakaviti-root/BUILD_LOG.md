@@ -7,7 +7,7 @@
 ## 2026-08-09 — Methodology page + AboutPage schema
 
 **Branch:** `feature/methodology-page`
-**Commit:** (pending)
+**Commit:** `8c596ca`
 **Depends on:** the Organization `@id` (`https://vakaviti.ai/#organization`) established in the `/network` build above — already live in production.
 
 ### Shipped
