@@ -4,6 +4,123 @@
 
 ---
 
+## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** `94bcfef`
+**File:** `vakaviti-root/hero-network-map.svg` only
+
+James caught this on live review: Tonga's label was partially obscured by the "VAKAVITI NETWORK HQ" badge beneath the Fiji marker. Verified with a bounding-box script rather than eyeballing a fix — computed each label/marker/badge's approximate glyph box (character-width estimate, cap-height/descender per font-size) and checked every pairwise overlap:
+
+- **Confirmed root cause #1:** Tonga's label (centered at x=470.3, y=362, font-size 30 — "Tonga" has a descending 'g') had a glyph box overlapping the badge rect (`x:[270.5,480.5], y:[316,350]`) by roughly 54×10 units.
+- **Confirmed root cause #2, worse than reported:** the script also found the badge's own text, "VAKAVITI NETWORK HQ," overlapping the **Tonga marker circle itself** (~16×13 units) — because the badge is painted after the satellite-markers group in the SVG's document order, it would have visually sat on top of and partially hidden Tonga's marker dot, not just crowded its label.
+
+Fixed both, verified together (not sequentially, since narrowing the badge for reason #2 could have reopened reason #1 or vice versa):
+- Moved Tonga's label from y=362 to y=390 — 18.4 units clear below the badge's bottom edge
+- Shortened the badge text from "VAKAVITI NETWORK HQ" to "VAKAVITI HQ" and narrowed the badge rect from 210 to 130 units wide (still centered under Fiji) — its right edge now sits 18.8 units clear of Tonga's marker
+
+Re-ran the full pairwise check (7 labels × each other, badge rect × every label, badge rect × every marker, badge text × every marker, every label × every foreign marker) after the fix: zero overlaps anywhere on the map. Since the hero image scales as `width:100%; height:auto` with matching intrinsic dimensions (no distortion), this is a single fix valid at every render width by construction — a viewBox-space collision (or its absence) doesn't change between mobile and desktop, only the pixel scale does.
+
+**Accessibility ask (alt text):** already in place, no change needed. `index.html`'s hero `<img>` already carries `alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands"`, added during the original SVG integration — verified present and matching the requested content before reporting this as done rather than assuming.
+
+---
+
+## 2026-08-09 — Removed the redundant "Wider Network" journey-strip section
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** `74fd449`
+
+James caught this on live review of the preview: the "THE WIDER NETWORK — One Standard, Across the Pacific" section (a plain circles-and-a-line CSS strip, shipped in the `8ac41ca` entry below as the original spec's optional "simple visual journey" element) duplicated the same fact the new hero SVG map now shows more accurately — Fiji plus the same five satellite islands — just with no hub emphasis, no real projected positions, and plain outline circles instead of labeled markers.
+
+Removed entirely: the `<div class="section-label">The Wider Network</div>` block through the `.journey-strip` `<div>` (`index.html`), plus its CSS (`.network-teaser`, `.journey-strip`, `.journey-stop`, `.journey-dot`, `.journey-label` and their `.is-live` variants).
+
+**Supporting evidence for the removal, not the sole reason:** the strip's markup did list all 6 islands correctly (verified directly against the committed HTML — `Fiji, Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands` were all present in the DOM). What James saw as only 4 visible was consistent with the stale-preview issue investigated separately (an old commit-specific Cloudflare Pages URL, not the branch tip) — worth correcting for the record, since the real reason for removal is redundancy against the more accurate hero map, not a missing-island bug in the strip itself.
+
+**"See the full network" link:** not lost. `index.html`'s footer already links to `/network` independently (`<a href="/network">The Network</a>`, present since the original `/network` build) — no replacement link needed.
+
+### Verified
+- `.journey-strip` and all related CSS confirmed gone from the DOM/stylesheet
+- Footer `/network` link confirmed still present
+- Hero SVG and all 6 guide-card Unsplash images confirmed unaffected
+- Organization JSON-LD re-confirmed byte-identical to `main`
+
+---
+
+## 2026-08-09 — Hero replaced with a custom SVG network map
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit to the homepage visual refresh below)
+**Commit:** `da973a7`
+**Files:** `vakaviti-root/hero-network-map.svg` (new), `vakaviti-root/index.html` (hero markup + CSS), `vakaviti-root/images.js` (hero entry removed — no longer applicable)
+
+James decided the hero should be a custom SVG map of the South Pacific — Fiji as the network hub with routes radiating to the five satellite islands — instead of the Unsplash lagoon photo shipped in the entry below. Reviewed and approved as a standalone graphic before integration, per his explicit request.
+
+### Coordinate / projection methodology
+Real approximate capital/main-hub coordinates were used, not decorative placement:
+
+| Island | Reference point | Lat | Lon |
+|---|---|---|---|
+| Fiji | Suva | 18.14°S | 178.44°E |
+| Vanuatu | Port Vila | 17.73°S | 168.32°E |
+| Solomon Islands | Honiara | 9.43°S | 159.95°E |
+| Tonga | Nuku'alofa | 21.14°S | 175.20°W |
+| Samoa | Apia | 13.83°S | 171.76°W |
+| Cook Islands | Rarotonga | 21.21°S | 159.78°W |
+
+This cluster straddles the International Date Line, so longitude was **unwrapped** before projecting (the three western-hemisphere islands had 360° added to their longitude — e.g. Tonga's -175.20° became 184.80°) so the whole group plots as one continuous band instead of splitting across the ±180° seam. Both axes then use **one uniform scale** (degrees-of-longitude adjusted by cos(mean latitude) to correct for meridian convergence at this latitude, same px-per-degree as the latitude axis) — so relative distances and directions stay geographically honest rather than being stretched to fit a nicer shape. James explicitly confirmed to leave the resulting layout as-is even where it produces visually close lines (Solomon Islands/Vanuatu run near-parallel from Fiji, because they genuinely are close together relative to the other three) — accuracy over tidiness.
+
+### Why it's a stacked block, not a `background-image` (a real adaptation, flagging it)
+The original homepage refresh (entry below) used a full-bleed `background-size: cover` photo with a heavy dark scrim so white headline text stayed legible over arbitrary tropical photography. That treatment is actively wrong for a labeled informational graphic: `cover` **crops** whatever doesn't fit the container's aspect ratio, which for a mobile portrait-ish hero would have sliced off the map's leftmost/rightmost content — i.e. Solomon Islands and Cook Islands, the two edge markers, could have disappeared entirely on a phone. And a heavy scrim strong enough for photo-text legibility would dim the map's own labels enough to defeat the entire point of building it.
+
+Fixed by restructuring the hero into two stacked (non-overlapping) blocks: the headline/CTA text first, then the map as a full-width `<img>` below it using natural `height: auto` (not `object-fit` or `background-size` tricks) — this makes zero cropping a mathematical guarantee of the layout, not something that needs runtime verification, and the map is never dimmed by anything since nothing sits on top of it. Capped at `max-width: 1100px` centered so it doesn't become absurdly tall on very wide desktop screens.
+
+### Verified
+- SVG structurally checked: 6 markers present (5 satellite circles + Fiji hub), 7 text labels (5 islands + "FIJI" + "VAKAVITI NETWORK HQ")
+- Organization JSON-LD in `index.html`'s `<head>` re-confirmed byte-identical to `main`
+- At 375px: image renders at full viewport width (375px), height auto-scales to preserve the SVG's native 1.87:1 aspect ratio exactly (rendered aspect 1.870 vs. native 1.867) — confirms the complete map, not a cropped portion, is what's visible
+- At 1280px: image caps at 1100px max-width, centered, aspect ratio still preserved
+- All 6 guide-card Unsplash images confirmed still loading and unaffected — only the hero's image source changed
+- Zero console errors at either width
+
+### Known gap
+Full-page visual screenshots weren't possible this session (Browser pane screenshot tool broken all session — confirmed via repeated retries and no local headless-browser fallback available in this environment). The SVG graphic itself *was* visually rendered and reviewed by James via the `show_widget` preview tool before integration; the page-level integration was verified via computed styles, DOM structure, and native/rendered aspect-ratio comparison instead of a literal screenshot. Recommend a manual look at the preview URL before merge.
+
+---
+
+## 2026-08-09 — Homepage visual refresh (mobile-first, photography-led)
+
+**Branch:** `feature/homepage-visual-refresh`
+**Commit:** `8ac41ca`
+**Does not touch:** `/network`, `/methodology`, or the Organization JSON-LD in `index.html`'s `<head>` — confirmed byte-identical to `main` before and after this build.
+
+### ⚠️ PLACEHOLDER IMAGERY — NOT A FINISHED STATE
+Every photo on the homepage is a real, properly-licensed Unsplash photo (sourced via Unsplash's site, not scraped from fiji.travel or anywhere else, each one individually verified for license/attribution via its own photo page metadata) — but these are **placeholders pending real partner/operator photography**, per James's explicit decision. Follow-up task: replace every entry in `vakaviti-root/images.js` with real photos once available. Photo credits:
+- ~~Hero — "Overwater bungalows and turquoise lagoon in Nadi, Fiji," Irvin Liang (@il07)~~ **SUPERSEDED same day** — the hero is now a custom SVG network map, not a photo. See the entry above this one.
+- Nadi Airport Transfers card — Hieu (@thehncreative) *(generic airport/plane photo — no literal Nadi airport photo exists on Unsplash; not claimed as Nadi in the alt text)*
+- Where to Stay card — "Beachfront resort bungalow in Fiji," Josaia Cakacaka (@joecakacaka)
+- Horse Riding card — Carolin Thiergart (@carolinthiergart) *(Zeeland, Netherlands — generic illustrative photo, no false Fiji claim in alt text)*
+- Visa, Entry & Money card — "Passport and travel documents," Spencer Davis (@spencerdavis)
+- Culture, Kava & Language card — "Coastal village scene in Fiji," Savir C (@savir21)
+- Weather & Best Time card — "Beach sunset in Nadi, Fiji," Timothy Ah Koy (@timothyfiji)
+
+All references live in one file, `vakaviti-root/images.js` — swapping in a real photo later means replacing one `url`/`alt`/`credit` per key, no markup changes needed.
+
+### Shipped
+- ✅ New `vakaviti-root/images.js` — centralized image config (see above) — guide-card photography only; the hero's image was superseded same day, see entry above
+- ✅ Guide card grid upgraded with real card images + location tag pills, same 6 existing guides
+- ✅ New "Explore by Interest" section — filterable (All/Culture/Adventure/Practical) horizontally-swipeable carousel, reusing the same 6 guides under interest framing rather than inventing new content (site only has 6 pieces of guide content; a literal "Food & Drink" category from the original fiji.travel-inspired brief was dropped rather than faked, since no such guide exists)
+- ✅ New schematic "network reach" journey strip (Fiji → Samoa → Tonga → Vanuatu → Cook Islands → Solomon Islands) — CSS only, no map imagery, linking to `/network`
+- ✅ Rebuilt hero/grid/carousel CSS mobile-first: base styles are phone-sized, `min-width` media queries scale up to tablet/desktop (previous pattern was desktop-first with a `max-width` override — flagged and corrected per this spec's explicit requirement)
+- ✅ Touch targets: all buttons/tabs ≥40px, primary CTAs 48px min-height
+- ✅ Verified via computed-style + functional checks at 375px, 390px, and 1280px: single-column grid → 3-column, stacked hero CTAs → row, carousel `scrollWidth` > `clientWidth` (confirms real horizontal scroll), filter click correctly shows/hides tagged cards, all 7 images load (200, non-broken), zero console errors, zero unwanted body-level horizontal overflow at 375px
+
+### Known gap this session
+Screenshot capture was broken in this session's Browser pane tooling (pane not compositing frames, confirmed via repeated retries across fresh tabs — an environment issue, not a content issue). Verification was done via computed styles, network requests, and DOM inspection instead of visual screenshots. Recommend a quick manual look at the preview URL before merge.
+
+### Why
+`/network` established who Vakaviti is, `/methodology` established why it should be trusted; this pass makes the homepage itself look and feel like a real, considered product rather than a plain-HTML placeholder — borrowing proven mobile travel-site UX patterns (photography hero, card grid, filterable carousel) while keeping Vakaviti's own dark-teal/serif/green identity distinct from the sites it borrowed structure from.
+
+---
+
 ## 2026-08-09 — Parent-entity `/network` page + canonical Organization schema
 
 **Branch:** `feature/network-parent-entity-page`
