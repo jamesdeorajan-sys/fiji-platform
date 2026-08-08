@@ -7,7 +7,7 @@
 ## 2026-08-09 — Removed the redundant "Wider Network" journey-strip section
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `74fd449`
 
 James caught this on live review of the preview: the "THE WIDER NETWORK — One Standard, Across the Pacific" section (a plain circles-and-a-line CSS strip, shipped in the `8ac41ca` entry below as the original spec's optional "simple visual journey" element) duplicated the same fact the new hero SVG map now shows more accurately — Fiji plus the same five satellite islands — just with no hub emphasis, no real projected positions, and plain outline circles instead of labeled markers.
 
