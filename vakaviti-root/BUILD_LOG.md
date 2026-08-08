@@ -7,7 +7,7 @@
 ## 2026-08-09 — Hero replaced with a custom SVG network map
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit to the homepage visual refresh below)
-**Commit:** (pending)
+**Commit:** `da973a7`
 **Files:** `vakaviti-root/hero-network-map.svg` (new), `vakaviti-root/index.html` (hero markup + CSS), `vakaviti-root/images.js` (hero entry removed — no longer applicable)
 
 James decided the hero should be a custom SVG map of the South Pacific — Fiji as the network hub with routes radiating to the five satellite islands — instead of the Unsplash lagoon photo shipped in the entry below. Reviewed and approved as a standalone graphic before integration, per his explicit request.
