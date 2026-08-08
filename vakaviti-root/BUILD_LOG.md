@@ -7,7 +7,7 @@
 ## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `94bcfef`
 **File:** `vakaviti-root/hero-network-map.svg` only
 
 James caught this on live review: Tonga's label was partially obscured by the "VAKAVITI NETWORK HQ" badge beneath the Fiji marker. Verified with a bounding-box script rather than eyeballing a fix — computed each label/marker/badge's approximate glyph box (character-width estimate, cap-height/descender per font-size) and checked every pairwise overlap:
