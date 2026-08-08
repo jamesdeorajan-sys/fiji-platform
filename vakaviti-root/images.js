@@ -1,5 +1,5 @@
 /*
- * Centralized image references for vakaviti.ai.
+ * Centralized image references for vakaviti.ai's guide cards.
  *
  * STATUS: Unsplash placeholders (properly licensed, real photos, real
  * photographer credit below) — NOT final. Pending real partner/operator
@@ -8,14 +8,13 @@
  *
  * TO SWAP IN A REAL PHOTO LATER: replace the `url` (and update `alt` /
  * `credit`) for the relevant key below. Nothing else in index.html needs
- * to change — every image on the page is pulled from this one file.
+ * to change — every guide-card image is pulled from this one file.
+ *
+ * The hero is NOT in this file — it's a custom SVG network map
+ * (vakaviti-root/hero-network-map.svg), not an Unsplash placeholder, so
+ * it doesn't need the swap-later treatment this file exists for.
  */
 var VAKAVITI_IMAGES = {
-  hero: {
-    url: "https://images.unsplash.com/photo-1780734790397-6dfa3329704c?w=1600&auto=format&fit=crop&q=80",
-    alt: "Overwater bungalows and turquoise lagoon in Nadi, Fiji",
-    credit: "Photo by Irvin Liang on Unsplash"
-  },
   guideNadiAirport: {
     url: "https://images.unsplash.com/photo-1764555737101-6c9cf9aea376?w=800&auto=format&fit=crop&q=80",
     alt: "Airplane on approach for landing",

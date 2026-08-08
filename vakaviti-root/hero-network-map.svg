@@ -1,0 +1,66 @@
+<svg viewBox="0 0 860 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vakavitiMapTitle vakavitiMapDesc">
+  <title id="vakavitiMapTitle">Vakaviti Network — South Pacific</title>
+  <desc id="vakavitiMapDesc">Schematic map of the South Pacific, plotted from real approximate coordinates. Fiji is the Vakaviti network hub, connected by route lines to five satellite islands: Solomon Islands, Vanuatu, Tonga, Samoa, and the Cook Islands.</desc>
+
+  <defs>
+    <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e8693a" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#e8693a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="860" height="460" fill="#0a3d52"/>
+
+  <!-- faint graticule for map authenticity -->
+  <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="1">
+    <line x1="0" y1="115" x2="860" y2="115"/>
+    <line x1="0" y1="230" x2="860" y2="230"/>
+    <line x1="0" y1="345" x2="860" y2="345"/>
+    <line x1="215" y1="0" x2="215" y2="460"/>
+    <line x1="430" y1="0" x2="430" y2="460"/>
+    <line x1="645" y1="0" x2="645" y2="460"/>
+  </g>
+
+  <!-- hub glow behind Fiji -->
+  <circle cx="375.5" cy="284.5" r="95" fill="url(#hubGlow)"/>
+
+  <!-- connector routes: Fiji to each satellite -->
+  <g fill="none" stroke="#f9f5ef" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="7 7">
+    <line x1="375.5" y1="284.5" x2="100" y2="150"/>
+    <line x1="375.5" y1="284.5" x2="224.7" y2="278.2"/>
+    <line x1="375.5" y1="284.5" x2="470.3" y2="330.8"/>
+    <line x1="375.5" y1="284.5" x2="521.5" y2="217.9"/>
+    <line x1="375.5" y1="284.5" x2="700" y2="331.9"/>
+  </g>
+
+  <!-- satellite islands -->
+  <g>
+    <circle cx="100" cy="150" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
+    <text x="122" y="156" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30">Solomon Islands</text>
+  </g>
+  <g>
+    <circle cx="224.7" cy="278.2" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
+    <text x="224.7" y="252" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Vanuatu</text>
+  </g>
+  <g>
+    <circle cx="470.3" cy="330.8" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
+    <text x="470.3" y="362" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Tonga</text>
+  </g>
+  <g>
+    <circle cx="521.5" cy="217.9" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
+    <text x="521.5" y="192" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Samoa</text>
+  </g>
+  <g>
+    <circle cx="700" cy="331.9" r="11" fill="#1a7a52" stroke="#f9f5ef" stroke-width="2"/>
+    <text x="700" y="363" fill="#f9f5ef" font-family="DM Sans, sans-serif" font-weight="600" font-size="30" text-anchor="middle">Cook Islands</text>
+  </g>
+
+  <!-- Fiji: the hub -->
+  <circle cx="375.5" cy="284.5" r="28" fill="none" stroke="#e8693a" stroke-opacity="0.4" stroke-width="2"/>
+  <circle cx="375.5" cy="284.5" r="20" fill="#e8693a" stroke="#f9f5ef" stroke-width="3"/>
+  <text x="375.5" y="238" fill="#ffffff" font-family="Playfair Display, serif" font-weight="700" font-size="36" text-anchor="middle" letter-spacing="1">FIJI</text>
+  <g>
+    <rect x="270.5" y="316" width="210" height="34" rx="17" fill="#f9f5ef"/>
+    <text x="375.5" y="338" fill="#0a3d52" font-family="DM Sans, sans-serif" font-weight="700" font-size="17" text-anchor="middle" letter-spacing="0.5">VAKAVITI NETWORK HQ</text>
+  </g>
+</svg>

@@ -81,26 +81,19 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(--ink); line-height: 1.5; }
 
-/* ---- Hero (mobile-first: base = phone, min-width scales up) ---- */
+/* ---- Hero (mobile-first: base = phone, min-width scales up) ----
+   Text and the network map are stacked, not layered — a labeled
+   schematic graphic doesn't survive being cropped by cover/background-
+   size or dimmed by a photo-legibility scrim the way ambient tropical
+   photography did, so this deliberately isn't a full-bleed background
+   like the earlier Unsplash version. */
 .hero {
-  position: relative;
-  padding: 40px 20px 36px;
+  background: var(--ocean);
+  padding: 36px 0 0;
   text-align: center;
-  overflow: hidden;
   color: #fff;
-  isolation: isolate;
 }
-.hero-bg {
-  position: absolute; inset: 0; z-index: -2;
-  background-size: cover;
-  background-position: center;
-  background-color: var(--ocean);
-}
-.hero-overlay {
-  position: absolute; inset: 0; z-index: -1;
-  background: linear-gradient(180deg, rgba(10,61,82,0.90) 0%, rgba(10,61,82,0.78) 55%, rgba(10,61,82,0.92) 100%);
-}
-.hero-inner { max-width: 760px; margin: 0 auto; position: relative; }
+.hero-inner { max-width: 760px; margin: 0 auto; padding: 0 20px 28px; }
 .hero-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(255,255,255,0.14); color: #fff;
@@ -112,17 +105,19 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
 .btn-primary, .btn-secondary { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius); font-weight: 600; text-decoration: none; padding: 0 20px; }
 .btn-primary { background: #25D366; color: #fff; }
 .btn-secondary { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
-.hero-credit { display: block; margin-top: 18px; font-size: 11px; color: rgba(255,255,255,0.55); }
+.hero-map { max-width: 1100px; margin: 0 auto; padding: 0 0 8px; }
+.hero-map img { display: block; width: 100%; height: auto; }
 
 @media (min-width: 600px) {
-  .hero { padding: 56px 24px 48px; }
+  .hero-inner { padding: 0 24px 32px; }
   .hero h1 { font-size: 34px; }
   .hero-sub { font-size: 16px; }
   .hero-ctas { flex-direction: row; justify-content: center; flex-wrap: wrap; }
   .btn-primary, .btn-secondary { padding: 0 24px; }
 }
 @media (min-width: 960px) {
-  .hero { padding: 76px 24px 64px; }
+  .hero { padding: 52px 0 0; }
+  .hero-inner { padding: 0 24px 40px; }
   .hero h1 { font-size: 42px; }
   .hero-sub { font-size: 17px; }
 }
@@ -181,8 +176,6 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
 <body>
 
 <header class="hero">
-  <div class="hero-bg" data-img-bg="hero"></div>
-  <div class="hero-overlay"></div>
   <div class="hero-inner">
     <div class="hero-eyebrow"><span>🌺</span><span>Vakaviti.ai — Fiji's AI Tourism Network</span></div>
     <h1>Honest Fiji Travel Guides, Powered by AI</h1>
@@ -191,7 +184,9 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
       <a href="https://lagi.vakaviti.ai" class="btn-primary">Ask Lagi Anything About Fiji →</a>
       <a href="https://join.vakaviti.ai" class="btn-secondary">Are You a Fiji Operator? Join Free</a>
     </div>
-    <span class="hero-credit" data-img-credit="hero"></span>
+  </div>
+  <div class="hero-map">
+    <img src="/hero-network-map.svg" alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands" width="860" height="460" loading="eager">
   </div>
 </header>
 
