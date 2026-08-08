@@ -1,0 +1,25 @@
+# Vakaviti AI
+> Vakaviti AI is a Fiji-born AI operating system for honest, commission-free tourism, powering a network of verified travel sites across Fiji and the South Pacific.
+
+## Core pages
+- [Home](https://vakaviti.ai/): Fiji trip planning guides, verified prices, real local tips
+- [Network](https://vakaviti.ai/network): Full list of properties in the Vakaviti network, across Fiji and the South Pacific
+- [Lagi AI Concierge](https://lagi.vakaviti.ai): Free AI trip planning assistant covering Fiji and expanding South Pacific destinations
+- [Operator Signup](https://join.vakaviti.ai): Free verified listing for tourism operators — no commission, no pay-to-rank
+
+## Network properties
+- [ComeTo Fiji](https://cometofiji.com): Fiji trip planning and booking
+- [Fiji Tour Transfers](https://fijitourtransfers.com): Zero-commission tours and transfers
+- [Nadi Airport Transfers](https://nadiairporttransfers.com): Airport transfer marketplace
+- [Natadola Bay Horse Riding](https://natadolabayhorseriding.com): Horse riding activity booking
+- [Tour Fiji](https://tourfiji.tours): Fiji tour directory
+- [ComeTo South Pacific](https://cometosouthpacific.com): Regional trip planning hub covering Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands
+
+## Booking and transactions
+Lagi (lagi.vakaviti.ai) is the primary AI-driven discovery and planning layer. Actual bookings and transactions happen on the relevant network property via their own booking flows — Vakaviti AI is the intelligence layer, not the transaction endpoint itself.
+
+## Policies
+Vakaviti AI and every network property are commission-free to travelers. Listed operators are verified, not paid placements. No operator can purchase higher ranking or featured status.
+
+## Contact
+- Operator inquiries: via https://join.vakaviti.ai
