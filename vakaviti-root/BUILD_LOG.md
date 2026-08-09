@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-08-09 — Scope-callout CTA retargeted from `join.vakaviti.ai` to `/partners`
+
+**Branch:** `feature/homepage-scope-caveat` (same branch, follow-up commit)
+**Commit:** `f61785e`
+
+Now that `/partners` exists and is live, pointed the callout band's "Bring Vakaviti to Your Island →" button at it instead of `join.vakaviti.ai` — closing the gap flagged when this CTA was first built (see the entry below). The other two `join.vakaviti.ai` links on this page (hero's "Are You a Fiji Operator? Join Free" button, the footer link) are untouched — both correctly target Fiji operators, which is exactly what `join.vakaviti.ai` is for.
+
+### Verified
+- Organization JSON-LD re-confirmed byte-identical to `main`
+- The other two `join.vakaviti.ai` references confirmed still present and unedited
+- This branch forked before `/methodology` and `/partners` were merged, so its own tree (and any preview built from it) was missing both files — synced `main` in to fix that, same pattern as the earlier `feature/partner-recruitment-page` sync
+
+---
+
+## 2026-08-09 — Homepage scope callout: muted caption → confident band with CTA
+
+**Branch:** `feature/homepage-scope-caveat`
+**Commits:** `ca93a87` (initial small caption), `47eec02` (redesigned into a callout band, superseding the caption)
+
+Two passes on the same section, between the hero and Guides:
+
+1. **`ca93a87`** — a single small muted caption ("Fiji guides live now — more islands coming as ComeTo South Pacific launches.") dropped onto the cream `<main>` background, styled like the footer note.
+2. **`47eec02`** — James held the branch: functionally correct but visually underselling the message. Replaced with a proper callout `<section>` sitting on the dark-teal `--ocean` background (seamless 0px gap from the hero, confirmed via bounding-rect check — not dropped onto cream `<main>`), serif display headline "Fiji is live. Five islands are next.", a supporting line, and a sunset-orange CTA button "Bring Vakaviti to Your Island →".
+
+**CTA target — deviated from the literal spec, flagged before building:** asked to link to `/partners`, treating a 404 as expected, or hold until it exists. Checked the repo first: `/partners` doesn't exist anywhere under `vakaviti-root/` (there's an unrelated `partners/blue-lagoon/` per-partner demo-site directory at the repo root, not a vakaviti.ai route). `join.vakaviti.ai` does exist, is live, and is already the "become a partner" destination used in all 4 other CTAs on this site (index.html hero + footer, network.html operator band + footer). Linked there instead of shipping a guaranteed 404 on the site's most prominent new CTA. If a dedicated `/partners` page distinct from the join.vakaviti.ai onboarding flow is actually wanted, that's a separate future build, not a redirect. **Resolved — see the entry above this one.**
+
+**Honesty check:** "Fiji is live. Five islands are next." states expansion intent, not current availability — doesn't claim any island beyond Fiji is live, consistent with every other accuracy check on this project.
+
+### Verified
+- Organization JSON-LD re-confirmed byte-identical to `main`
+- Callout section background confirmed `rgb(10,61,82)` (`--ocean`), 0px gap from the hero, ends exactly before `<main>` begins
+- Headline confirmed serif (`Playfair Display`), 24px→30px mobile→desktop; CTA button confirmed sunset-orange (`rgb(232,105,58)`), 48px min-height touch target, `href="https://join.vakaviti.ai"` **(superseded — see the entry above)**
+
+---
+
 ## 2026-08-09 — Unified both `/partners` CTAs onto `partners@vakaviti.ai`
 
 **Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
