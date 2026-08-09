@@ -7,7 +7,7 @@
 ## 2026-08-10 — Lighter overlay, seamless hero-to-callout band, headline update
 
 **Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `9e35b75`
 **File:** `vakaviti-root/index.html` only
 
 Three changes from James's review of the previous commit.
