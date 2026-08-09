@@ -998,6 +998,20 @@ function updatePricing() {
   if (empty) empty.style.display = 'none';
   if (nextBtn) nextBtn.disabled = !state.selectedVehicle;
 
+  // Guest-comfort fix, 2026-08-09: the ★ Recommended card's green border
+  // was default styling only - state.selectedVehicle stayed null until a
+  // guest actually clicked it, leaving nextBtn1 disabled with no error
+  // explaining why a card that already LOOKS chosen won't let them
+  // continue. Auto-selects the recommended (smallest vehicle that fits
+  // the current pax/bags - recommendedVehicle()'s own definition, always
+  // fits-eligible by construction) the first time cards render for a
+  // resolved route, so the visual "this one's chosen" state is real from
+  // the start. Never overrides a real existing selection.
+  if (!state.selectedVehicle && vcEl) {
+    const recCard = vcEl.querySelector('.vehicle-card.recommended');
+    if (recCard) selectVehicle(recommendedVehicle(), recCard);
+  }
+
   // Tour-bundle summary: show combined transfer + tour total when both
   // a tour and a vehicle are in the booking. Only renders after vehicle
   // selection so the tour-cost line has a real transfer figure to add to.
@@ -2018,6 +2032,14 @@ function renderFareTiers() {
   if (errorBox) errorBox.style.display = 'none';
   if (amountInput) amountInput.value = '';
 
+  // Reset on every render, not just when a change is detected below - the
+  // spec's fix only ever shows this note, never hides it, so without this
+  // a guest going back to step 1, changing nothing meaningful, and
+  // returning to step 4 would still see a stale "price updated" note from
+  // a PREVIOUS render where the price genuinely did change.
+  const priceUpdatedNoteEl = document.getElementById('priceUpdatedNote');
+  if (priceUpdatedNoteEl) priceUpdatedNoteEl.style.display = 'none';
+
   state.showFlexibleFare = false;
   if (flexTier) flexTier.style.display = 'none';
   if (toggleBtn) toggleBtn.textContent = 'Want to try for a better rate? →';
@@ -2057,8 +2079,16 @@ function renderFareTiers() {
     // booking now shows the SAME real number too, and everything
     // downstream (confirmation card, WhatsApp message, the real /bookings
     // submission) uses it - not two different fares sitting side by side.
+    const priceChanged = state.prices[elig.vehicleType] !== realFare;
     state.prices[elig.vehicleType] = realFare;
     renderPriceBlock();
+    if (priceChanged) {
+      const noteEl = document.getElementById('priceUpdatedNote');
+      if (noteEl) {
+        noteEl.style.display = 'block';
+        noteEl.textContent = 'Price updated to reflect the current live fare.';
+      }
+    }
 
     const floorAmount = Math.ceil(realFare * NEGOTIATION_FLOOR_RATIO);
     if (hintEl) hintEl.textContent = `Propose from ${formatPrice(floorAmount)}`;
@@ -2814,13 +2844,16 @@ function buildToursGrid() {
 }
 
 // ─── REVIEWS DATA ────────────────────────────────────────────────────────────
+// Pre-launch fix, 2026-08-09: the 6 named "Verified" reviews here were
+// fabricated - see the matching comment in index.html's reviews section.
+// Replaced with real-and-true value props. Swap back to genuine reviews
+// once they exist and are checkable against a real Google/TripAdvisor
+// listing.
 const REVIEWS_DATA = [
-  { stars:5, text:'"Driver was waiting in arrivals with our name. Shell lei, cold water, and a supermarket stop on the way. Couldn\'t have been easier arriving with two kids after a 10-hour flight from Sydney."', name:'Sarah M.', location:'Sydney, AU', source:'Google', color:'#0066cc' },
-  { stars:5, text:'"Junior Ali drove us from the airport to Coral Coast — 90 minutes and the whole time he was sharing stories about the villages we passed. Spotless vehicle, on time, genuinely friendly."', name:'Mark T.', location:'Auckland, NZ', source:'TripAdvisor', color:'#00b386' },
-  { stars:5, text:'"Booked online from Melbourne — easy process. Driver met us at arrivals with a sign, helped with all bags, waited patiently while we stopped at the ATM. Will use again on every Fiji trip."', name:'James & Kel', location:'Melbourne, AU', source:'Google', color:'#7c3aed' },
-  { stars:5, text:'"Transferred 8 of us from Nadi to Port Denarau in a large clean Toyota van. Kids seats provided without asking. Excellent communication, arrived on time, competitive pricing. Highly recommend."', name:'The Williamson Family', location:'Brisbane, AU', source:'Google', color:'#b45309' },
-  { stars:5, text:'"Used for both airport pickup and the Sigatoka Sand Dunes day tour. The guide was knowledgeable about the archaeology — genuinely one of the highlights of our Fiji trip."', name:'Claire H.', location:'London, UK', source:'TripAdvisor', color:'#dc2626' },
-  { stars:5, text:'"Booked a return transfer Nadi to Pacific Harbour for our shark dive trip. Driver was 15 minutes early both ways. Even texted to confirm the morning of. Absolutely faultless."', name:'Ryan & Sophie', location:'Wellington, NZ', source:'Google', color:'#059669' },
+  { icon:'🌺', text:'100% Fijian-owned and operated — every driver is local, every dollar stays in Fiji.' },
+  { icon:'💯', text:'Fixed FJ$ pricing shown before you book. No surge, no hidden fees, no haggling at the curb.' },
+  { icon:'✈️', text:'Real-time flight tracking. If your flight is delayed, your driver adjusts automatically — no extra charge.' },
+  { icon:'💬', text:'A real person on WhatsApp before, during, and after your transfer — not a call centre or a chatbot.' },
 ];
 
 function buildReviews() {
@@ -2828,16 +2861,8 @@ function buildReviews() {
   if (!grid) return;
   grid.innerHTML = REVIEWS_DATA.map(r => `
     <div class="review-card">
-      <div class="review-stars">${'★'.repeat(r.stars)}</div>
+      <div class="review-stars">${r.icon}</div>
       <div class="review-text">${r.text}</div>
-      <div class="review-author">
-        <div class="review-avatar" style="background:${r.color}">${r.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
-        <div>
-          <div class="review-name">${r.name}</div>
-          <div class="review-location">${r.location}</div>
-          <div class="review-source">${r.source} review · Verified</div>
-        </div>
-      </div>
     </div>`).join('');
 }
 
