@@ -4,6 +4,70 @@
 
 ---
 
+## 2026-08-09 — Unified both `/partners` CTAs onto `partners@vakaviti.ai`
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** `cc48d60`
+
+James confirmed both paths should use the same address, differentiated by subject line rather than by inbox — the apparent separation wasn't functional anyway (both ultimately reach the same place), and a branded domain address on both CTAs reads more consistent with the page's own "working network, not a pitch deck" framing than a personal Gmail address on one path and a domain address on the other.
+
+Updated the operator-interest form's `mailto:` target (`submitOperatorInterest()`) from `helpronline@gmail.com` to `partners@vakaviti.ai`. Zero remaining `helpronline@gmail.com` references anywhere in `partners.html` — confirmed via grep, not assumed.
+
+### Verified
+- Mailto encoding checked two ways: re-derived the expected URL and decoded it via the browser's native `URL`/`URLSearchParams` parser (address, subject `Vakaviti Partner Interest — Tonga`, body all correct), **and** pulled the actual live function source via `submitOperatorInterest.toString()` from the loaded page to confirm the deployed code itself uses `partners@vakaviti.ai`, not just a re-derivation of the intended logic
+- `grep -c helpronline@gmail.com vakaviti-root/partners.html` → 0
+- `grep -c partners@vakaviti.ai vakaviti-root/partners.html` → 3 (both mailto targets + the node-lead form-note text)
+
+---
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** `a8d9948`
+
+James confirmed the proposed placeholder (`helpronline@gmail.com`) should be replaced: `partners@vakaviti.ai` is now a real, active forwarding alias (set up on the domain registrar's side — confirmed earlier this session via live MX/SPF records that vakaviti.ai's email already runs through the registrar's own forwarding service, not Cloudflare Email Routing, so this alias didn't need any DNS/Cloudflare change).
+
+- Updated the node-lead `mailto:` link and its `form-note` text to `partners@vakaviti.ai`
+- Also updated the now-stale copy above it — "There's no dedicated inquiry line for this yet" was true when written, false now that a real alias exists. Left as a contradiction would have repeated the exact kind of overstated-or-understated claim this whole project has been checking for at every step.
+- **Did not touch** the operator-interest form's `mailto:` target (still `helpronline@gmail.com`, `submitOperatorInterest()` in the `<script>`) — only the node-lead CTA was specified for this change.
+
+### Verified
+- Mailto link decoded via the browser's own `URL`/`URLSearchParams` parser (not manual string inspection): address `partners@vakaviti.ai`, subject `Vakaviti Node Lead Inquiry`, body `Which island:\nWhy you:\n` — all correct
+- All 3 `/methodology` links still present and correct (`/methodology`, unaffected by this edit)
+- Production `/methodology` re-confirmed 200, and this branch's `methodology.html` re-confirmed byte-identical to what's live
+- "30 verified partner operators" re-checked against `docs/VAKAVITI-BRAIN.md`/`docs/BUILD.md` — still current, now corroborated by a second independent reference ("28 of 30 partner WhatsApp rows")
+
+---
+
+## 2026-08-09 — New `/partners` recruitment page
+
+**Branch:** `feature/partner-recruitment-page`
+**Commit:** `908c233`
+**Files:** `vakaviti-root/partners.html` (new), `vakaviti-root/sitemap.xml`
+
+New page recruiting the next five islands (Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands) — both tour operators and prospective node leads. Reuses `hero-network-map.svg` as the hero visual, matches `network.html`/`methodology.html`'s design system exactly. `ContactPage` JSON-LD referencing the canonical Organization via `about` — no duplicate Organization block.
+
+### Number corrected before shipping, not assumed
+The spec said "confirm 29 verified partner operators is still current before using it." Checked `docs/VAKAVITI-BRAIN.md` and `docs/BUILD.md`: a real D1 audit (Session 57) found **30** active partners, explicitly noting "previous sessions carried '29' — use 30 going forward." Used 30, not the spec's draft figure.
+
+### CTA destinations
+- **Tour & Transfer Operators** — no new D1 table or Worker built (would need its own stop-and-confirm gate per ground rule 2, out of scope here). Interim: a real form (name, email, island/country — the 5 real islands, no Fiji sub-regions — business type, description) that composes a `mailto:` link to `helpronline@gmail.com` on submit via JS, rather than pretending a backend exists. Verified the URL-encoding logic produces a correctly formed `mailto:` string. Labeled honestly: "Opens your email client... nothing is submitted automatically" — no fake success state.
+- **Become a Node Lead** — a direct `mailto:helpronline@gmail.com` inquiry link, not a form (deliberately higher-touch per the spec). **Flagging as a proposal, not a final decision, per the spec's own instruction:** no dedicated node-lead inquiry address exists yet; used the one real, confirmed-monitored address already behind every other partner conversation on this network (`JAMES_EMAIL`/`FROM_EMAIL` in `workers/vakaviti-onboard/worker.js`) rather than inventing a new `@vakaviti.ai` address that might not be provisioned or monitored.
+
+### Cross-branch dependency — flagged, not silently shipped
+This page links to `/methodology` twice (methodology reference, team credit). Checked directly: `feature/methodology-page` (commit `8c596ca`) was **never merged to `main`** — confirmed via `git cat-file -e main:vakaviti-root/methodology.html` failing. Both links will 404 in production until that branch also merges. Not fixing this by removing the links (the spec explicitly asks for them, and the content is genuinely on that page) — flagging for James to sequence the merges, or merge both together.
+
+### What was deliberately not claimed
+No island beyond Fiji is described as live or active. No fabricated testimonials, booking numbers, or timelines for any island beyond Fiji.
+
+### Verified
+- `ContactPage` JSON-LD valid, `about` correctly references `https://vakaviti.ai/#organization`
+- Mobile (375px): single-column join-grid, hero map at full viewport width with native 1.870 aspect ratio preserved (no cropping), zero body-level horizontal overflow
+- Desktop (1280px): 2-column join-grid
+- Operator-interest form's `mailto:` composition logic verified correct (tested with sample field values, confirmed proper URL-encoding)
+- Node-lead `mailto:` link verified correctly formed
+- `/partners` added to `sitemap.xml`, same convention as every other page
+
+---
+
 ## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
