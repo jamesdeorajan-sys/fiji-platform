@@ -122,8 +122,19 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
   .hero-sub { font-size: 17px; }
 }
 
+/* ---- Scope callout: bridges from the dark-teal hero, not the cream main below ---- */
+.scope-callout { background: var(--ocean); padding: 32px 20px 40px; text-align: center; }
+.scope-callout-inner { max-width: 620px; margin: 0 auto; }
+.scope-callout h2 { font-family: 'Playfair Display', serif; color: #fff; font-size: 24px; line-height: 1.25; margin-bottom: 12px; }
+.scope-callout p { color: rgba(255,255,255,0.85); font-size: 14px; margin-bottom: 22px; }
+.btn-callout { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 24px; background: var(--sunset); color: #fff; border-radius: var(--radius); font-weight: 600; text-decoration: none; }
+@media (min-width: 600px) {
+  .scope-callout { padding: 40px 24px 48px; }
+  .scope-callout h2 { font-size: 30px; }
+  .scope-callout p { font-size: 15px; }
+}
+
 main { max-width: 1080px; margin: 0 auto; padding: 40px 20px; }
-.scope-caveat { text-align: center; color: var(--ink-quiet); font-size: 13px; margin: 0 0 28px; }
 .section-label { color: var(--sunset); font-weight: 600; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
 main > .section-label:not(:first-child) { margin-top: 52px; }
 
@@ -180,8 +191,15 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
   </div>
 </header>
 
+<section class="scope-callout">
+  <div class="scope-callout-inner">
+    <h2>Fiji is live. Five islands are next.</h2>
+    <p>Vakaviti's verified, commission-free standard is expanding across the South Pacific as ComeTo South Pacific launches — one network, built the same honest way on every island.</p>
+    <a href="https://join.vakaviti.ai" class="btn-callout">Bring Vakaviti to Your Island →</a>
+  </div>
+</section>
+
 <main>
-  <p class="scope-caveat">Fiji guides live now — more islands coming as ComeTo South Pacific launches.</p>
   <div class="section-label">Guides</div>
   <h2 style="font-family:'Playfair Display',serif;font-size:24px;margin-bottom:6px;">Start Here — Our Most-Asked Questions</h2>
   <div class="guides-grid">
