@@ -7,7 +7,7 @@
 ## 2026-08-10 — Interim favicon + homepage hero ocean photo
 
 **Branch:** `feature/favicon-and-hero-photo`
-**Commit:** (pending)
+**Commit:** `6b5b82d`
 
 ### ⚠️ INTERIM FAVICON — NOT A FINISHED STATE
 Confirmed via search (no `<link rel="icon">`, no `favicon.ico`, anywhere in `vakaviti-root/`) that this site had zero favicon before this change, consistent with the earlier finding that it has zero image/brand assets. Generated a simple placeholder — a solid `#e8693a` (sunset-orange, the same color as the map's Fiji hub marker) circle with a white "V" monogram (Arial Bold) — at `favicon.ico` (16+32px multi-res), `favicon-16x16.png`, `favicon-32x32.png`, and `apple-touch-icon.png` (180x180), all generated with Pillow, not sourced from anywhere. **Same treatment as the missing `logo` field in the Organization schema: this is an interim placeholder, not a real logo/favicon design.** A real one is separate future work.
