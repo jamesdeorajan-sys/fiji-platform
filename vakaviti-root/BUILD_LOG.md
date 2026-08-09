@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-08-10 — Interim favicon + homepage hero ocean photo
+
+**Branch:** `feature/favicon-and-hero-photo`
+**Commit:** (pending)
+
+### ⚠️ INTERIM FAVICON — NOT A FINISHED STATE
+Confirmed via search (no `<link rel="icon">`, no `favicon.ico`, anywhere in `vakaviti-root/`) that this site had zero favicon before this change, consistent with the earlier finding that it has zero image/brand assets. Generated a simple placeholder — a solid `#e8693a` (sunset-orange, the same color as the map's Fiji hub marker) circle with a white "V" monogram (Arial Bold) — at `favicon.ico` (16+32px multi-res), `favicon-16x16.png`, `favicon-32x32.png`, and `apple-touch-icon.png` (180x180), all generated with Pillow, not sourced from anywhere. **Same treatment as the missing `logo` field in the Organization schema: this is an interim placeholder, not a real logo/favicon design.** A real one is separate future work.
+
+Referenced in all 10 pages' `<head>` (`index.html`, `network.html`, `methodology.html`, `partners.html`, and all 6 guide pages) — not just the homepage. Inserted identically after each page's `<meta name="viewport">` line via script, since all 10 pages shared byte-identical head structure at that point, verified before running it rather than assumed.
+
+### Homepage hero: flat teal → ocean photo (index.html only)
+Sourced a real aerial-ocean-waves photo via Unsplash (individually verified via its own photo page metadata, same as every other Unsplash placeholder in this project) — Papamoa, New Zealand, a genuine South Pacific location, by Zoe Hoole (@zoella13). `/network`, `/methodology`, and `/partners` are untouched — confirmed via grep, all three still show `background: var(--ocean)` on their own `.hero` rule unchanged.
+
+**Implementation:** `.hero`'s CSS background is now `linear-gradient(rgba(11,42,58,0.78), rgba(11,42,58,0.78)), var(--hero-photo, none)` with `background-color: var(--ocean)` as a fallback if the photo or the JS that sets `--hero-photo` fails for any reason — the page never regresses to something worse than today's flat color. The photo URL itself comes from `images.js` (`heroOceanBg` key, same centralized-reference pattern as the guide-card photos) and is applied via a small JS snippet that sets the `--hero-photo` custom property, keeping the swap-later story consistent with every other placeholder image in this project.
+
+**Why the map's legibility isn't actually at risk, structurally, not just visually:** `hero-network-map.svg` has always had its own fully opaque `<rect fill="#0a3d52">` as its first element, covering its entire viewBox. The photo sits behind `.hero` as a whole, but the map image is opaque on top of it — every label, marker, and the "VAKAVITI HQ" badge are physically painted over a solid color that has nothing to do with what's behind the `<img>` tag. This makes "the map's contrast is unaffected" a structural guarantee rather than something dependent on overlay tuning. The overlay's real job is protecting the *hero text* (eyebrow, headline, subhead, CTA buttons), which does sit directly on `.hero`'s composited background.
+
+### Contrast verified computationally, not just visually
+Downloaded the actual chosen photo and computed real WCAG relative-luminance contrast ratios in Python (sRGB→linear conversion, proper WCAG formula) between the composited background (overlay alpha-blended with real photo pixels) and the hero text colors:
+
+| Scenario | H1 (white, large text, needs ≥3:1) | hero-sub (90%-white, normal text, needs ≥4.5:1) |
+|---|---|---|
+| Brightest 5% of actual photo pixels | 8.44:1 | 7.21:1 |
+| Single brightest pixel in the whole photo | 7.84:1 | 6.74:1 |
+| Hypothetical pure-white (255,255,255) pixel — doesn't occur in this photo | 7.40:1 | 6.38:1 |
+
+All comfortably clear WCAG AA even under the least realistic worst case tested. Chose 0.78 opacity after testing 0.70–0.90 — 0.70 alone already cleared both thresholds with margin, 0.78 adds headroom while keeping the photo visibly present rather than nearly opaque.
+
+### Verified
+- Organization JSON-LD confirmed byte-identical to `main`
+- Computed styles confirmed: `background-image` correctly layers the gradient over the real Unsplash URL, `background-size: cover, cover`, `background-position: 50% 50%, 50% 50%`, at both 375px and 1280px
+- Confirmed via grep: zero references to the hero-photo mechanism in `network.html`, `methodology.html`, or `partners.html`
+- No console errors at either width (aside from the pre-existing, unrelated widget CORS error present throughout this project)
+
+### Known gap
+Screenshot tool broken again this session (consistent with every prior round) — verified via computed styles and a faithful visual proxy built from the actual photo URL and exact overlay value, rather than a literal screenshot.
+
+---
+
 ## 2026-08-09 — Scope-callout CTA retargeted from `join.vakaviti.ai` to `/partners`
 
 **Branch:** `feature/homepage-scope-caveat` (same branch, follow-up commit)

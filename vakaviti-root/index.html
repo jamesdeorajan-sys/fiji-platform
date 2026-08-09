@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <title>Vakaviti.ai — Fiji's AI Tourism Guide | Commission-Free Tours, Transfers &amp; Accommodation</title>
 <meta name="description" content="Fiji's AI tourism network. Honest, commission-free guides to transfers, accommodation, and activities — verified prices, real local tips. Ask Lagi anything about Fiji, instantly.">
 <link rel="canonical" href="https://vakaviti.ai/">
@@ -88,7 +92,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
    photography did, so this deliberately isn't a full-bleed background
    like the earlier Unsplash version. */
 .hero {
-  background: var(--ocean);
+  /* Solid --ocean tint is the base/fallback layer; the photo (if the CSS
+     custom property below gets set by JS) sits under it via background
+     layering. The map's own opaque background rect (hero-network-map.svg)
+     and its labels are completely unaffected by any of this — this only
+     changes what's visible behind the hero text and around the map. */
+  background-image: linear-gradient(rgba(11, 42, 58, 0.78), rgba(11, 42, 58, 0.78)), var(--hero-photo, none);
+  background-size: cover;
+  background-position: center;
+  background-color: var(--ocean);
   padding: 36px 0 0;
   text-align: center;
   color: #fff;
@@ -316,6 +328,10 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
 <script src="/images.js"></script>
 <script>
 (function () {
+  var heroBg = window.VAKAVITI_IMAGES && window.VAKAVITI_IMAGES.heroOceanBg;
+  if (heroBg) {
+    document.documentElement.style.setProperty('--hero-photo', "url('" + heroBg.url + "')");
+  }
   document.querySelectorAll('[data-img-bg]').forEach(function (el) {
     var img = window.VAKAVITI_IMAGES && window.VAKAVITI_IMAGES[el.getAttribute('data-img-bg')];
     if (!img) return;
