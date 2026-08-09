@@ -597,7 +597,8 @@ async function checkOverallHealth(env) {
     status.db_connected = true;
     status.tables = (result.results || []).map((r) => r.name);
   } catch (err) {
-    status.db_error = err.message;
+    status.db_error = 'Database check failed.';
+    console.error('[health] db check failed:', err.message);
   }
 
   status.healthy = status.db_connected && status.whatsapp_configured;
@@ -738,7 +739,8 @@ async function handleZones(env) {
     const result = await env.DB.prepare(`SELECT id, name FROM zones ORDER BY id`).all();
     return json({ zones: result.results || [] }, 200);
   } catch (err) {
-    return json({ zones: [], error: err.message }, 500);
+    console.error('[zones] failed:', err.message);
+    return json({ zones: [], error: 'Failed to load zones.' }, 500);
   }
 }
 
@@ -813,7 +815,8 @@ async function handleDriverSubmit(request, env) {
     licenseKey = await uploadToR2(env, `${docPrefix}/license${extFor(licensePhoto.type)}`, licensePhoto);
     insuranceKey = await uploadToR2(env, `${docPrefix}/insurance${extFor(insurancePhoto.type)}`, insurancePhoto);
   } catch (err) {
-    return json({ ok: false, error: 'Failed to upload documents: ' + err.message }, 500);
+    console.error('[driver-submit] document upload failed:', err.message);
+    return json({ ok: false, error: 'Failed to upload documents. Please try again.' }, 500);
   }
 
   try {
@@ -843,7 +846,8 @@ async function handleDriverSubmit(request, env) {
       status: 'pending',
     }, 201);
   } catch (err) {
-    return json({ ok: false, error: 'Failed to save application: ' + err.message }, 500);
+    console.error('[driver-submit] save failed:', err.message);
+    return json({ ok: false, error: 'Failed to save application. Please try again.' }, 500);
   }
 }
 
@@ -1604,7 +1608,8 @@ async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyPara
     const bodyText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    console.error('[whatsapp-template] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -1647,7 +1652,8 @@ async function sendDriverWelcomeWhatsApp(env, phone, driverName, token) {
     const bodyText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    console.error('[driver-welcome] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -1690,7 +1696,8 @@ async function sendDriverReturnWhatsApp(env, phone, driverName, token) {
     const bodyText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    console.error('[driver-return] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -1729,7 +1736,14 @@ async function sendAdminLoginWhatsApp(env, phone, token) {
     const bodyText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    // Real gap found while closing the same err.message-leak class the
+    // pre-launch audit flagged elsewhere: POST /admin/login is public
+    // (unauthenticated by necessity - nobody's logged in yet when
+    // requesting the link) and returns this result object directly in
+    // its response, confirmed live earlier this session
+    // ("whatsapp": {...} in the /admin/login response body).
+    console.error('[admin-login] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -1818,7 +1832,8 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
     const responseText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    console.error('[fuel-index-alert] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -1865,7 +1880,15 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
     const responseText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
   } catch (err) {
-    return { attempted: true, ok: false, error: err.message };
+    // Real gap found while closing the same err.message-leak class the
+    // pre-launch audit flagged elsewhere: this result is returned
+    // directly (as admin_alerts) in the response of POST /negotiate -
+    // a public, unauthenticated endpoint. A network-level failure here
+    // (not a Meta API error response, which stays in `response` above)
+    // would otherwise put a raw internal error string in a real guest's
+    // own browser response.
+    console.error('[health-alert] send failed:', err.message);
+    return { attempted: true, ok: false, error: 'Send failed.' };
   }
 }
 
@@ -4329,7 +4352,13 @@ async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, dir
 
     return { ok: true, hasRoute: true, distanceKm, durationRaw: route.duration, hasFerryLeg, geocodedLat, geocodedLng };
   } catch (err) {
-    return { ok: false, reason: 'fetch_error', error: err.message };
+    // Not currently exposed - handleQuoteCreate's geocode_failed branch
+    // only ever reads .reason (a fixed 'fetch_error' tag), never .error -
+    // but fixed here too for the same reason the rest of this pass exists:
+    // costs nothing, and guards against a future change to the caller
+    // accidentally exposing this raw message to a public /quote response.
+    console.error('[routes-api] fetch failed:', err.message);
+    return { ok: false, reason: 'fetch_error', error: 'Route lookup failed.' };
   }
 }
 
