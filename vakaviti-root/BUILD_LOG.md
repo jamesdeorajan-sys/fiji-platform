@@ -7,7 +7,7 @@
 ## 2026-08-09 — Node-lead contact address confirmed: `partners@vakaviti.ai`
 
 **Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `a8d9948`
 
 James confirmed the proposed placeholder (`helpronline@gmail.com`) should be replaced: `partners@vakaviti.ai` is now a real, active forwarding alias (set up on the domain registrar's side — confirmed earlier this session via live MX/SPF records that vakaviti.ai's email already runs through the registrar's own forwarding service, not Cloudflare Email Routing, so this alias didn't need any DNS/Cloudflare change).
 
