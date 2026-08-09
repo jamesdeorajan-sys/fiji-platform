@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-08-10 — Lighter overlay, seamless hero-to-callout band, headline update
+
+**Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
+**Commit:** (pending)
+**File:** `vakaviti-root/index.html` only
+
+Three changes from James's review of the previous commit.
+
+### 1. Overlay lightened 0.78 → 0.55, with a real finding along the way
+Re-ran the same WCAG contrast computation against the real photo at 0.40–0.65 opacity, not just picking a value in the requested 0.45–0.55 range and eyeballing it. Result: **0.45 and 0.50 both fail** body-text contrast (needs ≥4.5:1) against a realistic bright region of the actual photo (its brightest 5%, not a single outlier pixel) — 0.50 only reaches 4.13:1. Only **0.55** clears both thresholds against that realistic standard:
+
+| Overlay alpha | Test region | Headline (≥3:1) | Body text (≥4.5:1) |
+|---|---|---|---|
+| 0.45 | brightest 5% of real photo | 4.18:1 ok | 3.73:1 **FAIL** |
+| 0.50 | brightest 5% of real photo | 4.67:1 ok | 4.13:1 **FAIL** |
+| **0.55** | **brightest 5% of real photo** | **5.23:1 ok** | **4.60:1 ok** |
+| 0.55 | single brightest literal pixel in the photo | 3.98:1 ok | 3.56:1 FAIL |
+| 0.55 | hypothetical pure-white pixel (doesn't occur in this photo) | 3.59:1 ok | 3.23:1 FAIL |
+
+Landed on **0.55** — the lightest value that passes against a real, non-trivial region of the photo. It does *not* pass against the single-brightest-literal-pixel or theoretical-pure-white cases, which is why the second fix below exists: added `text-shadow: 0 1px 4px rgba(0,0,0,0.55)` to every text element sitting on the photo band (hero eyebrow/h1/sub, scope-callout h2/p). WCAG's contrast formula doesn't model text-shadow — it's not a fix for the computed ratio — but it's the standard real-world mitigation for exactly this scenario (a small localized bright spot, like a sunlit wave crest, that a flat-color contrast check against regional averages doesn't catch). Flagging this explicitly rather than presenting 0.55 as if it passes every conceivable case, because it doesn't.
+
+### 2. Seam removed — restructured into one shared background, not two matching ones
+The hard box seam was `.hero` (photo-backed) ending and `.scope-callout` (still flat `var(--ocean)`) starting immediately after. Considered just copying the same background rule onto `.scope-callout` too, but two elements independently running `background-size: cover` on the same photo would each crop/zoom it differently based on their own box dimensions — "the same photo" twice, not necessarily "one photo." Instead wrapped both in a new `.hero-photo-band` div and moved the background there; `.hero` and `.scope-callout` now have no background of their own (confirmed via computed style: both report `background-image: none`). This is one continuous cover-cropped image spanning the full combined height, not two independently-matched copies. Verified `heroRect.bottom === calloutRect.top` at both 375px and 1280px (no gap, no double-rendering) and that the map's own opaque SVG background is untouched by this restructuring — it was never dependent on which element painted behind it.
+
+### 3. Headline updated, checked for duplication first
+Changed to "Honest Fiji Travel Guides, Built by Locals. Powered by AI." Searched the entire `vakaviti-root/` tree for the literal phrase "Honest Fiji Travel Guides" before assuming only the visible `<h1>` needed it — found exactly one occurrence, in the `<h1>` itself. Meta description, `og:title`/`og:description`, the Organization schema's `description`, and `llms.txt` all use different wording already and don't quote this phrase — confirmed via grep, not assumed, so none of them needed touching.
+
+### Verified
+- Organization JSON-LD confirmed byte-identical to `main`
+- Old `0.78` value confirmed fully gone from the file; new `0.55` confirmed applied to `.hero-photo-band` only
+- Headline confirmed updated (exactly one occurrence, new text)
+- `/network`, `/methodology`, `/partners` confirmed untouched this round (`git status` shows only `index.html` changed)
+- No console errors at 375px or 1280px beyond the pre-existing, unrelated widget CORS warning present throughout this project
+
+### Known gap
+Screenshot tool still broken this session — verified via computed styles (background layering, box-boundary geometry, text-shadow application) and a visual proxy built from the real photo URL and exact final CSS values, same approach as every prior round.
+
+---
+
 ## 2026-08-10 — Interim favicon + homepage hero ocean photo
 
 **Branch:** `feature/favicon-and-hero-photo`
