@@ -7,7 +7,7 @@
 ## 2026-08-09 — New `/partners` recruitment page
 
 **Branch:** `feature/partner-recruitment-page`
-**Commit:** (pending)
+**Commit:** `908c233`
 **Files:** `vakaviti-root/partners.html` (new), `vakaviti-root/sitemap.xml`
 
 New page recruiting the next five islands (Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands) — both tour operators and prospective node leads. Reuses `hero-network-map.svg` as the hero visual, matches `network.html`/`methodology.html`'s design system exactly. `ContactPage` JSON-LD referencing the canonical Organization via `about` — no duplicate Organization block.
