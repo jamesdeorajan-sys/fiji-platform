@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-08-09 — New `/partners` recruitment page
+
+**Branch:** `feature/partner-recruitment-page`
+**Commit:** (pending)
+**Files:** `vakaviti-root/partners.html` (new), `vakaviti-root/sitemap.xml`
+
+New page recruiting the next five islands (Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands) — both tour operators and prospective node leads. Reuses `hero-network-map.svg` as the hero visual, matches `network.html`/`methodology.html`'s design system exactly. `ContactPage` JSON-LD referencing the canonical Organization via `about` — no duplicate Organization block.
+
+### Number corrected before shipping, not assumed
+The spec said "confirm 29 verified partner operators is still current before using it." Checked `docs/VAKAVITI-BRAIN.md` and `docs/BUILD.md`: a real D1 audit (Session 57) found **30** active partners, explicitly noting "previous sessions carried '29' — use 30 going forward." Used 30, not the spec's draft figure.
+
+### CTA destinations
+- **Tour & Transfer Operators** — no new D1 table or Worker built (would need its own stop-and-confirm gate per ground rule 2, out of scope here). Interim: a real form (name, email, island/country — the 5 real islands, no Fiji sub-regions — business type, description) that composes a `mailto:` link to `helpronline@gmail.com` on submit via JS, rather than pretending a backend exists. Verified the URL-encoding logic produces a correctly formed `mailto:` string. Labeled honestly: "Opens your email client... nothing is submitted automatically" — no fake success state.
+- **Become a Node Lead** — a direct `mailto:helpronline@gmail.com` inquiry link, not a form (deliberately higher-touch per the spec). **Flagging as a proposal, not a final decision, per the spec's own instruction:** no dedicated node-lead inquiry address exists yet; used the one real, confirmed-monitored address already behind every other partner conversation on this network (`JAMES_EMAIL`/`FROM_EMAIL` in `workers/vakaviti-onboard/worker.js`) rather than inventing a new `@vakaviti.ai` address that might not be provisioned or monitored.
+
+### Cross-branch dependency — flagged, not silently shipped
+This page links to `/methodology` twice (methodology reference, team credit). Checked directly: `feature/methodology-page` (commit `8c596ca`) was **never merged to `main`** — confirmed via `git cat-file -e main:vakaviti-root/methodology.html` failing. Both links will 404 in production until that branch also merges. Not fixing this by removing the links (the spec explicitly asks for them, and the content is genuinely on that page) — flagging for James to sequence the merges, or merge both together.
+
+### What was deliberately not claimed
+No island beyond Fiji is described as live or active. No fabricated testimonials, booking numbers, or timelines for any island beyond Fiji.
+
+### Verified
+- `ContactPage` JSON-LD valid, `about` correctly references `https://vakaviti.ai/#organization`
+- Mobile (375px): single-column join-grid, hero map at full viewport width with native 1.870 aspect ratio preserved (no cropping), zero body-level horizontal overflow
+- Desktop (1280px): 2-column join-grid
+- Operator-interest form's `mailto:` composition logic verified correct (tested with sample field values, confirmed proper URL-encoding)
+- Node-lead `mailto:` link verified correctly formed
+- `/partners` added to `sitemap.xml`, same convention as every other page
+
+---
+
 ## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
 
 **Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
