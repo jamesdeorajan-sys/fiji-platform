@@ -7,7 +7,7 @@
 ## 2026-08-09 — Unified both `/partners` CTAs onto `partners@vakaviti.ai`
 
 **Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `cc48d60`
 
 James confirmed both paths should use the same address, differentiated by subject line rather than by inbox — the apparent separation wasn't functional anyway (both ultimately reach the same place), and a branded domain address on both CTAs reads more consistent with the page's own "working network, not a pitch deck" framing than a personal Gmail address on one path and a domain address on the other.
 
