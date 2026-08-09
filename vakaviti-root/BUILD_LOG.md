@@ -4,7 +4,21 @@
 
 ---
 
-## 2026-08-09 — Node-lead contact address confirmed: `partners@vakaviti.ai`
+## 2026-08-09 — Unified both `/partners` CTAs onto `partners@vakaviti.ai`
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** (pending)
+
+James confirmed both paths should use the same address, differentiated by subject line rather than by inbox — the apparent separation wasn't functional anyway (both ultimately reach the same place), and a branded domain address on both CTAs reads more consistent with the page's own "working network, not a pitch deck" framing than a personal Gmail address on one path and a domain address on the other.
+
+Updated the operator-interest form's `mailto:` target (`submitOperatorInterest()`) from `helpronline@gmail.com` to `partners@vakaviti.ai`. Zero remaining `helpronline@gmail.com` references anywhere in `partners.html` — confirmed via grep, not assumed.
+
+### Verified
+- Mailto encoding checked two ways: re-derived the expected URL and decoded it via the browser's native `URL`/`URLSearchParams` parser (address, subject `Vakaviti Partner Interest — Tonga`, body all correct), **and** pulled the actual live function source via `submitOperatorInterest.toString()` from the loaded page to confirm the deployed code itself uses `partners@vakaviti.ai`, not just a re-derivation of the intended logic
+- `grep -c helpronline@gmail.com vakaviti-root/partners.html` → 0
+- `grep -c partners@vakaviti.ai vakaviti-root/partners.html` → 3 (both mailto targets + the node-lead form-note text)
+
+---
 
 **Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
 **Commit:** `a8d9948`
