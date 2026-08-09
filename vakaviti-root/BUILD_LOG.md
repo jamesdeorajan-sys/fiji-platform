@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-08-09 — Node-lead contact address confirmed: `partners@vakaviti.ai`
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** (pending)
+
+James confirmed the proposed placeholder (`helpronline@gmail.com`) should be replaced: `partners@vakaviti.ai` is now a real, active forwarding alias (set up on the domain registrar's side — confirmed earlier this session via live MX/SPF records that vakaviti.ai's email already runs through the registrar's own forwarding service, not Cloudflare Email Routing, so this alias didn't need any DNS/Cloudflare change).
+
+- Updated the node-lead `mailto:` link and its `form-note` text to `partners@vakaviti.ai`
+- Also updated the now-stale copy above it — "There's no dedicated inquiry line for this yet" was true when written, false now that a real alias exists. Left as a contradiction would have repeated the exact kind of overstated-or-understated claim this whole project has been checking for at every step.
+- **Did not touch** the operator-interest form's `mailto:` target (still `helpronline@gmail.com`, `submitOperatorInterest()` in the `<script>`) — only the node-lead CTA was specified for this change.
+
+### Verified
+- Mailto link decoded via the browser's own `URL`/`URLSearchParams` parser (not manual string inspection): address `partners@vakaviti.ai`, subject `Vakaviti Node Lead Inquiry`, body `Which island:\nWhy you:\n` — all correct
+- All 3 `/methodology` links still present and correct (`/methodology`, unaffected by this edit)
+- Production `/methodology` re-confirmed 200, and this branch's `methodology.html` re-confirmed byte-identical to what's live
+- "30 verified partner operators" re-checked against `docs/VAKAVITI-BRAIN.md`/`docs/BUILD.md` — still current, now corroborated by a second independent reference ("28 of 30 partner WhatsApp rows")
+
+---
+
 ## 2026-08-09 — New `/partners` recruitment page
 
 **Branch:** `feature/partner-recruitment-page`
