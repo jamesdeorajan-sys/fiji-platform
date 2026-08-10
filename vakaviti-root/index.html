@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <title>Vakaviti.ai — Fiji's AI Tourism Guide | Commission-Free Tours, Transfers &amp; Accommodation</title>
 <meta name="description" content="Fiji's AI tourism network. Honest, commission-free guides to transfers, accommodation, and activities — verified prices, real local tips. Ask Lagi anything about Fiji, instantly.">
 <link rel="canonical" href="https://vakaviti.ai/">
@@ -87,26 +91,51 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
    size or dimmed by a photo-legibility scrim the way ambient tropical
    photography did, so this deliberately isn't a full-bleed background
    like the earlier Unsplash version. */
-.hero {
-  background: var(--ocean);
-  padding: 36px 0 0;
-  text-align: center;
-  color: #fff;
+/* ---- Photo band: wraps hero + scope-callout so the ocean photo is ONE
+   continuous background across both, not two independently-cropped
+   copies that could show a seam where they meet. The map's own opaque
+   background rect (hero-network-map.svg) is completely unaffected by
+   any of this regardless — it paints over whatever is behind it either
+   way. text-shadow on the headline/body text is a deliberate second
+   layer of protection on top of the overlay: WCAG contrast math is
+   computed against average/regional photo brightness, not a single
+   stray bright pixel, so the shadow guards specifically against small
+   localized highlights (e.g. a sunlit wave crest) that the flat-color
+   contrast ratio doesn't model. */
+.hero-photo-band {
+  background-image: linear-gradient(rgba(11, 42, 58, 0.55), rgba(11, 42, 58, 0.55)), var(--hero-photo, none);
+  background-size: cover;
+  background-position: center;
+  background-color: var(--ocean);
 }
+.hero { padding: 36px 0 0; text-align: center; color: #fff; }
 .hero-inner { max-width: 760px; margin: 0 auto; padding: 0 20px 28px; }
 .hero-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(255,255,255,0.14); color: #fff;
   padding: 6px 14px; border-radius: 999px; font-size: 12px; margin-bottom: 16px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
-.hero h1 { font-family: 'Playfair Display', serif; color: #fff; font-size: 28px; line-height: 1.2; margin-bottom: 14px; }
-.hero-sub { color: rgba(255,255,255,0.9); font-size: 15px; max-width: 560px; margin: 0 auto 22px; }
+.hero h1 { font-family: 'Playfair Display', serif; color: #fff; font-size: 28px; line-height: 1.2; margin-bottom: 14px; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
+.hero-sub { color: rgba(255,255,255,0.9); font-size: 15px; max-width: 560px; margin: 0 auto 22px; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
 .hero-ctas { display: flex; flex-direction: column; gap: 10px; }
 .btn-primary, .btn-secondary { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: var(--radius); font-weight: 600; text-decoration: none; padding: 0 20px; }
 .btn-primary { background: #25D366; color: #fff; }
 .btn-secondary { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
 .hero-map { max-width: 1100px; margin: 0 auto; padding: 0 0 8px; }
 .hero-map img { display: block; width: 100%; height: auto; }
+/* The map <img> is fully opaque (its SVG has its own solid #0a3d52 fill as
+   its first element) — nothing behind it is ever visible through it, no
+   matter what background any ancestor declares. That's what actually
+   caused the hard edge: .hero-photo-band's photo was always going to stop
+   dead at the map's top edge regardless of wrapper structure. These two
+   strips sit in the same photo band as siblings of .hero-map and locally
+   fade that band's own background from photo-visible to solid #0a3d52
+   (matching the map's own fill exactly) right before/after the opaque
+   image, instead of trying to make a photo show through an opaque image. */
+.hero-fade { max-width: 1100px; margin: 0 auto; height: 48px; }
+.hero-fade-out { background: linear-gradient(to bottom, transparent, #0a3d52); }
+.hero-fade-in { background: linear-gradient(to bottom, #0a3d52, transparent); }
 
 @media (min-width: 600px) {
   .hero-inner { padding: 0 24px 32px; }
@@ -122,11 +151,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
   .hero-sub { font-size: 17px; }
 }
 
-/* ---- Scope callout: bridges from the dark-teal hero, not the cream main below ---- */
-.scope-callout { background: var(--ocean); padding: 32px 20px 40px; text-align: center; }
+/* ---- Scope callout: now part of .hero-photo-band above, background comes from the wrapper ---- */
+.scope-callout { padding: 32px 20px 40px; text-align: center; }
 .scope-callout-inner { max-width: 620px; margin: 0 auto; }
-.scope-callout h2 { font-family: 'Playfair Display', serif; color: #fff; font-size: 24px; line-height: 1.25; margin-bottom: 12px; }
-.scope-callout p { color: rgba(255,255,255,0.85); font-size: 14px; margin-bottom: 22px; }
+.scope-callout h2 { font-family: 'Playfair Display', serif; color: #fff; font-size: 24px; line-height: 1.25; margin-bottom: 12px; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
+.scope-callout p { color: rgba(255,255,255,0.85); font-size: 14px; margin-bottom: 22px; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
 .btn-callout { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 24px; background: var(--sunset); color: #fff; border-radius: var(--radius); font-weight: 600; text-decoration: none; }
 @media (min-width: 600px) {
   .scope-callout { padding: 40px 24px 48px; }
@@ -176,19 +205,22 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
 </head>
 <body>
 
+<div class="hero-photo-band">
 <header class="hero">
   <div class="hero-inner">
     <div class="hero-eyebrow"><span>🌺</span><span>Vakaviti.ai — Fiji's AI Tourism Network</span></div>
-    <h1>Honest Fiji Travel Guides, Powered by AI</h1>
+    <h1>Honest Fiji Travel Guides, Built by Locals. Powered by AI.</h1>
     <p class="hero-sub">Verified prices. Real local tips. No commission games. Everything you need to plan Fiji right — then ask Lagi anything else.</p>
     <div class="hero-ctas">
       <a href="https://lagi.vakaviti.ai" class="btn-primary">Ask Lagi Anything About Fiji →</a>
       <a href="https://join.vakaviti.ai" class="btn-secondary">Are You a Fiji Operator? Join Free</a>
     </div>
   </div>
+  <div class="hero-fade hero-fade-out" aria-hidden="true"></div>
   <div class="hero-map">
     <img src="/hero-network-map.svg" alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands" width="860" height="460" loading="eager">
   </div>
+  <div class="hero-fade hero-fade-in" aria-hidden="true"></div>
 </header>
 
 <section class="scope-callout">
@@ -198,6 +230,7 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
     <a href="/partners" class="btn-callout">Bring Vakaviti to Your Island →</a>
   </div>
 </section>
+</div>
 
 <main>
   <div class="section-label">Guides</div>
@@ -316,6 +349,10 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
 <script src="/images.js"></script>
 <script>
 (function () {
+  var heroBg = window.VAKAVITI_IMAGES && window.VAKAVITI_IMAGES.heroOceanBg;
+  if (heroBg) {
+    document.documentElement.style.setProperty('--hero-photo', "url('" + heroBg.url + "')");
+  }
   document.querySelectorAll('[data-img-bg]').forEach(function (el) {
     var img = window.VAKAVITI_IMAGES && window.VAKAVITI_IMAGES[el.getAttribute('data-img-bg')];
     if (!img) return;

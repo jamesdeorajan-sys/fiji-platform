@@ -10,11 +10,20 @@
  * `credit`) for the relevant key below. Nothing else in index.html needs
  * to change — every guide-card image is pulled from this one file.
  *
- * The hero is NOT in this file — it's a custom SVG network map
- * (vakaviti-root/hero-network-map.svg), not an Unsplash placeholder, so
- * it doesn't need the swap-later treatment this file exists for.
+ * The network map itself (vakaviti-root/hero-network-map.svg) is NOT in
+ * this file — it's a custom SVG, not an Unsplash placeholder, so it
+ * doesn't need the swap-later treatment this file exists for.
+ * `heroOceanBg` below is a separate thing: an Unsplash placeholder used
+ * as the hero SECTION's background photo, sitting behind the map (which
+ * has its own opaque background and is unaffected by it) and behind the
+ * hero text (which the dark overlay in index.html's CSS protects).
  */
 var VAKAVITI_IMAGES = {
+  heroOceanBg: {
+    url: "https://images.unsplash.com/photo-1516135533926-3acfaffde030?w=1600&auto=format&fit=crop&q=80",
+    alt: "Aerial view of ocean waves",
+    credit: "Photo by Zoe Hoole on Unsplash"
+  },
   guideNadiAirport: {
     url: "https://images.unsplash.com/photo-1764555737101-6c9cf9aea376?w=800&auto=format&fit=crop&q=80",
     alt: "Airplane on approach for landing",
