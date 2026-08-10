@@ -7,7 +7,7 @@
 ## 2026-08-10 — Actual root cause of the persistent seam found and fixed
 
 **Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
-**Commit:** (pending)
+**Commit:** `70e0808`
 **File:** `vakaviti-root/index.html` only
 
 ### The previous fix (commit `9e35b75`) was solving the wrong seam
