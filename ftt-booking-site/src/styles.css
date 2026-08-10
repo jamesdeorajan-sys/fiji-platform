@@ -164,8 +164,8 @@ textarea.field-input{resize:vertical;min-height:80px}
 .trip-toggle{display:flex;gap:8px;margin-top:8px}
 .trip-btn{padding:8px 20px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--mid);cursor:pointer;transition:var(--transition)}
 .trip-btn.active{background:var(--ocean);border-color:var(--ocean);color:#fff}
-.pax-counter{display:flex;align-items:center;gap:10px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;width:fit-content}
-.pax-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;font-size:16px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
+.pax-counter{display:flex;align-items:center;gap:10px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 14px;width:fit-content}
+.pax-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:transparent;font-size:18px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
 .pax-btn:hover{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 .pax-num{font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem;min-width:24px;text-align:center}
 .pax-label{font-size:13px;color:var(--mid)}
