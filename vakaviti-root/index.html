@@ -124,6 +124,18 @@ body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(-
 .btn-secondary { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
 .hero-map { max-width: 1100px; margin: 0 auto; padding: 0 0 8px; }
 .hero-map img { display: block; width: 100%; height: auto; }
+/* The map <img> is fully opaque (its SVG has its own solid #0a3d52 fill as
+   its first element) — nothing behind it is ever visible through it, no
+   matter what background any ancestor declares. That's what actually
+   caused the hard edge: .hero-photo-band's photo was always going to stop
+   dead at the map's top edge regardless of wrapper structure. These two
+   strips sit in the same photo band as siblings of .hero-map and locally
+   fade that band's own background from photo-visible to solid #0a3d52
+   (matching the map's own fill exactly) right before/after the opaque
+   image, instead of trying to make a photo show through an opaque image. */
+.hero-fade { max-width: 1100px; margin: 0 auto; height: 48px; }
+.hero-fade-out { background: linear-gradient(to bottom, transparent, #0a3d52); }
+.hero-fade-in { background: linear-gradient(to bottom, #0a3d52, transparent); }
 
 @media (min-width: 600px) {
   .hero-inner { padding: 0 24px 32px; }
@@ -204,9 +216,11 @@ main > .section-label:not(:first-child) { margin-top: 52px; }
       <a href="https://join.vakaviti.ai" class="btn-secondary">Are You a Fiji Operator? Join Free</a>
     </div>
   </div>
+  <div class="hero-fade hero-fade-out" aria-hidden="true"></div>
   <div class="hero-map">
     <img src="/hero-network-map.svg" alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands" width="860" height="460" loading="eager">
   </div>
+  <div class="hero-fade hero-fade-in" aria-hidden="true"></div>
 </header>
 
 <section class="scope-callout">

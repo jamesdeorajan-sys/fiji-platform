@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-08-10 — Actual root cause of the persistent seam found and fixed
+
+**Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
+**Commit:** (pending)
+**File:** `vakaviti-root/index.html` only
+
+### The previous fix (commit `9e35b75`) was solving the wrong seam
+James sent a real screenshot of the live deployment (`https://1b36e95c.vakavitiai.pages.dev`) that finally made this diagnosable. It showed the hard edge sitting between the hero text (photo visible) and the map — right where "Solomon Islands" begins, with the map's own faint graticule grid visible below the line. That is **not** the `.hero`/`.scope-callout` boundary the previous fix targeted. It's the edge of `<img src="hero-network-map.svg">` itself.
+
+The map's SVG has always had its own fully opaque `<rect fill="#0a3d52">` as its first element. An `<img>` element renders its own pixels — nothing behind it in the DOM is ever visible through it, regardless of what `background` any ancestor declares. Wrapping `.hero` and `.scope-callout` in a shared `.hero-photo-band` (the previous fix) genuinely did make their backgrounds continuous with each other, and that part of the diagnosis was correct — it just had no effect at all on the actual reported symptom, because the map's opaque image was never going to reveal any ancestor's background no matter how it was structured. Confirmed this by fetching the live deployment's actual HTML/CSS directly (`curl https://1b36e95c.vakavitiai.pages.dev/`) — it matched the pushed source byte-for-byte, which is exactly why the seam persisted despite the source "looking correct": the source was correctly implementing a fix for a seam that wasn't the one being shown.
+
+### The actual fix
+Two small (48px), full-width-of-map, empty `aria-hidden` strips inserted as direct siblings of `.hero-map`, still inside `.hero` (still inside the same `.hero-photo-band`, so its continuous photo background is what they're painted on top of):
+- `.hero-fade-out`, immediately before `.hero-map`: `linear-gradient(transparent, #0a3d52)` — fades the band's own photo+overlay down to flat `#0a3d52` (exactly the map's own fill color) right before the opaque image begins.
+- `.hero-fade-in`, immediately after `.hero-map`: the mirror, `linear-gradient(#0a3d52, transparent)` — fades back from flat `#0a3d52` to revealing the band's photo again after the map ends.
+
+This doesn't try to make the photo show through the opaque map (impossible) — it makes the *photo band itself* ease into and out of the exact color the map already is, so the transition into and out of the opaque image is gradual rather than an abrupt cut.
+
+### Verified (with appropriate caution this time)
+- Organization JSON-LD confirmed byte-identical to `main`
+- Confirmed via computed style: `.hero-fade-out`/`.hero-fade-in` background gradients are exactly `transparent↔rgb(10,61,82)` as intended, `.hero-map` itself has no background of its own (`none`/transparent — relies entirely on its own opaque `<img>`), and there is a **zero-pixel gap** at every boundary (`hero-inner→fade-out→map→fade-in`, all measured 0px apart)
+- **Not claiming this is visually confirmed fixed.** Computed-style verification is the same class of check that already failed to catch the real problem once this session — it can confirm the mechanism is wired correctly, it cannot substitute for actually seeing the rendered page. Screenshot tool still broken in this environment. This needs a real screenshot against the correct deployment before being called done, same as James's original catch.
+
+---
+
 ## 2026-08-10 — Lighter overlay, seamless hero-to-callout band, headline update
 
 **Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
