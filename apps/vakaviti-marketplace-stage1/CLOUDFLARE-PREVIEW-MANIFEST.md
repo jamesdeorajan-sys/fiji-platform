@@ -14,7 +14,8 @@ Create a completely separate Cloudflare deployment boundary for this app. Do not
 - Environment: `preview`
 - Custom production domain: NONE
 - Production DNS changes: NONE
-- Dedicated D1 database: `vakaviti-marketplace-stage1-preview`
+- Dedicated D1 database: `vakaviti-marketplace-stage1-db`
+- Dedicated D1 database ID: `f2753057-4319-40d6-bcd8-84eccd28bfe1`
 - Workers AI binding: `AI`
 - D1 binding: `DB`
 - Admin secret: `ADMIN_TOKEN` (must be set through Cloudflare secret storage, never committed)
