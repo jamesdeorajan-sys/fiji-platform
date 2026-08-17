@@ -7,5 +7,8 @@ binding = "DB"
 database_name = "vakaviti-marketplace"
 database_id = "REPLACE_AT_DEPLOY"
 
+[ai]
+binding = "AI"
+
 [vars]
 ENVIRONMENT = "preview"
