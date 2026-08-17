@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { candidates } from './candidates';
+import { products } from './products';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
@@ -32,9 +33,9 @@ app.get('/operators', async c => {
 app.get('/operators/:slug', async c => {
   const o = await c.env.DB.prepare(`SELECT * FROM operators WHERE slug=?`).bind(c.req.param('slug')).first<any>();
   if (!o) return c.notFound();
-  const products = await c.env.DB.prepare(`SELECT id,canonical_name,category,verification_status FROM products WHERE operator_id=? ORDER BY canonical_name`).bind(o.id).all<any>();
+  const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,category,verification_status FROM products WHERE operator_id=? ORDER BY canonical_name`).bind(o.id).all<any>();
   const status = o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Profile claimed — verification in progress' : 'Publicly listed — information not yet verified by Vakaviti';
-  const list = (products.results || []).map(p => `<div class="card"><h3>${p.canonical_name}</h3><p>${p.category}</p><span class="badge">${p.verification_status}</span></div>`).join('');
+  const list = (productRows.results || []).map(p => `<div class="card"><h3>${p.canonical_name}</h3><p>${p.category}</p><span class="badge">${p.verification_status}</span></div>`).join('');
   return c.html(html(`<section class="hero"><span class="badge">${status}</span><h1>${o.canonical_name}</h1><p class="muted">${[o.locality,o.region].filter(Boolean).join(', ')}</p>${o.claim_status !== 'CLAIMED' ? `<p><a class="btn" href="/claim/${o.slug}">Claim this business</a></p>`:''}</section><h2>Products</h2><section class="grid">${list || '<div class="card">No verified products yet.</div>'}</section>`, o.canonical_name)));
 });
 
@@ -99,6 +100,7 @@ app.get('/api/admin/human-gates', async c => {
 });
 
 app.route('/api/admin/candidates', candidates);
+app.route('/api/admin/products', products);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
 export default app;
