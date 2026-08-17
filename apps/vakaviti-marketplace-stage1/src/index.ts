@@ -36,13 +36,13 @@ app.get('/operators/:slug', async c => {
   const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,category,verification_status FROM products WHERE operator_id=? ORDER BY canonical_name`).bind(o.id).all<any>();
   const status = o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Profile claimed — verification in progress' : 'Publicly listed — information not yet verified by Vakaviti';
   const list = (productRows.results || []).map(p => `<div class="card"><h3>${p.canonical_name}</h3><p>${p.category}</p><span class="badge">${p.verification_status}</span></div>`).join('');
-  return c.html(html(`<section class="hero"><span class="badge">${status}</span><h1>${o.canonical_name}</h1><p class="muted">${[o.locality,o.region].filter(Boolean).join(', ')}</p>${o.claim_status !== 'CLAIMED' ? `<p><a class="btn" href="/claim/${o.slug}">Claim this business</a></p>`:''}</section><h2>Products</h2><section class="grid">${list || '<div class="card">No verified products yet.</div>'}</section>`, o.canonical_name)));
+  return c.html(html(`<section class="hero"><span class="badge">${status}</span><h1>${o.canonical_name}</h1><p class="muted">${[o.locality,o.region].filter(Boolean).join(', ')}</p>${o.claim_status !== 'CLAIMED' ? `<p><a class="btn" href="/claim/${o.slug}">Claim this business</a></p>`:''}</section><h2>Products</h2><section class="grid">${list || '<div class="card">No verified products yet.</div>'}</section>`, o.canonical_name));
 });
 
 app.get('/claim/:slug', async c => {
   const o = await c.env.DB.prepare(`SELECT id,canonical_name,slug FROM operators WHERE slug=?`).bind(c.req.param('slug')).first<any>();
   if (!o) return c.notFound();
-  return c.html(html(`<section class="hero"><span class="badge">Business claim</span><h1>Claim ${o.canonical_name}</h1><p class="muted">Claiming a profile does not automatically create Vakaviti Verified status. Verification happens separately.</p><form method="post" action="/api/claim"><input type="hidden" name="operator_id" value="${o.id}"><label>Your name</label><input name="name" required><label>Email</label><input name="email" type="email"><label>Phone / WhatsApp</label><input name="phone" required><button class="btn" type="submit">Submit claim</button></form></section>`)));
+  return c.html(html(`<section class="hero"><span class="badge">Business claim</span><h1>Claim ${o.canonical_name}</h1><p class="muted">Claiming a profile does not automatically create Vakaviti Verified status. Verification happens separately.</p><form method="post" action="/api/claim"><input type="hidden" name="operator_id" value="${o.id}"><label>Your name</label><input name="name" required><label>Email</label><input name="email" type="email"><label>Phone / WhatsApp</label><input name="phone" required><button class="btn" type="submit">Submit claim</button></form></section>`));
 });
 
 app.post('/api/claim', async c => {
