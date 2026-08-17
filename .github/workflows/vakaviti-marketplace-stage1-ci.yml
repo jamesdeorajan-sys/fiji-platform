@@ -29,22 +29,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/vakaviti-marketplace-stage1/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
 
       - name: Validate Wrangler configuration without deployment
-        run: npx wrangler deploy --dry-run --outdir /tmp/vakaviti-stage1-dry-run
+        run: npm run validate:config
 
-      - name: Confirm no production-domain strings in deploy config
+      - name: Confirm no protected production domains in Wrangler config
         shell: bash
         run: |
           if grep -RniE 'bookfijitours\.com\.au|tourfiji\.tours|driver\.fijidash\.com|driver\.vakaviti\.ai' wrangler.toml; then
-            echo 'Production or protected domain found in Stage 1 Wrangler config.'
+            echo 'Protected production domain found in Stage 1 Wrangler config.'
             exit 1
           fi
+
+      - name: Confirm preview environment only
+        shell: bash
+        run: |
+          grep -q 'ENVIRONMENT = "preview"' wrangler.toml
+          grep -q 'vakaviti-marketplace-stage1-preview' wrangler.toml
