@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import { candidates } from './candidates';
 
-type Bindings = { DB: D1Database; ENVIRONMENT: string };
+type Bindings = { DB: D1Database; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 const app = new Hono<{ Bindings: Bindings }>();
 
 const html = (body: string, title = 'Vakaviti Verified Fiji Network') => `<!doctype html>
@@ -48,6 +49,7 @@ app.post('/api/partner-interest', async c => {
   return c.html(html(`<section class="hero"><h1>Founding Partner interest received.</h1><p>Reference: ${id}</p><p class="muted">Next step is candidate enrichment and verification, not automatic publication.</p><a class="btn" href="/">Return home</a></section>`));
 });
 
+app.route('/api/admin/candidates', candidates);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT }));
 
 export default app;
