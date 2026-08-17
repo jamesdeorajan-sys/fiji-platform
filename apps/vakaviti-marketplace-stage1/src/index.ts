@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { candidates } from './candidates';
+import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
-type Bindings = { DB: D1Database; ENVIRONMENT: string; ADMIN_TOKEN?: string };
+type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 const app = new Hono<{ Bindings: Bindings }>();
 
 const html = (body: string, title = 'Vakaviti Verified Fiji Network') => `<!doctype html>
@@ -9,6 +10,14 @@ const html = (body: string, title = 'Vakaviti Verified Fiji Network') => `<!doct
 <title>${title}</title><style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#f6f8f7;color:#12231b}header,main{max-width:1080px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center}.hero{padding:64px 0 32px}.hero h1{font-size:clamp(2.4rem,7vw,5rem);line-height:.95;max-width:850px;margin:0 0 20px}.muted{color:#607068}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{background:white;border:1px solid #dde5e0;border-radius:18px;padding:20px}.badge{display:inline-block;border:1px solid #b7c8be;border-radius:999px;padding:5px 9px;font-size:12px}.btn{display:inline-block;background:#12231b;color:white;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700}.btn.secondary{background:white;color:#12231b;border:1px solid #12231b}input,textarea{width:100%;padding:12px;border:1px solid #ccd7d1;border-radius:10px;box-sizing:border-box;margin:6px 0 14px}footer{max-width:1080px;margin:40px auto;padding:24px;color:#607068}
 </style></head><body><header><strong>Vakaviti Verified Fiji Network</strong><nav><a href="/operators">Operators</a> &nbsp; <a href="/partners">Partners</a></nav></header><main>${body}</main><footer>Stage 1 preview — public discovery does not equal Vakaviti verification.</footer></body></html>`;
+
+const requireAdmin = (c: any) => {
+  const expected = c.env.ADMIN_TOKEN;
+  if (!expected) return c.json({ error: 'admin_api_not_configured' }, 503);
+  const auth = c.req.header('authorization') || '';
+  if (auth !== `Bearer ${expected}`) return c.json({ error: 'unauthorized' }, 401);
+  return null;
+};
 
 app.get('/', c => c.html(html(`<section class="hero"><span class="badge">Stage 1</span><h1>Book Fiji. Know who you're booking with.</h1><p class="muted">A verified inventory, distribution and fulfilment network for Fiji tours, activities and ground transport.</p><p><a class="btn" href="/operators">Explore operators</a> <a class="btn secondary" href="/partners">Become a Founding Partner</a></p></section>`)));
 
@@ -39,17 +48,57 @@ app.post('/api/claim', async c => {
   const body = await c.req.parseBody();
   const id = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO claims(id,operator_id,claimant_name,claimant_email,claimant_phone,channel) VALUES(?,?,?,?,?,'WEB')`).bind(id,String(body.operator_id),String(body.name||''),String(body.email||''),String(body.phone||'')).run();
-  return c.html(html(`<section class="hero"><h1>Claim received.</h1><p>Reference: ${id}</p><p class="muted">The profile remains unverified until the evidence review is completed.</p><a class="btn" href="/operators">Back to operators</a></section>`));
+  const sessionId = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO provider_copilot_sessions(id,operator_id,claimant_phone,claimant_email) VALUES(?,?,?,?)`).bind(sessionId,String(body.operator_id),String(body.phone||''),String(body.email||'')).run();
+  return c.html(html(`<section class="hero"><h1>Claim received.</h1><p>Reference: ${id}</p><p class="muted">We have opened an onboarding copilot session so we can ask only for missing information. The profile remains unverified until evidence review is completed.</p><a class="btn" href="/operators">Back to operators</a></section>`));
 });
 
 app.post('/api/partner-interest', async c => {
   const body = await c.req.parseBody();
   const id = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO evidence(id,entity_type,entity_id,field_name,source_type,source_url,observed_value,evidence_status,confidence) VALUES(?,?,?,?,?,?,?,?,?)`).bind(id,'PARTNER_LEAD',id,'interest','SELF_SUBMITTED',String(body.url||''),JSON.stringify(body),'CANDIDATE',1).run();
-  return c.html(html(`<section class="hero"><h1>Founding Partner interest received.</h1><p>Reference: ${id}</p><p class="muted">Next step is candidate enrichment and verification, not automatic publication.</p><a class="btn" href="/">Return home</a></section>`));
+  return c.html(html(`<section class="hero"><h1>Founding Partner interest received.</h1><p>Reference: ${id}</p><p class="muted">Next step is AI-assisted candidate enrichment and verification, not automatic publication.</p><a class="btn" href="/">Return home</a></section>`));
+});
+
+app.post('/api/admin/ai/enrich-candidate', async c => {
+  const denied = requireAdmin(c); if (denied) return denied;
+  const body = await c.req.json<any>();
+  if (!body?.candidate_id || !body?.canonical_name || !body?.source_text) return c.json({ error: 'candidate_id_canonical_name_source_text_required' }, 400);
+  const result = await enrichCandidate(c.env, {
+    candidate_id: String(body.candidate_id),
+    canonical_name: String(body.canonical_name),
+    source_text: String(body.source_text),
+    source_url: body.source_url ? String(body.source_url) : undefined
+  });
+  return c.json(result);
+});
+
+app.post('/api/admin/ai/provider-copilot', async c => {
+  const denied = requireAdmin(c); if (denied) return denied;
+  const body = await c.req.json<any>();
+  if (!body?.session_id || !body?.operator_name || !body?.provider_message) return c.json({ error: 'session_id_operator_name_provider_message_required' }, 400);
+  const result = await providerCopilot(c.env, {
+    session_id: String(body.session_id),
+    operator_name: String(body.operator_name),
+    current_step: String(body.current_step || 'IDENTITY'),
+    verified_context: body.verified_context || {},
+    candidate_context: body.candidate_context || {},
+    provider_message: String(body.provider_message)
+  });
+  const outputText = JSON.stringify(result.output);
+  if (outputText.includes('"needs_human_gate":true')) {
+    await createHumanGate(c.env, { gate_type:'PROVIDER_COPILOT_EXCEPTION', entity_type:'PROVIDER_SESSION', entity_id:String(body.session_id), reason:'AI identified a trust/legal/money/verification boundary requiring human review.', evidence:result.output });
+  }
+  return c.json(result);
+});
+
+app.get('/api/admin/human-gates', async c => {
+  const denied = requireAdmin(c); if (denied) return denied;
+  const rows = await c.env.DB.prepare(`SELECT * FROM human_gates WHERE status='PENDING' ORDER BY created_at ASC LIMIT 100`).all<any>();
+  return c.json({ results: rows.results || [] });
 });
 
 app.route('/api/admin/candidates', candidates);
-app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT }));
+app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
 export default app;
