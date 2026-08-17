@@ -1,0 +1,50 @@
+name: Vakaviti Marketplace Stage 1 CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/vakaviti-marketplace-stage1/**'
+      - '.github/workflows/vakaviti-marketplace-stage1-ci.yml'
+  push:
+    branches:
+      - 'ceo/vakaviti-marketplace-stage1'
+    paths:
+      - 'apps/vakaviti-marketplace-stage1/**'
+      - '.github/workflows/vakaviti-marketplace-stage1-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/vakaviti-marketplace-stage1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/vakaviti-marketplace-stage1/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate Wrangler configuration without deployment
+        run: npx wrangler deploy --dry-run --outdir /tmp/vakaviti-stage1-dry-run
+
+      - name: Confirm no production-domain strings in deploy config
+        shell: bash
+        run: |
+          if grep -RniE 'bookfijitours\.com\.au|tourfiji\.tours|driver\.fijidash\.com|driver\.vakaviti\.ai' wrangler.toml; then
+            echo 'Production or protected domain found in Stage 1 Wrangler config.'
+            exit 1
+          fi
