@@ -1,0 +1,11 @@
+name = "vakaviti-marketplace-stage1"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vakaviti-marketplace"
+database_id = "REPLACE_AT_DEPLOY"
+
+[vars]
+ENVIRONMENT = "preview"
