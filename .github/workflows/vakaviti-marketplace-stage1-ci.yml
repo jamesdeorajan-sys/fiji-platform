@@ -51,4 +51,4 @@ jobs:
         shell: bash
         run: |
           grep -q 'ENVIRONMENT = "preview"' wrangler.toml
-          grep -q 'vakaviti-marketplace-stage1-preview' wrangler.toml
+          grep -q 'vakaviti-marketplace-stage1-db' wrangler.toml
