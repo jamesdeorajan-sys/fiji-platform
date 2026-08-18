@@ -101,7 +101,10 @@ const SEMANTIC_IMAGES: Record<string, { url: string; alt: string }> = {
   yasawa_transfer: { url: '/images/category-adventure.webp', alt: 'Boat at Kuata, Yasawa Islands, Fiji, before a dive' },
   diving: { url: '/images/category-diving.webp', alt: 'Crown-of-thorns starfish on the seabed, Warwick, Fiji' },
   nadi_denarau: { url: '/images/context-denarau-marina.webp', alt: 'Denarau Island Marina, Fiji' },
-  airport_transfer: { url: '/images/context-arrival-sky.webp', alt: 'Flight arriving over Beachcomber Island, Fiji' },
+  road_transfer: { url: '/images/context-road-transfer.webp', alt: 'Cars on a tree-lined road, Suva, Fiji' },
+  accommodation: { url: '/images/category-accommodation.webp', alt: 'Poolside at a Fiji resort' },
+  wedding: { url: '/images/category-wedding.webp', alt: 'Beach wedding arch and chairs, Nadi, Fiji' },
+  day_tour: { url: '/images/category-daytour.webp', alt: 'Beach and boat at sunrise, Kuata Island, Fiji' },
   partners: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' }
 };
 
@@ -109,19 +112,31 @@ const SEMANTIC_IMAGES: Record<string, { url: string; alt: string }> = {
 // renders the premium branded fallback rather than an unreviewed guess (see resolveImage()) -
 // "truthful fallback" beats "irrelevant photograph." Add an entry only after confirming the
 // assigned photo's documented permitted use genuinely covers this specific product; do not
-// add an entry just to fill the rectangle.
+// add an entry just to fill the rectangle. Every assignment must also pass the Traveller
+// Expectation Test (see IMAGE-SOURCES.md): if a traveller saw only this image and the product
+// title, would it strengthen their understanding of this exact experience?
+//
+// 2026-08-19 Visual Truth Correction Pass: the previous 'airport_transfer' key
+// (context-arrival-sky.webp, a flight/sky photo) failed the Traveller Expectation Test - it
+// read as generic sky/sunset, not transport, and was assigned to all 3 airport-route products
+// identically. It has been retired from active assignment (asset kept, unused - see
+// IMAGE-SOURCES.md). The 'nadi_denarau' marina photo was also removed from every Nadi Airport
+// Transfers product, since none of them involve marina/boat transport - a marina photo may only
+// represent a marina/boat-transfer context, never generic road transfers, per the new rule.
 const PRODUCT_IMAGE_KEY: Record<string, string> = {
-  'blue-lagoon-accommodation-enquiry': 'islands',
+  'blue-lagoon-accommodation-enquiry': 'accommodation',
   'blue-lagoon-diving-enquiry': 'diving',
   'blue-lagoon-island-transfer-enquiry': 'yasawa_transfer',
-  // blue-lagoon-dining-enquiry: no source-verified matching photo yet - branded fallback
-  // blue-lagoon-wedding-enquiry: no source-verified matching photo yet (also avoiding any
-  //   stock "wedding" imagery that could show identifiable people/venues) - branded fallback
-  'denarau-nadi-airport-transfer': 'airport_transfer',
-  'nadi-airport-denarau-transfer': 'airport_transfer',
-  'nadi-airport-nadi-hotels-transfer': 'airport_transfer',
-  'private-fiji-transfer-enquiry': 'nadi_denarau',
-  'private-hotel-transfer': 'nadi_denarau'
+  'blue-lagoon-wedding-enquiry': 'wedding',
+  // blue-lagoon-dining-enquiry: no source-verified matching Fiji dining/food photo found after
+  //   searching Unsplash and Pexels - branded fallback (see IMAGE-SOURCES.md rejected list)
+  'denarau-nadi-airport-transfer': 'road_transfer',
+  'nadi-airport-denarau-transfer': 'road_transfer'
+  // nadi-airport-nadi-hotels-transfer, private-fiji-transfer-enquiry, private-hotel-transfer:
+  //   deliberately left on branded fallback rather than reuse road_transfer a 3rd/4th/5th time
+  //   on the same operator's product list - "stop repetitive image assignment" takes priority
+  //   over forcing a 3rd share of one photo. The 2 products above share road_transfer only
+  //   because they are literally the same physical route in opposite directions.
 };
 
 // Explicit per-operator image decision (deliberately not inferred from a region-string match -
@@ -197,6 +212,8 @@ h1{font-size:clamp(2.1rem,4.4vw,3.4rem);line-height:1.04;margin:0 0 16px;letter-
 .badge{display:inline-block;border:1px solid #b7c8be;border-radius:999px;padding:5px 10px;font-size:12px;background:#fff}
 .badge.verified{background:#e9f5f0;border-color:#a9d9c6;color:#0f6e6a;font-weight:600}
 .badge.soon{background:#f1f1ef;color:#8a938d}
+.trust-tag{display:block;margin-top:8px;font-size:11px;color:var(--muted)}
+.trust-tag.verified{display:inline-block;border:1px solid #a9d9c6;background:#e9f5f0;color:#0f6e6a;font-weight:600;border-radius:999px;padding:4px 9px}
 .btn{display:inline-block;background:var(--ink);color:white;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700;min-height:24px}
 .btn.secondary{background:white;color:var(--ink);border:1px solid var(--ink)}
 .btn.whatsapp{background:#128c7e}
@@ -234,16 +251,19 @@ app.get('/', async c => {
   const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 ORDER BY p.created_at ASC LIMIT 3`).all<any>();
   const featuredOperators = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id GROUP BY o.id ORDER BY o.canonical_name LIMIT 3`).all<any>();
 
-  const expCards = (featuredProducts.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p></div></a></article>`; }).join('');
-  const opCards = (featuredOperators.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Publicly listed'}</span><h3 style="margin:8px 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
+  const expCards = (featuredProducts.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
+  const opCards = (featuredOperators.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed'}</span></div></a></article>`; }).join('');
 
+  // All 6 categories now have an intentional visual treatment - either a source-verified Fiji
+  // photo (4 of 6) or a documented, deliberate branded gradient fallback (Waterfalls & nature,
+  // Cultural experiences - see IMAGE-SOURCES.md for the specific rejected candidates and why).
   const categories = [
-    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', img: SEMANTIC_IMAGES.airport_transfer.url, alt: SEMANTIC_IMAGES.airport_transfer.alt, available: true },
+    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', img: SEMANTIC_IMAGES.road_transfer.url, alt: SEMANTIC_IMAGES.road_transfer.alt, available: true },
     { label: 'Island experiences', ctx: 'Coming soon', href: null, from: '#0f6e6a', to: '#0a3c39', img: SEMANTIC_IMAGES.islands.url, alt: SEMANTIC_IMAGES.islands.alt, available: false },
     { label: 'Waterfalls & nature', ctx: 'Coming soon', href: null, from: '#1c5c3f', to: '#0c2b23', img: null, alt: '', available: false },
     { label: 'Cultural experiences', ctx: 'Coming soon', href: null, from: '#7a4a1c', to: '#3d2510', img: null, alt: '', available: false },
     { label: 'Adventure', ctx: 'Coming soon', href: null, from: '#2a4d6e', to: '#12283d', img: SEMANTIC_IMAGES.yasawa_transfer.url, alt: SEMANTIC_IMAGES.yasawa_transfer.alt, available: false },
-    { label: 'Day tours', ctx: 'Coming soon', href: null, from: '#5c3d6e', to: '#291a33', img: null, alt: '', available: false }
+    { label: 'Day tours', ctx: 'Coming soon', href: null, from: '#5c3d6e', to: '#291a33', img: SEMANTIC_IMAGES.day_tour.url, alt: SEMANTIC_IMAGES.day_tour.alt, available: false }
   ];
   const catCards = categories.map(cat => {
     const fill = cat.img
@@ -283,7 +303,7 @@ app.get('/partners', c => c.html(html(`<section class="section" style="padding-t
 
 app.get('/experiences', async c => {
   const rows = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.duration_minutes,p.verification_status,p.image_url,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 ORDER BY p.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p></div></a></article>`; }).join('');
+  const cards = (rows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Experiences</span><h1>Fiji tours, activities and transport.</h1><p class="muted">Browse real Fiji experiences and ask Vakaviti on WhatsApp — we'll connect your enquiry with the right operator.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No experiences published yet. Check back soon.</div></div>'}</div>`, { title: 'Fiji Experiences — Vakaviti', description: 'Browse verified Fiji tours, activities and ground transport, and ask Vakaviti on WhatsApp to connect with local operators.', noindex: true }));
 });
 
@@ -306,7 +326,7 @@ app.get('/experiences/:slug', async c => {
   // A second, complementary photo - only shown when the hero itself resolved to a real,
   // explicitly-assigned semantic photo (never pair a second photo onto the branded fallback,
   // and never invent a pairing for a product with no verified match).
-  const SUPPORTING_KEY: Record<string, string> = { islands: 'yasawa_transfer', yasawa_transfer: 'islands', diving: 'islands', nadi_denarau: 'airport_transfer', airport_transfer: 'nadi_denarau' };
+  const SUPPORTING_KEY: Record<string, string> = { islands: 'yasawa_transfer', yasawa_transfer: 'islands', diving: 'islands', accommodation: 'islands', wedding: 'islands', day_tour: 'yasawa_transfer', road_transfer: 'nadi_denarau', nadi_denarau: 'road_transfer' };
   const supportingKey = !p.image_url && semanticKey ? SUPPORTING_KEY[semanticKey] : null;
   const supportingImg = supportingKey ? SEMANTIC_IMAGES[supportingKey] : null;
   return c.html(html(`<section class="section" style="padding-top:20px">
@@ -325,7 +345,7 @@ app.get('/experiences/:slug', async c => {
 
 app.get('/operators', async c => {
   const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.claim_status,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Claimed profile' : 'Publicly listed &middot; unclaimed'}</span><h3 style="margin:8px 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
+  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Claimed profile' : 'Publicly listed &middot; unclaimed'}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -335,7 +355,7 @@ app.get('/operators/:slug', async c => {
   const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,slug,category,verification_status,image_url FROM products WHERE operator_id=? ORDER BY canonical_name`).bind(o.id).all<any>();
   const verified = o.verification_status === 'VAKAVITI_VERIFIED';
   const status = verified ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Profile claimed — verification in progress' : 'Publicly listed — information not yet verified by Vakaviti';
-  const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
+  const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
   const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
   return c.html(html(`<section class="section">
