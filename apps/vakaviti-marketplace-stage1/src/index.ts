@@ -86,51 +86,61 @@ const mediaBlock = (imageUrl: string | null | undefined, alt: string, opts: { as
   return fallbackMedia(alt, { aspect, radius, seed: opts.seed });
 };
 
-// Centralised map of every real, licensed Fiji photo currently available (all sourced,
-// verified and recorded in IMAGE-SOURCES.md). Nothing here is presented as depicting a
-// specific operator/product - these are all generic Fiji destination/category context.
-// Every image_url from D1 (an operator or product's own authorized photo) always takes
-// priority over this map wherever it's set - see resolveImage() below.
-const FIJI_IMAGES: Record<string, { url: string; alt: string }> = {
+// Semantic Fiji image registry (Stage 1 Build Accuracy System, 2026-08-19). Every entry is a
+// real, licensed, source-verified photo (see IMAGE-SOURCES.md) with a defined semantic purpose
+// and permitted/prohibited uses documented there. A photo is only ever assigned to a
+// product/operator via the explicit maps below (PRODUCT_IMAGE_KEY / OPERATOR_IMAGE_KEY) - never
+// inferred from a blind category lookup, so every assignment is an individually-reviewed,
+// truthful decision. Nothing here is presented as depicting a specific operator's actual
+// vehicle, room, staff or dive site - these are all generic Fiji destination/semantic context.
+// An operator/product's own authorized image_url from D1 always takes priority - see
+// resolveImage() below.
+const SEMANTIC_IMAGES: Record<string, { url: string; alt: string }> = {
   hero: { url: '/images/hero-fiji-leleuvia.webp', alt: 'Aerial view of Leleuvia Island, Fiji' },
   islands: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' },
-  ocean: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' },
-  adventure: { url: '/images/category-adventure.webp', alt: 'Boat at Kuata, Fiji, before a dive' },
-  yasawa: { url: '/images/category-adventure.webp', alt: 'Boat at Kuata, Yasawa Islands, Fiji' },
-  nadi: { url: '/images/context-denarau-marina.webp', alt: 'Denarau Island Marina, Fiji' },
-  denarau: { url: '/images/context-denarau-marina.webp', alt: 'Denarau Island Marina, Fiji' },
-  transfers: { url: '/images/context-arrival-sky.webp', alt: 'Flight arriving over Beachcomber Island, Fiji' },
-  arrival: { url: '/images/context-arrival-sky.webp', alt: 'Flight arriving over Beachcomber Island, Fiji' },
+  yasawa_transfer: { url: '/images/category-adventure.webp', alt: 'Boat at Kuata, Yasawa Islands, Fiji, before a dive' },
+  diving: { url: '/images/category-diving.webp', alt: 'Crown-of-thorns starfish on the seabed, Warwick, Fiji' },
+  nadi_denarau: { url: '/images/context-denarau-marina.webp', alt: 'Denarau Island Marina, Fiji' },
+  airport_transfer: { url: '/images/context-arrival-sky.webp', alt: 'Flight arriving over Beachcomber Island, Fiji' },
   partners: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' }
 };
 
-// Product/operator category -> best-matching Fiji context image. No entry for a category
-// means no genuine matching photo was verified yet, so callers fall through to the branded
-// fallback rather than force a mismatched image (see IMAGE-SOURCES.md for what was rejected
-// and why).
-const CATEGORY_IMAGE_KEY: Record<string, string> = {
-  GROUND_TRANSPORT: 'transfers',
-  TRANSPORT: 'nadi',
-  ACTIVITY: 'adventure',
-  ACCOMMODATION: 'yasawa',
-  EXPERIENCE: 'islands',
-  DINING: 'islands'
+// Explicit, product-by-product image decisions. A product with NO entry here intentionally
+// renders the premium branded fallback rather than an unreviewed guess (see resolveImage()) -
+// "truthful fallback" beats "irrelevant photograph." Add an entry only after confirming the
+// assigned photo's documented permitted use genuinely covers this specific product; do not
+// add an entry just to fill the rectangle.
+const PRODUCT_IMAGE_KEY: Record<string, string> = {
+  'blue-lagoon-accommodation-enquiry': 'islands',
+  'blue-lagoon-diving-enquiry': 'diving',
+  'blue-lagoon-island-transfer-enquiry': 'yasawa_transfer',
+  // blue-lagoon-dining-enquiry: no source-verified matching photo yet - branded fallback
+  // blue-lagoon-wedding-enquiry: no source-verified matching photo yet (also avoiding any
+  //   stock "wedding" imagery that could show identifiable people/venues) - branded fallback
+  'denarau-nadi-airport-transfer': 'airport_transfer',
+  'nadi-airport-denarau-transfer': 'airport_transfer',
+  'nadi-airport-nadi-hotels-transfer': 'airport_transfer',
+  'private-fiji-transfer-enquiry': 'nadi_denarau',
+  'private-hotel-transfer': 'nadi_denarau'
 };
 
-// Priority order used everywhere on the site: (1) the operator/product's own authorized
-// image_url from D1, (2) a relevant licensed Fiji context photo, (3) the generated
-// branded fallback (handled by mediaBlock itself when url is null). Never a broken image.
-const resolveImage = (ownUrl: string | null | undefined, contextKey: string | null | undefined, ownAlt: string): { url: string | null; alt: string } => {
+// Explicit per-operator image decision (deliberately not inferred from a region-string match -
+// only 2 operators exist, so an explicit, auditable assignment is safer than pattern-matching).
+const OPERATOR_IMAGE_KEY: Record<string, string> = {
+  'nadi-airport-transfers': 'nadi_denarau',
+  'blue-lagoon-beach-resort': 'yasawa_transfer'
+};
+
+// Priority order used everywhere on the site (never "some Fiji image is better than no
+// image"): (1) the operator/product's own authorized image_url from D1, (2) an explicitly
+// assigned, permitted-use semantic photo, (3) the generated branded fallback (handled by
+// mediaBlock itself when url is null). A missing semantic assignment is a deliberate truthful
+// fallback, not a bug - never a broken or misleading image.
+const resolveImage = (ownUrl: string | null | undefined, semanticKey: string | null | undefined, ownAlt: string): { url: string | null; alt: string } => {
   if (ownUrl) return { url: ownUrl, alt: ownAlt };
-  const ctx = contextKey ? FIJI_IMAGES[contextKey] : null;
+  const ctx = semanticKey ? SEMANTIC_IMAGES[semanticKey] : null;
   if (ctx) return { url: ctx.url, alt: ctx.alt };
   return { url: null, alt: ownAlt };
-};
-
-const operatorImageContext = (region: string | null | undefined): string => {
-  const r = String(region || '').toLowerCase();
-  if (r.includes('yasawa')) return 'yasawa';
-  return 'nadi';
 };
 
 
@@ -214,7 +224,7 @@ const requireAdmin = (c: any) => {
 };
 
 app.notFound(c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.hero.url, FIJI_IMAGES.hero.alt, { aspect: '21/9', radius: '20px' })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px' })}</div>
   <span class="badge">404</span><h1>Looks like this path doesn't reach Fiji.</h1><p class="muted">The page you're looking for doesn't exist or may have moved.</p><p class="cta-row"><a class="btn" href="/experiences">Explore Fiji</a> <a class="btn secondary" href="/">Go home</a></p><p class="muted">Looking for something specific? <a href="/contact">Contact support</a>.</p></section>`, { title: 'Page not found — Vakaviti', noindex: true }), 404));
 
 // OG_IMAGE_PATH (/images/og-image.jpg) is now served directly by Workers Static Assets
@@ -224,15 +234,15 @@ app.get('/', async c => {
   const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 ORDER BY p.created_at ASC LIMIT 3`).all<any>();
   const featuredOperators = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id GROUP BY o.id ORDER BY o.canonical_name LIMIT 3`).all<any>();
 
-  const expCards = (featuredProducts.results || []).map((p: any) => { const img = resolveImage(p.image_url, CATEGORY_IMAGE_KEY[p.category], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p></div></a></article>`; }).join('');
-  const opCards = (featuredOperators.results || []).map((o: any) => { const img = resolveImage(o.image_url, operatorImageContext(o.region), o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Publicly listed'}</span><h3 style="margin:8px 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
+  const expCards = (featuredProducts.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p></div></a></article>`; }).join('');
+  const opCards = (featuredOperators.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Publicly listed'}</span><h3 style="margin:8px 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
 
   const categories = [
-    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', img: FIJI_IMAGES.transfers.url, alt: FIJI_IMAGES.transfers.alt, available: true },
-    { label: 'Island experiences', ctx: 'Coming soon', href: null, from: '#0f6e6a', to: '#0a3c39', img: FIJI_IMAGES.islands.url, alt: FIJI_IMAGES.islands.alt, available: false },
+    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', img: SEMANTIC_IMAGES.airport_transfer.url, alt: SEMANTIC_IMAGES.airport_transfer.alt, available: true },
+    { label: 'Island experiences', ctx: 'Coming soon', href: null, from: '#0f6e6a', to: '#0a3c39', img: SEMANTIC_IMAGES.islands.url, alt: SEMANTIC_IMAGES.islands.alt, available: false },
     { label: 'Waterfalls & nature', ctx: 'Coming soon', href: null, from: '#1c5c3f', to: '#0c2b23', img: null, alt: '', available: false },
     { label: 'Cultural experiences', ctx: 'Coming soon', href: null, from: '#7a4a1c', to: '#3d2510', img: null, alt: '', available: false },
-    { label: 'Adventure', ctx: 'Coming soon', href: null, from: '#2a4d6e', to: '#12283d', img: FIJI_IMAGES.adventure.url, alt: FIJI_IMAGES.adventure.alt, available: false },
+    { label: 'Adventure', ctx: 'Coming soon', href: null, from: '#2a4d6e', to: '#12283d', img: SEMANTIC_IMAGES.yasawa_transfer.url, alt: SEMANTIC_IMAGES.yasawa_transfer.alt, available: false },
     { label: 'Day tours', ctx: 'Coming soon', href: null, from: '#5c3d6e', to: '#291a33', img: null, alt: '', available: false }
   ];
   const catCards = categories.map(cat => {
@@ -263,17 +273,17 @@ ${opCards ? `<section class="section"><h2>Local operators</h2><div class="grid">
 
 <section class="section"><h2>Explore Fiji</h2><p class="muted">Browse by category — more experiences are being added as operators join.</p><div class="grid">${catCards}</div></section>
 
-<section class="section" style="text-align:center;color:#fff;border-radius:24px;padding:0;position:relative;overflow:hidden"><img src="${FIJI_IMAGES.hero.url}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0"><span style="position:absolute;inset:0;background:linear-gradient(160deg,rgba(9,30,23,.88),rgba(15,42,32,.82));z-index:0"></span><div style="position:relative;z-index:1;padding:56px 24px"><h2 style="color:#fff">Ready to plan your Fiji trip?</h2><p style="opacity:.9;max-width:520px;margin:0 auto 20px">Browse real experiences or reach out directly — or if you run a Fiji tour, activity or transport business, join as a Founding Partner.</p><div class="cta-row" style="justify-content:center"><a class="btn" style="background:#fff;color:#12231b" href="/experiences">Explore Fiji</a><a class="btn secondary" style="border-color:#fff;color:#fff" href="/partners">Become a Vakaviti partner</a></div></div></section>
+<section class="section" style="text-align:center;color:#fff;border-radius:24px;padding:0;position:relative;overflow:hidden"><img src="${SEMANTIC_IMAGES.hero.url}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0"><span style="position:absolute;inset:0;background:linear-gradient(160deg,rgba(9,30,23,.88),rgba(15,42,32,.82));z-index:0"></span><div style="position:relative;z-index:1;padding:56px 24px"><h2 style="color:#fff">Ready to plan your Fiji trip?</h2><p style="opacity:.9;max-width:520px;margin:0 auto 20px">Browse real experiences or reach out directly — or if you run a Fiji tour, activity or transport business, join as a Founding Partner.</p><div class="cta-row" style="justify-content:center"><a class="btn" style="background:#fff;color:#12231b" href="/experiences">Explore Fiji</a><a class="btn secondary" style="border-color:#fff;color:#fff" href="/partners">Become a Vakaviti partner</a></div></div></section>
 `, { title: 'Vakaviti — Find trusted Fiji experiences', description: 'Find trusted Fiji tours, activities and ground transport, and connect directly with local operators on WhatsApp.', noindex: true }));
 });
 
 app.get('/partners', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.partners.url, FIJI_IMAGES.partners.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.partners.url, SEMANTIC_IMAGES.partners.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">Founding Partner Program</span><h1>Put your Fiji experience in front of travellers.</h1><p class="muted">Vakaviti is a directory and enquiry channel for Fiji tourism operators. We list your business, travellers find you, and their questions get connected through to you — you stay in full control of price, availability and the booking itself.</p></section><section class="grid"><div class="card"><div class="card-body"><h3>What does it cost?</h3><p class="muted">No setup fee and no monthly fee for founding partners while the program is in preview. Final commercial terms will be confirmed with you directly before anything is charged.</p></div></div><div class="card"><div class="card-body"><h3>How does Vakaviti make money?</h3><p class="muted">Through a share of confirmed bookings once commercial terms are agreed with you — not a forced software subscription.</p></div></div><div class="card"><div class="card-body"><h3>What do you control?</h3><p class="muted">Your prices, availability, policies and identity. Nothing about your business goes live as "verified" without you confirming it first.</p></div></div><div class="card"><div class="card-body"><h3>What information is needed?</h3><p class="muted">Your business name, a WhatsApp number for enquiries, your service area, a short description, and at least one experience or service with a price (or "contact for price").</p></div></div><div class="card"><div class="card-body"><h3>What happens after you apply?</h3><p class="muted">We follow up directly by WhatsApp or email to confirm your details and prepare your public profile before it goes live.</p></div></div><div class="card"><div class="card-body"><h3>How are enquiries delivered?</h3><p class="muted">During this preview, traveller enquiries route through the Vakaviti team first, who pass them on to you with full details of what the traveller asked about — not yet a direct real-time connection to your own WhatsApp.</p></div></div></section><section class="section"><h2>Claim or add your business</h2><form method="post" action="/api/partner-interest"><label>Business name</label><input name="business" autocomplete="organization" required><label>Your name</label><input name="name" autocomplete="name" required><label>Phone / WhatsApp</label><input name="phone" type="tel" autocomplete="tel" required><label>Email</label><input name="email" type="email" autocomplete="email"><label>Website or Facebook page</label><input name="url" autocomplete="url"><button class="btn" type="submit">Start my profile</button></form><p class="muted">Prefer email? Write to <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p></section>`, { title: 'Become a Vakaviti Founding Partner', description: 'Join Vakaviti as a Founding Partner — no setup fee, keep control of your prices and bookings, get enquiries by WhatsApp.' })));
 
 app.get('/experiences', async c => {
   const rows = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.duration_minutes,p.verification_status,p.image_url,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 ORDER BY p.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((p: any) => { const img = resolveImage(p.image_url, CATEGORY_IMAGE_KEY[p.category], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p></div></a></article>`; }).join('');
+  const cards = (rows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Not yet verified'}</span><h3 style="margin:8px 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Experiences</span><h1>Fiji tours, activities and transport.</h1><p class="muted">Browse real Fiji experiences and ask Vakaviti on WhatsApp — we'll connect your enquiry with the right operator.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No experiences published yet. Check back soon.</div></div>'}</div>`, { title: 'Fiji Experiences — Vakaviti', description: 'Browse verified Fiji tours, activities and ground transport, and ask Vakaviti on WhatsApp to connect with local operators.', noindex: true }));
 });
 
@@ -291,13 +301,14 @@ app.get('/experiences/:slug', async c => {
     offer?.pickup_policy ? { label: 'Pickup', value: offer.pickup_policy } : null,
     offer?.cancellation_policy ? { label: 'Cancellation', value: offer.cancellation_policy } : null
   ].filter(Boolean) as { label: string; value: string }[];
-  const categoryKey = CATEGORY_IMAGE_KEY[p.category];
-  const heroImg = resolveImage(p.image_url, categoryKey, `${p.canonical_name} — ${o.canonical_name}`);
-  // A second, different context photo (not a repeat of the hero) so the page shows a little
-  // visual variety without turning into a gallery - only shown when the hero used a real
-  // context photo (not the operator's own image, and not the generated fallback).
-  const supportingKey = !p.image_url && categoryKey ? (categoryKey === 'transfers' ? 'nadi' : categoryKey === 'nadi' ? 'transfers' : categoryKey === 'yasawa' ? 'islands' : 'yasawa') : null;
-  const supportingImg = supportingKey ? FIJI_IMAGES[supportingKey] : null;
+  const semanticKey = PRODUCT_IMAGE_KEY[p.slug];
+  const heroImg = resolveImage(p.image_url, semanticKey, `${p.canonical_name} — ${o.canonical_name}`);
+  // A second, complementary photo - only shown when the hero itself resolved to a real,
+  // explicitly-assigned semantic photo (never pair a second photo onto the branded fallback,
+  // and never invent a pairing for a product with no verified match).
+  const SUPPORTING_KEY: Record<string, string> = { islands: 'yasawa_transfer', yasawa_transfer: 'islands', diving: 'islands', nadi_denarau: 'airport_transfer', airport_transfer: 'nadi_denarau' };
+  const supportingKey = !p.image_url && semanticKey ? SUPPORTING_KEY[semanticKey] : null;
+  const supportingImg = supportingKey ? SEMANTIC_IMAGES[supportingKey] : null;
   return c.html(html(`<section class="section" style="padding-top:20px">
     <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(heroImg.url, heroImg.alt, { aspect: '21/9', radius: '20px', seed: p.id, eager: true })}<span class="loc-badge">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</span></div>
     <span class="badge${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed — not yet verified'}</span>
@@ -314,7 +325,7 @@ app.get('/experiences/:slug', async c => {
 
 app.get('/operators', async c => {
   const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.claim_status,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, operatorImageContext(o.region), o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Claimed profile' : 'Publicly listed &middot; unclaimed'}</span><h3 style="margin:8px 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
+  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Claimed profile' : 'Publicly listed &middot; unclaimed'}</span><h3 style="margin:8px 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -324,9 +335,9 @@ app.get('/operators/:slug', async c => {
   const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,slug,category,verification_status,image_url FROM products WHERE operator_id=? ORDER BY canonical_name`).bind(o.id).all<any>();
   const verified = o.verification_status === 'VAKAVITI_VERIFIED';
   const status = verified ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Profile claimed — verification in progress' : 'Publicly listed — information not yet verified by Vakaviti';
-  const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, CATEGORY_IMAGE_KEY[p.category], `${p.canonical_name} — ${o.canonical_name}`); return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
+  const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="badge${p.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${p.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
-  const opHeroImg = resolveImage(o.image_url, operatorImageContext(o.region), o.canonical_name);
+  const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
   return c.html(html(`<section class="section">
     <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(opHeroImg.url, opHeroImg.alt, { aspect: '21/9', radius: '20px', seed: o.id, eager: true })}<span class="loc-badge">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</span></div>
     <span class="badge${verified ? ' verified' : ''}">${status}</span>
@@ -387,19 +398,19 @@ app.post('/api/partner-interest', async c => {
 });
 
 app.get('/about', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.hero.url, FIJI_IMAGES.hero.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">About</span><h1>What Vakaviti is — and isn't.</h1></section><div class="grid"><div class="card"><div class="card-body"><h3>What we are</h3><p class="muted">A directory that helps travellers find real Fiji tour, activity and ground transport operators, and connects them directly with those operators.</p></div></div><div class="card"><div class="card-body"><h3>What "publicly listed" means</h3><p class="muted">We found public evidence an operator exists. It does not mean we have verified identity, licences, prices or availability.</p></div></div><div class="card"><div class="card-body"><h3>What "Vakaviti Verified" means</h3><p class="muted">A human at Vakaviti has reviewed and confirmed the operator's identity and key facts. Verified status is never automatic and is never granted by AI alone.</p></div></div><div class="card"><div class="card-body"><h3>How enquiries work today</h3><p class="muted">During this preview, tapping "Ask Vakaviti on WhatsApp" opens a chat with Vakaviti, not the operator directly — we pass your enquiry on to the right local operator. The message always states which operator and experience you're asking about. Vakaviti does not currently process payments or confirm bookings — the operator handles your booking directly once connected.</p></div></div><div class="card"><div class="card-body"><h3>For operators</h3><p class="muted">Operators can join as a Founding Partner. See <a href="/partners">Become a Partner</a> for details.</p></div></div><div class="card"><div class="card-body"><h3>Questions?</h3><p class="muted">Reach us at <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p></div></div></div>`, { title: 'About Vakaviti', description: 'What Vakaviti is, what verification means, and how enquiries work.' })));
 
 app.get('/privacy', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.islands.url, FIJI_IMAGES.islands.alt, { aspect: '21/5', radius: '16px' })}</div>
+  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/5', radius: '16px' })}</div>
   <span class="badge">Preview</span><h1>Privacy</h1><p class="muted">This is a preview environment. A complete Privacy Policy will be published before public launch. In the meantime:</p></section><div class="grid"><div class="card"><div class="card-body"><p class="muted">Claim and Founding Partner forms collect the contact details you submit, used only to follow up with you.</p></div></div><div class="card"><div class="card-body"><p class="muted">Tapping a WhatsApp enquiry button records which listing and operator it relates to, and the time — not your personal details, which stay inside WhatsApp.</p></div></div><div class="card"><div class="card-body"><p class="muted">We do not sell your information.</p></div></div></div><p class="muted">Questions? Email <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p>`, { title: 'Privacy — Vakaviti', noindex: true })));
 
 app.get('/terms', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.adventure.url, FIJI_IMAGES.adventure.alt, { aspect: '21/5', radius: '16px' })}</div>
+  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.yasawa_transfer.url, SEMANTIC_IMAGES.yasawa_transfer.alt, { aspect: '21/5', radius: '16px' })}</div>
   <span class="badge">Preview</span><h1>Terms</h1><p class="muted">This is a preview environment. Complete Terms of Service will be published before public launch. In the meantime:</p></section><div class="grid"><div class="card"><div class="card-body"><p class="muted">Vakaviti is a directory and enquiry channel. We do not currently process payments or confirm bookings — any booking is arranged directly between you and the operator.</p></div></div><div class="card"><div class="card-body"><p class="muted">"Publicly listed" is not the same as "verified." Check the badge on each listing before relying on any detail.</p></div></div><div class="card"><div class="card-body"><p class="muted">Operators are responsible for the accuracy of information they confirm, and for fulfilling any booking made with them.</p></div></div></div><p class="muted">Questions? Email <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p>`, { title: 'Terms — Vakaviti', noindex: true })));
 
 app.get('/contact', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(FIJI_IMAGES.islands.url, FIJI_IMAGES.islands.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">Support</span><h1>Contact Vakaviti</h1><p class="muted">For travellers: use "Ask Vakaviti on WhatsApp" on any listing for the fastest response — during this preview, enquiries go to the Vakaviti team first, who connect you with the right operator.</p><p>For everything else, including operators wanting to join: <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a></p><p><a class="btn secondary" href="/partners">Become a Founding Partner</a></p></section>`, { title: 'Contact — Vakaviti' })));
 
 app.post('/api/admin/ai/enrich-candidate', async c => {
