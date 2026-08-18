@@ -41,7 +41,16 @@ products.post('/digitise', async c => {
   if (!body?.operator_candidate_id || !body?.source_text) return c.json({ error: 'operator_candidate_id_source_text_required' }, 400);
 
   const prompt = `You structure Fiji tourism products from public source material. Return JSON only with key products as an array. Each product must contain: canonical_name, category, description, destination_text, duration_minutes, currency, amount_minor, pricing_basis, availability_mode, pickup_claim, cancellation_claim, confidence, transport_attach_score, commercial_score. Never invent missing facts. Use null or UNKNOWN when absent. Prices are candidate claims only. Source:\n${String(body.source_text).slice(0,18000)}`;
-  const result: any = await c.env.AI.run(DEFAULT_MODEL, { messages:[{ role:'system', content:'Extract only supported facts. Never mark anything verified.' },{ role:'user', content:prompt }], response_format:{ type:'json_object' } });
+  // Workers AI occasionally errors transiently on an otherwise-valid call (observed live during
+  // Pilot 4 testing: 1 in 6 sequential calls threw, succeeded instantly on retry with identical
+  // input). Without this, that surfaces as an unhelpful raw 500 "Internal Server Error" instead
+  // of a diagnosable response - never invents a fake candidate, just reports the failure plainly.
+  let result: any;
+  try {
+    result = await c.env.AI.run(DEFAULT_MODEL, { messages:[{ role:'system', content:'Extract only supported facts. Never mark anything verified.' },{ role:'user', content:prompt }], response_format:{ type:'json_object' } });
+  } catch (err: any) {
+    return c.json({ created: [], count: 0, verified: false, reason: 'ai_call_failed', detail: String(err?.message || err).slice(0, 300) }, 502);
+  }
 
   // AI may discover, extract, normalise and structure - it never verifies. Every candidate this
   // route creates is forced into evidence_status='CANDIDATE' below (the table's own default) and
