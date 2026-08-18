@@ -65,13 +65,17 @@ app.post('/api/admin/ai/enrich-candidate', async c => {
   const denied = requireAdmin(c); if (denied) return denied;
   const body = await c.req.json<any>();
   if (!body?.candidate_id || !body?.canonical_name || !body?.source_text) return c.json({ error: 'candidate_id_canonical_name_source_text_required' }, 400);
-  const result = await enrichCandidate(c.env, {
-    candidate_id: String(body.candidate_id),
-    canonical_name: String(body.canonical_name),
-    source_text: String(body.source_text),
-    source_url: body.source_url ? String(body.source_url) : undefined
-  });
-  return c.json(result);
+  try {
+    const result = await enrichCandidate(c.env, {
+      candidate_id: String(body.candidate_id),
+      canonical_name: String(body.canonical_name),
+      source_text: String(body.source_text),
+      source_url: body.source_url ? String(body.source_url) : undefined
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: 'ai_enrichment_failed', detail: String(err?.message || err) }, 500);
+  }
 });
 
 app.post('/api/admin/ai/provider-copilot', async c => {
