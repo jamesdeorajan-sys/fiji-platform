@@ -14,6 +14,12 @@ binding = "AI"
 
 [vars]
 ENVIRONMENT = "preview"
+# Stage 1 preview-only enquiry routing rule: while ENVIRONMENT=preview, every visitor
+# WhatsApp enquiry routes here regardless of operator/product, so James sees every lead
+# during controlled testing. This does NOT change any operator's own stored contact in D1
+# (see src/index.ts resolveEnquiryDestination). A future production routing policy requires
+# its own explicit decision/configuration - it is not inferred from this value.
+MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 
 # Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
 # storage. Files under public/ are served directly at their path (e.g. public/images/x.webp
