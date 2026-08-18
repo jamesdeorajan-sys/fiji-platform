@@ -17,6 +17,7 @@ relying on chat history, local scratch files, or undocumented Cloudflare dashboa
   - `DB` — D1 binding
   - `AI` — Workers AI binding
   - `ENVIRONMENT` — plain text var, value `preview`
+  - `ASSETS` — Workers Static Assets binding, `directory = "./public"` (serves `public/images/*`)
 - Required secret (set separately, never committed):
   - `ADMIN_TOKEN` — gates every `/api/admin/*` route. Value is never stored anywhere in Git, and this document never records it.
 
@@ -42,6 +43,13 @@ All statements across all five files are `CREATE TABLE IF NOT EXISTS` / `CREATE 
 
 - Current model: `@cf/meta/llama-3.1-8b-instruct-fp8`
 - The shared model constant lives in `src/ai.ts` as `export const DEFAULT_MODEL`. `src/products.ts` imports it from there — there is intentionally only one place this string is defined, to avoid the exact bug fixed earlier (a duplicated hardcoded model string in `products.ts` going stale independently).
+
+## Visual Assets
+
+- Static asset serving: `wrangler.toml` `[assets]` block (`directory = "./public"`, `binding = "ASSETS"`) — Cloudflare's built-in Workers Static Assets feature. No R2, no Cloudflare Images, no external storage; files are bundled with the Worker and served directly from `apps/vakaviti-marketplace-stage1/public/` at their matching path (e.g. `public/images/hero-fiji-leleuvia.webp` → `/images/hero-fiji-leleuvia.webp`), ahead of the Worker's own `fetch` handler.
+- Real photography lives under `apps/vakaviti-marketplace-stage1/public/images/` and is fully committed to Git — a repository checkout alone is sufficient to recover every current image file, no separate asset backup needed.
+- Full source/license/photographer/retrieval-date record for every third-party photo: `apps/vakaviti-marketplace-stage1/IMAGE-SOURCES.md`. Recreate this file's discipline for any future images — verify the actual source page (not a search thumbnail) before downloading, record it, and never assign stock imagery to an operator's own `image_url` unless it is genuinely theirs.
+- Recovery implication: on a full rebuild, `git checkout` alone restores all current visual assets — no external service or manual re-download is required, unlike the D1 rows (which still need the separate secure backup described below).
 
 ## Build
 
@@ -134,12 +142,13 @@ If this Worker and D1 disappeared tomorrow:
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`
-8. Create a new `ADMIN_TOKEN` secret (never reuse an old/exposed value)
-9. Deploy (`wrangler deploy` or via Workers Builds Git integration)
-10. Restore D1 data from the secure backup (re-run the exported SQL statements against the new database)
-11. Test homepage (`/`) — expect 200
-12. Test operators/products (`/operators`, `/experiences`, and their detail pages) — expect 200, real inventory visible
-13. Test WhatsApp enquiry (`/enquire/:operatorSlug?product=:slug`) — expect a `302` to the correct `wa.me` link, and a new row in `enquiries`
-14. Test AI (`/api/admin/ai/enrich-candidate` and `/api/admin/products/digitise`, admin-authenticated) — expect `200`, no deprecated-model errors
-15. Confirm Nadi/Lagi isolation — re-verify `path_excludes` on both Pages projects (this setting lives in Cloudflare, not Git, and must be manually re-added if either project is recreated)
-16. Confirm no production routes/custom domains are attached to the new Worker — `workers.dev` only until an explicit future authorization
+8. Confirm the `[assets]` block points at `./public` (this is committed to Git, so a plain checkout already restores it — no extra step needed)
+9. Create a new `ADMIN_TOKEN` secret (never reuse an old/exposed value)
+10. Deploy (`wrangler deploy` or via Workers Builds Git integration)
+11. Restore D1 data from the secure backup (re-run the exported SQL statements against the new database)
+12. Test homepage (`/`) — expect 200, hero image loads
+13. Test operators/products (`/operators`, `/experiences`, and their detail pages) — expect 200, real inventory visible
+14. Test WhatsApp enquiry (`/enquire/:operatorSlug?product=:slug`) — expect a `302` to the correct `wa.me` link, and a new row in `enquiries`
+15. Test AI (`/api/admin/ai/enrich-candidate` and `/api/admin/products/digitise`, admin-authenticated) — expect `200`, no deprecated-model errors
+16. Confirm Nadi/Lagi isolation — re-verify `path_excludes` on both Pages projects (this setting lives in Cloudflare, not Git, and must be manually re-added if either project is recreated)
+17. Confirm no production routes/custom domains are attached to the new Worker — `workers.dev` only until an explicit future authorization
