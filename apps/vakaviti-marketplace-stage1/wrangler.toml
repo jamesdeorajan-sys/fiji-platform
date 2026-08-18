@@ -14,3 +14,10 @@ binding = "AI"
 
 [vars]
 ENVIRONMENT = "preview"
+
+# Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
+# storage. Files under public/ are served directly at their path (e.g. public/images/x.webp
+# -> /images/x.webp) before requests reach the Worker's fetch handler.
+[assets]
+directory = "./public"
+binding = "ASSETS"

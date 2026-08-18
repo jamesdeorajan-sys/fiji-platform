@@ -62,25 +62,10 @@ const mediaBlock = (imageUrl: string | null | undefined, alt: string, opts: { as
   return fallbackMedia(alt, { aspect, radius, seed: opts.seed });
 };
 
-// Homepage hero art: an original stylised Fiji sunset/lagoon scene (sky, sea, two palm
-// silhouettes). Not a photograph and not presented as one — an editorial illustration
-// standing in until real, rights-cleared photography is supplied.
-const HERO_ART = `<svg viewBox="0 0 900 560" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Illustration of a Fiji lagoon at sunset" style="width:100%;height:100%;display:block">
-<defs>
-<linearGradient id="heroSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe0ad"/><stop offset="42%" stop-color="#ff9d6c"/><stop offset="100%" stop-color="#0f6e6a"/></linearGradient>
-<linearGradient id="heroSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#15b8a8"/><stop offset="100%" stop-color="#0a3c39"/></linearGradient>
-</defs>
-<rect width="900" height="560" fill="url(#heroSky)"/>
-<circle cx="690" cy="150" r="86" fill="#fff0d2" opacity="0.9"/>
-<path d="M0 330 Q220 275 450 320 T900 300 V560 H0 Z" fill="url(#heroSea)"/>
-<path d="M0 380 Q240 335 470 372 T900 350 V560 H0 Z" fill="#0e5a55" opacity="0.65"/>
-<path d="M60 560 C58 470 108 415 148 415 C188 415 236 470 234 560 Z" fill="#0f2a20"/>
-<path d="M780 560 C778 480 822 432 858 432 C894 432 936 480 934 560 Z" fill="#0f2a20"/>
-</svg>`;
 
 const FAVICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#12231b"/><text x="32" y="45" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">V</text></svg>');
 
-const OG_IMAGE_PATH = '/og-image.svg';
+const OG_IMAGE_PATH = '/images/og-image.jpg';
 
 type PageOpts = { title?: string; description?: string; ogImage?: string | null; noindex?: boolean };
 
@@ -149,21 +134,8 @@ const requireAdmin = (c: any) => {
 
 app.notFound(c => c.html(html(`<section class="section"><span class="badge">404</span><h1>We couldn't find that page.</h1><p class="muted">The page you're looking for doesn't exist or may have moved.</p><p class="cta-row"><a class="btn" href="/">Go home</a> <a class="btn secondary" href="/experiences">Browse experiences</a></p><p class="muted">Looking for something specific? <a href="/contact">Contact support</a>.</p></section>`, { title: 'Page not found — Vakaviti', noindex: true }), 404));
 
-app.get(OG_IMAGE_PATH, c => {
-  const svg = `<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-<defs>
-<linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe0ad"/><stop offset="40%" stop-color="#ff9d6c"/><stop offset="100%" stop-color="#0f6e6a"/></linearGradient>
-<linearGradient id="w" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#15b8a8"/><stop offset="100%" stop-color="#0a3c39"/></linearGradient>
-</defs>
-<rect width="1200" height="630" fill="url(#s)"/>
-<circle cx="920" cy="150" r="100" fill="#fff0d2" opacity="0.9"/>
-<path d="M0 380 Q300 320 600 370 T1200 340 V630 H0 Z" fill="url(#w)"/>
-<path d="M0 430 Q320 390 620 420 T1200 400 V630 H0 Z" fill="#0e5a55" opacity="0.6"/>
-<text x="80" y="500" font-family="system-ui,sans-serif" font-size="72" font-weight="800" fill="#ffffff">Vakaviti</text>
-<text x="80" y="550" font-family="system-ui,sans-serif" font-size="28" font-weight="500" fill="#ffffff" opacity="0.92">Real Fiji. Local operators. Direct connection.</text>
-</svg>`;
-  return c.body(svg, 200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
-});
+// OG_IMAGE_PATH (/images/og-image.jpg) is now served directly by Workers Static Assets
+// from public/images/ - a real composited photo, replacing the earlier generated SVG.
 
 app.get('/', async c => {
   const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 ORDER BY p.created_at ASC LIMIT 3`).all<any>();
@@ -173,15 +145,19 @@ app.get('/', async c => {
   const opCards = (featuredOperators.results || []).map((o: any) => `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(o.image_url, o.canonical_name, { seed: o.id })}<div class="card-body"><span class="badge${o.verification_status === 'VAKAVITI_VERIFIED' ? ' verified' : ''}">${o.verification_status === 'VAKAVITI_VERIFIED' ? '✓ Vakaviti Verified' : 'Publicly listed'}</span><h3 style="margin:8px 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p></div></a></article>`).join('');
 
   const categories = [
-    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', available: true },
-    { label: 'Island experiences', ctx: 'Coming soon', href: null, from: '#0f6e6a', to: '#0a3c39', available: false },
-    { label: 'Waterfalls & nature', ctx: 'Coming soon', href: null, from: '#1c5c3f', to: '#0c2b23', available: false },
-    { label: 'Cultural experiences', ctx: 'Coming soon', href: null, from: '#7a4a1c', to: '#3d2510', available: false },
-    { label: 'Adventure', ctx: 'Coming soon', href: null, from: '#2a4d6e', to: '#12283d', available: false },
-    { label: 'Day tours', ctx: 'Coming soon', href: null, from: '#5c3d6e', to: '#291a33', available: false }
+    { label: 'Transfers', ctx: 'Airport & point-to-point', href: '/experiences', from: '#134a3f', to: '#0c2b23', img: null, alt: '', available: true },
+    { label: 'Island experiences', ctx: 'Coming soon', href: null, from: '#0f6e6a', to: '#0a3c39', img: '/images/category-islands-ocean.webp', alt: 'Fiji islands from above', available: false },
+    { label: 'Waterfalls & nature', ctx: 'Coming soon', href: null, from: '#1c5c3f', to: '#0c2b23', img: null, alt: '', available: false },
+    { label: 'Cultural experiences', ctx: 'Coming soon', href: null, from: '#7a4a1c', to: '#3d2510', img: null, alt: '', available: false },
+    { label: 'Adventure', ctx: 'Coming soon', href: null, from: '#2a4d6e', to: '#12283d', img: '/images/category-adventure.webp', alt: 'Boat at Kuata, Fiji before a dive', available: false },
+    { label: 'Day tours', ctx: 'Coming soon', href: null, from: '#5c3d6e', to: '#291a33', img: null, alt: '', available: false }
   ];
   const catCards = categories.map(cat => {
-    const inner = `<span class="fill" style="background:linear-gradient(135deg,${cat.from},${cat.to})"></span><span class="label"><strong>${esc(cat.label)}</strong><span>${esc(cat.ctx)}</span></span>${cat.available ? '' : '<span class="badge soon" style="position:absolute;top:12px;right:12px;z-index:1">Coming soon</span>'}`;
+    const fill = cat.img
+      ? `<img class="fill" src="${cat.img}" alt="${esc(cat.alt)}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
+      : `<span class="fill" style="background:linear-gradient(135deg,${cat.from},${cat.to})"></span>`;
+    const scrim = cat.img ? `<span class="fill" style="background:linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.05) 60%)"></span>` : '';
+    const inner = `${fill}${scrim}<span class="label"><strong>${esc(cat.label)}</strong><span>${esc(cat.ctx)}</span></span>${cat.available ? '' : '<span class="badge soon" style="position:absolute;top:12px;right:12px;z-index:1">Coming soon</span>'}`;
     return cat.available
       ? `<a class="cat-card" href="${cat.href}">${inner}</a>`
       : `<div class="cat-card" style="cursor:default">${inner}</div>`;
@@ -190,7 +166,7 @@ app.get('/', async c => {
   return c.html(html(`
 <section class="hero-wrap"><div class="hero-grid">
   <div><span class="eyebrow">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one trusted place.</h1><p class="muted">Every listing shows what Vakaviti has actually verified — evidence, identity and direct contact — so you can message the operator yourself with confidence.</p><div class="cta-row"><a class="btn" href="/experiences">Explore Fiji experiences</a><a class="btn secondary" href="/operators">Meet local operators</a></div></div>
-  <div class="hero-media">${HERO_ART}<span class="loc-badge">Fiji</span></div>
+  <div class="hero-media"><img src="/images/hero-fiji-leleuvia.webp" alt="Aerial view of Leleuvia Island, Fiji" loading="eager" fetchpriority="high" style="width:100%;height:100%;object-fit:cover;display:block"><span class="loc-badge">Leleuvia Island, Fiji</span></div>
 </div></section>
 
 <section class="section"><h2>Why Vakaviti</h2><div class="grid">
