@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { candidates } from './candidates';
 import { products } from './products';
+import { places } from './places';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -558,6 +559,7 @@ app.post('/api/admin/operators/:id/verification', async c => {
 
 app.route('/api/admin/candidates', candidates);
 app.route('/api/admin/products', products);
+app.route('/api/admin/places', places);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
 export default app;
