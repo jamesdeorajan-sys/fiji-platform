@@ -20,6 +20,9 @@ is not checked, and the task is not done — no exceptions, regardless of time p
 - [ ] **Code committed** — pushed to `ceo/vakaviti-marketplace-stage1` via a real commit with a
       descriptive message (never left only in local/scratch files).
 - [ ] **CI green** — both `validate` checks pass. (Necessary, never sufficient on its own.)
+- [ ] **Regression guard run manually** — `npm run guard:regression` was actually executed and
+      passed. This is NOT currently part of CI (see "What automation can and cannot do here"
+      below) — a green CI run does not mean this ran.
 - [ ] **Workers Build green** — the Cloudflare deployment check itself passed.
 - [ ] **Deployed version matches Git HEAD** — verified by fetching the live site and confirming
       it reflects the latest commit's actual changes (a content fingerprint check — e.g. a
@@ -64,7 +67,18 @@ checked, reason: X") rather than being marked PASS.
 
 ## What automation can and cannot do here
 
-`scripts/regression-guards.mjs` (wired into CI) catches: missing image asset files, image keys
+**CI REGRESSION GUARD WIRING — PENDING CEO AUTHORIZATION.** `scripts/regression-guards.mjs`
+exists, is committed, and is runnable manually (`npm run guard:regression`), but as of 2026-08-19
+it is **NOT** wired into `.github/workflows/vakaviti-marketplace-stage1-ci.yml` — the API token
+used for Stage 1 work has `repo`/`read:org`/`gist` scopes only, and GitHub blocks API writes to
+`.github/workflows/*` without the `workflow` scope (it returns 404 rather than 403, so the failure
+is silent unless specifically checked for — which is exactly how this file's wording drifted from
+reality once before; do not let it happen again). Adding the one-line CI step requires either the
+token being re-authorized with the `workflow` scope, or a human applying the change directly in
+GitHub. Until that happens, every task must run `npm run guard:regression` manually before
+declaring Stage 1 work done — CI staying green does NOT mean this guard ran.
+
+Once wired, `scripts/regression-guards.mjs` catches: missing image asset files, image keys
 referenced but not defined in the semantic registry, a non-absolute `og:image`, a missing preview
 environment or central enquiry WhatsApp config, a protected production domain leaking into Stage 1
 config, and an unexpected drift in the pinned Workers AI model.
