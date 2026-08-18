@@ -46,14 +46,45 @@ downloading.
 - Use: "Adventure" category card, homepage Explore Fiji grid
 - Processing: resized to 1000px wide, converted to WebP (quality 80)
 
+## `context-denarau-marina.webp`
+- Source: Unsplash
+- Photographer: Adam Young ([@hossua34](https://unsplash.com/@hossua34))
+- Original page verified directly (not via search-tag grouping) — caption/location: Denarau Island Marina, Fiji
+- License: Unsplash License (free to use, commercial and non-commercial, no permission required) — confirmed present on source page
+- Published on Unsplash: 2026-06-14
+- Retrieved: 2026-08-19
+- Use: `nadi`/`denarau` context key in `FIJI_IMAGES` — Nadi Airport Transfers destination context (operator hero/card fallback), used only as generic Fiji/Denarau context, never captioned or implied as the operator's own vehicle, driver, staff or premises
+- Processing: resized to 1100px wide, converted to WebP (quality 82)
+
+## `context-arrival-sky.webp`
+- Source: Unsplash
+- Photographer: Josh Withers ([@joshwithers](https://unsplash.com/@joshwithers))
+- Original page verified directly (not via search-tag grouping) — caption/location: Beachcomber Island, Fiji, aircraft on approach
+- License: Unsplash License — confirmed present on source page
+- Published on Unsplash: 2024-06-12
+- Retrieved: 2026-08-19
+- Use: `transfers`/`arrival` context key in `FIJI_IMAGES` — Transfers category card on the homepage Explore Fiji grid, and as generic arrival/transport context on product pages; never implies a specific vehicle, aircraft or operator
+- Processing: resized to 1100px wide, converted to WebP (quality 82)
+
 ---
+
+## Rejected candidates (this round, 2026-08-19)
+
+- **"bird's-eye view of islands" (Denys Nevozhai)** — appeared under a "Fiji"-tagged search
+  result, but its own source page states the actual location as Ao Nang, Krabi, Thailand.
+  Rejected before download — exactly the failure mode the "always verify the actual source
+  page, never trust search-tag grouping" rule exists to catch.
+- **Sebastian Pena Lambarri aerial lagoon photo** — briefly considered from memory of an
+  earlier browsing session, but re-verifying its actual current source page showed it is a
+  Maldives photo, not Fiji. Rejected on re-verification; not used.
+- **"Oarsman's Bay Lodge, Yasawa, Fiji"** — genuine Fiji/Yasawa location, but the photo's own
+  caption names a specific competing resort property. Rejected to avoid any unintended
+  association between Vakaviti's generic Yasawa context imagery and a named competitor
+  business. The already-verified Kuata/Yasawa boat photo (`category-adventure.webp`) is reused
+  for the `yasawa` context key instead.
 
 ## Categories intentionally left on the generated fallback (no image forced)
 
-- **Transfers** — no verified genuine Fiji airport/road/arrival photo was found; forcing a
-  mismatched or unverified photo would violate the "do not fabricate context" instruction.
-  Also: per the operator-specific rule, no stock image may ever be captioned or implied as
-  Nadi Airport Transfers' own vehicle/driver/fleet.
 - **Waterfalls & Nature** — a targeted Unsplash search for "Fiji waterfall" returned only one
   free result, and its title/description did not actually match a waterfall — using it would
   have meant depending on a search-result thumbnail rather than verified source content, which
@@ -66,9 +97,10 @@ downloading.
 
 ## Operator/product imagery
 
-No stock photography was assigned to Nadi Airport Transfers or any of its products/services.
-`operators.image_url` and `products.image_url` remain unset for all current inventory — the
-premium generated Vakaviti fallback continues to render for the operator card, operator hero,
-and every product card/detail page, per the explicit instruction not to imply a stock photograph
-depicts this operator's actual vehicle, driver, staff or fleet until a real authorized photo is
-supplied.
+No stock photography was assigned to Nadi Airport Transfers, Blue Lagoon Beach Resort, or any
+of their products/services. `operators.image_url` and `products.image_url` remain unset for all
+current inventory — `resolveImage()` falls through to the relevant Fiji destination/category
+context photo (Nadi Airport Transfers → `nadi`/Denarau context; Blue Lagoon Beach Resort →
+`yasawa`/Kuata context, since it is in the Yasawa group), per the explicit instruction never to
+imply a stock photograph depicts an operator's actual vehicle, driver, staff, premises or
+activity until a real authorized photo is supplied.
