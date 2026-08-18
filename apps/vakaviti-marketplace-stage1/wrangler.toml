@@ -1,16 +1,1 @@
-name = "vakaviti-marketplace-stage1"
-main = "src/index.ts"
-compatibility_date = "2026-08-01"
-
-# Dedicated Stage 1 preview D1 created in Cloudflare on 2026-08-17.
-# Do not reuse any existing production D1 database.
-[[d1_databases]]
-binding = "DB"
-database_name = "vakaviti-marketplace-stage1-db"
-database_id = "f2753057-4319-40d6-bcd8-84eccd28bfe1"
-
-[ai]
-binding = "AI"
-
-[vars]
-ENVIRONMENT = "preview"
+@C:\Users\James\AppData\Local\Temp\claude\C--Users-James-Desktop-VAKAVITI-MASTER\56215cd6-a5fa-4f9e-b958-88dbaee22580\scratchpad/wrangler.toml
