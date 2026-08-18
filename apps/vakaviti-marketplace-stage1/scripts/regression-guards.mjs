@@ -111,6 +111,42 @@ console.log('== 7. No duplicate product slugs hard-coded across the image-key ma
   }
 }
 
+console.log('== 8. Public routes enforce the commercial_status publication gate ==');
+{
+  // Split the file into per-route chunks so each query can be checked against the route it
+  // actually belongs to. /claim/:slug is the one deliberate exemption - see
+  // EVIDENCE-AND-PROMOTION-GOVERNANCE.md for why (claiming is an onboarding step, not public
+  // marketplace discovery).
+  const EXEMPT_ROUTES = ["'/claim/:slug'"];
+  const routeBlocks = indexTs.split(/(?=app\.(?:get|post)\()/);
+  let checked = 0;
+  for (const block of routeBlocks) {
+    const routeMatch = block.match(/^app\.(?:get|post)\((['"][^'"]+['"])/);
+    if (!routeMatch) continue;
+    const routePath = routeMatch[1];
+    const hasOperatorQuery = /FROM operators/.test(block);
+    const hasProductQuery = /FROM products/.test(block);
+    if (!hasOperatorQuery && !hasProductQuery) continue;
+    if (EXEMPT_ROUTES.includes(routePath)) {
+      ok(`${routePath} - exempt from the publication gate (documented)`);
+      continue;
+    }
+    checked++;
+    // Every FROM operators / FROM products query line in a non-exempt route must carry the
+    // commercial_status='ACTIVE' filter somewhere in that same statement.
+    const queryLines = block.split('\n').filter(l => /FROM operators|FROM products/.test(l));
+    for (const line of queryLines) {
+      if (!/commercial_status\s*=\s*'ACTIVE'/.test(line)) {
+        fail(`${routePath} has a FROM operators/products query with no commercial_status='ACTIVE' filter: ${line.trim().slice(0, 140)}...`);
+      }
+    }
+    if (queryLines.every(l => /commercial_status\s*=\s*'ACTIVE'/.test(l))) {
+      ok(`${routePath} - all operator/product queries enforce commercial_status='ACTIVE'`);
+    }
+  }
+  if (checked === 0) fail('No public routes with FROM operators/products queries were found to check - the regex may be broken');
+}
+
 console.log('\n----------------------------------------');
 console.log('NOTE: D1-level checks (orphan products, invalid operator relationships, duplicate');
 console.log('slugs IN THE DATABASE, invalid pricing_basis/currency combinations) are NOT run by');

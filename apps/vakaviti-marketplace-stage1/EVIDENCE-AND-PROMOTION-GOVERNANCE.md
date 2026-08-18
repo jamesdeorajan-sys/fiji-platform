@@ -105,3 +105,54 @@ operator. Closing this (e.g. a real draft/publish distinction, or filtering the 
 Canonical ecosystem IDs, the Fiji Place Authority, the Lead/Fare/Booking Services, and any
 cross-ecosystem API (ComeToFiji, Lagi) remain out of scope until this supply-governance path is
 proven with real use.
+
+## The publication law (added 2026-08-19, Evidence Engine Pilot 3)
+
+Every state above answers "what do we believe is true." None of them answer "is this visible to
+the public." Those are separate questions, and conflating them was a real defect found during
+Pilot 2's synthetic testing: a freshly promoted `NOT_VERIFIED`/`INACTIVE` operator was immediately
+visible on every public page, identically to a verified one.
+
+**Explicitly, none of these states imply publication:**
+- `DISCOVERED` does not mean published.
+- `SOURCE_EVIDENCED` does not mean published.
+- `OPERATOR_CONFIRMED` does not mean published.
+- `VAKAVITI_VERIFIED` does not automatically mean published.
+- `PROMOTED` (i.e. exists as an `operators`/`products` row) does not mean published.
+
+**The only thing that gates public visibility is `commercial_status`:**
+- `commercial_status='ACTIVE'` → eligible for public marketplace visibility
+- `commercial_status!='ACTIVE'` → MUST NOT appear on any public page or accept enquiries
+
+Verification and publication are independent dimensions — both can vary independently:
+- `VAKAVITI_VERIFIED` + `INACTIVE` = verified internally, not publicly listed
+- `NOT_VERIFIED` + `ACTIVE` = may be publicly listed if commercial approval explicitly permits it (Stage 1's own 2 real operators are exactly this shape for their *products* — every product is `NOT_VERIFIED`/`ACTIVE`, while the *operators* are `VAKAVITI_VERIFIED`/`ACTIVE`)
+- `NOT_VERIFIED` + `INACTIVE` = not publicly visible (the default state a freshly promoted operator now lands in)
+
+## Fail-closed public queries (implemented 2026-08-19)
+
+Every public discovery/commercial query in `src/index.ts` now requires `commercial_status='ACTIVE'`
+on both the operator and, where applicable, the product:
+
+| Route | Operator filter | Product filter |
+|---|---|---|
+| `/` (featured products/operators) | Yes | Yes |
+| `/experiences` | Yes | Yes |
+| `/experiences/:slug` | Yes (checked after product lookup, so an inactive parent 404s even if the product row is itself ACTIVE) | Yes |
+| `/operators` | Yes | Yes (product count and listing) |
+| `/operators/:slug` | Yes | Yes |
+| `/enquire/:operatorSlug` | Yes | Yes (an inactive product silently falls through to no product-specific mention rather than erroring; an inactive operator 404s the whole route) |
+
+**`/claim/:slug` is deliberately NOT filtered.** Claiming a profile is an onboarding step for an
+operator to take control of their own listing, not public marketplace discovery — an operator
+should be able to claim a not-yet-`ACTIVE` listing as part of getting activated. This is a
+considered exclusion, not an oversight.
+
+No sitemap, feed, or other public discovery endpoint exists in this app beyond the routes above
+(confirmed by full-file inspection).
+
+## Known limitation carried forward
+
+There is still no `POST /publish` or `POST /activate` endpoint — reaching `commercial_status='ACTIVE'`
+remains an explicit, direct data state with no code path that sets it automatically. Building that
+endpoint requires separate, later CEO authorization, per instruction.
