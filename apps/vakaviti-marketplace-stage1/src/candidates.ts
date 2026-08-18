@@ -66,3 +66,70 @@ candidates.post('/:id/review', async c => {
     .bind(crypto.randomUUID(),'CANDIDATE_OPERATOR',id,'WORKFLOW_REVIEW',String(body.reviewer||'CEO_REVIEW'),String(body.note||''),JSON.stringify(before),JSON.stringify(after)).run();
   return c.json({ candidate: after });
 });
+
+// Controlled candidate_operator -> operator promotion (2026-08-19, Evidence Engine Pilot 2).
+//
+// This is the missing governance step: previously NO code path anywhere in this app promoted a
+// candidate into the live operators table, and NO code path anywhere set VAKAVITI_VERIFIED - both
+// live operators were inserted directly outside this pipeline under explicit CEO authorization.
+// This endpoint closes that gap for FUTURE supply while leaving that fact true of the existing 2
+// operators (untouched by this change).
+//
+// Fails closed on every axis: wrong/missing admin token -> 401 (via the router-level requireAdmin
+// already applied above); candidate not in an approved review state -> 409; already promoted once
+// -> 409 (checked via review_actions, not a new column - zero schema change); any mandatory field
+// unsupported -> 422 naming exactly what's missing. On success the new operator is ALWAYS created
+// with verification_status='NOT_VERIFIED' and commercial_status='INACTIVE' - there is no branch of
+// this function that can produce VAKAVITI_VERIFIED. Reaching that status remains a wholly separate,
+// later, human decision outside this endpoint (there is still no code anywhere that sets it).
+//
+// KNOWN GAP (reported, not fixed here): none of the public marketplace queries in src/index.ts
+// filter by commercial_status or verification_status - a freshly promoted NOT_VERIFIED/INACTIVE
+// operator is immediately visible on /operators and /operators/:slug like any other. This endpoint
+// only prevents *unevidenced* promotion, not *public visibility* of a newly promoted operator. See
+// the task report for this finding - closing it (e.g. a real draft/publish gate) is separate work.
+candidates.post('/:id/promote', async c => {
+  const id = c.req.param('id');
+  const body = await c.req.json<any>().catch(() => ({}));
+
+  const candidateRow = await c.env.DB.prepare(`SELECT * FROM candidate_operators WHERE id=?`).bind(id).first<any>();
+  if (!candidateRow) return c.json({ error: 'not_found' }, 404);
+
+  if (!['QUALIFIED', 'SHORTLISTED'].includes(String(candidateRow.workflow_state))) {
+    return c.json({ error: 'candidate_not_approved_for_promotion', workflow_state: candidateRow.workflow_state }, 409);
+  }
+
+  const priorPromotion = await c.env.DB.prepare(
+    `SELECT id, after_json FROM review_actions WHERE entity_type='CANDIDATE_OPERATOR' AND entity_id=? AND action_type='PROMOTED_TO_OPERATOR' LIMIT 1`
+  ).bind(id).first<any>();
+  if (priorPromotion) return c.json({ error: 'already_promoted', review_action_id: priorPromotion.id }, 409);
+
+  // Mandatory evidence coverage - deliberately minimal: only what's commercially necessary to
+  // publish a listing at all (name, a place, a way to contact them, a declared category). Optional
+  // facts (website, legal identity, etc.) are never required to promote.
+  const missing: string[] = [];
+  if (!candidateRow.canonical_name) missing.push('canonical_name');
+  if (!candidateRow.locality && !candidateRow.region) missing.push('location');
+  if (!candidateRow.whatsapp && !candidateRow.phone && !candidateRow.email) missing.push('contact');
+  let categories: any[] = [];
+  try { categories = JSON.parse(candidateRow.categories_json || '[]'); } catch { categories = []; }
+  if (!Array.isArray(categories) || categories.length === 0) missing.push('category');
+  const sourceCountRow = await c.env.DB.prepare(`SELECT COUNT(*) as n FROM candidate_sources WHERE candidate_id=?`).bind(id).first<any>();
+  if (!sourceCountRow || Number(sourceCountRow.n) < 1) missing.push('provenance_source');
+  if (missing.length) return c.json({ error: 'missing_mandatory_evidence', missing }, 422);
+
+  const operatorId = crypto.randomUUID();
+  const normalized = normalizeName(String(candidateRow.canonical_name)).replace(/\s+/g, '-');
+  const slug = `${normalized}-${operatorId.slice(0, 8)}`;
+
+  await c.env.DB.prepare(`INSERT INTO operators(
+    id,canonical_name,slug,website_url,facebook_url,instagram_url,whatsapp,email,phone,locality,region,country_code,discovery_status,claim_status,verification_status,commercial_status
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?, 'FJ', 'PUBLICLY_LISTED', 'UNCLAIMED', 'NOT_VERIFIED', 'INACTIVE')`)
+    .bind(operatorId, candidateRow.canonical_name, slug, candidateRow.website_url, candidateRow.facebook_url, candidateRow.instagram_url, candidateRow.whatsapp, candidateRow.email, candidateRow.phone, candidateRow.locality, candidateRow.region).run();
+
+  const reviewActionId = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO review_actions(id,entity_type,entity_id,action_type,actor,note,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)`)
+    .bind(reviewActionId, 'CANDIDATE_OPERATOR', id, 'PROMOTED_TO_OPERATOR', String(body.reviewer || 'CEO_REVIEW'), String(body.note || ''), JSON.stringify(candidateRow), JSON.stringify({ operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: 'INACTIVE' })).run();
+
+  return c.json({ operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: 'INACTIVE', review_action_id: reviewActionId }, 201);
+});
