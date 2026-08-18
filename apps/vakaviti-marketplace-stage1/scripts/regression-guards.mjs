@@ -16,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const indexTs = readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
 const aiTs = readFileSync(path.join(ROOT, 'src/ai.ts'), 'utf8');
+const productsTs = readFileSync(path.join(ROOT, 'src/products.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -94,6 +95,18 @@ console.log('== 6. Workers AI model is the pinned, non-deprecated value ==');
   if (!match) fail('Could not find DEFAULT_MODEL in src/ai.ts');
   else if (match[1] === EXPECTED_MODEL) ok(`DEFAULT_MODEL is the pinned value (${EXPECTED_MODEL})`);
   else fail(`DEFAULT_MODEL changed to '${match[1]}' (expected '${EXPECTED_MODEL}') - if this is a deliberate upgrade, update EXPECTED_MODEL in this guard too`);
+
+  // Any AI-calling module must import the shared constant rather than hardcoding its own model
+  // string - this is exactly the bug class that motivated DEFAULT_MODEL existing in the first
+  // place (see STAGE1-RECOVERY.md). A hardcoded '@cf/...' literal outside src/ai.ts is a
+  // duplicate-truth risk even if it happens to match today.
+  if (!/from ['"]\.\/ai['"]/.test(productsTs) || !/DEFAULT_MODEL/.test(productsTs)) {
+    fail('src/products.ts does not import DEFAULT_MODEL from ./ai - it may be hardcoding its own model string');
+  } else {
+    ok('src/products.ts imports the shared DEFAULT_MODEL rather than hardcoding a model string');
+  }
+  const hardcodedInProducts = productsTs.match(/AI\.run\(\s*'(@cf\/[^']+)'/);
+  if (hardcodedInProducts) fail(`src/products.ts hardcodes a model string directly in an AI.run() call: '${hardcodedInProducts[1]}' - should use DEFAULT_MODEL`);
 }
 
 console.log('== 7. No duplicate product slugs hard-coded across the image-key maps (structural sanity) ==');
