@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { DEFAULT_MODEL } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ADMIN_TOKEN?: string };
 export const products = new Hono<{ Bindings: Bindings }>();
@@ -16,7 +17,7 @@ products.post('/digitise', async c => {
   if (!body?.operator_candidate_id || !body?.source_text) return c.json({ error: 'operator_candidate_id_source_text_required' }, 400);
 
   const prompt = `You structure Fiji tourism products from public source material. Return JSON only with key products as an array. Each product must contain: canonical_name, category, description, destination_text, duration_minutes, currency, amount_minor, pricing_basis, availability_mode, pickup_claim, cancellation_claim, confidence, transport_attach_score, commercial_score. Never invent missing facts. Use null or UNKNOWN when absent. Prices are candidate claims only. Source:\n${String(body.source_text).slice(0,18000)}`;
-  const result: any = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages:[{ role:'system', content:'Extract only supported facts. Never mark anything verified.' },{ role:'user', content:prompt }], response_format:{ type:'json_object' } });
+  const result: any = await c.env.AI.run(DEFAULT_MODEL, { messages:[{ role:'system', content:'Extract only supported facts. Never mark anything verified.' },{ role:'user', content:prompt }], response_format:{ type:'json_object' } });
   let parsed:any = {};
   try { parsed = typeof result?.response === 'string' ? JSON.parse(result.response) : result; } catch { parsed = { products: [] }; }
   const items = Array.isArray(parsed?.products) ? parsed.products : [];
