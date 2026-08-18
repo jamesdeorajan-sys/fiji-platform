@@ -65,7 +65,9 @@ const mediaBlock = (imageUrl: string | null | undefined, alt: string, opts: { as
 
 const FAVICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#12231b"/><text x="32" y="45" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">V</text></svg>');
 
-const OG_IMAGE_PATH = '/images/og-image.jpg';
+// Must be an absolute URL - OG/social crawlers do not resolve relative image paths.
+// Update this one line when a branded production domain replaces the preview URL.
+const OG_IMAGE_PATH = 'https://vakaviti-marketplace-stage1.helpronline.workers.dev/images/og-image.jpg';
 
 type PageOpts = { title?: string; description?: string; ogImage?: string | null; noindex?: boolean };
 
