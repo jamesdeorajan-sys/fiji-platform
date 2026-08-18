@@ -3,7 +3,7 @@ export type AIEnv = {
   DB: D1Database;
 };
 
-const DEFAULT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+const DEFAULT_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
 
 export type CandidateEnrichmentInput = {
   candidate_id: string;
