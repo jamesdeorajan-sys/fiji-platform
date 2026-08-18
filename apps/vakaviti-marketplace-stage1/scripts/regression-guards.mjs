@@ -17,6 +17,7 @@ const ROOT = path.resolve(__dirname, '..');
 const indexTs = readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
 const aiTs = readFileSync(path.join(ROOT, 'src/ai.ts'), 'utf8');
 const productsTs = readFileSync(path.join(ROOT, 'src/products.ts'), 'utf8');
+const candidatesTs = readFileSync(path.join(ROOT, 'src/candidates.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -127,9 +128,13 @@ console.log('== 7. No duplicate product slugs hard-coded across the image-key ma
 console.log('== 8. Public routes enforce the commercial_status publication gate ==');
 {
   // Split the file into per-route chunks so each query can be checked against the route it
-  // actually belongs to. /claim/:slug is the one deliberate exemption - see
+  // actually belongs to. /claim/:slug is a deliberate named exemption - see
   // EVIDENCE-AND-PROMOTION-GOVERNANCE.md for why (claiming is an onboarding step, not public
-  // marketplace discovery).
+  // marketplace discovery). Every /api/admin/* route is also exempt as a class: these are
+  // authenticated internal governance mechanisms (candidate review, promotion, verification
+  // decisions) that must be able to look up an operator/product regardless of its publication
+  // state - Pilot 3's own instruction was explicit that "the publication gate applies to PUBLIC
+  // marketplace discovery, not internal governance records."
   const EXEMPT_ROUTES = ["'/claim/:slug'"];
   const routeBlocks = indexTs.split(/(?=app\.(?:get|post)\()/);
   let checked = 0;
@@ -140,8 +145,9 @@ console.log('== 8. Public routes enforce the commercial_status publication gate 
     const hasOperatorQuery = /FROM operators/.test(block);
     const hasProductQuery = /FROM products/.test(block);
     if (!hasOperatorQuery && !hasProductQuery) continue;
-    if (EXEMPT_ROUTES.includes(routePath)) {
-      ok(`${routePath} - exempt from the publication gate (documented)`);
+    const isAdminRoute = /^'\/api\/admin\//.test(routePath);
+    if (EXEMPT_ROUTES.includes(routePath) || isAdminRoute) {
+      ok(`${routePath} - exempt from the publication gate (${isAdminRoute ? 'admin/internal route' : 'documented exemption'})`);
       continue;
     }
     checked++;
@@ -158,6 +164,59 @@ console.log('== 8. Public routes enforce the commercial_status publication gate 
     }
   }
   if (checked === 0) fail('No public routes with FROM operators/products queries were found to check - the regex may be broken');
+}
+
+console.log('== 9. Verification and publication remain independent - dangerous write patterns ==');
+{
+  // AI must never write VAKAVITI_VERIFIED. src/products.ts only ever writes to
+  // product_candidates (never operators/products), and src/ai.ts never touches D1 verification
+  // columns at all - either file containing this literal would mean an AI-callable path can
+  // verify something.
+  for (const [name, content] of [['src/products.ts', productsTs], ['src/ai.ts', aiTs]]) {
+    if (/VAKAVITI_VERIFIED/.test(content)) {
+      fail(`${name} references 'VAKAVITI_VERIFIED' - AI-adjacent code must never write this value`);
+    } else {
+      ok(`${name} contains no reference to VAKAVITI_VERIFIED`);
+    }
+  }
+
+  // Promotion (candidate -> operator, and candidate -> product) must always force NOT_VERIFIED,
+  // never VAKAVITI_VERIFIED, at the exact INSERT that creates the row.
+  const promoteBlocks = [...candidatesTs.matchAll(/\.post\(['"][^'"]*promote[^'"]*['"][\s\S]*?\n\}\);/g)]
+    .concat([...productsTs.matchAll(/\.post\(['"][^'"]*promote[^'"]*['"][\s\S]*?\n\}\);/g)]);
+  if (promoteBlocks.length === 0) {
+    fail('No /promote route handlers found in candidates.ts/products.ts - the regex may be broken');
+  }
+  for (const m of promoteBlocks) {
+    const block = m[0];
+    if (/VAKAVITI_VERIFIED/.test(block)) fail('A /promote handler references VAKAVITI_VERIFIED - promotion must always force NOT_VERIFIED');
+    if (!/NOT_VERIFIED/.test(block)) fail('A /promote handler does not force NOT_VERIFIED anywhere in its INSERT');
+  }
+  if (promoteBlocks.length > 0 && promoteBlocks.every(m => /NOT_VERIFIED/.test(m[0]) && !/VAKAVITI_VERIFIED/.test(m[0]))) {
+    ok(`${promoteBlocks.length} /promote handler(s) force NOT_VERIFIED and never reference VAKAVITI_VERIFIED`);
+  }
+
+  // The verification-decision endpoint itself must never touch commercial_status - verification
+  // and publication must vary independently in both directions.
+  const verifyMatch = indexTs.match(/app\.post\(['"][^'"]*verification[^'"]*['"][\s\S]*?\n\}\);/);
+  if (!verifyMatch) {
+    fail('No .../verification POST route handler found in src/index.ts - the regex may be broken');
+  } else {
+    const block = verifyMatch[0];
+    const updateStatements = [...block.matchAll(/UPDATE operators SET[^`]*`/g)].map(m => m[0]);
+    const touchesCommercialStatus = updateStatements.some(s => /commercial_status\s*=/.test(s));
+    if (touchesCommercialStatus) fail('The verification-decision endpoint\'s UPDATE statement references commercial_status - verification must never change publication state');
+    else ok('The verification-decision endpoint never writes commercial_status');
+  }
+
+  // Symmetric check: the publication gate itself (the commercial_status='ACTIVE' filters checked
+  // in section 8) must never appear alongside a verification_status write in the same statement -
+  // publication reads must stay reads, never silently promote something to verified.
+  const setVerificationOutsideEndpoint = [...indexTs.matchAll(/UPDATE (?:operators|products) SET[^`]*verification_status\s*=\s*'VAKAVITI_VERIFIED'[^`]*`/g)];
+  const insideVerificationEndpoint = verifyMatch ? verifyMatch[0] : '';
+  const stray = setVerificationOutsideEndpoint.filter(m => !insideVerificationEndpoint.includes(m[0]));
+  if (stray.length > 0) fail(`Found ${stray.length} UPDATE statement(s) outside the verification endpoint that set verification_status='VAKAVITI_VERIFIED'`);
+  else ok('No UPDATE statement outside the verification-decision endpoint sets VAKAVITI_VERIFIED');
 }
 
 console.log('\n----------------------------------------');

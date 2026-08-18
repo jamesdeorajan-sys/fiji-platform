@@ -156,3 +156,61 @@ No sitemap, feed, or other public discovery endpoint exists in this app beyond t
 There is still no `POST /publish` or `POST /activate` endpoint — reaching `commercial_status='ACTIVE'`
 remains an explicit, direct data state with no code path that sets it automatically. Building that
 endpoint requires separate, later CEO authorization, per instruction.
+
+## The verification law (added 2026-08-19, Evidence Engine Pilot 5)
+
+Extends the publication law above with the equivalent rule for the *verification* dimension:
+
+- `CEO_AUTHORIZATION` (a source type recorded in `evidence`) is **not** independent verification.
+- AI extraction (`POST /api/admin/products/digitise`) is **not** verification — structurally
+  cannot be, since it only ever writes `product_candidates`, never `operators`/`products`.
+- `SOURCE_EVIDENCED` is **not** `OPERATOR_CONFIRMED`, and `OPERATOR_CONFIRMED` is **not**
+  automatically `VAKAVITI_VERIFIED`.
+- `VAKAVITI_VERIFIED` requires one thing only: an explicit human decision through
+  `POST /api/admin/operators/:id/verification`. There is no other code path in this codebase
+  that writes that value — confirmed by inspection: `src/candidates.ts`'s `/:id/promote` always
+  forces `NOT_VERIFIED`; `src/products.ts`'s AI pipeline never touches `operators` at all.
+
+**Verification and publication are fully independent — both can vary independently, and neither
+automatically changes the other:**
+- `ACTIVE` + `NOT_VERIFIED` — valid (Stage 1's own 10 real products are exactly this shape)
+- `INACTIVE` + `VAKAVITI_VERIFIED` — valid (verified internally, not yet publicly listed)
+- `ACTIVE` + `VAKAVITI_VERIFIED` — valid (Stage 1's own 2 real operators are exactly this shape)
+
+`POST /api/admin/operators/:id/verification` never references or writes `commercial_status` in
+any branch — this is enforced by omission (the `UPDATE` statement only ever sets
+`verification_status`), not by a runtime check, and is exactly why the CEO's own Pilot 5 test
+(verify a synthetic operator, confirm it still 404s publicly because it remains `INACTIVE`)
+proves the two dimensions truly don't interact.
+
+## `POST /api/admin/operators/:id/verification`
+
+Admin-authenticated. Fails closed on every axis:
+
+| Condition | Response |
+|---|---|
+| Missing/wrong admin token | `401` |
+| Operator not found | `404 operator_not_found` |
+| `verification_status` not one of `VAKAVITI_VERIFIED`/`NOT_VERIFIED` | `400 invalid_target_state` |
+| Requested transition not allowed from the current state | `409 invalid_transition` |
+| Missing `reason` | `400 reason_required` |
+| Missing `reviewer` | `400 reviewer_required` |
+| Granting `VAKAVITI_VERIFIED` with no `evidence_ids` | `400 evidence_basis_required` |
+| A referenced evidence ID doesn't exist | `422 evidence_not_found` |
+| A referenced evidence ID belongs to a different entity | `422 evidence_belongs_to_other_entity` |
+| Success | `200`, new `verification_status`, unchanged `commercial_status`, `review_action_id` |
+
+**Allowed transitions:** `NOT_VERIFIED → VAKAVITI_VERIFIED` (grant, requires evidence) and
+`VAKAVITI_VERIFIED → NOT_VERIFIED` (revoke/correct, evidence not required — a human may revoke
+trust on reason alone; the absence of trust doesn't itself need positive evidence). No other
+target states exist. No self-transition (`NOT_VERIFIED → NOT_VERIFIED` etc.) is defined as valid.
+
+**Audit record**: reuses `review_actions` (zero schema change) — `entity_type='OPERATOR'`,
+`action_type='VERIFICATION_GRANTED'`/`'VERIFICATION_REVOKED'`, `actor`=reviewer, `note`=reason,
+`before_json`/`after_json` capture the state transition, and `after_json.evidence_ids` records
+exactly which evidence rows supported a grant. This table already had every field this decision
+needed to be truthfully recorded — no new column was required.
+
+**Scope**: operator-level verification only in this pass. A product-level equivalent
+(`POST /api/admin/products/:id/verification`) does not yet exist — out of scope until separately
+authorized.

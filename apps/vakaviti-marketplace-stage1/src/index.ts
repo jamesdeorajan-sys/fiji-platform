@@ -488,6 +488,74 @@ app.get('/api/admin/enquiries', async c => {
   return c.json({ results: rows.results || [] });
 });
 
+// Human Verification Decision Engine (2026-08-19, Evidence Engine Pilot 5). This is the ONLY
+// place in the codebase that may ever write 'VAKAVITI_VERIFIED' to operators.verification_status
+// - not AI (src/products.ts's /digitise never has, and structurally cannot, since it only ever
+// writes product_candidates), not promotion (src/candidates.ts's /:id/promote always forces
+// NOT_VERIFIED), not publication. A verification decision here NEVER touches commercial_status -
+// verification and publication remain fully independent dimensions, matching the law documented
+// in EVIDENCE-AND-PROMOTION-GOVERNANCE.md: CEO_AUTHORIZATION != independent verification,
+// AI_EXTRACTION != verification, and VAKAVITI_VERIFIED requires this explicit human decision.
+const VERIFICATION_TRANSITIONS: Record<string, string[]> = {
+  NOT_VERIFIED: ['VAKAVITI_VERIFIED'],
+  VAKAVITI_VERIFIED: ['NOT_VERIFIED'], // revocation/correction
+};
+app.post('/api/admin/operators/:id/verification', async c => {
+  const denied = requireAdmin(c); if (denied) return denied;
+  const id = c.req.param('id');
+  const body = await c.req.json<any>().catch(() => ({}));
+
+  const operator = await c.env.DB.prepare(`SELECT id,verification_status,commercial_status FROM operators WHERE id=?`).bind(id).first<any>();
+  if (!operator) return c.json({ error: 'operator_not_found' }, 404);
+
+  const targetState = String(body.verification_status || '');
+  if (!['VAKAVITI_VERIFIED', 'NOT_VERIFIED'].includes(targetState)) {
+    return c.json({ error: 'invalid_target_state', allowed: ['VAKAVITI_VERIFIED', 'NOT_VERIFIED'] }, 400);
+  }
+  const currentState = String(operator.verification_status);
+  if (!(VERIFICATION_TRANSITIONS[currentState] || []).includes(targetState)) {
+    return c.json({ error: 'invalid_transition', from: currentState, to: targetState }, 409);
+  }
+
+  const reason = String(body.reason || '').trim();
+  if (!reason) return c.json({ error: 'reason_required' }, 400);
+  const reviewer = String(body.reviewer || '').trim();
+  if (!reviewer) return c.json({ error: 'reviewer_required' }, 400);
+
+  // Granting verification requires a real evidence basis; revoking it does not (a human may
+  // revoke on suspicion/reason alone - the absence of trust doesn't itself need evidence).
+  const evidenceIds: string[] = Array.isArray(body.evidence_ids) ? body.evidence_ids.map(String) : [];
+  if (targetState === 'VAKAVITI_VERIFIED' && evidenceIds.length === 0) {
+    return c.json({ error: 'evidence_basis_required' }, 400);
+  }
+  if (evidenceIds.length) {
+    const placeholders = evidenceIds.map(() => '?').join(',');
+    const rows = await c.env.DB.prepare(`SELECT id,entity_type,entity_id FROM evidence WHERE id IN (${placeholders})`).bind(...evidenceIds).all<any>();
+    const found = new Map((rows.results || []).map((r: any) => [r.id, r]));
+    for (const eid of evidenceIds) {
+      const row = found.get(eid);
+      if (!row) return c.json({ error: 'evidence_not_found', evidence_id: eid }, 422);
+      if (row.entity_type !== 'OPERATOR' || row.entity_id !== id) return c.json({ error: 'evidence_belongs_to_other_entity', evidence_id: eid }, 422);
+    }
+  }
+
+  // commercial_status is deliberately never referenced above and never appears in this UPDATE -
+  // publication state is untouched by a verification decision, in either direction.
+  await c.env.DB.prepare(`UPDATE operators SET verification_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(targetState, id).run();
+
+  const auditId = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO review_actions(id,entity_type,entity_id,action_type,actor,note,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)`)
+    .bind(
+      auditId, 'OPERATOR', id,
+      targetState === 'VAKAVITI_VERIFIED' ? 'VERIFICATION_GRANTED' : 'VERIFICATION_REVOKED',
+      reviewer, reason,
+      JSON.stringify({ verification_status: currentState }),
+      JSON.stringify({ verification_status: targetState, evidence_ids: evidenceIds })
+    ).run();
+
+  return c.json({ operator_id: id, verification_status: targetState, commercial_status: operator.commercial_status, review_action_id: auditId }, 200);
+});
+
 app.route('/api/admin/candidates', candidates);
 app.route('/api/admin/products', products);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
