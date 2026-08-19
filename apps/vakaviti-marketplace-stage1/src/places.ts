@@ -34,6 +34,15 @@ places.get('/', async c => {
   return c.json({ results: rows.results || [] });
 });
 
+// Registered before '/:id' deliberately - Hono's router resolved '/types' against the '/:id'
+// param handler when this was registered after it (returned 404 not_found as if "types" were a
+// place id), discovered during Pilot 6D-A's post-write QA and fixed by reordering rather than
+// assumed safe. Static routes must be declared before the single-segment ':id' wildcard.
+places.get('/types', async c => {
+  const rows = await c.env.DB.prepare(`SELECT * FROM place_types ORDER BY code`).all<any>();
+  return c.json({ results: rows.results || [] });
+});
+
 places.get('/:id', async c => {
   const id = c.req.param('id');
   const place = await c.env.DB.prepare(`SELECT * FROM places WHERE id=?`).bind(id).first<any>();
@@ -177,11 +186,7 @@ places.post('/:id/external-mappings', async c => {
 // used for status changes in prior pilots), never through a public or AI-reachable path.
 // place_change_events is likewise read-only here - it is the audit trail for exactly those
 // out-of-band corrections, not something this API can write to.
-
-places.get('/types', async c => {
-  const rows = await c.env.DB.prepare(`SELECT * FROM place_types ORDER BY code`).all<any>();
-  return c.json({ results: rows.results || [] });
-});
+// (GET /types itself is registered earlier in this file, before '/:id' - see the comment there.)
 
 places.get('/:id/change-events', async c => {
   const id = c.req.param('id');
