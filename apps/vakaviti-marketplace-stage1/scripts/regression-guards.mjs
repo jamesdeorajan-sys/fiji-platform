@@ -18,6 +18,7 @@ const indexTs = readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
 const aiTs = readFileSync(path.join(ROOT, 'src/ai.ts'), 'utf8');
 const productsTs = readFileSync(path.join(ROOT, 'src/products.ts'), 'utf8');
 const candidatesTs = readFileSync(path.join(ROOT, 'src/candidates.ts'), 'utf8');
+const placesTs = readFileSync(path.join(ROOT, 'src/places.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -217,6 +218,66 @@ console.log('== 9. Verification and publication remain independent - dangerous w
   const stray = setVerificationOutsideEndpoint.filter(m => !insideVerificationEndpoint.includes(m[0]));
   if (stray.length > 0) fail(`Found ${stray.length} UPDATE statement(s) outside the verification endpoint that set verification_status='VAKAVITI_VERIFIED'`);
   else ok('No UPDATE statement outside the verification-decision endpoint sets VAKAVITI_VERIFIED');
+}
+
+console.log('== 10. Place Authority: admin-only, append-only, never mutates canonical identity (Pilot 6B) ==');
+{
+  // (a) + (h): no public (non-admin) route may query places / place_evidence / place_aliases /
+  // place_external_mappings. Same route-splitting approach as check 8.
+  const routeBlocks = indexTs.split(/(?=app\.(?:get|post)\()/);
+  const placeTables = ['FROM places', 'FROM place_evidence', 'FROM place_aliases', 'FROM place_external_mappings'];
+  let publicLeak = false;
+  for (const block of routeBlocks) {
+    const routeMatch = block.match(/^app\.(?:get|post)\((['"][^'"]+['"])/);
+    if (!routeMatch) continue;
+    const routePath = routeMatch[1];
+    const isAdminRoute = /^'\/api\/admin\//.test(routePath);
+    if (isAdminRoute) continue;
+    for (const t of placeTables) {
+      if (block.includes(t)) { fail(`Public route ${routePath} appears to query ${t} - Place Authority must stay admin-only`); publicLeak = true; }
+    }
+  }
+  if (!publicLeak) ok('No public (non-admin) route in src/index.ts queries places/place_evidence/place_aliases/place_external_mappings');
+
+  // (b) + (c) + (e): no code path anywhere may UPDATE or DELETE the places table, or mutate a
+  // plc_* id - the base canonical record has no write endpoint at all in this pilot.
+  for (const [name, content] of [['src/places.ts', placesTs], ['src/index.ts', indexTs]]) {
+    if (/UPDATE\s+places\b/.test(content)) fail(`${name} contains an UPDATE against the places table - the canonical record must remain immutable via application code`);
+    else ok(`${name} contains no UPDATE against the places table`);
+    if (/DELETE\s+FROM\s+places\b/i.test(content)) fail(`${name} contains a DELETE FROM places - Place records must never be deletable via application code`);
+    else ok(`${name} contains no DELETE FROM places`);
+  }
+
+  // (d): aliases must never auto-promote to a canonical place - no INSERT INTO places anywhere.
+  if (/INSERT\s+INTO\s+places\b/.test(placesTs)) fail('src/places.ts contains an INSERT INTO places - no code path may mint a new canonical Place record in this pilot');
+  else ok('src/places.ts contains no INSERT INTO places (no code path can create a canonical Place)');
+
+  // (f): AI may propose evidence but must never verify it, and no AI-adjacent file may reference
+  // place_evidence/place_aliases/place_external_mappings at all yet (no AI wiring exists this pilot).
+  for (const [name, content] of [['src/ai.ts', aiTs], ['src/products.ts', productsTs]]) {
+    if (/place_evidence|place_aliases|place_external_mappings/.test(content)) {
+      fail(`${name} references Place Authority tables - no AI code path is authorized to touch them yet`);
+    } else {
+      ok(`${name} contains no reference to Place Authority fact-level tables`);
+    }
+  }
+  // The evidence insert endpoint itself must never hardcode evidence_status='VERIFIED' - only a
+  // future explicit human decision endpoint may ever set that value, and none exists yet.
+  const evidenceInsertMatch = placesTs.match(/INSERT INTO place_evidence[\s\S]*?\.run\(\);/);
+  if (evidenceInsertMatch && /evidence_status/.test(evidenceInsertMatch[0])) {
+    fail('The place_evidence INSERT statement explicitly sets evidence_status - it must always fall back to the UNVERIFIED default');
+  } else {
+    ok('The place_evidence INSERT statement never sets evidence_status explicitly (always defaults to UNVERIFIED)');
+  }
+
+  // (g): every Place Authority write route must sit behind the router-level requireAdmin
+  // middleware - confirmed structurally by requiring the `places.use('*', requireAdmin)` line to
+  // appear before any places.post( definition in the file.
+  const middlewareIdx = placesTs.indexOf(`places.use('*', requireAdmin)`);
+  const postIndices = [...placesTs.matchAll(/places\.post\(/g)].map(m => m.index);
+  if (middlewareIdx === -1) fail('src/places.ts is missing the router-level requireAdmin middleware registration');
+  else if (postIndices.some(i => i < middlewareIdx)) fail('A places.post( write route is defined before the requireAdmin middleware is registered - it would be unguarded');
+  else ok(`All ${postIndices.length} Place Authority write route(s) are registered after requireAdmin middleware`);
 }
 
 console.log('\n----------------------------------------');

@@ -214,3 +214,93 @@ needed to be truthfully recorded — no new column was required.
 **Scope**: operator-level verification only in this pass. A product-level equivalent
 (`POST /api/admin/products/:id/verification`) does not yet exist — out of scope until separately
 authorized.
+
+## The Place Authority truth laws (added 2026-08-19, Pilot 6B)
+
+CEO law: canonical ID ≠ verified fact ≠ alias ≠ external ID ≠ relationship ≠ publication. Six
+separate concepts, kept structurally separate rather than folded into one row or one column.
+Vakaviti must be able to say "we know what entity this is" without that being read as "every fact
+we currently hold about this entity is verified."
+
+### Status semantics law
+
+`places.status` describes the canonical identity record's *usability inside the Authority* —
+**it is not, and must never become, a proxy for fact confidence.** Confidence belongs to
+`place_evidence.confidence` and `place_evidence.evidence_status`, never to `places.status`.
+
+| Value | Exact meaning |
+|---|---|
+| `ACTIVE` | The canonical identity record is usable inside the Authority. |
+| `INTERNAL_ONLY` | Identity exists, but unresolved facts (type, coordinates, or similar) prevent normal Authority use. |
+| `PUBLICATION_BLOCKED` | May be internally usable, but must not be publicly published, even after a future public API exists. |
+| `DEPRECATED` | Canonical identity has been superseded/retired. Never deleted — the row and its `plc_*` id remain permanently. |
+
+No Place record has ever been, or is by this pilot, deleted or reminted. Status changes are the
+only lever, and they say nothing about fact-level confidence.
+
+### Evidence law
+
+`place_evidence` is **append-only**. A row records one claim about one place: `claim_type` is one
+of `IDENTITY, CANONICAL_NAME, PLACE_TYPE, PARENT, COORDINATES, ALIAS, RELATIONSHIP` — never a
+whole-record confidence score, because a single place can have a well-evidenced identity and a
+poorly-evidenced type at the same time (Nadi is exactly this shape — see below).
+
+- Inserting evidence **never** automatically changes `places.status`, `place_type`, `parent_place_id`,
+  a relationship, or a publication state. `POST /api/admin/places/:id/evidence` has no code path
+  that writes to `places` at all — confirmed by inspection of `src/places.ts`.
+- `evidence_status` defaults to `UNVERIFIED`. Nothing in this pilot's code ever sets it to
+  `VERIFIED` — that is reserved for a future explicit human decision, exactly mirroring the
+  operator/product verification law above. No endpoint in this pilot writes `VERIFIED`.
+- AI may, in a future pilot, be wired to **propose** evidence through this endpoint. AI may never
+  verify it. No such AI wiring exists yet — this endpoint is currently only reachable by an
+  authenticated admin caller.
+
+### Alias law
+
+**Aliases never create a second canonical place.** `place_aliases` rows point at exactly one
+existing `place_id`; the insert endpoint 404s if that place doesn't exist, and there is no code
+path anywhere that reads an alias and creates or reassigns a `places` row from it.
+
+- Duplicate aliases (same `place_id` + case/whitespace-normalized text) are rejected `409`, not
+  silently merged or silently duplicated.
+- `alias_type` is one of `FORMAL, COMMON, ALTERNATE, CODE, LEGACY, DEPRECATED`.
+- Known live collision risk requiring deliberate human judgment, not automatic collapsing: the
+  singular phrase "Yasawa Island" can mean either the whole `plc_463c77b3795e` island group
+  loosely, or the one specific named island that is the group's namesake — these must never be
+  silently treated as the same alias target without evidence establishing which is meant in a
+  given source.
+
+### External mapping law
+
+**External identifiers never replace or get treated as a canonical `plc_*` id.** `place_external_mappings`
+is the only place operational identifiers from other systems (ComeToFiji, Lagi, Fiji Tourism Guide,
+Fiji Tour Transfers, Nadi Airport Transfers, WordPress, legacy route systems, IATA codes like `NAN`,
+future imported datasets) are allowed to live. A `plc_*` id is never derived from, replaced by, or
+matched loosely against an external identifier — the mapping is a one-directional translation row
+scoped to one existing place, inserted only through the admin-authenticated endpoint.
+
+### Relationship law
+
+`parent_place_id` on `places` represents exactly one explicit hierarchy: **PHYSICAL_GEOGRAPHY**
+(island/landmass containment) — e.g. Nadi and Lautoka sit under Viti Levu because they are
+physically on that island. `place_relationships` is reserved for every other kind of relationship
+— administrative containment (`ADMINISTRATIVELY_WITHIN`), group membership (`PART_OF_ISLAND_GROUP`),
+transport functions (`DEPARTURE_POINT_FOR`, `ARRIVAL_POINT_FOR`, `SERVES`, `NEAREST_TRANSPORT_POINT`),
+and anything else that isn't physical containment.
+
+**No relationship rows were seeded in Pilot 6B.** `place_relationships` remains at 0 rows. This
+table exists and is ready, but populating it — including the administrative link that would
+correctly place Nadi and Lautoka under Western Division — requires real source evidence and a
+separate CEO authorization, exactly as instructed. Every future relationship row must carry
+provenance; none may be inferred from geographic plausibility alone.
+
+### Nadi and Lautoka Kings Jetty — the two hardened records
+
+Per direct instruction, neither record's `plc_*` id, `canonical_name`, or existing `parent_place_id`
+was touched. Both had their `status` changed from `ACTIVE` to `INTERNAL_ONLY` because a genuine,
+still-unresolved uncertainty exists for each (see the Pilot 6A.1 truth-reconciliation report for
+the reasoning), and a `place_evidence` row was added to each documenting exactly what remains
+unresolved, using `source_type='ASSISTANT_GENERAL_KNOWLEDGE_ASSESSMENT'` — an honest label for "my
+own reasoning from general knowledge, not a cited external source" (see the QA/hardening results
+section of the Pilot 6B report for the exact rows). No resolution was fabricated; both remain
+`INTERNAL_ONLY` until real evidence is supplied.

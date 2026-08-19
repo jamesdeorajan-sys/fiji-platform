@@ -37,8 +37,9 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 4. `migrations/0003_product_candidates.sql` — `product_candidates`, `verification_readiness`, `transport_candidates`
 5. `migrations/0004_revenue_mvp.sql` — adds `image_url` to `operators` and `products`, creates `enquiries`
 6. `migrations/0005_places.sql` — creates `places` and `place_relationships` (canonical Fiji Place Registry, Pilot 6A). Fully additive and independent — the marketplace (`operators`/`products`/`offers`) does not read from these tables and does not depend on them existing.
+7. `migrations/0006_place_hardening.sql` — creates `place_evidence`, `place_aliases`, `place_external_mappings` (Place Authority truth hardening, Pilot 6B). Fully additive; none of these three tables can be written to except by fact-level append-only inserts scoped to an existing `place_id` — none of them can mutate `places.id`, `places.place_type`, `places.parent_place_id`, or `places.slug`.
 
-All statements across all six files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run, no drops.
+All statements across all seven files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run, no drops.
 
 ## Workers AI
 
@@ -139,7 +140,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql`
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`
