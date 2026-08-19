@@ -304,3 +304,35 @@ unresolved, using `source_type='ASSISTANT_GENERAL_KNOWLEDGE_ASSESSMENT'` — an 
 own reasoning from general knowledge, not a cited external source" (see the QA/hardening results
 section of the Pilot 6B report for the exact rows). No resolution was fabricated; both remain
 `INTERNAL_ONLY` until real evidence is supplied.
+
+## The taxonomy law (added 2026-08-19, Pilot 6D-A)
+
+The pre-existing `places.place_type` column (a hard-coded `CHECK` enum) cannot be extended in
+place — SQLite has no `ALTER ... MODIFY CHECK`. Real evidence in Pilot 6C established that Nadi's
+correct type is TOWN, a value the enum has never had. Rather than rebuild the `places` table (the
+copy-swap pattern designed in Pilot 6C/6D but never authorized), Pilot 6D-A adds a **parallel,
+additive taxonomy**:
+
+- `place_types` — a reference table of valid type codes, extensible without ever touching `places`
+  again.
+- `places.place_type_code` — one new nullable column, added via a native
+  `ALTER TABLE places ADD COLUMN place_type_code TEXT REFERENCES place_types(code)`, proven safe
+  in a disposable rehearsal D1 database before being applied to the real one (existing rows
+  survive untouched, the original `place_type` CHECK and the original `parent_place_id`
+  self-referencing FK both remain enforced exactly as before, and the new FK on `place_type_code`
+  is independently enforced).
+- `place_change_events` — an append-only audit trail specifically for field-level corrections to
+  canonical place records (distinct from `place_evidence`, which records fact-level *claims*, not
+  the act of changing a stored value).
+
+**The legacy `place_type` column is never modified, superseded, or hidden.** Nadi's row carries
+both `place_type='CITY'` (legacy, unchanged) and `place_type_code='TOWN'` (corrected) simultaneously
+and permanently — the same intentional, auditable contradiction Pilot 6C required, now backed by a
+second, independently-queryable column rather than only an evidence row. A future consumer can read
+either column and get a self-consistent answer; nothing is deleted or overwritten.
+
+**No write endpoint exists for `place_type_code`, `place_types`, or `place_change_events`.** All
+three are exposed read-only (`GET /types`, `GET /:id/change-events`) under the existing
+`/api/admin/places` router. Backfill and the Nadi correction happened outside application code
+(direct D1), exactly like every prior status/evidence write in this Authority's history — never
+through a public or AI-reachable path.

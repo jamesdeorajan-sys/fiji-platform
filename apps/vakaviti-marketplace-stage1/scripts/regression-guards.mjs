@@ -19,6 +19,7 @@ const aiTs = readFileSync(path.join(ROOT, 'src/ai.ts'), 'utf8');
 const productsTs = readFileSync(path.join(ROOT, 'src/products.ts'), 'utf8');
 const candidatesTs = readFileSync(path.join(ROOT, 'src/candidates.ts'), 'utf8');
 const placesTs = readFileSync(path.join(ROOT, 'src/places.ts'), 'utf8');
+const taxonomyMigrationSql = readFileSync(path.join(ROOT, 'migrations/0007_place_taxonomy.sql'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -278,6 +279,49 @@ console.log('== 10. Place Authority: admin-only, append-only, never mutates cano
   if (middlewareIdx === -1) fail('src/places.ts is missing the router-level requireAdmin middleware registration');
   else if (postIndices.some(i => i < middlewareIdx)) fail('A places.post( write route is defined before the requireAdmin middleware is registered - it would be unguarded');
   else ok(`All ${postIndices.length} Place Authority write route(s) are registered after requireAdmin middleware`);
+}
+
+console.log('== 11. Place Type taxonomy: additive only, no rebuild, no write path (Pilot 6D-A) ==');
+{
+  // The taxonomy migration must never rebuild, drop, or redefine the existing `places` table -
+  // it may only ADD a new column and CREATE new tables/indexes.
+  if (/DROP\s+TABLE\s+places\b/i.test(taxonomyMigrationSql)) fail('0007_place_taxonomy.sql contains DROP TABLE places - a rebuild occurred, which was never authorized');
+  else ok('0007_place_taxonomy.sql contains no DROP TABLE places');
+
+  if (/CREATE\s+TABLE\s+places\b/i.test(taxonomyMigrationSql)) fail('0007_place_taxonomy.sql contains CREATE TABLE places - a rebuild occurred, which was never authorized');
+  else ok('0007_place_taxonomy.sql contains no CREATE TABLE places (no rebuild)');
+
+  // The only ALTER on `places` may add place_type_code - it must never touch the legacy
+  // place_type column or its CHECK constraint.
+  const alterMatches = [...taxonomyMigrationSql.matchAll(/ALTER TABLE places[^;]*;/gi)];
+  if (alterMatches.length !== 1) fail(`0007_place_taxonomy.sql has ${alterMatches.length} ALTER TABLE places statement(s) - expected exactly 1`);
+  else {
+    const stmt = alterMatches[0][0];
+    if (!/ADD COLUMN place_type_code/.test(stmt)) fail('The ALTER TABLE places statement does not add place_type_code as expected');
+    else if (/\bplace_type\b(?!_code)/.test(stmt.replace('place_type_code', ''))) fail('The ALTER TABLE places statement appears to reference the legacy place_type column - it must only add place_type_code');
+    else ok('0007_place_taxonomy.sql\'s single ALTER TABLE places statement only adds place_type_code, never touches legacy place_type');
+  }
+
+  // No write path may exist anywhere for place_type_code, place_types, or place_change_events -
+  // taxonomy is exposed read-only; backfill/correction happen outside application code.
+  for (const pattern of [/UPDATE\s+places\s+SET[^;]*place_type_code/i, /INSERT\s+INTO\s+place_types/i, /INSERT\s+INTO\s+place_change_events/i]) {
+    if (pattern.test(placesTs) || pattern.test(indexTs)) {
+      fail(`Application code contains a write path matching ${pattern} - Place Type taxonomy must remain read-only via the API`);
+    }
+  }
+  if (![/UPDATE\s+places\s+SET[^;]*place_type_code/i, /INSERT\s+INTO\s+place_types/i, /INSERT\s+INTO\s+place_change_events/i].some(p => p.test(placesTs) || p.test(indexTs))) {
+    ok('No write path exists anywhere in application code for place_type_code, place_types, or place_change_events');
+  }
+
+  // GET /types and GET /:id/change-events must both be registered after the requireAdmin
+  // middleware, same as every other route on this router.
+  const middlewareIdx = placesTs.indexOf(`places.use('*', requireAdmin)`);
+  for (const routePath of [`places.get('/types'`, `places.get('/:id/change-events'`]) {
+    const idx = placesTs.indexOf(routePath);
+    if (idx === -1) fail(`Expected read-only taxonomy route not found: ${routePath}`);
+    else if (idx < middlewareIdx) fail(`${routePath} is registered before requireAdmin middleware - it would be unguarded`);
+    else ok(`${routePath} is registered after requireAdmin middleware`);
+  }
 }
 
 console.log('\n----------------------------------------');

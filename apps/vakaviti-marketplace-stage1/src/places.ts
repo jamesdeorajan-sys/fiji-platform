@@ -167,3 +167,26 @@ places.post('/:id/external-mappings', async c => {
   const row = await c.env.DB.prepare(`SELECT * FROM place_external_mappings WHERE id=?`).bind(mappingId).first<any>();
   return c.json({ mapping: row }, 201);
 });
+
+// --- Pilot 6D-A: additive Place Type taxonomy, read-only ------------------------------------
+//
+// place_type_code (on `places`) and place_types are additive - the legacy `place_type` column
+// and its CHECK constraint are untouched by any code in this file. There is no write endpoint
+// for either the reference taxonomy or the place_type_code column: backfill and any future
+// correction happen outside application code (direct D1, same governed-outside-the-API pattern
+// used for status changes in prior pilots), never through a public or AI-reachable path.
+// place_change_events is likewise read-only here - it is the audit trail for exactly those
+// out-of-band corrections, not something this API can write to.
+
+places.get('/types', async c => {
+  const rows = await c.env.DB.prepare(`SELECT * FROM place_types ORDER BY code`).all<any>();
+  return c.json({ results: rows.results || [] });
+});
+
+places.get('/:id/change-events', async c => {
+  const id = c.req.param('id');
+  const place = await c.env.DB.prepare(`SELECT id FROM places WHERE id=?`).bind(id).first<any>();
+  if (!place) return c.json({ error: 'not_found' }, 404);
+  const rows = await c.env.DB.prepare(`SELECT * FROM place_change_events WHERE place_id=? ORDER BY created_at`).bind(id).all<any>();
+  return c.json({ results: rows.results || [] });
+});
