@@ -324,6 +324,43 @@ console.log('== 11. Place Type taxonomy: additive only, no rebuild, no write pat
   }
 }
 
+console.log('== 12. Verification grants require qualifying non-CEO, non-AI evidence (P1 remediation) ==');
+{
+  // The disqualification function must exist and must reject exactly CEO_AUTHORIZATION plus any
+  // AI-pattern source_type - not an arbitrary/incomplete rule.
+  const fnMatch = indexTs.match(/const isDisqualifiedEvidenceSourceType[\s\S]*?\n\};/);
+  if (!fnMatch) {
+    fail('isDisqualifiedEvidenceSourceType function not found in src/index.ts');
+  } else {
+    const fn = fnMatch[0];
+    if (!/CEO_AUTHORIZATION/.test(fn)) fail('isDisqualifiedEvidenceSourceType does not disqualify CEO_AUTHORIZATION');
+    else ok('isDisqualifiedEvidenceSourceType disqualifies CEO_AUTHORIZATION');
+    if (!/AI/.test(fn)) fail('isDisqualifiedEvidenceSourceType does not disqualify any AI-derived pattern');
+    else ok('isDisqualifiedEvidenceSourceType disqualifies AI-derived source types');
+  }
+
+  // The qualifying-evidence check must be gated to grants only (targetState === 'VAKAVITI_VERIFIED')
+  // - revocation must never require it - and must run before the UPDATE operators statement, so a
+  // rejected grant writes nothing.
+  const verifyMatch = indexTs.match(/app\.post\(['"][^'"]*verification[^'"]*['"][\s\S]*?\n\}\);/);
+  if (!verifyMatch) {
+    fail('No .../verification POST route handler found - the regex may be broken');
+  } else {
+    const block = verifyMatch[0];
+    const qualIdx = block.indexOf('no_qualifying_evidence');
+    const updateIdx = block.indexOf('UPDATE operators SET');
+    if (qualIdx === -1) fail('no_qualifying_evidence check not found inside the verification endpoint');
+    else if (updateIdx === -1) fail('UPDATE operators statement not found inside the verification endpoint - the regex may be broken');
+    else if (qualIdx > updateIdx) fail('The qualifying-evidence check appears AFTER the UPDATE operators statement - a rejected grant could leave a partial write');
+    else ok('The qualifying-evidence check runs before UPDATE operators - a rejected grant writes nothing');
+
+    // Must be gated to the grant path only, not applied to revocation.
+    const gateMatch = block.match(/if\s*\(targetState === 'VAKAVITI_VERIFIED'\)\s*\{\s*const qualifying/);
+    if (!gateMatch) fail('The qualifying-evidence check does not appear gated to targetState === \'VAKAVITI_VERIFIED\' only - revocation must never require qualifying evidence');
+    else ok('The qualifying-evidence check is gated to grants only - revocation remains unaffected');
+  }
+}
+
 console.log('\n----------------------------------------');
 console.log('NOTE: D1-level checks (orphan products, invalid operator relationships, duplicate');
 console.log('slugs IN THE DATABASE, invalid pricing_basis/currency combinations) are NOT run by');

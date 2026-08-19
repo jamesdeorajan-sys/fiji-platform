@@ -279,12 +279,12 @@ app.get('/', async c => {
 
   return c.html(html(`
 <section class="hero-wrap"><div class="hero-grid">
-  <div><span class="eyebrow">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one trusted place.</h1><p class="muted">Every listing shows what Vakaviti has actually verified — evidence, identity and contact — so you can ask with confidence and get connected to the right operator on WhatsApp.</p><div class="cta-row"><a class="btn" href="/experiences">Explore Fiji experiences</a><a class="btn secondary" href="/operators">Meet local operators</a></div></div>
+  <div><span class="eyebrow">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one trusted place.</h1><p class="muted">Every listing shows its current Vakaviti verification status. Some businesses are published while verification is still in progress — ask on WhatsApp and get connected to the right local operator.</p><div class="cta-row"><a class="btn" href="/experiences">Explore Fiji experiences</a><a class="btn secondary" href="/operators">Meet local operators</a></div></div>
   <div class="hero-media"><img src="/images/hero-fiji-leleuvia.webp" alt="Aerial view of Leleuvia Island, Fiji" loading="eager" fetchpriority="high" style="width:100%;height:100%;object-fit:cover;display:block"><span class="loc-badge">Leleuvia Island, Fiji</span></div>
 </div></section>
 
 <section class="section"><h2>Why Vakaviti</h2><div class="grid">
-  <div class="card"><div class="card-body"><h3>See who you're booking with</h3><p class="muted">Every listing shows whether Vakaviti has verified the operator, so you know what's confirmed and what isn't.</p></div></div>
+  <div class="card"><div class="card-body"><h3>See who you're asking</h3><p class="muted">"Vakaviti Verified" means Vakaviti has completed an evidence-backed review. "Not yet verified" means it hasn't — but a business can still be listed and reachable while that review is in progress. Publication and verification are shown separately, so you always know which one you're looking at.</p></div></div>
   <div class="card"><div class="card-body"><h3>Ask on WhatsApp</h3><p class="muted">No account, no forms — tap through to WhatsApp and Vakaviti will connect your enquiry with the right local operator.</p></div></div>
   <div class="card"><div class="card-body"><h3>Built for Fiji</h3><p class="muted">Local tours, activities and ground transport, discovered and structured for travellers planning a trip to Fiji.</p></div></div>
 </div></section>
@@ -501,6 +501,26 @@ const VERIFICATION_TRANSITIONS: Record<string, string[]> = {
   NOT_VERIFIED: ['VAKAVITI_VERIFIED'],
   VAKAVITI_VERIFIED: ['NOT_VERIFIED'], // revocation/correction
 };
+
+// P1 remediation (CEO-authorized): CEO_AUTHORIZATION is provenance, not independent
+// verification, and AI-derived evidence can never independently qualify an operator either -
+// both were already true in EVIDENCE-AND-PROMOTION-GOVERNANCE.md, but nothing previously
+// enforced it at the code level. A grant must cite at least one evidence row whose source_type
+// is neither CEO_AUTHORIZATION nor AI-derived. evidence.source_type is free text (no CHECK
+// constraint exists), so this is a denylist against the two known-disqualifying patterns rather
+// than an invented allowlist of new required values - it accepts any future legitimate source
+// type (OPERATOR_CONFIRMED, registry/website-verified, etc.) without this endpoint needing to
+// know its exact spelling in advance. As of this change, zero OPERATOR-entity evidence row in
+// the live database qualifies (confirmed: every one is CEO_AUTHORIZATION) - so this correctly
+// fails closed on every new grant attempt until real qualifying evidence exists, exactly as
+// instructed, without a separate on/off switch.
+const isDisqualifiedEvidenceSourceType = (sourceType: string): boolean => {
+  const s = String(sourceType || '').toUpperCase();
+  if (s === 'CEO_AUTHORIZATION') return true;
+  if (/(^|_)AI(_|$)/.test(s)) return true; // e.g. AI_EXTRACTED, PRODUCT_AI_DIGITISE, bare "AI"
+  return false;
+};
+
 app.post('/api/admin/operators/:id/verification', async c => {
   const denied = requireAdmin(c); if (denied) return denied;
   const id = c.req.param('id');
@@ -531,12 +551,24 @@ app.post('/api/admin/operators/:id/verification', async c => {
   }
   if (evidenceIds.length) {
     const placeholders = evidenceIds.map(() => '?').join(',');
-    const rows = await c.env.DB.prepare(`SELECT id,entity_type,entity_id FROM evidence WHERE id IN (${placeholders})`).bind(...evidenceIds).all<any>();
+    const rows = await c.env.DB.prepare(`SELECT id,entity_type,entity_id,source_type FROM evidence WHERE id IN (${placeholders})`).bind(...evidenceIds).all<any>();
     const found = new Map((rows.results || []).map((r: any) => [r.id, r]));
     for (const eid of evidenceIds) {
       const row = found.get(eid);
       if (!row) return c.json({ error: 'evidence_not_found', evidence_id: eid }, 422);
       if (row.entity_type !== 'OPERATOR' || row.entity_id !== id) return c.json({ error: 'evidence_belongs_to_other_entity', evidence_id: eid }, 422);
+    }
+    // A grant (never a revoke) must cite at least one evidence row that is neither
+    // CEO_AUTHORIZATION nor AI-derived - see isDisqualifiedEvidenceSourceType above. Checked
+    // before any write, so a rejected grant leaves operators and review_actions untouched.
+    if (targetState === 'VAKAVITI_VERIFIED') {
+      const qualifying = evidenceIds.filter(eid => !isDisqualifiedEvidenceSourceType(found.get(eid)!.source_type));
+      if (qualifying.length === 0) {
+        return c.json({
+          error: 'no_qualifying_evidence',
+          detail: 'A verification grant must cite at least one evidence row whose source_type is not CEO_AUTHORIZATION and not AI-derived. CEO_AUTHORIZATION establishes provenance, not independent verification.'
+        }, 422);
+      }
     }
   }
 
