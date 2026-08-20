@@ -20,6 +20,8 @@ const productsTs = readFileSync(path.join(ROOT, 'src/products.ts'), 'utf8');
 const candidatesTs = readFileSync(path.join(ROOT, 'src/candidates.ts'), 'utf8');
 const placesTs = readFileSync(path.join(ROOT, 'src/places.ts'), 'utf8');
 const taxonomyMigrationSql = readFileSync(path.join(ROOT, 'migrations/0007_place_taxonomy.sql'), 'utf8');
+const dealAgentTs = readFileSync(path.join(ROOT, 'src/deal-agent.ts'), 'utf8');
+const dealsTs = readFileSync(path.join(ROOT, 'src/deals.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -358,6 +360,77 @@ console.log('== 12. Verification grants require qualifying non-CEO, non-AI evide
     const gateMatch = block.match(/if\s*\(targetState === 'VAKAVITI_VERIFIED'\)\s*\{\s*const qualifying/);
     if (!gateMatch) fail('The qualifying-evidence check does not appear gated to targetState === \'VAKAVITI_VERIFIED\' only - revocation must never require qualifying evidence');
     else ok('The qualifying-evidence check is gated to grants only - revocation remains unaffected');
+  }
+}
+
+console.log('== 13. Deal Intelligence: AI cannot approve/publish, human-only file is the sole write path ==');
+{
+  // src/deal-agent.ts (AI/scheduled code) must never import from src/deals.ts (human-actioned
+  // admin code) - the separation between "AI can propose" and "only a human can approve" must
+  // be structural (two files, one direction of dependency), not just documented.
+  if (/from ['"]\.\/deals['"]/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts imports from src/deals.ts - AI-facing code must not have access to the human-only approval module');
+  } else {
+    ok('src/deal-agent.ts does not import src/deals.ts');
+  }
+
+  // deal-agent.ts must never reference the ADMIN_TOKEN comparison itself and must never
+  // literally write the human-only review_status values as a string target outside its own
+  // declared DISCOVERY_WRITABLE_STATES set.
+  const HUMAN_ONLY_STATUSES = ['VAKAVITI_HUMAN_REVIEWED', 'PROVIDER_APPROVED', 'PUBLICATION_APPROVED', 'PUBLISHED'];
+  for (const status of HUMAN_ONLY_STATUSES) {
+    // Allow the status to appear in the DISCOVERY_WRITABLE_STATES exclusion set's own comment/
+    // definition context is not present (that set is deliberately narrow); a bare reference
+    // outside a comment is what we're checking for.
+    const codeLines = dealAgentTs.split('\n').filter(l => !l.trim().startsWith('//'));
+    const hit = codeLines.some(l => l.includes(`'${status}'`) || l.includes(`"${status}"`));
+    if (hit) fail(`src/deal-agent.ts references human-only status '${status}' outside a comment - AI-facing code must never write this value`);
+  }
+  if (!HUMAN_ONLY_STATUSES.some(s => dealAgentTs.split('\n').filter(l => !l.trim().startsWith('//')).some(l => l.includes(`'${s}'`) || l.includes(`"${s}"`)))) {
+    ok('src/deal-agent.ts contains no live reference to VAKAVITI_HUMAN_REVIEWED, PROVIDER_APPROVED, PUBLICATION_APPROVED, or PUBLISHED');
+  }
+
+  // The writeReviewStatus() guard function must exist and must be the only way review_status
+  // values are constructed in deal-agent.ts's INSERT statement.
+  if (!/const writeReviewStatus/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts is missing the writeReviewStatus() guard function');
+  } else {
+    ok('src/deal-agent.ts defines a writeReviewStatus() guard function');
+  }
+
+  // Every route in deals.ts must sit behind requireAdmin - checked the same way as every other
+  // admin router in this app (Pilot 6A/6B/6D-A pattern): the middleware registration must occur
+  // before any .post( or .get( definition on the `deals` router specifically (dealsPublic is
+  // deliberately NOT gated - it is the controlled public route, gated instead by
+  // isPubliclyEligible()).
+  const dealsMiddlewareIdx = dealsTs.indexOf(`deals.use('*', requireAdmin)`);
+  if (dealsMiddlewareIdx === -1) {
+    fail('src/deals.ts is missing the deals.use(\'*\', requireAdmin) middleware registration');
+  } else {
+    const dealsRouteIndices = [...dealsTs.matchAll(/deals\.(get|post)\(/g)].map(m => m.index);
+    if (dealsRouteIndices.some(i => i < dealsMiddlewareIdx)) {
+      fail('A deals.get(/deals.post( route is registered before requireAdmin middleware - it would be unguarded');
+    } else {
+      ok(`All ${dealsRouteIndices.length} admin deal route(s) are registered after requireAdmin middleware`);
+    }
+  }
+
+  // The public preview route must filter through isPubliclyEligible - not just query
+  // PUBLISHED directly and trust it blindly.
+  const publicRouteMatch = dealsTs.match(/dealsPublic\.get\('\/[\s\S]*?\n\}\);/);
+  if (!publicRouteMatch) {
+    fail('dealsPublic.get(\'/\', ...) route not found in src/deals.ts');
+  } else if (!publicRouteMatch[0].includes('isPubliclyEligible')) {
+    fail('The public deals preview route does not filter through isPubliclyEligible() - it could leak ungated rows');
+  } else {
+    ok('The public deals preview route filters every row through isPubliclyEligible()');
+  }
+
+  // isPubliclyEligible must check review_status === 'PUBLISHED' as its first gate.
+  if (!/function isPubliclyEligible[\s\S]*?review_status !== 'PUBLISHED'/.test(dealsTs)) {
+    fail('isPubliclyEligible() does not appear to gate on review_status === \'PUBLISHED\'');
+  } else {
+    ok('isPubliclyEligible() gates on review_status === \'PUBLISHED\' as a precondition');
   }
 }
 

@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { candidates } from './candidates';
 import { products } from './products';
 import { places } from './places';
+import { deals, dealsPublic } from './deals';
+import { runDailyDiscovery } from './deal-agent';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -592,6 +594,19 @@ app.post('/api/admin/operators/:id/verification', async c => {
 app.route('/api/admin/candidates', candidates);
 app.route('/api/admin/products', products);
 app.route('/api/admin/places', places);
+app.route('/api/admin/deals', deals);
+// Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
+// pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
+// row returned has already passed isPubliclyEligible() inside dealsPublic itself - see
+// src/deals.ts. With zero PUBLISHED offers today (no provider has approved anything yet), this
+// always returns an empty result set.
+app.route('/api/deals-preview', dealsPublic);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
-export default app;
+type ScheduledBindings = Bindings;
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: ScheduledBindings, ctx: ExecutionContext) {
+    ctx.waitUntil(runDailyDiscovery(env));
+  }
+};

@@ -27,3 +27,11 @@ MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+# Deal Intelligence daily discovery run. Cloudflare Cron Triggers are specified in UTC only.
+# Target: approximately 06:00 Fiji Standard Time (FJT = UTC+12, and Fiji is not currently
+# observing DST - if that ever changes, this expression needs updating to keep the same local
+# time). UTC = FJT - 12h, so 06:00 FJT falls on 18:00 UTC the PREVIOUS calendar day.
+# "0 18 * * *" (UTC) => 06:00 FJT the following day, every day.
+[triggers]
+crons = ["0 18 * * *"]
