@@ -11,6 +11,16 @@
 // not here, by design - keeping "AI can propose" and "only a human can approve" in two
 // separate files makes the separation something a regression guard can verify structurally,
 // not just something documented in a comment.
+//
+// P1.2 addition: a low-information scan must never reach the human review queue just because
+// its content-fingerprint changed. src/deal-quality.ts holds the deterministic (non-AI-judged)
+// quality gate, page classifier, URL canonicalizer, and deal-identity/dedup logic used below -
+// it makes no D1 call and no AI.run() call, so its output is fully inspectable and testable in
+// isolation from the discovery loop that calls it.
+import {
+  canonicalizeUrl, classifyPage, computeDealIdentity, diffMaterialFacts,
+  evaluateQualityGates, type ExtractedFields,
+} from './deal-quality';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 
@@ -238,6 +248,100 @@ export function computeExpiryStatus(offerExpiresAt: string | null): 'EXPIRY_UNKN
   return 'ACTIVE';
 }
 
+// --- P1.2 quality-gate integration helpers ------------------------------------------------------
+//
+// recordScanOutcome() always UPDATEs the deal_source_scans row already INSERTed for this scan
+// (keyed by its idempotency_key, unique) - complete scan evidence is preserved on every single
+// scan regardless of outcome, exactly as the CEO directive requires ("preserve complete scan
+// evidence while allowing only sufficiently complete, offer-like extractions to enter the human
+// review queue"). resulted_candidate_id links to whichever candidate row this scan is about (the
+// one it created, or the existing one it attached a change event to) - null for a rejection or a
+// cosmetic no-op with no prior candidate to point to.
+const EMPTY_FIELDS: ExtractedFields = {
+  proposed_offer_name: null, factual_summary: null, category: null, fiji_location: null,
+  advertised_price: null, reference_price: null, currency: null, price_basis: null,
+  explicit_discount: null, promo_code: null, booking_deadline: null, travel_from: null,
+  travel_until: null, offer_expires_at: null, blackout_dates: null, minimum_stay: null,
+  minimum_group_size: null, eligibility: null, inclusions: null, exclusions: null,
+  cancellation_terms: null, booking_route: null, seller_or_marketer: null,
+};
+
+async function recordScanOutcome(
+  env: Bindings,
+  scanIdemKey: string,
+  outcome: 'REJECTED' | 'NEW_CANDIDATE' | 'COSMETIC_DRIFT_NO_OP' | 'MATERIAL_CHANGE' | 'EXACT_DUPLICATE_SKIPPED',
+  canonicalUrl: string | null,
+  resultedCandidateId: string | null,
+  quality: { pageClassification: string; passedGates: string[]; failedGates: string[]; missingFields: string[]; contradictionFlags: string[]; confidence: number; decision: string; rejectionReason: string | null } | null,
+  dealIdentityHash: string | null = null
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE deal_source_scans SET
+       canonical_url=?, deal_identity_hash=?, page_classification=?, quality_decision=?, quality_gates_passed=?,
+       quality_gates_failed=?, quality_missing_fields=?, quality_contradiction_flags=?,
+       quality_confidence=?, quality_rejection_reason=?, resulted_candidate_id=?, resulted_outcome=?
+     WHERE idempotency_key=?`
+  ).bind(
+    canonicalUrl, dealIdentityHash, quality?.pageClassification ?? null, quality?.decision ?? null,
+    quality ? JSON.stringify(quality.passedGates) : null, quality ? JSON.stringify(quality.failedGates) : null,
+    quality ? JSON.stringify(quality.missingFields) : null, quality ? JSON.stringify(quality.contradictionFlags) : null,
+    quality?.confidence ?? null, quality?.rejectionReason ?? null,
+    resultedCandidateId, outcome, scanIdemKey
+  ).run();
+}
+
+async function insertCandidate(
+  env: Bindings, candidateId: string, source: any, fp: string,
+  extraction: { fields: Record<string, string | null>; missingFields: string[]; confidence: number }, expiryStatus: string
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO deal_offer_candidates (
+      id, source_id, source_url, source_checked_at, source_fingerprint,
+      proposed_offer_name, factual_summary, category, fiji_location, advertised_price,
+      reference_price, currency, price_basis, explicit_discount, promo_code,
+      booking_deadline, travel_from, travel_until, offer_expires_at, expiry_status,
+      blackout_dates, minimum_stay, minimum_group_size, eligibility, inclusions, exclusions,
+      cancellation_terms, booking_route, seller_or_marketer,
+      evidence_state, extraction_confidence, missing_fields, review_status, created_by
+    ) VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?,?, ?,?,?,?,?)`
+  ).bind(
+    candidateId, source.id, source.source_url, new Date().toISOString(), fp,
+    extraction.fields.proposed_offer_name ?? null, extraction.fields.factual_summary ?? null,
+    extraction.fields.category ?? null, extraction.fields.fiji_location ?? null, extraction.fields.advertised_price ?? null,
+    extraction.fields.reference_price ?? null, extraction.fields.currency ?? null, extraction.fields.price_basis ?? null,
+    extraction.fields.explicit_discount ?? null, extraction.fields.promo_code ?? null,
+    extraction.fields.booking_deadline ?? null, extraction.fields.travel_from ?? null, extraction.fields.travel_until ?? null,
+    extraction.fields.offer_expires_at ?? null, expiryStatus,
+    extraction.fields.blackout_dates ?? null, extraction.fields.minimum_stay ?? null, extraction.fields.minimum_group_size ?? null,
+    extraction.fields.eligibility ?? null, extraction.fields.inclusions ?? null, extraction.fields.exclusions ?? null,
+    extraction.fields.cancellation_terms ?? null, extraction.fields.booking_route ?? null, extraction.fields.seller_or_marketer ?? null,
+    'CANDIDATE', extraction.confidence,
+    JSON.stringify(extraction.missingFields),
+    writeReviewStatus('NEEDS_HUMAN_REVIEW'), 'AI_AGENT'
+  ).run();
+}
+
+// Reconstructs the ExtractedFields shape from an existing deal_offer_candidates row, so its
+// deal-identity can be recomputed the same way a fresh extraction's identity is - this is what
+// lets a new scan be compared against "the deal as it was last recorded" without a redundant
+// stored hash column on deal_offer_candidates itself (zero migration surface on that table).
+function candidateRowToFields(row: any): ExtractedFields {
+  return {
+    proposed_offer_name: row.proposed_offer_name ?? null, factual_summary: row.factual_summary ?? null,
+    category: row.category ?? null, fiji_location: row.fiji_location ?? null,
+    advertised_price: row.advertised_price ?? null, reference_price: row.reference_price ?? null,
+    currency: row.currency ?? null, price_basis: row.price_basis ?? null,
+    explicit_discount: row.explicit_discount ?? null, promo_code: row.promo_code ?? null,
+    booking_deadline: row.booking_deadline ?? null, travel_from: row.travel_from ?? null,
+    travel_until: row.travel_until ?? null, offer_expires_at: row.offer_expires_at ?? null,
+    blackout_dates: row.blackout_dates ?? null, minimum_stay: row.minimum_stay ?? null,
+    minimum_group_size: row.minimum_group_size ?? null, eligibility: row.eligibility ?? null,
+    inclusions: row.inclusions ?? null, exclusions: row.exclusions ?? null,
+    cancellation_terms: row.cancellation_terms ?? null, booking_route: row.booking_route ?? null,
+    seller_or_marketer: row.seller_or_marketer ?? null,
+  };
+}
+
 // --- Stuck-run watchdog (Phase 4) --------------------------------------------------------------
 //
 // Called at the start of every invocation, scheduled or manual. Idempotent: only ever touches
@@ -359,44 +463,80 @@ export async function runDailyDiscovery(
         continue; // unchanged content - nothing new to extract this run
       }
 
-      // Duplicate-candidate guard: a retry (or two activations racing on stale state) must never
-      // create a second candidate for a fingerprint already represented. Material changes still
-      // get a brand-new row - nothing here ever UPDATEs an existing candidate's factual fields,
-      // so every prior version of a source's content is preserved, never overwritten.
-      const existing = await env.DB.prepare(`SELECT id FROM deal_offer_candidates WHERE source_id=? AND source_fingerprint=?`).bind(source.id, fp).first<any>();
-      if (existing) continue;
+      // Exact-duplicate guard: a retry (or two activations racing on stale state) must never
+      // create a second candidate for a fingerprint already represented.
+      const existingExact = await env.DB.prepare(`SELECT id FROM deal_offer_candidates WHERE source_id=? AND source_fingerprint=?`).bind(source.id, fp).first<any>();
+      if (existingExact) {
+        await recordScanOutcome(env, scanIdemKey, 'EXACT_DUPLICATE_SKIPPED', null, null, null);
+        continue;
+      }
 
       const extraction = await extractOfferFacts(env, result.body || '', source.source_url);
-      const candidateId = crypto.randomUUID();
-      const reviewStatus = writeReviewStatus(extraction ? 'NEEDS_HUMAN_REVIEW' : 'SOURCE_REVIEW_REQUIRED');
-      const expiryStatus = extraction ? computeExpiryStatus(extraction.fields.offer_expires_at) : 'EXPIRY_UNKNOWN';
+      const canonicalUrl = canonicalizeUrl(source.source_url);
 
+      // P1.2 quality gate: extraction failing outright (AI call/parse failure) is treated the
+      // same as a quality rejection - a page nothing could be read from is exactly the case that
+      // must never reach the human review queue, per the CEO directive's weak-extraction rule.
+      if (!extraction) {
+        await recordScanOutcome(env, scanIdemKey, 'REJECTED', canonicalUrl, null, {
+          pageClassification: classifyPage(canonicalUrl, EMPTY_FIELDS, result.body || ''),
+          passedGates: [], failedGates: ['gate_10_schema_valid'], missingFields: EXTRACTION_FIELDS,
+          contradictionFlags: [], confidence: 0, decision: 'QUALITY_REJECTED',
+          rejectionReason: 'AI extraction failed or returned unparseable output - no fields to gate.',
+          materialFactCount: 0,
+        });
+        continue;
+      }
+
+      const quality = evaluateQualityGates(canonicalUrl, extraction.fields as ExtractedFields, extraction.confidence, result.body || '');
+
+      if (quality.decision === 'QUALITY_REJECTED') {
+        await recordScanOutcome(env, scanIdemKey, 'REJECTED', canonicalUrl, null, quality);
+        continue; // no candidate created, no existing candidate touched - complete scan evidence already recorded above
+      }
+
+      // Quality gates passed - now decide whether this is a first-time discovery, an unchanged/
+      // cosmetically-drifted re-scan of an already-known deal (no-op), or a genuine material
+      // change to an already-known deal (change event on the existing row, never a duplicate).
+      const newIdentity = await computeDealIdentity(canonicalUrl, source.id, extraction.fields as ExtractedFields);
+      const latestLive = await env.DB.prepare(
+        `SELECT * FROM deal_offer_candidates WHERE source_id=? AND review_status NOT IN ('REJECTED','WITHDRAWN','DISPUTED','ARCHIVED') ORDER BY created_at DESC LIMIT 1`
+      ).bind(source.id).first<any>();
+
+      if (!latestLive) {
+        // First-time discovery for this source.
+        const candidateId = crypto.randomUUID();
+        const expiryStatus = computeExpiryStatus(extraction.fields.offer_expires_at);
+        await insertCandidate(env, candidateId, source, fp, extraction, expiryStatus);
+        await recordScanOutcome(env, scanIdemKey, 'NEW_CANDIDATE', canonicalUrl, candidateId, quality, newIdentity);
+        created++;
+        continue;
+      }
+
+      const existingFields = candidateRowToFields(latestLive);
+      const existingIdentity = await computeDealIdentity(canonicalizeUrl(latestLive.source_url), source.id, existingFields);
+
+      if (existingIdentity === newIdentity) {
+        // Cosmetic drift (or a literal re-scan of the same deal with a churned fingerprint) -
+        // the deal itself hasn't changed, so no new row and no change event either.
+        await recordScanOutcome(env, scanIdemKey, 'COSMETIC_DRIFT_NO_OP', canonicalUrl, latestLive.id, quality, newIdentity);
+        continue;
+      }
+
+      // Material change to an already-known deal: one auditable change event per changed field,
+      // the existing row's own factual columns are never overwritten (historical evidence is
+      // preserved exactly as extracted at the time), only its review_status flips so it resurfaces
+      // for human re-review.
+      const diffs = diffMaterialFacts(existingFields, extraction.fields as ExtractedFields);
+      for (const d of diffs) {
+        await env.DB.prepare(
+          `INSERT INTO deal_change_events (id, offer_candidate_id, event_type, old_value, new_value) VALUES (?,?,?,?,?)`
+        ).bind(crypto.randomUUID(), latestLive.id, `${d.field.toUpperCase()}_CHANGED`, d.oldValue, d.newValue).run();
+      }
       await env.DB.prepare(
-        `INSERT INTO deal_offer_candidates (
-          id, source_id, source_url, source_checked_at, source_fingerprint,
-          proposed_offer_name, factual_summary, category, fiji_location, advertised_price,
-          reference_price, currency, price_basis, explicit_discount, promo_code,
-          booking_deadline, travel_from, travel_until, offer_expires_at, expiry_status,
-          blackout_dates, minimum_stay, minimum_group_size, eligibility, inclusions, exclusions,
-          cancellation_terms, booking_route, seller_or_marketer,
-          evidence_state, extraction_confidence, missing_fields, review_status, created_by
-        ) VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?,?, ?,?,?, ?,?,?,?,?)`
-      ).bind(
-        candidateId, source.id, source.source_url, new Date().toISOString(), fp,
-        extraction?.fields.proposed_offer_name ?? null, extraction?.fields.factual_summary ?? null,
-        extraction?.fields.category ?? null, extraction?.fields.fiji_location ?? null, extraction?.fields.advertised_price ?? null,
-        extraction?.fields.reference_price ?? null, extraction?.fields.currency ?? null, extraction?.fields.price_basis ?? null,
-        extraction?.fields.explicit_discount ?? null, extraction?.fields.promo_code ?? null,
-        extraction?.fields.booking_deadline ?? null, extraction?.fields.travel_from ?? null, extraction?.fields.travel_until ?? null,
-        extraction?.fields.offer_expires_at ?? null, expiryStatus,
-        extraction?.fields.blackout_dates ?? null, extraction?.fields.minimum_stay ?? null, extraction?.fields.minimum_group_size ?? null,
-        extraction?.fields.eligibility ?? null, extraction?.fields.inclusions ?? null, extraction?.fields.exclusions ?? null,
-        extraction?.fields.cancellation_terms ?? null, extraction?.fields.booking_route ?? null, extraction?.fields.seller_or_marketer ?? null,
-        extraction ? 'CANDIDATE' : 'CANDIDATE', extraction?.confidence ?? null,
-        extraction ? JSON.stringify(extraction.missingFields) : JSON.stringify(EXTRACTION_FIELDS),
-        reviewStatus, 'AI_AGENT'
-      ).run();
-      created++;
+        `UPDATE deal_offer_candidates SET review_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+      ).bind(writeReviewStatus('MATERIAL_CHANGE_DETECTED'), latestLive.id).run();
+      await recordScanOutcome(env, scanIdemKey, 'MATERIAL_CHANGE', canonicalUrl, latestLive.id, quality, newIdentity);
     } catch (e: any) {
       failed++;
       await env.DB.prepare(

@@ -24,6 +24,7 @@ const dealAgentTs = readFileSync(path.join(ROOT, 'src/deal-agent.ts'), 'utf8');
 const dealsTs = readFileSync(path.join(ROOT, 'src/deals.ts'), 'utf8');
 const dealsAdminUiTs = readFileSync(path.join(ROOT, 'src/deals-admin-ui.ts'), 'utf8');
 const dealsHubTs = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
+const dealQualityTs = readFileSync(path.join(ROOT, 'src/deal-quality.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -501,6 +502,90 @@ console.log('== 14. Deal Intelligence P1: Human Review Centre auth, public hub e
   const hits = FORBIDDEN_PHRASES.filter(p => new RegExp(p, 'i').test(dealsHubTs));
   if (hits.length > 0) fail(`src/deals-hub.ts contains forbidden fabricated urgency/social-proof language: ${hits.join(', ')}`);
   else ok('src/deals-hub.ts contains no fabricated scarcity/countdown/review/rating language in its static templates');
+}
+
+console.log('== 15. P1.2 candidate-quality gate: deterministic, AI has no path to it, low-information scans cannot reach the review queue ==');
+{
+  // (a) deal-quality.ts must be pure - no AI.run() call, no D1 access, no env.DB reference. Its
+  // entire value is being independently inspectable/testable outside the discovery loop that
+  // calls it - if it ever reached into D1 or the model itself, that guarantee would be gone.
+  const dealQualityCodeLines = dealQualityTs.split('\n').filter(l => !l.trim().startsWith('//'));
+  if (dealQualityCodeLines.some(l => /AI\.run\(/.test(l))) fail('src/deal-quality.ts calls AI.run() outside a comment - the quality gate must stay deterministic, never AI-judged');
+  else ok('src/deal-quality.ts contains no live AI.run() call');
+  if (/env\.DB|D1Database/.test(dealQualityTs)) fail('src/deal-quality.ts references D1/env.DB - it must be a pure function module with no database access');
+  else ok('src/deal-quality.ts contains no D1/env.DB reference');
+
+  // (b) deal-agent.ts must still have no import path to any human-only file - the P1.2 addition
+  // (importing ./deal-quality) must not have accidentally widened this.
+  for (const [name, mod] of [['./deals', 'src/deals.ts'], ['./deals-admin-ui', 'src/deals-admin-ui.ts'], ['./deals-hub', 'src/deals-hub.ts']]) {
+    if (new RegExp(`from ['"]${name.replace('.', '\\.')}['"]`).test(dealAgentTs)) {
+      fail(`src/deal-agent.ts imports ${mod} - AI-facing code must not gain access to any human-only surface`);
+    } else {
+      ok(`src/deal-agent.ts does not import ${mod}`);
+    }
+  }
+
+  // (c) Prompt-injection detection must run and must be capable of rejecting outright - checked
+  // structurally by requiring detectPromptInjection to be defined and referenced inside
+  // evaluateQualityGates before any gate-1..7,9,10 push to `passed`.
+  if (!/function detectPromptInjection/.test(dealQualityTs)) {
+    fail('src/deal-quality.ts is missing detectPromptInjection()');
+  } else {
+    const fnMatch = dealQualityTs.match(/export function evaluateQualityGates[\s\S]*?\n}/);
+    if (!fnMatch) fail('evaluateQualityGates() not found in src/deal-quality.ts');
+    else {
+      const body = fnMatch[0];
+      const injectionIdx = body.indexOf('detectPromptInjection');
+      const firstGatePushIdx = body.indexOf(`passed.push('gate_1`);
+      if (injectionIdx === -1) fail('evaluateQualityGates() never calls detectPromptInjection()');
+      else if (firstGatePushIdx !== -1 && injectionIdx > firstGatePushIdx) fail('detectPromptInjection() is checked after gate_1 already passed - injection must short-circuit first');
+      else ok('evaluateQualityGates() checks detectPromptInjection() before any other gate is evaluated');
+    }
+  }
+
+  // (d) Generic provider-homepage/informational pages must be structurally excluded from gate 1,
+  // not just discouraged by comment - the CEO directive is explicit that these page types must
+  // never generate a candidate regardless of marketing language present.
+  if (!/PROVIDER_HOME_PAGE['"]?\s*\|\|\s*classification\s*===\s*['"]INFORMATIONAL_PAGE/.test(dealQualityTs) &&
+      !/classification === 'PROVIDER_HOME_PAGE' \|\| classification === 'INFORMATIONAL_PAGE'/.test(dealQualityTs)) {
+    fail('src/deal-quality.ts does not appear to structurally exclude PROVIDER_HOME_PAGE/INFORMATIONAL_PAGE from passing the identifiable-proposition gate');
+  } else {
+    ok('src/deal-quality.ts structurally excludes PROVIDER_HOME_PAGE/INFORMATIONAL_PAGE from the identifiable-proposition gate');
+  }
+
+  // (e) deal-agent.ts must only INSERT a new deal_offer_candidates row inside insertCandidate(),
+  // and that function must only be called after a quality-gate rejection check has already had
+  // the chance to `continue` - i.e. the call site for insertCandidate( must textually follow the
+  // `quality.decision === 'QUALITY_REJECTED'` check in runDailyDiscovery().
+  const runFnMatch = dealAgentTs.match(/export async function runDailyDiscovery[\s\S]*$/);
+  if (!runFnMatch) {
+    fail('runDailyDiscovery() not found in src/deal-agent.ts');
+  } else {
+    const body = runFnMatch[0];
+    const rejectionCheckIdx = body.indexOf(`quality.decision === 'QUALITY_REJECTED'`);
+    const insertCallIdx = body.indexOf('await insertCandidate(');
+    if (rejectionCheckIdx === -1) fail('runDailyDiscovery() does not check quality.decision === \'QUALITY_REJECTED\' anywhere');
+    else if (insertCallIdx === -1) fail('runDailyDiscovery() never calls insertCandidate(');
+    else if (insertCallIdx < rejectionCheckIdx) fail('insertCandidate( is called before the QUALITY_REJECTED check - a rejected extraction could still create a candidate');
+    else ok('insertCandidate( is only reachable after the QUALITY_REJECTED check has already had the chance to skip this source');
+
+    // No other INSERT INTO deal_offer_candidates may exist in this file outside insertCandidate().
+    const rawInserts = [...dealAgentTs.matchAll(/INSERT INTO deal_offer_candidates/g)];
+    if (rawInserts.length !== 1) {
+      fail(`src/deal-agent.ts has ${rawInserts.length} INSERT INTO deal_offer_candidates statement(s) - expected exactly 1, inside insertCandidate()`);
+    } else {
+      ok('src/deal-agent.ts has exactly one INSERT INTO deal_offer_candidates statement, inside insertCandidate()');
+    }
+  }
+
+  // (f) A material change to an existing candidate must never rewrite its factual columns - only
+  // review_status/updated_at may be SET on that UPDATE, so prior evidence is never overwritten.
+  const materialChangeUpdateMatch = dealAgentTs.match(/UPDATE deal_offer_candidates SET review_status=\?, updated_at=CURRENT_TIMESTAMP WHERE id=\?/);
+  if (!materialChangeUpdateMatch) {
+    fail('Could not find the expected narrow UPDATE deal_offer_candidates SET review_status=... statement - material-change handling may have grown wider than review_status/updated_at');
+  } else {
+    ok('The material-change UPDATE to an existing candidate touches only review_status and updated_at - no factual column is ever overwritten');
+  }
 }
 
 console.log('\n----------------------------------------');
