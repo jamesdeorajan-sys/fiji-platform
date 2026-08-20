@@ -14,7 +14,7 @@ import { runDailyDiscovery } from './deal-agent';
 // runDailyDiscovery itself is still restricted to DISCOVERY_WRITABLE_STATES regardless of what
 // triggered it, human button-press or cron.
 
-type Bindings = { DB: D1Database; AI: Ai; ADMIN_TOKEN?: string };
+type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 export const deals = new Hono<{ Bindings: Bindings }>();
 export const dealsPublic = new Hono<{ Bindings: Bindings }>();
 
