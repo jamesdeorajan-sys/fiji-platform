@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { runDailyDiscovery } from './deal-agent';
 
 // Vakaviti Deal Intelligence - OfferApprovalCoordinator + DeterministicOfferPublisher modules.
 // This file is the ONLY place that may write review_status to VAKAVITI_HUMAN_REVIEWED,
@@ -6,8 +7,14 @@ import { Hono } from 'hono';
 // and the only place that may set deal_sources.source_approval_status to APPROVED/REJECTED/PAUSED.
 // Every route here sits behind requireAdmin. AI (src/deal-agent.ts) never imports this file and
 // has no access to the ADMIN_TOKEN, so it structurally cannot reach any route defined here.
+//
+// Importing runDailyDiscovery here is one-directional and safe: this file calls INTO the
+// discovery module to let a human manually trigger a controlled scan (satisfying the
+// "rescan source" required admin action), it does not give deal-agent.ts any new authority -
+// runDailyDiscovery itself is still restricted to DISCOVERY_WRITABLE_STATES regardless of what
+// triggered it, human button-press or cron.
 
-type Bindings = { DB: D1Database; ADMIN_TOKEN?: string };
+type Bindings = { DB: D1Database; AI: Ai; ADMIN_TOKEN?: string };
 export const deals = new Hono<{ Bindings: Bindings }>();
 export const dealsPublic = new Hono<{ Bindings: Bindings }>();
 
@@ -245,6 +252,16 @@ deals.post('/candidates/:id/revoke-publication', async c => {
 deals.get('/runs', async c => {
   const rows = await c.env.DB.prepare(`SELECT * FROM deal_scan_runs ORDER BY started_at DESC LIMIT 30`).all<any>();
   return c.json({ results: rows.results || [] });
+});
+
+// Manual trigger for a controlled discovery run - the same runDailyDiscovery() the daily Cron
+// calls, invoked on demand for the CEO-authorized controlled live-source test. Scans only
+// sources currently source_approval_status='APPROVED'; nothing is fetched otherwise. This does
+// not grant the agent module any new write authority - it is still bound to
+// DISCOVERY_WRITABLE_STATES regardless of what triggered it.
+deals.post('/runs/trigger', async c => {
+  const result = await runDailyDiscovery(c.env);
+  return c.json(result, 200);
 });
 
 // --- DeterministicOfferPublisher: the ONE function every public query must pass through -------
