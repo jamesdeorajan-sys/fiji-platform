@@ -229,38 +229,92 @@ export function computeExpiryStatus(offerExpiresAt: string | null): 'EXPIRY_UNKN
   return 'ACTIVE';
 }
 
-// --- OfferDiscovery + orchestration: the scheduled entrypoint ----------------------------------
+// --- Stuck-run watchdog (Phase 4) --------------------------------------------------------------
 //
-// Only ever scans sources with source_approval_status='APPROVED' - a source pending, rejected,
-// paused, or restricted is never fetched. One failed source cannot fail the whole run (each
-// source is wrapped independently). Idempotency: the scheduled daily run is keyed by UTC date
-// (one automatic attempt per calendar date, via the UNIQUE constraint on
-// deal_scan_runs.idempotency_key), so the Cron trigger can never overlap itself. A manually
-// triggered run (runType='MANUAL_TEST') gets its own timestamp-based key instead - a human
-// deliberately requesting an on-demand test run is a different concern from "don't let the
-// automatic daily job overlap itself", and must not be silently swallowed just because today's
-// automatic slot is occupied (or, as found live during this pilot's own controlled test,
-// occupied by a run that failed and was never meant to block a deliberate retry). Each
-// source-scan row is separately keyed by (run, source) - UNIQUE on deal_source_scans.idempotency_key.
+// Called at the start of every invocation, scheduled or manual. Idempotent: only ever touches
+// rows still RUNNING past the threshold, so re-running it is a no-op for anything already
+// recovered. Never touches deal_offer_candidates - an abandoned run says nothing about whether
+// an offer was withdrawn, and a published offer is never quarantined just because the Worker
+// that happened to be scanning something else was terminated.
+//
+// Uses status='FAILED' (not a new 'TIMED_OUT' enum value) deliberately: a disposable-database
+// rehearsal of the CHECK-constraint migration this would have needed found that D1 blocks
+// DROP TABLE on a table referenced by another table's foreign key even with
+// PRAGMA foreign_keys=OFF in the same request (unlike plain SQLite, where DDL isn't
+// FK-checked) - deal_source_scans.scan_run_id references this table. Rather than compound risk
+// by also rebuilding the child table, the specific reason (TIMED_OUT vs ABANDONED) is recorded
+// in summary_json.failure_reason instead, which achieves the same "no false RUNNING record,
+// reason is inspectable" outcome without a schema change. See the pilot report for the full
+// rehearsal finding.
+const MAX_RUNNING_MINUTES = 10;
 
-export async function runDailyDiscovery(env: Bindings, runType: 'DAILY_DISCOVERY' | 'MANUAL_TEST' = 'DAILY_DISCOVERY'): Promise<{ runId: string; sourcesScanned: number; sourcesFailed: number; candidatesCreated: number; skipped: boolean }> {
+async function recoverStuckRuns(env: Bindings): Promise<void> {
+  const stuck = await env.DB.prepare(
+    `SELECT id FROM deal_scan_runs WHERE status='RUNNING' AND started_at < datetime('now', '-' || ? || ' minutes')`
+  ).bind(MAX_RUNNING_MINUTES).all<any>();
+  for (const row of stuck.results || []) {
+    const lastStep = await env.DB.prepare(`SELECT COUNT(*) c FROM deal_source_scans WHERE scan_run_id=?`).bind(row.id).first<any>();
+    await env.DB.prepare(
+      `UPDATE deal_scan_runs SET status='FAILED', completed_at=CURRENT_TIMESTAMP, summary_json=? WHERE id=? AND status='RUNNING'`
+    ).bind(JSON.stringify({ failure_reason: 'TIMED_OUT', reason: `Exceeded ${MAX_RUNNING_MINUTES}-minute running threshold`, last_completed_step_count: lastStep?.c ?? 0 }), row.id).run();
+  }
+}
+
+// --- OfferDiscovery + orchestration: the scheduled entrypoint (Phase 2 bounded-rotating-scan) --
+//
+// Processes at most MAX_SOURCES_PER_ACTIVATION sources per invocation - never the full approved
+// set. Selection is deterministic (next_scan_at ascending, id as tiebreaker) so every source
+// gets fair rotation across activations, and next_scan_at is only advanced through an auditable
+// scan outcome (success or a classified failure), never speculatively. One failed source cannot
+// block another - each is wrapped independently and next_scan_at still advances on failure so a
+// persistently-broken source doesn't hog every future activation's two slots forever (it also
+// gets backoff_until on top, which is checked separately and is shorter-lived).
+//
+// Idempotency: the scheduled run is keyed by UTC date+hour (so up to one automatic attempt per
+// hour - the actual cadence is set by the Cron expression itself, see wrangler.toml), and a
+// manual run gets its own timestamp+uuid key, in a fully separate namespace - a manual test can
+// never be blocked by, or consume, an automatic activation's slot. Only one run may be RUNNING
+// at a time (checked after the watchdog clears any genuinely stuck rows) - this is the
+// no-overlap guarantee, simpler and sufficient at this pilot's scale than per-source locking.
+const MAX_SOURCES_PER_ACTIVATION = 2;
+
+export async function runDailyDiscovery(
+  env: Bindings,
+  runType: 'DAILY_DISCOVERY' | 'MANUAL_TEST' = 'DAILY_DISCOVERY',
+  opts: { consumeScheduledSlot?: boolean } = {}
+): Promise<{ runId: string; sourcesScanned: number; sourcesFailed: number; candidatesCreated: number; skipped: boolean; skipReason?: string }> {
+  await recoverStuckRuns(env);
+
+  const stillRunning = await env.DB.prepare(`SELECT id FROM deal_scan_runs WHERE status='RUNNING' LIMIT 1`).first<any>();
+  if (stillRunning) {
+    return { runId: '', sourcesScanned: 0, sourcesFailed: 0, candidatesCreated: 0, skipped: true, skipReason: 'another_run_in_progress' };
+  }
+
+  const now = new Date();
   const runIdemKey = runType === 'DAILY_DISCOVERY'
-    ? `daily-discovery-${new Date().toISOString().slice(0, 10)}`
-    : `manual-test-${new Date().toISOString()}-${crypto.randomUUID()}`;
+    ? `daily-discovery-${now.toISOString().slice(0, 13)}` // date+hour: at most one automatic attempt per hour-slot
+    : `manual-test-${now.toISOString()}-${crypto.randomUUID()}`;
   const runId = crypto.randomUUID();
+  // A manual test run only advances next_scan_at (consuming the source's scheduled slot) if the
+  // caller explicitly asks for that - otherwise a human spot-checking a source doesn't disturb
+  // the automatic rotation's timing.
+  const shouldAdvanceSchedule = runType === 'DAILY_DISCOVERY' || opts.consumeScheduledSlot === true;
 
   const insertRun = await env.DB.prepare(
     `INSERT OR IGNORE INTO deal_scan_runs (id, run_type, idempotency_key, status) VALUES (?, ?, ?, 'RUNNING')`
   ).bind(runId, runType, runIdemKey).run();
   if ((insertRun.meta as any).changes === 0) {
-    // Already ran today (or is running) - do not overlap. Only reachable for DAILY_DISCOVERY,
-    // since MANUAL_TEST's key is always unique.
-    return { runId: '', sourcesScanned: 0, sourcesFailed: 0, candidatesCreated: 0, skipped: true };
+    return { runId: '', sourcesScanned: 0, sourcesFailed: 0, candidatesCreated: 0, skipped: true, skipReason: 'idempotency_key_already_used' };
   }
 
   const sources = await env.DB.prepare(
-    `SELECT * FROM deal_sources WHERE source_approval_status='APPROVED' AND (backoff_until IS NULL OR backoff_until < CURRENT_TIMESTAMP)`
-  ).all<any>();
+    `SELECT * FROM deal_sources
+     WHERE source_approval_status='APPROVED'
+       AND (backoff_until IS NULL OR backoff_until < CURRENT_TIMESTAMP)
+       AND (next_scan_at IS NULL OR next_scan_at <= CURRENT_TIMESTAMP)
+     ORDER BY next_scan_at ASC, id ASC
+     LIMIT ?`
+  ).bind(MAX_SOURCES_PER_ACTIVATION).all<any>();
 
   let scanned = 0, failed = 0, created = 0;
   for (const source of sources.results || []) {
@@ -273,26 +327,35 @@ export async function runDailyDiscovery(env: Bindings, runType: 'DAILY_DISCOVERY
       ).bind(crypto.randomUUID(), runId, source.id, scanIdemKey, result.status ?? null, result.classification, fp, result.error ?? null).run();
 
       scanned++;
+      const nextScanClause = shouldAdvanceSchedule ? `, next_scan_at=datetime('now', '+24 hours')` : '';
+
       if (!result.ok) {
         failed++;
         const newFailureCount = (source.failure_count || 0) + 1;
         const backoffMinutes = Math.min(24 * 60, Math.pow(2, newFailureCount) * 5);
         const newStatus = result.classification === 'SOURCE_UNREACHABLE' && newFailureCount >= 3 ? 'SOURCE_UNREACHABLE' : source.source_approval_status;
         await env.DB.prepare(
-          `UPDATE deal_sources SET failure_count=?, backoff_until=datetime('now', '+' || ? || ' minutes'), last_http_status=?, last_scan_at=CURRENT_TIMESTAMP, source_approval_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+          `UPDATE deal_sources SET failure_count=?, backoff_until=datetime('now', '+' || ? || ' minutes'), last_http_status=?, last_scan_at=CURRENT_TIMESTAMP, source_approval_status=?, updated_at=CURRENT_TIMESTAMP${nextScanClause} WHERE id=?`
         ).bind(newFailureCount, backoffMinutes, result.status ?? null, newStatus, source.id).run();
-        continue;
+        continue; // one failed source never blocks the next
       }
 
-      // Success: reset failure count, update fingerprint/scan time.
+      // Success: reset failure count, update fingerprint/scan time, advance rotation.
       const fingerprintChanged = fp && fp !== source.content_fingerprint;
       await env.DB.prepare(
-        `UPDATE deal_sources SET failure_count=0, backoff_until=NULL, last_http_status=?, last_scan_at=CURRENT_TIMESTAMP, content_fingerprint=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+        `UPDATE deal_sources SET failure_count=0, backoff_until=NULL, last_http_status=?, last_scan_at=CURRENT_TIMESTAMP, content_fingerprint=?, updated_at=CURRENT_TIMESTAMP${nextScanClause} WHERE id=?`
       ).bind(result.status, fp, source.id).run();
 
       if (!fingerprintChanged && source.content_fingerprint) {
         continue; // unchanged content - nothing new to extract this run
       }
+
+      // Duplicate-candidate guard: a retry (or two activations racing on stale state) must never
+      // create a second candidate for a fingerprint already represented. Material changes still
+      // get a brand-new row - nothing here ever UPDATEs an existing candidate's factual fields,
+      // so every prior version of a source's content is preserved, never overwritten.
+      const existing = await env.DB.prepare(`SELECT id FROM deal_offer_candidates WHERE source_id=? AND source_fingerprint=?`).bind(source.id, fp).first<any>();
+      if (existing) continue;
 
       const extraction = await extractOfferFacts(env, result.body || '', source.source_url);
       const candidateId = crypto.randomUUID();

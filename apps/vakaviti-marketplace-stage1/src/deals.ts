@@ -267,8 +267,14 @@ deals.get('/runs', async c => {
 // task allowance instead of the request/response lifecycle. Poll GET /runs to observe progress;
 // the row transitions from RUNNING to COMPLETED/COMPLETED_WITH_ERRORS/FAILED same as a Cron run.
 deals.post('/runs/trigger', async c => {
-  c.executionCtx.waitUntil(runDailyDiscovery(c.env, 'MANUAL_TEST').catch(() => {}));
-  return c.json({ triggered: true, note: 'Run started in the background as MANUAL_TEST (its own idempotency key - does not consume or get blocked by today\'s automatic DAILY_DISCOVERY slot). Poll GET /api/admin/deals/runs to observe status.' }, 202);
+  const body = await c.req.json<any>().catch(() => ({}));
+  // A manual test scan does not, by default, advance the scanned sources' next_scan_at - a
+  // human spot-checking a source shouldn't disturb the automatic rotation's timing. Pass
+  // consume_scheduled_slot:true to opt into treating this manual run as satisfying today's
+  // scheduled slot for whatever sources it happens to scan.
+  const consumeScheduledSlot = body.consume_scheduled_slot === true;
+  c.executionCtx.waitUntil(runDailyDiscovery(c.env, 'MANUAL_TEST', { consumeScheduledSlot }).catch(() => {}));
+  return c.json({ triggered: true, note: `Run started in the background as MANUAL_TEST (its own idempotency key - never blocked by, and never blocking, the automatic DAILY_DISCOVERY slot). Processes at most 2 due sources this activation. consume_scheduled_slot=${consumeScheduledSlot}. Poll GET /api/admin/deals/runs to observe status.` }, 202);
 });
 
 // --- DeterministicOfferPublisher: the ONE function every public query must pass through -------
