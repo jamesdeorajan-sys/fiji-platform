@@ -3,6 +3,8 @@ import { candidates } from './candidates';
 import { products } from './products';
 import { places } from './places';
 import { deals, dealsPublic } from './deals';
+import { dealsAdminUi } from './deals-admin-ui';
+import { dealsHub } from './deals-hub';
 import { runDailyDiscovery } from './deal-agent';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
@@ -601,6 +603,15 @@ app.route('/api/admin/deals', deals);
 // src/deals.ts. With zero PUBLISHED offers today (no provider has approved anything yet), this
 // always returns an empty result set.
 app.route('/api/deals-preview', dealsPublic);
+// P1 Human Review Centre - server-rendered, mobile-usable admin HTML, cookie-session-gated (see
+// src/deals-admin-ui.ts for the auth model). Distinct from /api/admin/deals above, which remains
+// Bearer-token-only for programmatic/JSON use - this is an additive HTML surface, not a
+// replacement.
+app.route('/admin/deals', dealsAdminUi);
+// P1 Live Fiji Deals public hub - mobile-first, server-rendered, noindex (preview infra, no
+// branded domain yet). Every route filters through the same isPubliclyEligible() gate as the
+// admin approval flow and the JSON preview API - see src/deals-hub.ts.
+app.route('/deals', dealsHub);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
 type ScheduledBindings = Bindings;

@@ -22,6 +22,8 @@ const placesTs = readFileSync(path.join(ROOT, 'src/places.ts'), 'utf8');
 const taxonomyMigrationSql = readFileSync(path.join(ROOT, 'migrations/0007_place_taxonomy.sql'), 'utf8');
 const dealAgentTs = readFileSync(path.join(ROOT, 'src/deal-agent.ts'), 'utf8');
 const dealsTs = readFileSync(path.join(ROOT, 'src/deals.ts'), 'utf8');
+const dealsAdminUiTs = readFileSync(path.join(ROOT, 'src/deals-admin-ui.ts'), 'utf8');
+const dealsHubTs = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -432,6 +434,73 @@ console.log('== 13. Deal Intelligence: AI cannot approve/publish, human-only fil
   } else {
     ok('isPubliclyEligible() gates on review_status === \'PUBLISHED\' as a precondition');
   }
+}
+
+console.log('== 14. Deal Intelligence P1: Human Review Centre auth, public hub eligibility gate, no fabricated urgency/social-proof language ==');
+{
+  // (a) The AI/scheduled file must have no path at all to either new human-facing surface, same
+  // reasoning as check 13's deal-agent.ts -> deals.ts separation.
+  for (const [name, mod] of [['./deals-admin-ui', 'src/deals-admin-ui.ts'], ['./deals-hub', 'src/deals-hub.ts']]) {
+    if (new RegExp(`from ['"]${name.replace('.', '\\.')}['"]`).test(dealAgentTs)) {
+      fail(`src/deal-agent.ts imports from ${mod} - AI-facing code must not have access to any human-only surface`);
+    } else {
+      ok(`src/deal-agent.ts does not import ${mod}`);
+    }
+  }
+
+  // (b) Every route on the admin HTML router must sit behind requireAdminSession, with the sole
+  // documented exemption being /login (GET+POST, needed to establish the session) and /logout
+  // (POST, needed to clear it) - both registered, by necessity, before the middleware line.
+  const adminMiddlewareIdx = dealsAdminUiTs.indexOf(`dealsAdminUi.use('*', requireAdminSession)`);
+  if (adminMiddlewareIdx === -1) {
+    fail('src/deals-admin-ui.ts is missing the dealsAdminUi.use(\'*\', requireAdminSession) middleware registration');
+  } else {
+    const EXEMPT_ADMIN_ROUTES = new Set(["'/login'", "'/logout'"]);
+    const adminRouteMatches = [...dealsAdminUiTs.matchAll(/dealsAdminUi\.(get|post)\((['"][^'"]+['"])/g)];
+    if (adminRouteMatches.length === 0) fail('No dealsAdminUi.get(/post( routes found in src/deals-admin-ui.ts - the regex may be broken');
+    let unguarded = 0;
+    for (const m of adminRouteMatches) {
+      const [full, , routePath] = m;
+      if (m.index < adminMiddlewareIdx && !EXEMPT_ADMIN_ROUTES.has(routePath)) {
+        fail(`${routePath} is registered before requireAdminSession middleware and is not in the documented exemption list (/login, /logout) - it would be unguarded`);
+        unguarded++;
+      }
+    }
+    if (unguarded === 0) ok(`All ${adminRouteMatches.length} dealsAdminUi route(s) are either behind requireAdminSession or in the documented /login,/logout exemption`);
+  }
+
+  // (c) Every public hub route must filter through the shared eligibility gate - either directly
+  // (isPubliclyEligible) or via getEligibleDeals(), which itself wraps isPubliclyEligible().
+  if (!/function getEligibleDeals[\s\S]*?isPubliclyEligible/.test(dealsHubTs)) {
+    fail('getEligibleDeals() in src/deals-hub.ts does not appear to filter through isPubliclyEligible()');
+  } else {
+    ok('getEligibleDeals() filters through isPubliclyEligible()');
+  }
+  const hubRouteBlocks = dealsHubTs.split(/(?=dealsHub\.get\()/).filter(b => /^dealsHub\.get\(/.test(b));
+  if (hubRouteBlocks.length === 0) fail('No dealsHub.get( routes found in src/deals-hub.ts - the regex may be broken');
+  let ungatedHubRoutes = 0;
+  for (const block of hubRouteBlocks) {
+    const routeMatch = block.match(/^dealsHub\.get\((['"][^'"]+['"])/);
+    const routePath = routeMatch ? routeMatch[1] : '(unknown)';
+    if (!/getEligibleDeals|isPubliclyEligible/.test(block)) {
+      fail(`Public hub route ${routePath} does not reference getEligibleDeals() or isPubliclyEligible() - it could serve ungated rows`);
+      ungatedHubRoutes++;
+    }
+  }
+  if (ungatedHubRoutes === 0) ok(`All ${hubRouteBlocks.length} dealsHub.get( route(s) filter through getEligibleDeals()/isPubliclyEligible()`);
+
+  // (d) No fabricated scarcity/countdown/review/rating language anywhere in the hub's static
+  // template strings - the CEO directive is explicit that only visible, human-approved facts may
+  // ever be shown; nothing invented to create urgency or borrowed social proof.
+  const FORBIDDEN_PHRASES = [
+    'only 1 left', 'only 2 left', 'spots left', 'rooms left', 'selling fast', 'hurry',
+    'act now', 'limited time only', 'limited time offer', 'countdown', 'expires in 0',
+    'guests rated', 'star rating', 'verified reviews', 'money-back guarantee',
+    'best price guarantee', 'people are viewing', 'booked \\d+ times today'
+  ];
+  const hits = FORBIDDEN_PHRASES.filter(p => new RegExp(p, 'i').test(dealsHubTs));
+  if (hits.length > 0) fail(`src/deals-hub.ts contains forbidden fabricated urgency/social-proof language: ${hits.join(', ')}`);
+  else ok('src/deals-hub.ts contains no fabricated scarcity/countdown/review/rating language in its static templates');
 }
 
 console.log('\n----------------------------------------');

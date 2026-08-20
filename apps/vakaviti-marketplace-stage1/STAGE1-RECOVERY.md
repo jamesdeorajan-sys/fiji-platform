@@ -41,6 +41,10 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 8. `migrations/0007_place_taxonomy.sql` — additive Place Type taxonomy (Pilot 6D-A). Creates `place_types` (reference table) and `place_change_events` (audit trail), and adds a single new nullable column `places.place_type_code TEXT REFERENCES place_types(code)` via a native `ALTER TABLE ADD COLUMN` — proven safe beforehand in a disposable rehearsal D1 database. The pre-existing `places.place_type` column and its CHECK constraint are completely untouched; legacy values (including Nadi's `CITY`) remain exactly as they were. No `places` table rebuild occurred.
 9. `migrations/0008_deal_intelligence.sql` — Deal Intelligence pilot. Creates `deal_sources`, `deal_offer_candidates`, `deal_approvals`, `deal_change_events`, `deal_scan_runs`, `deal_source_scans` — all new, all prefixed `deal_`, fully additive and independent. No existing table is touched. Nothing here is read by any existing public marketplace route (`operators`/`products`/`offers`/`enquiries` are entirely unaffected).
 
+   **Note on the migration number gap:** a `0009_deal_scan_run_states.sql` was drafted (to add `TIMED_OUT`/`ABANDONED` to `deal_scan_runs.status`) but abandoned before ever being applied - a disposable-database rehearsal found D1 blocks `DROP TABLE` on a table referenced by another table's foreign key even with `PRAGMA foreign_keys=OFF`, which the planned CHECK-constraint migration depended on. The file was deleted rather than pushed; the equivalent outcome is achieved without a schema change (`status='FAILED'` + `summary_json.failure_reason`). The next real migration is numbered `0010` deliberately, to keep the historical record honest rather than renumber around the gap.
+
+10. `migrations/0010_deal_public_hub.sql` — P1 Human Review Centre + public Live Fiji Deals hub. Adds one nullable column (`deal_offer_candidates.slug`, native `ALTER TABLE ADD COLUMN`, no CHECK change) plus two new isolated tables: `deal_analytics_events` (privacy-safe hub event log) and `deal_enquiries` (deal-specific enquiries, deliberately separate from the real `enquiries` table since a Deal Intelligence candidate's seller/marketer is free text, not yet a resolved real operator). No existing table touched.
+
 All statements across all eight files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run except the bare `ALTER TABLE ADD COLUMN` statements (in `0004` and `0007`), which are one-time-only by design, consistent with this project's existing migration discipline.
 
 ## Workers AI
@@ -142,7 +146,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above)
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`
