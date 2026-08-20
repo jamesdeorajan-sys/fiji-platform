@@ -28,12 +28,21 @@ MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 directory = "./public"
 binding = "ASSETS"
 
-# Deal Intelligence Cron Trigger: DISABLED (P0 containment, CEO directive 2026-08-20).
-# The prior full-sequential-batch design ("0 18 * * *" UTC = 06:00 FJT) exceeded the platform's
-# execution window in controlled testing before it could scan all approved sources - one run
-# was left stuck at RUNNING. All sources were paused via the governed admin endpoint as a first
-# containment layer (zero APPROVED sources = zero work even if this fired), and the trigger
-# itself is removed here as the second layer, so the unattended job cannot run at all while the
-# bounded-rotating-scan replacement is built and tested. Re-enable only after Phase 6's
-# controlled tests pass - see EVIDENCE-AND-PROMOTION-GOVERNANCE.md / STAGE1-RECOVERY.md for the
-# new schedule once restored.
+# Deal Intelligence Cron Trigger - RE-ENABLED on a bounded rotating schedule (CEO directive
+# 2026-08-20, Phase 3), after the P0 containment (full-batch design disabled) and Phase 6's
+# controlled tests both passed. Cloudflare Cron Triggers are specified in UTC only.
+#
+# "0 */4 * * *" (UTC) fires every 4 hours: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC.
+# In Fiji Standard Time (FJT = UTC+12, no current DST): 12:00, 16:00, 20:00, 00:00, 04:00, 08:00
+# FJT respectively - i.e. 6 activations per day, evenly spaced.
+#
+# Each activation processes at most 2 due sources (MAX_SOURCES_PER_ACTIVATION in
+# src/deal-agent.ts), selected by next_scan_at ascending. With 6 activations/day x 2
+# sources/activation = up to 12 source-slots/day against 7 currently-approved sources, every
+# source clears its next_scan_at (advanced +24h on each successful or classified-failure scan)
+# well within a day, with headroom to spare - this is the fair-rotation mechanism, not a fixed
+# per-source time slot. A stuck-run watchdog (recoverStuckRuns, 10-minute threshold) runs at the
+# start of every activation, scheduled or manual, so an abandoned run is corrected before it can
+# block the next one.
+[triggers]
+crons = ["0 */4 * * *"]
