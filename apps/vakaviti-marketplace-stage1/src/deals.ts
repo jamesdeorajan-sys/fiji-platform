@@ -259,9 +259,16 @@ deals.get('/runs', async c => {
 // sources currently source_approval_status='APPROVED'; nothing is fetched otherwise. This does
 // not grant the agent module any new write authority - it is still bound to
 // DISCOVERY_WRITABLE_STATES regardless of what triggered it.
+// Fire-and-poll, not fire-and-wait: scanning multiple sources (each with a fetch plus a
+// Workers AI extraction call) can exceed a synchronous request's execution window - discovered
+// live during this pilot's own controlled test, where a synchronous version of this route left
+// a deal_scan_runs row stuck at RUNNING when the platform ended the request before the full
+// batch finished. c.executionCtx.waitUntil() gives the run the platform's extended background-
+// task allowance instead of the request/response lifecycle. Poll GET /runs to observe progress;
+// the row transitions from RUNNING to COMPLETED/COMPLETED_WITH_ERRORS/FAILED same as a Cron run.
 deals.post('/runs/trigger', async c => {
-  const result = await runDailyDiscovery(c.env);
-  return c.json(result, 200);
+  c.executionCtx.waitUntil(runDailyDiscovery(c.env).catch(() => {}));
+  return c.json({ triggered: true, note: 'Run started in the background - poll GET /api/admin/deals/runs to observe status.' }, 202);
 });
 
 // --- DeterministicOfferPublisher: the ONE function every public query must pass through -------
