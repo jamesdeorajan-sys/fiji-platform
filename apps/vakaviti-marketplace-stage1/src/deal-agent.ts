@@ -110,6 +110,15 @@ export async function safeFetchSource(url: string): Promise<SafeFetchResult> {
     if (resp.status === 404 || resp.status === 410) {
       return { ok: false, status: resp.status, classification: 'SOURCE_UNREACHABLE', error: `http-${resp.status}` };
     }
+    // Cloudflare's own edge issues these specific 52x/530 codes when IT cannot reach the
+    // origin - they are not the provider's own server responding, and must not be classified
+    // (or logged) as if the provider rejected Vakaviti. Found live during Phase 6 controlled
+    // testing: a genuinely nonexistent domain returned 530 (Cloudflare "origin DNS error"),
+    // which the previous blanket ">=500 => PROVIDER_RESPONSE" rule mislabeled.
+    if (resp.status === 530) return { ok: false, status: resp.status, classification: 'DNS_FAILURE', error: 'cloudflare-origin-dns-error' };
+    if (resp.status === 525 || resp.status === 526) return { ok: false, status: resp.status, classification: 'TLS_FAILURE', error: `cloudflare-edge-${resp.status}` };
+    if (resp.status === 522 || resp.status === 524) return { ok: false, status: resp.status, classification: 'TIMEOUT', error: `cloudflare-edge-${resp.status}` };
+    if (resp.status === 521 || resp.status === 523) return { ok: false, status: resp.status, classification: 'SOURCE_UNREACHABLE', error: `cloudflare-edge-${resp.status}` };
     if (resp.status >= 500) return { ok: false, status: resp.status, classification: 'PROVIDER_RESPONSE', error: 'server-error' };
     if (resp.status < 200 || resp.status >= 300) return { ok: false, status: resp.status, classification: 'ACCESS_DENIED', error: `http-${resp.status}` };
 
