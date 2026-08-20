@@ -93,8 +93,11 @@ export function canonicalizeUrl(rawUrl: string): string {
   if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
     u.pathname = u.pathname.slice(0, -1);
   }
+  const pairs: [string, string][] = [];
+  u.searchParams.forEach((v, k) => pairs.push([k, v]));
+  pairs.sort(([a], [b]) => a.localeCompare(b));
   const kept = new URLSearchParams();
-  for (const [k, v] of [...u.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [k, v] of pairs) {
     if (!TRACKING_PARAMS.has(k.toLowerCase())) kept.set(k, v);
   }
   u.search = kept.toString() ? `?${kept.toString()}` : '';

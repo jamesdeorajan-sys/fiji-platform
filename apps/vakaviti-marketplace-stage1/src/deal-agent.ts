@@ -291,7 +291,7 @@ async function recordScanOutcome(
 }
 
 async function insertCandidate(
-  env: Bindings, candidateId: string, source: any, fp: string,
+  env: Bindings, candidateId: string, source: any, fp: string | null,
   extraction: { fields: Record<string, string | null>; missingFields: string[]; confidence: number }, expiryStatus: string
 ): Promise<void> {
   await env.DB.prepare(
@@ -483,12 +483,11 @@ export async function runDailyDiscovery(
           passedGates: [], failedGates: ['gate_10_schema_valid'], missingFields: EXTRACTION_FIELDS,
           contradictionFlags: [], confidence: 0, decision: 'QUALITY_REJECTED',
           rejectionReason: 'AI extraction failed or returned unparseable output - no fields to gate.',
-          materialFactCount: 0,
         });
         continue;
       }
 
-      const quality = evaluateQualityGates(canonicalUrl, extraction.fields as ExtractedFields, extraction.confidence, result.body || '');
+      const quality = evaluateQualityGates(canonicalUrl, extraction.fields as unknown as ExtractedFields, extraction.confidence, result.body || '');
 
       if (quality.decision === 'QUALITY_REJECTED') {
         await recordScanOutcome(env, scanIdemKey, 'REJECTED', canonicalUrl, null, quality);
@@ -498,7 +497,7 @@ export async function runDailyDiscovery(
       // Quality gates passed - now decide whether this is a first-time discovery, an unchanged/
       // cosmetically-drifted re-scan of an already-known deal (no-op), or a genuine material
       // change to an already-known deal (change event on the existing row, never a duplicate).
-      const newIdentity = await computeDealIdentity(canonicalUrl, source.id, extraction.fields as ExtractedFields);
+      const newIdentity = await computeDealIdentity(canonicalUrl, source.id, extraction.fields as unknown as ExtractedFields);
       const latestLive = await env.DB.prepare(
         `SELECT * FROM deal_offer_candidates WHERE source_id=? AND review_status NOT IN ('REJECTED','WITHDRAWN','DISPUTED','ARCHIVED') ORDER BY created_at DESC LIMIT 1`
       ).bind(source.id).first<any>();
@@ -527,7 +526,7 @@ export async function runDailyDiscovery(
       // the existing row's own factual columns are never overwritten (historical evidence is
       // preserved exactly as extracted at the time), only its review_status flips so it resurfaces
       // for human re-review.
-      const diffs = diffMaterialFacts(existingFields, extraction.fields as ExtractedFields);
+      const diffs = diffMaterialFacts(existingFields, extraction.fields as unknown as ExtractedFields);
       for (const d of diffs) {
         await env.DB.prepare(
           `INSERT INTO deal_change_events (id, offer_candidate_id, event_type, old_value, new_value) VALUES (?,?,?,?,?)`
