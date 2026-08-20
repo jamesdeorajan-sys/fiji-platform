@@ -233,20 +233,28 @@ export function computeExpiryStatus(offerExpiresAt: string | null): 'EXPIRY_UNKN
 //
 // Only ever scans sources with source_approval_status='APPROVED' - a source pending, rejected,
 // paused, or restricted is never fetched. One failed source cannot fail the whole run (each
-// source is wrapped independently). Idempotency: the run itself is keyed by UTC date, and each
-// source-scan row is keyed by (run, source) - a re-invocation on the same day is a no-op via the
-// UNIQUE constraint on deal_scan_runs.idempotency_key / deal_source_scans.idempotency_key.
+// source is wrapped independently). Idempotency: the scheduled daily run is keyed by UTC date
+// (one automatic attempt per calendar date, via the UNIQUE constraint on
+// deal_scan_runs.idempotency_key), so the Cron trigger can never overlap itself. A manually
+// triggered run (runType='MANUAL_TEST') gets its own timestamp-based key instead - a human
+// deliberately requesting an on-demand test run is a different concern from "don't let the
+// automatic daily job overlap itself", and must not be silently swallowed just because today's
+// automatic slot is occupied (or, as found live during this pilot's own controlled test,
+// occupied by a run that failed and was never meant to block a deliberate retry). Each
+// source-scan row is separately keyed by (run, source) - UNIQUE on deal_source_scans.idempotency_key.
 
-export async function runDailyDiscovery(env: Bindings): Promise<{ runId: string; sourcesScanned: number; sourcesFailed: number; candidatesCreated: number; skipped: boolean }> {
-  const today = new Date().toISOString().slice(0, 10);
-  const runIdemKey = `daily-discovery-${today}`;
+export async function runDailyDiscovery(env: Bindings, runType: 'DAILY_DISCOVERY' | 'MANUAL_TEST' = 'DAILY_DISCOVERY'): Promise<{ runId: string; sourcesScanned: number; sourcesFailed: number; candidatesCreated: number; skipped: boolean }> {
+  const runIdemKey = runType === 'DAILY_DISCOVERY'
+    ? `daily-discovery-${new Date().toISOString().slice(0, 10)}`
+    : `manual-test-${new Date().toISOString()}-${crypto.randomUUID()}`;
   const runId = crypto.randomUUID();
 
   const insertRun = await env.DB.prepare(
-    `INSERT OR IGNORE INTO deal_scan_runs (id, run_type, idempotency_key, status) VALUES (?, 'DAILY_DISCOVERY', ?, 'RUNNING')`
-  ).bind(runId, runIdemKey).run();
+    `INSERT OR IGNORE INTO deal_scan_runs (id, run_type, idempotency_key, status) VALUES (?, ?, ?, 'RUNNING')`
+  ).bind(runId, runType, runIdemKey).run();
   if ((insertRun.meta as any).changes === 0) {
-    // Already ran today (or is running) - do not overlap.
+    // Already ran today (or is running) - do not overlap. Only reachable for DAILY_DISCOVERY,
+    // since MANUAL_TEST's key is always unique.
     return { runId: '', sourcesScanned: 0, sourcesFailed: 0, candidatesCreated: 0, skipped: true };
   }
 

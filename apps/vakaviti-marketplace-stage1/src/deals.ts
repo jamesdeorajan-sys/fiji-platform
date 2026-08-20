@@ -267,8 +267,8 @@ deals.get('/runs', async c => {
 // task allowance instead of the request/response lifecycle. Poll GET /runs to observe progress;
 // the row transitions from RUNNING to COMPLETED/COMPLETED_WITH_ERRORS/FAILED same as a Cron run.
 deals.post('/runs/trigger', async c => {
-  c.executionCtx.waitUntil(runDailyDiscovery(c.env).catch(() => {}));
-  return c.json({ triggered: true, note: 'Run started in the background - poll GET /api/admin/deals/runs to observe status.' }, 202);
+  c.executionCtx.waitUntil(runDailyDiscovery(c.env, 'MANUAL_TEST').catch(() => {}));
+  return c.json({ triggered: true, note: 'Run started in the background as MANUAL_TEST (its own idempotency key - does not consume or get blocked by today\'s automatic DAILY_DISCOVERY slot). Poll GET /api/admin/deals/runs to observe status.' }, 202);
 });
 
 // --- DeterministicOfferPublisher: the ONE function every public query must pass through -------
