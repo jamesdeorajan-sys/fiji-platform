@@ -220,9 +220,10 @@ h1{font-size:clamp(2.1rem,4.4vw,3.4rem);line-height:1.04;margin:0 0 16px;letter-
 .badge.soon{background:#f1f1ef;color:#8a938d}
 .trust-tag{display:block;margin-top:8px;font-size:11px;color:var(--muted)}
 .trust-tag.verified{display:inline-block;border:1px solid #a9d9c6;background:#e9f5f0;color:#0f6e6a;font-weight:600;border-radius:999px;padding:4px 9px}
-.btn{display:inline-block;background:var(--ink);color:white;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700;min-height:24px}
+.btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;background:var(--ink);color:white;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700;min-height:44px;min-width:44px}
 .btn.secondary{background:white;color:var(--ink);border:1px solid var(--ink)}
 .btn.whatsapp{background:#128c7e}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px}
 .cat-card{position:relative;border-radius:16px;overflow:hidden;min-height:150px;display:flex;align-items:flex-end;padding:14px;color:#fff;text-decoration:none}
 .cat-card .fill{position:absolute;inset:0;z-index:0}
@@ -384,8 +385,8 @@ app.get('/operators/:slug', async c => {
     <h1>${esc(o.canonical_name)}</h1>
     <p class="muted">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
     ${o.description ? `<p>${esc(o.description)}</p>` : ''}
-    <div class="cta-row">${o.whatsapp ? `<a class="btn whatsapp" href="${enquireHref}">Ask Vakaviti on WhatsApp</a>` : ''}<a class="btn secondary" href="/claim/${esc(o.slug)}">Claim or manage this business</a></div>
-    ${o.whatsapp ? `<p class="muted" style="margin-top:8px;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p>` : ''}
+    <div class="cta-row"><a class="btn secondary" href="/claim/${esc(o.slug)}">Claim or manage this business</a></div>
+    ${o.whatsapp ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">Ask Vakaviti on WhatsApp</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
   </section>
   <section class="section"><h2>Experiences</h2><div class="grid">${list || '<div class="card"><div class="card-body">No verified products yet.</div></div>'}</div></section>`, { title: `${o.canonical_name} — Vakaviti`, description: `${o.canonical_name}, ${[o.locality, o.region].filter(Boolean).join(', ') || 'Fiji'} — Fiji tourism operator on Vakaviti.`, ogImage: absoluteImage(o.image_url || opHeroImg.url), noindex: true }));
 });
