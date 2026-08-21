@@ -6,6 +6,7 @@ import { deals, dealsPublic } from './deals';
 import { dealsAdminUi } from './deals-admin-ui';
 import { dealsHub } from './deals-hub';
 import { runDailyDiscovery } from './deal-agent';
+import { providerOnboarding } from './provider-onboarding';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -352,8 +353,12 @@ app.get('/experiences/:slug', async c => {
 });
 
 app.get('/operators', async c => {
-  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.claim_status,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Claimed profile' : 'Publicly listed &middot; unclaimed'}</span></div></a></article>`; }).join('');
+  // P1.3A: claim_status is deliberately NOT selected here - claim status is an internal/
+  // administration-only concept (see PUBLIC CLAIM-STATUS POLICY) and must never reach a guest
+  // page, not even indirectly via conditional text. Pilot Partner status is derived live from
+  // whether an unrevoked CEO confirmation exists - never cached, never inferred from claim state.
+  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,COUNT(p.id) as product_count,(SELECT COUNT(*) FROM provider_ceo_confirmations pc WHERE pc.operator_id=o.id AND pc.revoked_at IS NULL) as pilot_partner_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
+  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -364,7 +369,12 @@ app.get('/operators/:slug', async c => {
   if (!o) return c.notFound();
   const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,slug,category,verification_status,image_url FROM products WHERE operator_id=? AND commercial_status='ACTIVE' ORDER BY canonical_name`).bind(o.id).all<any>();
   const verified = o.verification_status === 'VAKAVITI_VERIFIED';
-  const status = verified ? '✓ Vakaviti Verified' : o.claim_status === 'CLAIMED' ? 'Profile claimed — verification in progress' : 'Publicly listed — information not yet verified by Vakaviti';
+  // P1.3A: Pilot Partner status is derived live from an unrevoked CEO confirmation - claim_status
+  // is never read on this page at all (see PUBLIC CLAIM-STATUS POLICY - claim status stays
+  // internal-only). "Claimed"/"unclaimed" text is never shown to guests.
+  const pilotPartnerRow = await c.env.DB.prepare(`SELECT 1 FROM provider_ceo_confirmations WHERE operator_id=? AND revoked_at IS NULL LIMIT 1`).bind(o.id).first<any>();
+  const pilotPartner = !!pilotPartnerRow;
+  const status = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : 'Publicly listed — information not yet verified by Vakaviti';
   const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
   const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
@@ -374,7 +384,7 @@ app.get('/operators/:slug', async c => {
     <h1>${esc(o.canonical_name)}</h1>
     <p class="muted">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
     ${o.description ? `<p>${esc(o.description)}</p>` : ''}
-    <div class="cta-row">${o.whatsapp ? `<a class="btn whatsapp" href="${enquireHref}">Ask Vakaviti on WhatsApp</a>` : ''}${o.claim_status !== 'CLAIMED' ? `<a class="btn secondary" href="/claim/${esc(o.slug)}">Claim this business</a>` : ''}</div>
+    <div class="cta-row">${o.whatsapp ? `<a class="btn whatsapp" href="${enquireHref}">Ask Vakaviti on WhatsApp</a>` : ''}<a class="btn secondary" href="/claim/${esc(o.slug)}">Claim or manage this business</a></div>
     ${o.whatsapp ? `<p class="muted" style="margin-top:8px;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p>` : ''}
   </section>
   <section class="section"><h2>Experiences</h2><div class="grid">${list || '<div class="card"><div class="card-body">No verified products yet.</div></div>'}</div></section>`, { title: `${o.canonical_name} — Vakaviti`, description: `${o.canonical_name}, ${[o.locality, o.region].filter(Boolean).join(', ') || 'Fiji'} — Fiji tourism operator on Vakaviti.`, ogImage: absoluteImage(o.image_url || opHeroImg.url), noindex: true }));
@@ -597,6 +607,9 @@ app.route('/api/admin/candidates', candidates);
 app.route('/api/admin/products', products);
 app.route('/api/admin/places', places);
 app.route('/api/admin/deals', deals);
+// P1.3A: the CEO-confirmed provider fast-track. requireAdmin end-to-end (see
+// src/provider-onboarding.ts) - AI has no import path to this file at all.
+app.route('/api/admin/providers', providerOnboarding);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
 // pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
 // row returned has already passed isPubliclyEligible() inside dealsPublic itself - see

@@ -25,6 +25,7 @@ const dealsTs = readFileSync(path.join(ROOT, 'src/deals.ts'), 'utf8');
 const dealsAdminUiTs = readFileSync(path.join(ROOT, 'src/deals-admin-ui.ts'), 'utf8');
 const dealsHubTs = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
 const dealQualityTs = readFileSync(path.join(ROOT, 'src/deal-quality.ts'), 'utf8');
+const providerOnboardingTs = readFileSync(path.join(ROOT, 'src/provider-onboarding.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -586,6 +587,112 @@ console.log('== 15. P1.2 candidate-quality gate: deterministic, AI has no path t
   } else {
     ok('The material-change UPDATE to an existing candidate touches only review_status and updated_at - no factual column is ever overwritten');
   }
+}
+
+console.log('== 16. P1.3A CEO-confirmed provider fast-track: admin-only, AI has no path to it, no claim-status leakage ==');
+{
+  // (a) deal-agent.ts (AI-facing) must have no import path to provider-onboarding.ts - the CEO
+  // confirmation authorization event must stay structurally out of AI's reach, same as every
+  // other human-only file in this app.
+  if (/from ['"]\.\/provider-onboarding['"]/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts imports src/provider-onboarding.ts - AI-facing code must not have access to the CEO-confirmation authorization module');
+  } else {
+    ok('src/deal-agent.ts does not import src/provider-onboarding.ts');
+  }
+
+  // (b) provider-onboarding.ts must be requireAdmin-gated for every route, with zero exemptions -
+  // unlike deals-admin-ui.ts there is no login/logout carve-out here at all.
+  const mwIdx = providerOnboardingTs.indexOf(`providerOnboarding.use('*', requireAdmin)`);
+  if (mwIdx === -1) {
+    fail('src/provider-onboarding.ts is missing the providerOnboarding.use(\'*\', requireAdmin) middleware registration');
+  } else {
+    const routeIndices = [...providerOnboardingTs.matchAll(/providerOnboarding\.(get|post)\(/g)].map(m => m.index);
+    if (routeIndices.some(i => i < mwIdx)) {
+      fail('A providerOnboarding.get(/post( route is registered before requireAdmin middleware - it would be unguarded');
+    } else {
+      ok(`All ${routeIndices.length} provider-onboarding route(s) are registered after requireAdmin middleware, with zero exemptions`);
+    }
+  }
+
+  // (c) Never sets VAKAVITI_VERIFIED - the fast-track publishes (commercial_status) but must
+  // never touch verification, which remains governed solely by the existing hardened endpoint
+  // in src/index.ts (checked already by check 9's own file list; this extends that guarantee
+  // explicitly to the new file).
+  const providerOnboardingCodeLines = providerOnboardingTs.split('\n').filter(l => !l.trim().startsWith('//'));
+  if (providerOnboardingCodeLines.some(l => /VAKAVITI_VERIFIED/.test(l))) {
+    fail('src/provider-onboarding.ts references VAKAVITI_VERIFIED outside a comment - the fast-track must never grant verification, only NOT_VERIFIED publication');
+  } else {
+    ok('src/provider-onboarding.ts contains no live reference to VAKAVITI_VERIFIED');
+  }
+  // Every operator/product INSERT in this file must force NOT_VERIFIED explicitly.
+  const insertOperatorMatch = providerOnboardingTs.match(/INSERT INTO operators[\s\S]*?\.run\(\);/);
+  if (!insertOperatorMatch || !/NOT_VERIFIED/.test(insertOperatorMatch[0])) {
+    fail('The INSERT INTO operators statement in src/provider-onboarding.ts does not force NOT_VERIFIED');
+  } else {
+    ok('The INSERT INTO operators statement forces NOT_VERIFIED');
+  }
+
+  // (d) The CEO-confirm endpoint must fail closed on participation_confirmed before ever writing
+  // provider_ceo_confirmations - the missing-fields check must appear before the INSERT.
+  const confirmRouteMatch = providerOnboardingTs.match(/providerOnboarding\.post\('\/ceo-confirm'[\s\S]*?\n\}\);/);
+  if (!confirmRouteMatch) {
+    fail('providerOnboarding.post(\'/ceo-confirm\', ...) route not found');
+  } else {
+    const block = confirmRouteMatch[0];
+    const missingCheckIdx = block.indexOf('missing_required_confirmation_fields');
+    const insertIdx = block.indexOf('INSERT INTO provider_ceo_confirmations');
+    if (missingCheckIdx === -1) fail('/ceo-confirm does not check for missing required confirmation fields');
+    else if (insertIdx === -1) fail('/ceo-confirm never writes provider_ceo_confirmations - the regex may be broken');
+    else if (missingCheckIdx > insertIdx) fail('/ceo-confirm writes provider_ceo_confirmations before validating required fields');
+    else ok('/ceo-confirm validates required fields (including participation_confirmed) before ever writing provider_ceo_confirmations');
+
+    // Duplicate/ambiguous identity must fail closed (409) before that same INSERT.
+    const dupCheckIdx = block.indexOf('duplicate_provider_confirmation');
+    if (dupCheckIdx === -1 || dupCheckIdx > insertIdx) fail('/ceo-confirm does not check for a duplicate provider confirmation before writing');
+    else ok('/ceo-confirm checks for a duplicate provider confirmation before writing');
+  }
+
+  // (e) Publication (commercial_status='ACTIVE') must only ever happen guarded behind a contact
+  // check - never unconditionally the moment a confirmation is recorded.
+  const publishGateMatch = providerOnboardingTs.match(/if \(hasContact\) \{[\s\S]*?UPDATE operators SET commercial_status='ACTIVE'[\s\S]*?\n  \}/);
+  if (!publishGateMatch) {
+    fail('Could not find an UPDATE operators SET commercial_status=\'ACTIVE\' statement structurally inside an `if (hasContact)` guard');
+  } else {
+    ok('Operator publication (commercial_status=\'ACTIVE\') is gated behind a contact-method check, never unconditional');
+  }
+
+  // (f) No public route in src/index.ts may select operators.claim_status - claim status must
+  // stay administration-only, never even fetched on a guest-facing page. Split on every
+  // app.get(/app.post( boundary (not just /operators ones) so each block is properly bounded and
+  // never bleeds into unrelated code further down the file (the same technique check 8 uses).
+  const allRouteBlocks = indexTs.split(/(?=app\.(?:get|post)\()/);
+  const publicOperatorRoutes = allRouteBlocks.filter(b => /^app\.get\(['"]\/operators/.test(b));
+  // Strip comment-only lines before scanning - this check's own explanatory comments legitimately
+  // spell out "claim_status"/"unclaimed" to describe what must NOT appear in live code, which
+  // would otherwise false-positive against itself (same lesson as checks 15/16(c)).
+  const codeOnly = (block) => block.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  let claimLeak = false;
+  for (const block of publicOperatorRoutes) {
+    if (/claim_status/.test(codeOnly(block))) {
+      fail('A public /operators route in src/index.ts still selects claim_status outside a comment - claim status must never reach a guest page');
+      claimLeak = true;
+    }
+  }
+  if (!claimLeak && publicOperatorRoutes.length > 0) ok(`${publicOperatorRoutes.length} public /operators route(s) in src/index.ts select no claim_status field at all`);
+  else if (publicOperatorRoutes.length === 0) fail('No public /operators routes found in src/index.ts - the regex may be broken');
+
+  // Forbidden guest-facing words, checked only within the public operator route blocks' live code
+  // (the words "Verified"/"Claimed" are fine when driven by real verification_status/pilot-partner
+  // state elsewhere - this check targets the specific banned literals the CEO directive names).
+  const FORBIDDEN_LITERALS = ['unclaimed', 'Claimed profile', 'Officially verified', 'Approved by Vakaviti', 'Guaranteed'];
+  let literalLeak = false;
+  for (const block of publicOperatorRoutes) {
+    const live = codeOnly(block);
+    for (const lit of FORBIDDEN_LITERALS) {
+      if (live.includes(lit)) { fail(`A public /operators route contains the banned literal "${lit}" outside a comment`); literalLeak = true; }
+    }
+  }
+  if (!literalLeak) ok('No public /operators route contains a banned claim-status/unsupported-trust literal');
 }
 
 console.log('\n----------------------------------------');

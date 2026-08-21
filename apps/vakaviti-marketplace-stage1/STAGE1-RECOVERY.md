@@ -47,6 +47,8 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 
 11. `migrations/0011_candidate_quality_gate.sql` — P1.2 candidate-quality gate, page classification, URL canonicalization, and deal-identity audit trail. Adds twelve nullable columns (plus two indexes) to the existing `deal_source_scans` table only - a scan that fails the deterministic quality gate in `src/deal-quality.ts` (see `evaluateQualityGates()`) now records its full completeness result there and creates no `deal_offer_candidates` row at all, instead of the pre-P1.2 behaviour of creating a new candidate on any content-fingerprint change regardless of information quality. No CHECK-constraint change was needed anywhere: `deal_offer_candidates.review_status` already allowed `MATERIAL_CHANGE_DETECTED` (from the original `0008` migration) and `deal_change_events.event_type` was already free text - both are reused as-is for material-change handling on an already-known deal, with zero schema risk.
 
+12. `migrations/0012_ceo_provider_fast_track.sql` — P1.3A CEO-confirmed provider fast-track onboarding. One new table only, `provider_ceo_confirmations` - no existing table (`operators`, `products`, `candidate_operators`, `deal_sources`, etc.) is touched. Pilot Partner status is deliberately not a cached column anywhere - it is derived live on every public read from whether an unrevoked row exists here, the same "recompute, never trust a cached flag" discipline as `isPubliclyEligible()`. A partial unique index (`canonical_domain` WHERE `revoked_at IS NULL`) backs the duplicate-provider-confirmation check at the database level, not just in application code.
+
 All statements across all eight files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run except the bare `ALTER TABLE ADD COLUMN` statements (in `0004` and `0007`), which are one-time-only by design, consistent with this project's existing migration discipline.
 
 ## Workers AI
@@ -148,7 +150,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql`
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`
