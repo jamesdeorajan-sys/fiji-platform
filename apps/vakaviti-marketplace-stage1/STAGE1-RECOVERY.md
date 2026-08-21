@@ -49,6 +49,8 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 
 12. `migrations/0012_ceo_provider_fast_track.sql` — P1.3A CEO-confirmed provider fast-track onboarding. One new table only, `provider_ceo_confirmations` - no existing table (`operators`, `products`, `candidate_operators`, `deal_sources`, etc.) is touched. Pilot Partner status is deliberately not a cached column anywhere - it is derived live on every public read from whether an unrevoked row exists here, the same "recompute, never trust a cached flag" discipline as `isPubliclyEligible()`. A partial unique index (`canonical_domain` WHERE `revoked_at IS NULL`) backs the duplicate-provider-confirmation check at the database level, not just in application code.
 
+13. `migrations/0013_provider_enquiry_handler.sql` — P1.3C. One nullable-with-default column, `provider_ceo_confirmations.initial_enquiry_handler` (`'VAKAVITI'` or `'PROVIDER'`, application-enforced, no CHECK constraint added via `ADD COLUMN` deliberately - not worth the risk on a routine additive change). Recording this does not yet change enquiry routing behaviour; every enquiry still goes through the existing Vakaviti-owned `/enquire/:operatorSlug` flow regardless of its value.
+
 All statements across all eight files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run except the bare `ALTER TABLE ADD COLUMN` statements (in `0004` and `0007`), which are one-time-only by design, consistent with this project's existing migration discipline.
 
 ## Workers AI
@@ -150,7 +152,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql` → `0013_provider_enquiry_handler.sql`
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`

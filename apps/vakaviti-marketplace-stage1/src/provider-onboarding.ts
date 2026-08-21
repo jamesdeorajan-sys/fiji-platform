@@ -3,20 +3,23 @@ import { safeFetchSource, fingerprint, extractOfferFacts, computeExpiryStatus } 
 import { canonicalizeUrl, evaluateQualityGates, type ExtractedFields } from './deal-quality';
 import { DEFAULT_MODEL } from './ai';
 
-// Vakaviti P1.3A - CEO-confirmed provider fast-track onboarding. This file is the ONLY place
-// a CEO confirmation can ever be created, revoked, or read (requireAdmin end-to-end, no
-// exemptions) - AI has no import path to this file (see regression-guards.mjs check 16), so it
-// structurally cannot create the authorization event this whole pipeline is gated on. Everything
-// this file does AFTER a confirmation exists is either a direct reuse of already-governed
-// pipelines (extractOfferFacts/evaluateQualityGates/classifyPage from the P1.2 Deal Intelligence
-// work, safeFetchSource/fingerprint from deal-agent.ts) or a narrow, fail-closed, additive step -
-// nothing here invents a commercial fact, grants Vakaviti's own human-only verified status, or publishes a Deal without
-// the same human review gate every other candidate goes through.
+// Vakaviti P1.3A/P1.3C - CEO-confirmed provider fast-track onboarding. The governed service
+// functions below (createCeoConfirmation, revokeCeoConfirmation) are the ONLY code paths in the
+// whole app that can ever write provider_ceo_confirmations - both the Bearer-token JSON API in
+// this file and the cookie-session HTML console in src/provider-onboarding-ui.ts call the exact
+// same functions, so there is only ever one authorization law, never two independently-drifting
+// implementations. AI has no import path to either file (see regression-guards.mjs checks 16/18).
+//
+// `actor` is always a parameter supplied by the CALLING ROUTE from its own authentication
+// context - never read out of the request body/input. A client claiming to be "CEO" in a JSON
+// payload was, before P1.3C, taken at face value; that gap is closed here structurally, not just
+// documented (regression-guards.mjs check 18 verifies neither service function reads an `actor`
+// field off its `input` parameter).
 
 // ENVIRONMENT is declared (even though unused directly here) because extractOfferFacts()'s own
 // Bindings type in deal-agent.ts requires it - keeping the shape a structural superset avoids a
 // widening cast at every call site.
-type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
+export type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 export const providerOnboarding = new Hono<{ Bindings: Bindings }>();
 
 const requireAdmin = async (c: any, next: any) => {
@@ -31,7 +34,7 @@ providerOnboarding.use('*', requireAdmin);
 // --- domain canonicalization (identity engine) --------------------------------------------------
 // Deliberately simpler than canonicalizeUrl() in deal-quality.ts (that one preserves path/query
 // for deduping a specific PAGE; this one only needs the host, for deduping a PROVIDER).
-function canonicalizeDomain(input: string): string {
+export function canonicalizeDomain(input: string): string {
   let host = String(input || '').trim().toLowerCase();
   host = host.replace(/^https?:\/\//, '').split('/')[0];
   host = host.replace(/^www\./, '');
@@ -43,11 +46,6 @@ const auditWrite = (db: D1Database, entityType: string, entityId: string, action
     .bind(crypto.randomUUID(), entityType, entityId, actionType, actor, note, JSON.stringify(before), JSON.stringify(after)).run();
 
 // --- Profile+product extraction (profile engine + product engine) --------------------------------
-// A single AI read of the authorized official page - never guesses, never invents; every field
-// left null/omitted by the model stays missing. Distinct field shape from deal-agent.ts's
-// EXTRACTION_FIELDS on purpose (this is about the PROVIDER and its PRODUCTS, not a promotional
-// offer) - the deal signal itself is extracted separately, by reusing extractOfferFacts() as-is,
-// so it's evaluated by the exact same P1.2 gate every other scanned deal goes through.
 interface ProfileExtraction {
   description: string | null;
   locality: string | null;
@@ -98,89 +96,130 @@ ${pageText.slice(0, 12000)}`;
   };
 }
 
-// --- POST /ceo-confirm - the single governed authorization event -------------------------------
-providerOnboarding.post('/ceo-confirm', async c => {
-  const body = await c.req.json<any>().catch(() => ({}));
-  const canonicalName = String(body.canonical_provider_name || '').trim();
-  const officialDomain = String(body.official_domain || '').trim();
-  const dateSpoken = String(body.date_spoken || '').trim();
-  const participationConfirmed = body.participation_confirmed === true;
-  const actor = String(body.actor || 'CEO').trim();
+// --- Shared governed service: createCeoConfirmation ----------------------------------------------
+// Bounded field lengths, matching what a genuine confirmation call ever needs - defends against
+// a malformed/oversized payload regardless of which route (JSON API or session UI) calls this.
+const MAX_LEN = { name: 200, domain: 253, date: 40, contact: 200, notes: 2000, reason: 500 };
+const clip = (s: string, max: number) => s.slice(0, max);
+
+export interface CeoConfirmInput {
+  canonicalProviderName: string;
+  officialDomain: string;
+  dateSpoken: string;
+  providerContactName?: string;
+  providerContactRole?: string;
+  websiteContentMayBeUsed: boolean;
+  officialDealsMayBePrepared: boolean;
+  imagesMayBeDisplayed: boolean;
+  notes?: string;
+  reason?: string;
+  authorizationSource?: string;
+  initialEnquiryHandler?: 'VAKAVITI' | 'PROVIDER';
+}
+
+export type CeoConfirmResult =
+  | { ok: true; confirmationId: string; canonicalDomain: string; engines: any }
+  | { ok: false; status: number; error: string; detail?: any };
+
+export async function createCeoConfirmation(env: Bindings, input: CeoConfirmInput, actor: string): Promise<CeoConfirmResult> {
+  const canonicalName = clip(String(input.canonicalProviderName || '').trim(), MAX_LEN.name);
+  const officialDomainRaw = clip(String(input.officialDomain || '').trim(), MAX_LEN.domain);
+  const dateSpoken = clip(String(input.dateSpoken || '').trim(), MAX_LEN.date);
 
   const missing: string[] = [];
   if (!canonicalName) missing.push('canonical_provider_name');
-  if (!officialDomain) missing.push('official_domain');
+  if (!officialDomainRaw) missing.push('official_domain');
   if (!dateSpoken) missing.push('date_spoken');
-  if (!participationConfirmed) missing.push('participation_confirmed (must be true)');
-  if (missing.length) return c.json({ error: 'missing_required_confirmation_fields', missing }, 422);
+  if (missing.length) return { ok: false, status: 422, error: 'missing_required_confirmation_fields', detail: { missing } };
 
-  const canonicalDomain = canonicalizeDomain(officialDomain);
+  const canonicalDomain = canonicalizeDomain(officialDomainRaw);
+  if (!canonicalDomain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(canonicalDomain)) {
+    return { ok: false, status: 422, error: 'invalid_official_domain', detail: { supplied: officialDomainRaw } };
+  }
 
   // Identity engine: duplicate/ambiguity check across every existing identity surface. Fails
-  // closed on ANY match rather than guessing whether it's the same provider - a human resolves
-  // ambiguity, this endpoint never does. The partial unique index on
-  // provider_ceo_confirmations(canonical_domain) WHERE revoked_at IS NULL backs this at the DB
-  // level too, in case of a race between two near-simultaneous confirmations for the same domain.
-  const existingConfirmation = await c.env.DB.prepare(
+  // closed on ANY match - a human resolves ambiguity, this function never does. The partial
+  // unique index on provider_ceo_confirmations(canonical_domain) WHERE revoked_at IS NULL backs
+  // this at the DB level too, in case of a race between two near-simultaneous confirmations.
+  const existingConfirmation = await env.DB.prepare(
     `SELECT id, canonical_provider_name FROM provider_ceo_confirmations WHERE canonical_domain=? AND revoked_at IS NULL`
   ).bind(canonicalDomain).first<any>();
   if (existingConfirmation) {
-    return c.json({ error: 'duplicate_provider_confirmation', existing_confirmation_id: existingConfirmation.id, existing_provider_name: existingConfirmation.canonical_provider_name }, 409);
+    return { ok: false, status: 409, error: 'duplicate_provider_confirmation', detail: { existing_confirmation_id: existingConfirmation.id, existing_provider_name: existingConfirmation.canonical_provider_name } };
   }
-  const existingOperator = await c.env.DB.prepare(
+  const existingOperator = await env.DB.prepare(
     `SELECT id, canonical_name, slug FROM operators WHERE website_url LIKE ? OR website_url LIKE ?`
   ).bind(`%${canonicalDomain}%`, `%www.${canonicalDomain}%`).first<any>();
   if (existingOperator) {
-    return c.json({ error: 'ambiguous_identity_existing_operator', existing_operator: existingOperator }, 409);
+    return { ok: false, status: 409, error: 'ambiguous_identity_existing_operator', detail: { existing_operator: existingOperator } };
   }
-  const existingCandidate = await c.env.DB.prepare(
+  const existingCandidate = await env.DB.prepare(
     `SELECT id, canonical_name FROM candidate_operators WHERE primary_url LIKE ? OR website_url LIKE ?`
   ).bind(`%${canonicalDomain}%`, `%${canonicalDomain}%`).first<any>();
   if (existingCandidate) {
-    return c.json({ error: 'ambiguous_identity_existing_candidate', existing_candidate: existingCandidate }, 409);
+    return { ok: false, status: 409, error: 'ambiguous_identity_existing_candidate', detail: { existing_candidate: existingCandidate } };
   }
-  const existingDealSource = await c.env.DB.prepare(
+  const existingDealSource = await env.DB.prepare(
     `SELECT id, canonical_domain FROM deal_sources WHERE canonical_domain=?`
   ).bind(canonicalDomain).first<any>();
   if (existingDealSource) {
-    return c.json({ error: 'ambiguous_identity_existing_deal_source', existing_source: existingDealSource }, 409);
+    return { ok: false, status: 409, error: 'ambiguous_identity_existing_deal_source', detail: { existing_source: existingDealSource } };
   }
 
+  const reason = clip(String(input.reason || 'CEO-confirmed pilot partner onboarding').trim(), MAX_LEN.reason);
+  const enquiryHandler = input.initialEnquiryHandler === 'PROVIDER' ? 'PROVIDER' : 'VAKAVITI';
   const confirmationId = crypto.randomUUID();
-  await c.env.DB.prepare(
+  await env.DB.prepare(
     `INSERT INTO provider_ceo_confirmations (
       id, canonical_provider_name, official_domain, canonical_domain, date_spoken,
       provider_contact_name, provider_contact_role, participation_confirmed,
       scope_website_content_allowed, scope_deals_allowed, scope_images_allowed,
-      notes, status, actor, authorization_source, reason
-    ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,'CEO_CONFIRMED_PILOT',?,?,?)`
+      notes, status, actor, authorization_source, reason, initial_enquiry_handler
+    ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,'CEO_CONFIRMED_PILOT',?,?,?,?)`
   ).bind(
-    confirmationId, canonicalName, officialDomain, canonicalDomain, dateSpoken,
-    body.provider_contact_name ? String(body.provider_contact_name) : null,
-    body.provider_contact_role ? String(body.provider_contact_role) : null,
+    confirmationId, canonicalName, officialDomainRaw, canonicalDomain, dateSpoken,
+    input.providerContactName ? clip(String(input.providerContactName), MAX_LEN.contact) : null,
+    input.providerContactRole ? clip(String(input.providerContactRole), MAX_LEN.contact) : null,
     1,
-    body.website_content_may_be_used === true ? 1 : 0,
-    body.official_deals_may_be_prepared === true ? 1 : 0,
-    body.images_may_be_displayed === true ? 1 : 0,
-    body.notes ? String(body.notes) : null,
-    actor, String(body.authorization_source || 'CEO_VERBAL_CONFIRMATION'),
-    String(body.reason || 'CEO-confirmed pilot partner onboarding')
+    input.websiteContentMayBeUsed === true ? 1 : 0,
+    input.officialDealsMayBePrepared === true ? 1 : 0,
+    input.imagesMayBeDisplayed === true ? 1 : 0,
+    input.notes ? clip(String(input.notes), MAX_LEN.notes) : null,
+    actor, clip(String(input.authorizationSource || 'CEO_VERBAL_CONFIRMATION'), 60),
+    reason, enquiryHandler
   ).run();
 
-  await auditWrite(c.env.DB, 'PROVIDER_CEO_CONFIRMATION', confirmationId, 'CEO_CONFIRMED_PILOT', actor,
-    String(body.reason || 'CEO-confirmed pilot partner onboarding'),
+  await auditWrite(env.DB, 'PROVIDER_CEO_CONFIRMATION', confirmationId, 'CEO_CONFIRMED_PILOT', actor, reason,
     { existed: false },
     { confirmation_id: confirmationId, canonical_provider_name: canonicalName, canonical_domain: canonicalDomain });
 
-  // Bounded engines run synchronously, in the same authenticated request that created the
+  // Bounded engines run synchronously, in the same authenticated call that created the
   // confirmation - never as a later, unauthenticated, AI-triggered action.
-  const summary = await runOnboardingEngines(c.env, confirmationId);
+  const engines = await runOnboardingEngines(env, confirmationId, actor);
+  return { ok: true, confirmationId, canonicalDomain, engines };
+}
 
-  return c.json({ confirmation_id: confirmationId, status: 'CEO_CONFIRMED_PILOT', engines: summary }, 201);
-});
+// --- Shared governed service: revokeCeoConfirmation -----------------------------------------------
+export async function revokeCeoConfirmation(env: Bindings, confirmationId: string, reason: string, actor: string): Promise<{ ok: true; operatorId: string | null } | { ok: false; status: number; error: string }> {
+  const row = await env.DB.prepare(`SELECT * FROM provider_ceo_confirmations WHERE id=?`).bind(confirmationId).first<any>();
+  if (!row) return { ok: false, status: 404, error: 'not_found' };
+  if (row.revoked_at) return { ok: false, status: 409, error: 'already_revoked' };
+  const cleanReason = clip(String(reason || '').trim(), MAX_LEN.reason);
+  if (!cleanReason) return { ok: false, status: 422, error: 'revocation_reason_required' };
+
+  await env.DB.prepare(
+    `UPDATE provider_ceo_confirmations SET revoked_at=CURRENT_TIMESTAMP, revoked_by=?, revocation_reason=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+  ).bind(actor, cleanReason, confirmationId).run();
+
+  if (row.operator_id) {
+    await env.DB.prepare(`UPDATE operators SET commercial_status='INACTIVE', updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(row.operator_id).run();
+    await auditWrite(env.DB, 'OPERATOR', row.operator_id, 'CEO_CONFIRMATION_REVOKED', actor, cleanReason, { commercial_status: 'ACTIVE' }, { commercial_status: 'INACTIVE' });
+  }
+  return { ok: true, operatorId: row.operator_id ?? null };
+}
 
 // --- The bounded onboarding workflow (engines 1-6; place/claim/monitoring are wiring, not new code) ---
-async function runOnboardingEngines(env: Bindings, confirmationId: string): Promise<any> {
+async function runOnboardingEngines(env: Bindings, confirmationId: string, actor: string): Promise<any> {
   const confirmation = await env.DB.prepare(`SELECT * FROM provider_ceo_confirmations WHERE id=?`).bind(confirmationId).first<any>();
   if (!confirmation) return { error: 'confirmation_not_found' };
 
@@ -239,9 +278,9 @@ async function runOnboardingEngines(env: Bindings, confirmationId: string): Prom
     `INSERT INTO operators (id, canonical_name, slug, description, website_url, whatsapp, email, phone, locality, region, country_code, discovery_status, claim_status, verification_status, commercial_status)
      VALUES (?,?,?,?,?,?,?,?,?,?, 'FJ', 'PUBLICLY_LISTED', 'UNCLAIMED', 'NOT_VERIFIED', 'INACTIVE')`
   ).bind(operatorId, candidateRow.canonical_name, slug, profile?.description ?? null, primaryUrl, candidateRow.whatsapp, candidateRow.email, candidateRow.phone, candidateRow.locality, candidateRow.region).run();
-  await env.DB.prepare(`UPDATE candidate_operators SET workflow_state='QUALIFIED', reviewed_at=CURRENT_TIMESTAMP, reviewed_by=? WHERE id=?`).bind(confirmation.actor, candidateId).run();
+  await env.DB.prepare(`UPDATE candidate_operators SET workflow_state='QUALIFIED', reviewed_at=CURRENT_TIMESTAMP, reviewed_by=? WHERE id=?`).bind(actor, candidateId).run();
   await env.DB.prepare(`UPDATE provider_ceo_confirmations SET operator_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(operatorId, confirmationId).run();
-  await auditWrite(env.DB, 'CANDIDATE_OPERATOR', candidateId, 'PROMOTED_TO_OPERATOR', confirmation.actor, 'CEO-confirmed fast-track promotion', candidateRow, { operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: 'INACTIVE' });
+  await auditWrite(env.DB, 'CANDIDATE_OPERATOR', candidateId, 'PROMOTED_TO_OPERATOR', actor, 'CEO-confirmed fast-track promotion', candidateRow, { operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: 'INACTIVE' });
   summary.identity.operator_id = operatorId;
   summary.identity.slug = slug;
 
@@ -276,7 +315,7 @@ async function runOnboardingEngines(env: Bindings, confirmationId: string): Prom
     await env.DB.prepare(
       `INSERT INTO deal_sources (id, source_url, canonical_domain, source_type, source_approval_status, approved_by, approved_at, content_fingerprint, last_scan_at, last_http_status, failure_count)
        VALUES (?,?,?, 'PROVIDER_WEBSITE', 'APPROVED', ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, 200, 0)`
-    ).bind(sourceId, dealSourceUrl, confirmation.canonical_domain, confirmation.actor, pageFingerprint).run();
+    ).bind(sourceId, dealSourceUrl, confirmation.canonical_domain, actor, pageFingerprint).run();
 
     const extraction = await extractOfferFacts(env, pageText, dealSourceUrl);
     if (extraction) {
@@ -331,7 +370,7 @@ async function runOnboardingEngines(env: Bindings, confirmationId: string): Prom
     for (const pid of createdProducts) {
       await env.DB.prepare(`UPDATE products SET commercial_status='ACTIVE', updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(pid).run();
     }
-    await auditWrite(env.DB, 'OPERATOR', operatorId, 'CEO_CONFIRMED_PUBLISH', confirmation.actor, 'Published as Vakaviti Pilot Partner under CEO confirmation', { commercial_status: 'INACTIVE' }, { commercial_status: 'ACTIVE' });
+    await auditWrite(env.DB, 'OPERATOR', operatorId, 'CEO_CONFIRMED_PUBLISH', actor, 'Published as Vakaviti Pilot Partner under CEO confirmation', { commercial_status: 'INACTIVE' }, { commercial_status: 'ACTIVE' });
     summary.publish = { published: true, operator_id: operatorId };
   } else {
     summary.publish = { published: false, reason: 'no_enquiry_contact_extracted_or_supplied' };
@@ -341,6 +380,28 @@ async function runOnboardingEngines(env: Bindings, confirmationId: string): Prom
   return summary;
 }
 
+// --- POST /ceo-confirm - Bearer-token JSON API, calls the shared service ------------------------
+providerOnboarding.post('/ceo-confirm', async c => {
+  const body = await c.req.json<any>().catch(() => ({}));
+  const result = await createCeoConfirmation(c.env, {
+    canonicalProviderName: body.canonical_provider_name,
+    officialDomain: body.official_domain,
+    dateSpoken: body.date_spoken,
+    providerContactName: body.provider_contact_name,
+    providerContactRole: body.provider_contact_role,
+    websiteContentMayBeUsed: body.website_content_may_be_used === true,
+    officialDealsMayBePrepared: body.official_deals_may_be_prepared === true,
+    imagesMayBeDisplayed: body.images_may_be_displayed === true,
+    notes: body.notes,
+    reason: body.reason,
+    authorizationSource: body.authorization_source,
+    initialEnquiryHandler: body.initial_enquiry_handler === 'PROVIDER' ? 'PROVIDER' : 'VAKAVITI',
+  }, 'CEO (Bearer API session)'); // actor is fixed by the calling route, never taken from the request body
+
+  if (!result.ok) return c.json({ error: result.error, ...(result.detail || {}) }, result.status as any);
+  return c.json({ confirmation_id: result.confirmationId, status: 'CEO_CONFIRMED_PILOT', engines: result.engines }, 201);
+});
+
 // --- GET /:id - admin view of one confirmation record -------------------------------------------
 providerOnboarding.get('/:id', async c => {
   const row = await c.env.DB.prepare(`SELECT * FROM provider_ceo_confirmations WHERE id=?`).bind(c.req.param('id')).first<any>();
@@ -348,26 +409,11 @@ providerOnboarding.get('/:id', async c => {
   return c.json({ confirmation: row });
 });
 
-// --- POST /:id/revoke - the only path back out; removes Pilot Partner eligibility immediately ---
+// --- POST /:id/revoke - Bearer-token JSON API, calls the shared service -------------------------
 providerOnboarding.post('/:id/revoke', async c => {
   const id = c.req.param('id');
   const body = await c.req.json<any>().catch(() => ({}));
-  const row = await c.env.DB.prepare(`SELECT * FROM provider_ceo_confirmations WHERE id=?`).bind(id).first<any>();
-  if (!row) return c.json({ error: 'not_found' }, 404);
-  if (row.revoked_at) return c.json({ error: 'already_revoked' }, 409);
-
-  const reason = String(body.reason || '').trim();
-  if (!reason) return c.json({ error: 'revocation_reason_required' }, 422);
-  const actor = String(body.actor || 'CEO').trim();
-
-  await c.env.DB.prepare(
-    `UPDATE provider_ceo_confirmations SET revoked_at=CURRENT_TIMESTAMP, revoked_by=?, revocation_reason=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
-  ).bind(actor, reason, id).run();
-
-  if (row.operator_id) {
-    await c.env.DB.prepare(`UPDATE operators SET commercial_status='INACTIVE', updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(row.operator_id).run();
-    await auditWrite(c.env.DB, 'OPERATOR', row.operator_id, 'CEO_CONFIRMATION_REVOKED', actor, reason, { commercial_status: 'ACTIVE' }, { commercial_status: 'INACTIVE' });
-  }
-
-  return c.json({ confirmation_id: id, status: 'REVOKED', operator_id: row.operator_id, operator_deactivated: !!row.operator_id }, 200);
+  const result = await revokeCeoConfirmation(c.env, id, String(body.reason || ''), 'CEO (Bearer API session)');
+  if (!result.ok) return c.json({ error: result.error }, result.status as any);
+  return c.json({ confirmation_id: id, status: 'REVOKED', operator_id: result.operatorId, operator_deactivated: !!result.operatorId }, 200);
 });

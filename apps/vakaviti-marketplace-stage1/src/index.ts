@@ -7,6 +7,7 @@ import { dealsAdminUi } from './deals-admin-ui';
 import { dealsHub } from './deals-hub';
 import { runDailyDiscovery } from './deal-agent';
 import { providerOnboarding } from './provider-onboarding';
+import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
@@ -612,6 +613,10 @@ app.route('/api/admin/deals', deals);
 // P1.3A: the CEO-confirmed provider fast-track. requireAdmin end-to-end (see
 // src/provider-onboarding.ts) - AI has no import path to this file at all.
 app.route('/api/admin/providers', providerOnboarding);
+// P1.3C: the cookie-session CEO onboarding console - same auth model as /admin/deals, same
+// underlying governed service as the JSON API above. Removes the operational need for this
+// session to ever hold ADMIN_TOKEN.
+app.route('/admin/providers', providerOnboardingUi);
 // P1.3B Phase 8: read-only supply dashboard - makes onboarding bottlenecks visible, never writes.
 app.route('/api/admin/dashboard/supply', supplyDashboard);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview

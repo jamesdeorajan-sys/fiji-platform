@@ -27,6 +27,7 @@ const dealsHubTs = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
 const dealQualityTs = readFileSync(path.join(ROOT, 'src/deal-quality.ts'), 'utf8');
 const providerOnboardingTs = readFileSync(path.join(ROOT, 'src/provider-onboarding.ts'), 'utf8');
 const supplyDashboardTs = readFileSync(path.join(ROOT, 'src/supply-dashboard.ts'), 'utf8');
+const providerOnboardingUiTs = readFileSync(path.join(ROOT, 'src/provider-onboarding-ui.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -633,24 +634,25 @@ console.log('== 16. P1.3A CEO-confirmed provider fast-track: admin-only, AI has 
     ok('The INSERT INTO operators statement forces NOT_VERIFIED');
   }
 
-  // (d) The CEO-confirm endpoint must fail closed on participation_confirmed before ever writing
-  // provider_ceo_confirmations - the missing-fields check must appear before the INSERT.
-  const confirmRouteMatch = providerOnboardingTs.match(/providerOnboarding\.post\('\/ceo-confirm'[\s\S]*?\n\}\);/);
-  if (!confirmRouteMatch) {
-    fail('providerOnboarding.post(\'/ceo-confirm\', ...) route not found');
+  // (d) P1.3C: this validation now lives in the shared createCeoConfirmation() service function
+  // (both the JSON route and the session-UI route call it), not in the route handler itself - the
+  // missing-fields check must appear before the INSERT, inside that function.
+  const createFnBlockMatch = providerOnboardingTs.match(/export async function createCeoConfirmation[\s\S]*?\n\}/);
+  if (!createFnBlockMatch) {
+    fail('createCeoConfirmation() not found in src/provider-onboarding.ts');
   } else {
-    const block = confirmRouteMatch[0];
+    const block = createFnBlockMatch[0];
     const missingCheckIdx = block.indexOf('missing_required_confirmation_fields');
     const insertIdx = block.indexOf('INSERT INTO provider_ceo_confirmations');
-    if (missingCheckIdx === -1) fail('/ceo-confirm does not check for missing required confirmation fields');
-    else if (insertIdx === -1) fail('/ceo-confirm never writes provider_ceo_confirmations - the regex may be broken');
-    else if (missingCheckIdx > insertIdx) fail('/ceo-confirm writes provider_ceo_confirmations before validating required fields');
-    else ok('/ceo-confirm validates required fields (including participation_confirmed) before ever writing provider_ceo_confirmations');
+    if (missingCheckIdx === -1) fail('createCeoConfirmation() does not check for missing required confirmation fields');
+    else if (insertIdx === -1) fail('createCeoConfirmation() never writes provider_ceo_confirmations - the regex may be broken');
+    else if (missingCheckIdx > insertIdx) fail('createCeoConfirmation() writes provider_ceo_confirmations before validating required fields');
+    else ok('createCeoConfirmation() validates required fields before ever writing provider_ceo_confirmations');
 
     // Duplicate/ambiguous identity must fail closed (409) before that same INSERT.
     const dupCheckIdx = block.indexOf('duplicate_provider_confirmation');
-    if (dupCheckIdx === -1 || dupCheckIdx > insertIdx) fail('/ceo-confirm does not check for a duplicate provider confirmation before writing');
-    else ok('/ceo-confirm checks for a duplicate provider confirmation before writing');
+    if (dupCheckIdx === -1 || dupCheckIdx > insertIdx) fail('createCeoConfirmation() does not check for a duplicate provider confirmation before writing');
+    else ok('createCeoConfirmation() checks for a duplicate provider confirmation before writing');
   }
 
   // (e) Publication (commercial_status='ACTIVE') must only ever happen guarded behind a contact
@@ -727,6 +729,97 @@ console.log('== 17. P1.3B supply dashboard: admin-only, read-only, no write path
     fail('src/supply-dashboard.ts does not reference isPubliclyEligible() - "deals live" must reuse the one shared eligibility gate, not redefine it');
   } else {
     ok('src/supply-dashboard.ts computes "deals live" via the shared isPubliclyEligible() gate');
+  }
+}
+
+console.log('== 18. P1.3C onboarding console: one governed service, session-gated, no client-supplied actor, CSRF+Origin enforced ==');
+{
+  // (a) AI has no import path to the new console.
+  if (/from ['"]\.\/provider-onboarding-ui['"]/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts imports src/provider-onboarding-ui.ts - AI-facing code must not have access to the CEO onboarding console');
+  } else {
+    ok('src/deal-agent.ts does not import src/provider-onboarding-ui.ts');
+  }
+
+  // (b) providerOnboardingUi must be requireAdminSession-gated for every single route - unlike
+  // deals-admin-ui.ts, this file deliberately has NO login/logout exemption at all (it reuses the
+  // existing /admin/deals/login instead of duplicating a login form).
+  const uiMwIdx = providerOnboardingUiTs.indexOf(`providerOnboardingUi.use('*', requireAdminSession)`);
+  if (uiMwIdx === -1) {
+    fail('src/provider-onboarding-ui.ts is missing the providerOnboardingUi.use(\'*\', requireAdminSession) middleware registration');
+  } else {
+    const uiRouteIndices = [...providerOnboardingUiTs.matchAll(/providerOnboardingUi\.(get|post)\(/g)].map(m => m.index);
+    if (uiRouteIndices.some(i => i < uiMwIdx)) {
+      fail('A providerOnboardingUi route is registered before requireAdminSession middleware - it would be unguarded');
+    } else {
+      ok(`All ${uiRouteIndices.length} provider-onboarding-ui route(s) are registered after requireAdminSession, with zero login/logout exemption`);
+    }
+  }
+
+  // (c) The governed service functions must never read `actor` off their own `input` parameter -
+  // actor is only ever a function parameter supplied by the calling route's own auth context.
+  const createFnMatch = providerOnboardingTs.match(/export async function createCeoConfirmation[\s\S]*?\n}/);
+  if (!createFnMatch) {
+    fail('createCeoConfirmation() not found in src/provider-onboarding.ts');
+  } else if (/input\.actor/.test(createFnMatch[0])) {
+    fail('createCeoConfirmation() reads input.actor - actor must only ever come from the function parameter, never client-supplied input');
+  } else {
+    ok('createCeoConfirmation() never reads actor from its input parameter');
+  }
+  const revokeFnMatch = providerOnboardingTs.match(/export async function revokeCeoConfirmation[\s\S]*?\n}/);
+  if (!revokeFnMatch) {
+    fail('revokeCeoConfirmation() not found in src/provider-onboarding.ts');
+  } else if (/body\.actor|input\.actor/.test(revokeFnMatch[0])) {
+    fail('revokeCeoConfirmation() reads actor from a body/input field - actor must only ever come from the function parameter');
+  } else {
+    ok('revokeCeoConfirmation() never reads actor from its input');
+  }
+
+  // (d) Neither POST handler in the console reads a client-supplied actor - both must call the
+  // service with the fixed literal 'CEO (admin session)'.
+  const onboardPostMatch = providerOnboardingUiTs.match(/providerOnboardingUi\.post\('\/onboard'[\s\S]*?\n\}\);/);
+  const revokePostMatch = providerOnboardingUiTs.match(/providerOnboardingUi\.post\('\/:id\/revoke'[\s\S]*?\n\}\);/);
+  for (const [label, m] of [['POST /onboard', onboardPostMatch], ['POST /:id/revoke', revokePostMatch]]) {
+    if (!m) { fail(`${label} route not found in src/provider-onboarding-ui.ts`); continue; }
+    if (!/'CEO \(admin session\)'/.test(m[0])) {
+      fail(`${label} does not call the governed service with the fixed 'CEO (admin session)' actor literal`);
+    } else if (/body\.actor/.test(m[0])) {
+      fail(`${label} references body.actor - actor must never be read from the submitted form`);
+    } else {
+      ok(`${label} uses the fixed 'CEO (admin session)' actor and never reads actor from the form`);
+    }
+  }
+
+  // (e) CSRF validation must occur before any write in both POST handlers.
+  for (const [label, m] of [['POST /onboard', onboardPostMatch], ['POST /:id/revoke', revokePostMatch]]) {
+    if (!m) continue;
+    const block = m[0];
+    const csrfIdx = block.indexOf('csrfValid(');
+    const writeIdx = Math.min(...['createCeoConfirmation(', 'revokeCeoConfirmation('].map(s => { const i = block.indexOf(s); return i === -1 ? Infinity : i; }));
+    if (csrfIdx === -1) fail(`${label} never calls csrfValid()`);
+    else if (writeIdx !== Infinity && csrfIdx > writeIdx) fail(`${label} calls the governed service before validating CSRF`);
+    else ok(`${label} validates CSRF before calling the governed service`);
+  }
+
+  // (f) Origin/Referer enforcement must occur before any write in both POST handlers - checked
+  // against the actual write-call position, not a fragile character-offset heuristic.
+  for (const [label, m] of [['POST /onboard', onboardPostMatch], ['POST /:id/revoke', revokePostMatch]]) {
+    if (!m) continue;
+    const block = m[0];
+    const originIdx = block.indexOf('originAllowed(c)');
+    const writeIdx = Math.min(...['createCeoConfirmation(', 'revokeCeoConfirmation('].map(s => { const i = block.indexOf(s); return i === -1 ? Infinity : i; }));
+    if (originIdx === -1) fail(`${label} never calls originAllowed()`);
+    else if (writeIdx !== Infinity && originIdx > writeIdx) fail(`${label} calls the governed service before checking Origin/Referer`);
+    else ok(`${label} enforces Origin/Referer before calling the governed service`);
+  }
+
+  // (g) ADMIN_TOKEN must never appear in an HTML-rendered string literal in this file (it is only
+  // ever used as an HMAC signing key or compared server-side, never echoed into a response).
+  const htmlEmitLines = providerOnboardingUiTs.split('\n').filter(l => /c\.html\(|shell\(/.test(l) && !l.trim().startsWith('//'));
+  if (htmlEmitLines.some(l => /ADMIN_TOKEN/.test(l))) {
+    fail('src/provider-onboarding-ui.ts appears to reference ADMIN_TOKEN directly on an HTML-emitting line - it must never be echoed into a response');
+  } else {
+    ok('src/provider-onboarding-ui.ts never references ADMIN_TOKEN on an HTML-emitting line');
   }
 }
 
