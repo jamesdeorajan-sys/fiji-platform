@@ -40,6 +40,19 @@ const requireAdminSession = async (c: any, next: any) => {
   await next();
 };
 
+// P1.4A: the return_to mechanism. Deliberately a strict allowlist, not a blocklist - only an
+// exact internal-admin-shaped path is ever accepted, so there is no way to trick the login flow
+// into an open redirect (no scheme, no host, no protocol-relative "//", no backslashes, no query/
+// fragment injection beyond the plain path charset). Every other admin console's requireAdminSession
+// (src/batch-review-ui.ts, src/provider-onboarding-ui.ts, src/supply-sprint-ui.ts) passes its own
+// path through this exact same function via the shared /admin/deals/login route, so the fix is
+// one place, one law, for every console - not four separately-drifting copies.
+export function isSafeReturnPath(path: string): boolean {
+  if (!path) return false;
+  if (path.length > 200) return false;
+  return /^\/admin\/[a-zA-Z0-9/_-]*$/.test(path) && !path.startsWith('//');
+}
+
 const shell = (body: string, opts: { title?: string } = {}) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(opts.title || 'Deal Intelligence Review')} — Vakaviti Admin</title>
@@ -85,11 +98,15 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(-
 // --- Login (Part A auth) ---------------------------------------------------------------------
 
 dealsAdminUi.get('/login', c => {
+  const returnToRaw = c.req.query('return_to') || '';
+  const returnTo = isSafeReturnPath(returnToRaw) ? returnToRaw : '';
   return c.html(shell(`
 <div class="card">
   <h1 style="font-size:20px;margin:0 0 6px">Deal Intelligence admin</h1>
   <p class="muted">Enter the admin token to review candidates on this device. The session cookie is HttpOnly and Secure - never readable by page scripts (this site has none).</p>
+  ${returnTo ? `<p class="muted">You'll be returned to <b>${esc(returnTo)}</b> after signing in.</p>` : ''}
   <form method="POST" action="/admin/deals/login">
+    <input type="hidden" name="return_to" value="${esc(returnTo)}">
     <label for="token">Admin token</label>
     <input id="token" name="token" type="password" autocomplete="off" required>
     <div class="row"><button class="btn" type="submit" style="width:100%">Sign in</button></div>
@@ -100,11 +117,14 @@ dealsAdminUi.get('/login', c => {
 dealsAdminUi.post('/login', async c => {
   const body = await c.req.parseBody();
   const token = String(body.token || '');
+  const returnToRaw = String(body.return_to || '');
+  const returnTo = isSafeReturnPath(returnToRaw) ? returnToRaw : '/admin/deals';
   if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) {
-    return c.html(shell(`<div class="card"><p>Incorrect token.</p><a class="btn secondary" href="/admin/deals/login">Try again</a></div>`, { title: 'Sign in failed' }), 401);
+    const retryHref = returnTo !== '/admin/deals' ? `/admin/deals/login?return_to=${encodeURIComponent(returnTo)}` : '/admin/deals/login';
+    return c.html(shell(`<div class="card"><p>Incorrect token.</p><a class="btn secondary" href="${esc(retryHref)}">Try again</a></div>`, { title: 'Sign in failed' }), 401);
   }
   c.header('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=28800`);
-  return c.redirect('/admin/deals');
+  return c.redirect(returnTo);
 });
 
 dealsAdminUi.post('/logout', async c => {

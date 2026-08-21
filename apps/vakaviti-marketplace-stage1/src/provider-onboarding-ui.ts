@@ -33,7 +33,9 @@ const requireAdminSession = async (c: any, next: any) => {
   const expected = c.env.ADMIN_TOKEN;
   if (!expected) return c.html(shell('<p>Admin not configured.</p>', { title: 'Admin unavailable' }), 503);
   const session = getCookie(c, COOKIE_NAME);
-  if (session !== expected) return c.redirect('/admin/deals/login');
+  // P1.4A: preserve return_to so a successful login lands back on this console, not a hardcoded
+  // default - see src/deals-admin-ui.ts's isSafeReturnPath() for the validation this feeds.
+  if (session !== expected) return c.redirect(`/admin/deals/login?return_to=${encodeURIComponent(c.req.path)}`);
   await next();
 };
 

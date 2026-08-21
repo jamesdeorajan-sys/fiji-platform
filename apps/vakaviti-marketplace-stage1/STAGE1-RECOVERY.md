@@ -55,6 +55,8 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 
 15. `migrations/0015_supply_sprint.sql` — P1.4 initial AI supply sprint. Two new tables only, purpose-built for provider-discovery runs rather than reusing the deal-side `deal_scan_runs`/`deal_source_scans` (those are shaped around deal-offer outcomes, not provider-identity outcomes): `supply_sprint_runs` (one row per sprint, tracks batch offset/status/counters) and `supply_sprint_scans` (one row per source processed, full audit trail including weak-page rejections and fetch failures). No existing table is touched.
 
+16. `migrations/0016_supply_sprint_activation_log.sql` — P1.4A activation UX fix. One new table, `supply_sprint_activation_log` - sanitized (booleans + short fixed codes only, never a secret/cookie/token) observability for the login→session→CSRF→Origin→run-creation path itself, filling the gap that meant a blocked or failed activation attempt previously left zero trace anywhere. No existing table is touched.
+
 All statements across all eight files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run except the bare `ALTER TABLE ADD COLUMN` statements (in `0004` and `0007`), which are one-time-only by design, consistent with this project's existing migration discipline.
 
 ## Workers AI
@@ -156,7 +158,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql` → `0013_provider_enquiry_handler.sql` → `0014_ai_supply_discovery.sql` → `0015_supply_sprint.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql` → `0013_provider_enquiry_handler.sql` → `0014_ai_supply_discovery.sql` → `0015_supply_sprint.sql` → `0016_supply_sprint_activation_log.sql`
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`

@@ -1080,6 +1080,84 @@ console.log('== 22. P1.4 supply sprint console: session-gated, no client-supplie
   }
 }
 
+console.log('== 23. P1.4A activation UX fix: safe return_to, double-submit guard, sanitized observability ==');
+{
+  // (a) isSafeReturnPath must exist and be a strict allowlist (path must start with /admin/, and
+  // the check must explicitly reject a leading "//" - the classic protocol-relative open-redirect
+  // trick).
+  if (!/export function isSafeReturnPath/.test(dealsAdminUiTs)) {
+    fail('src/deals-admin-ui.ts does not export isSafeReturnPath() - the return_to validator is missing');
+  } else {
+    ok('src/deals-admin-ui.ts exports isSafeReturnPath()');
+  }
+  const isSafeFnMatch = dealsAdminUiTs.match(/export function isSafeReturnPath[\s\S]*?\n\}/);
+  if (isSafeFnMatch && !/startsWith\('\/\/'\)/.test(isSafeFnMatch[0])) {
+    fail('isSafeReturnPath() does not appear to reject a leading "//" - protocol-relative open-redirect risk');
+  } else if (isSafeFnMatch) {
+    ok('isSafeReturnPath() explicitly rejects a leading "//"');
+  }
+
+  // (b) the login POST handler must re-validate return_to server-side (never trust the submitted
+  // field blindly) - it must call isSafeReturnPath on the body value, not redirect to it raw.
+  const loginPostMatch = dealsAdminUiTs.match(/dealsAdminUi\.post\('\/login'[\s\S]*?\n\}\);/);
+  if (!loginPostMatch) {
+    fail('POST /login route not found in src/deals-admin-ui.ts');
+  } else if (!/isSafeReturnPath\(returnToRaw\)/.test(loginPostMatch[0])) {
+    fail('POST /login does not re-validate the submitted return_to with isSafeReturnPath() - it must never trust the client value directly');
+  } else {
+    ok('POST /login re-validates return_to server-side before using it');
+  }
+
+  // (c) every admin console's requireAdminSession must pass return_to when redirecting to login -
+  // a bare redirect to /admin/deals/login (no query string at all) is exactly the P1.4A root
+  // cause and must not regress in any of the four consoles.
+  for (const [label, text] of [
+    ['src/supply-sprint-ui.ts', supplySprintUiTs],
+    ['src/batch-review-ui.ts', batchReviewUiTs],
+    ['src/provider-onboarding-ui.ts', providerOnboardingUiTs],
+  ]) {
+    if (!/return_to=\$\{encodeURIComponent\(c\.req\.path\)\}/.test(text)) {
+      fail(`${label}'s requireAdminSession does not pass return_to when redirecting to login`);
+    } else {
+      ok(`${label}'s requireAdminSession passes return_to when redirecting to login`);
+    }
+  }
+
+  // (d) POST /start's idempotency key must be derived from the CSRF nonce (identical across a
+  // genuine double-tap of the same rendered form), not a fresh timestamp/uuid every call - this
+  // is what makes "double submission creates at most one run" a DB-enforced guarantee rather than
+  // a best-effort client-side disable.
+  const startMatch2 = supplySprintUiTs.match(/supplySprintUi\.post\('\/start'[\s\S]*?\n\}\);/);
+  if (!startMatch2) {
+    fail('POST /start route not found in src/supply-sprint-ui.ts');
+  } else if (!/supply-sprint-start-\$\{nonce\}/.test(startMatch2[0])) {
+    fail('POST /start does not derive its idempotency key from the CSRF nonce - double-submit is not DB-guaranteed to collide');
+  } else {
+    ok('POST /start derives its idempotency key from the CSRF nonce (double-submit is DB-guaranteed to collide)');
+  }
+
+  // (e) the activation logger must never be given a secret, cookie, CSRF value, or token - it may
+  // only ever receive the fixed, sanitized field set.
+  const logFnMatch = supplySprintUiTs.match(/async function logActivation[\s\S]*?\n\}/);
+  if (!logFnMatch) {
+    fail('logActivation() not found in src/supply-sprint-ui.ts');
+  } else if (/ADMIN_TOKEN|csrf_sig|csrf_nonce|cookie/i.test(logFnMatch[0])) {
+    fail('logActivation() appears to reference a secret/token/cookie/CSRF value directly - observability must stay sanitized');
+  } else {
+    ok('logActivation() never references a secret, token, cookie, or CSRF value');
+  }
+  // Every call site must only ever pass the fixed sanitized field set - never a raw request body,
+  // header, or cookie object.
+  const logCallSites = [...supplySprintUiTs.matchAll(/logActivation\(c\.env,\s*\{[^}]*\}\)/g)].map(m => m[0]);
+  if (logCallSites.length === 0) {
+    fail('logActivation() is defined but never called - activation attempts are not actually being logged');
+  } else if (logCallSites.some(s => /ADMIN_TOKEN|csrf_sig|csrf_nonce|body\.token|cookie/i.test(s))) {
+    fail('A logActivation() call site passes a secret/token/cookie/CSRF value');
+  } else {
+    ok(`${logCallSites.length} logActivation() call site(s) pass only sanitized fields`);
+  }
+}
+
 console.log('\n----------------------------------------');
 console.log('NOTE: D1-level checks (orphan products, invalid operator relationships, duplicate');
 console.log('slugs IN THE DATABASE, invalid pricing_basis/currency combinations) are NOT run by');
