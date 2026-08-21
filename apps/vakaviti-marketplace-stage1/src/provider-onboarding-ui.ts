@@ -106,9 +106,9 @@ table td,table th{padding:8px 6px;border-bottom:1px solid var(--line);text-align
 label{display:block;font-size:12px;font-weight:700;margin:12px 0 4px}
 input[type=text],input[type=date],textarea,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;font-size:15px;min-height:44px}
 textarea{min-height:70px}
-.chk-row{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:10px;background:var(--bg);border-radius:8px}
-.chk-row input{width:22px;height:22px;flex-shrink:0;margin-top:2px}
-.chk-row .lbl{font-size:14px;font-weight:600}
+.chk-row{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:12px 10px;background:var(--bg);border-radius:8px;min-height:44px}
+.chk-row input{width:26px;height:26px;flex-shrink:0;margin-top:1px}
+.chk-row .lbl{font-size:14px;font-weight:600;cursor:pointer;display:block;min-height:24px}
 .chk-row .hint{font-size:12px;color:var(--muted);margin-top:2px}
 .field-grid{display:grid;grid-template-columns:1fr;gap:0}
 @media (min-width:600px){.field-grid{grid-template-columns:1fr 1fr;gap:0 16px}}
