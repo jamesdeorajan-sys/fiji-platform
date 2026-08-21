@@ -51,6 +51,8 @@ Run in this exact order against a new, empty preview D1 database (this is what `
 
 13. `migrations/0013_provider_enquiry_handler.sql` — P1.3C. One nullable-with-default column, `provider_ceo_confirmations.initial_enquiry_handler` (`'VAKAVITI'` or `'PROVIDER'`, application-enforced, no CHECK constraint added via `ADD COLUMN` deliberately - not worth the risk on a routine additive change). Recording this does not yet change enquiry routing behaviour; every enquiry still goes through the existing Vakaviti-owned `/enquire/:operatorSlug` flow regardless of its value.
 
+14. `migrations/0014_ai_supply_discovery.sql` — P1.3D AI supply discovery, batch review, and rapid publication. Two new tables only: `standing_policies` (the durable, auditable record of James's CEO directive authorizing AI-discovered directory publication - application code has read-only access, never write; a human runs a raw SQL UPDATE to revoke it) and `supply_import_batches` (idempotency/audit ledger for the not-yet-built documentation-to-review importer). No existing table is touched, and deliberately no new `listing_basis`-style column was added to `operators` - AI-discovered-directory-listing vs CEO-confirmed-pilot-partner status is derived live the same way Pilot Partner status already is (absence vs presence of an unrevoked `provider_ceo_confirmations` row); the one new signal, `operators.last_public_check_at`, already existed on the table and is now stamped only by the new Path A promotion path (`promoteCandidateToDirectoryListing()` in `src/candidates.ts`), which is what lets the public template distinguish an AI-discovered listing from any other non-Pilot-Partner operator without a schema change.
+
 All statements across all eight files are `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` / additive `ALTER TABLE ADD COLUMN` — safe to re-run except the bare `ALTER TABLE ADD COLUMN` statements (in `0004` and `0007`), which are one-time-only by design, consistent with this project's existing migration discipline.
 
 ## Workers AI
@@ -152,7 +154,7 @@ If this Worker and D1 disappeared tomorrow:
 1. Checkout `ceo/vakaviti-marketplace-stage1` from Git
 2. Create a new, isolated Worker named `vakaviti-marketplace-stage1`
 3. Create a new, dedicated D1 database (do not reuse or attach to any existing production D1)
-4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql` → `0013_provider_enquiry_handler.sql`
+4. Apply migrations in order: `schema.sql` → `0002_candidates.sql` → `002_ai_orchestration.sql` → `0003_product_candidates.sql` → `0004_revenue_mvp.sql` → `0005_places.sql` → `0006_place_hardening.sql` → `0007_place_taxonomy.sql` → `0008_deal_intelligence.sql` → `0010_deal_public_hub.sql` (there is deliberately no `0009` - see the note above) → `0011_candidate_quality_gate.sql` → `0012_ceo_provider_fast_track.sql` → `0013_provider_enquiry_handler.sql` → `0014_ai_supply_discovery.sql`
 5. Configure the `DB` binding in `wrangler.toml` to the new database ID
 6. Configure the `AI` binding
 7. Set `ENVIRONMENT=preview` in `wrangler.toml`

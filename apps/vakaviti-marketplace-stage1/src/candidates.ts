@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import { evaluateDirectoryListingGates } from './directory-gate';
 
-type Bindings = { DB: D1Database; ADMIN_TOKEN?: string };
+export type Bindings = { DB: D1Database; ADMIN_TOKEN?: string };
 export const candidates = new Hono<{ Bindings: Bindings }>();
 
 const normalizeName = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
@@ -83,11 +84,9 @@ candidates.post('/:id/review', async c => {
 // this function that can produce VAKAVITI_VERIFIED. Reaching that status remains a wholly separate,
 // later, human decision outside this endpoint (there is still no code anywhere that sets it).
 //
-// KNOWN GAP (reported, not fixed here): none of the public marketplace queries in src/index.ts
-// filter by commercial_status or verification_status - a freshly promoted NOT_VERIFIED/INACTIVE
-// operator is immediately visible on /operators and /operators/:slug like any other. This endpoint
-// only prevents *unevidenced* promotion, not *public visibility* of a newly promoted operator. See
-// the task report for this finding - closing it (e.g. a real draft/publish gate) is separate work.
+// P1.3D NOTE: this general-purpose endpoint is left completely unchanged. The new, narrower
+// AI-DISCOVERED PUBLIC DIRECTORY LISTING path (Path A) below is a separate, additionally-gated
+// promotion route used only by the batch review console - it does not replace or alter this one.
 candidates.post('/:id/promote', async c => {
   const id = c.req.param('id');
   const body = await c.req.json<any>().catch(() => ({}));
@@ -133,3 +132,87 @@ candidates.post('/:id/promote', async c => {
 
   return c.json({ operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: 'INACTIVE', review_action_id: reviewActionId }, 201);
 });
+
+// --- P1.3D Path A: AI-DISCOVERED PUBLIC DIRECTORY LISTING promotion --------------------------------
+//
+// Distinct in law from both /:id/promote above (a general-purpose, individually-approved
+// promotion with no directory-specific gate) and from CEO-confirmed Pilot Partner promotion in
+// src/provider-onboarding.ts (which requires a named human conversation record). This function is
+// the ONLY code path that can promote a candidate under the standing AI-discovered-directory
+// publication policy, and it is called ONLY from the authenticated, human-operated batch review
+// console (src/batch-review-ui.ts) - AI has no path to invoke it (see regression-guards.mjs
+// check 19). `actor` is always supplied by the calling route from its own session, never taken
+// from request input, matching the actor-integrity discipline established in P1.3C.
+//
+// Every one of the CEO directive's 9 deterministic conditions must hold (evaluateDirectoryListingGates
+// covers 5 data-driven ones directly; the other 4 - concise factual wording, no unsupported
+// review/rating/price/award/verification claim, and correction/claim/withdrawal routes - are
+// guaranteed by the fixed public template in src/index.ts, never by candidate-supplied data), AND
+// a standing_policies row for AI_DISCOVERED_DIRECTORY_PUBLICATION must be active, or the promotion
+// is refused. On success the resulting operator is exactly like any other PUBLICLY_LISTED,
+// UNCLAIMED, NOT_VERIFIED operator (same as /:id/promote) EXCEPT it also stamps
+// last_public_check_at - the one field that lets the public template (src/index.ts) show the
+// "Vakaviti-discovered Fiji provider / information sourced from..." wording instead of the
+// generic fallback, without needing any new column (see migrations/0014's own header comment for
+// why no listing_basis column exists).
+export type DirectoryPromotionResult =
+  | { ok: true; operatorId: string; slug: string; published: boolean; gate: ReturnType<typeof evaluateDirectoryListingGates> }
+  | { ok: false; status: number; error: string; detail?: any };
+
+export async function promoteCandidateToDirectoryListing(env: Bindings, candidateId: string, actor: string): Promise<DirectoryPromotionResult> {
+  const candidateRow = await env.DB.prepare(`SELECT * FROM candidate_operators WHERE id=?`).bind(candidateId).first<any>();
+  if (!candidateRow) return { ok: false, status: 404, error: 'not_found' };
+
+  if (!['ENRICHED', 'QUALIFIED', 'SHORTLISTED'].includes(String(candidateRow.workflow_state))) {
+    return { ok: false, status: 409, error: 'candidate_not_ready', detail: { workflow_state: candidateRow.workflow_state } };
+  }
+
+  const priorPromotion = await env.DB.prepare(
+    `SELECT id FROM review_actions WHERE entity_type='CANDIDATE_OPERATOR' AND entity_id=? AND action_type IN ('PROMOTED_TO_OPERATOR','PROMOTED_TO_DIRECTORY_LISTING') LIMIT 1`
+  ).bind(candidateId).first<any>();
+  if (priorPromotion) return { ok: false, status: 409, error: 'already_promoted' };
+
+  const policy = await env.DB.prepare(
+    `SELECT id FROM standing_policies WHERE policy_name='AI_DISCOVERED_DIRECTORY_PUBLICATION' AND active=1 LIMIT 1`
+  ).first<any>();
+  if (!policy) return { ok: false, status: 403, error: 'standing_policy_inactive' };
+
+  const productCountRow = await env.DB.prepare(`SELECT COUNT(*) n FROM product_candidates WHERE operator_candidate_id=?`).bind(candidateId).first<any>();
+  const gate = evaluateDirectoryListingGates({
+    canonical_name: candidateRow.canonical_name,
+    website_url: candidateRow.website_url,
+    primary_url: candidateRow.primary_url,
+    locality: candidateRow.locality,
+    region: candidateRow.region,
+    duplicate_of_id: candidateRow.duplicate_of_id,
+    product_count: Number(productCountRow?.n || 0),
+  });
+  if (gate.decision !== 'ELIGIBLE') return { ok: false, status: 422, error: 'directory_gate_failed', detail: gate };
+
+  const operatorId = crypto.randomUUID();
+  const normalized = normalizeName(String(candidateRow.canonical_name)).replace(/\s+/g, '-');
+  const slug = `${normalized}-${operatorId.slice(0, 8)}`;
+
+  // Created INACTIVE first, exactly like /:id/promote and the CEO-confirmed pilot flow, then
+  // flipped to ACTIVE only if a contact route exists - a directory listing with no way to reach
+  // the provider cannot honestly show an "Ask Vakaviti" CTA, so it stays a private record instead
+  // of a broken public promise.
+  await env.DB.prepare(`INSERT INTO operators(
+    id,canonical_name,slug,website_url,facebook_url,instagram_url,whatsapp,email,phone,locality,region,country_code,discovery_status,claim_status,verification_status,commercial_status,last_public_check_at
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?, 'FJ', 'PUBLICLY_LISTED', 'UNCLAIMED', 'NOT_VERIFIED', 'INACTIVE', CURRENT_TIMESTAMP)`)
+    .bind(operatorId, candidateRow.canonical_name, slug, candidateRow.website_url, candidateRow.facebook_url, candidateRow.instagram_url, candidateRow.whatsapp, candidateRow.email, candidateRow.phone, candidateRow.locality, candidateRow.region).run();
+
+  const hasContact = !!(candidateRow.whatsapp || candidateRow.phone || candidateRow.email);
+  if (hasContact) {
+    await env.DB.prepare(`UPDATE operators SET commercial_status='ACTIVE', updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(operatorId).run();
+  }
+
+  const reviewActionId = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO review_actions(id,entity_type,entity_id,action_type,actor,note,before_json,after_json) VALUES(?,?,?,?,?,?,?,?)`)
+    .bind(reviewActionId, 'CANDIDATE_OPERATOR', candidateId, 'PROMOTED_TO_DIRECTORY_LISTING', actor,
+      'AI-discovered public directory listing, approved via batch review under standing policy AI_DISCOVERED_DIRECTORY_PUBLICATION.',
+      JSON.stringify(candidateRow),
+      JSON.stringify({ operator_id: operatorId, slug, verification_status: 'NOT_VERIFIED', commercial_status: hasContact ? 'ACTIVE' : 'INACTIVE', gate })).run();
+
+  return { ok: true, operatorId, slug, published: hasContact, gate };
+}

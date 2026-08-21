@@ -36,9 +36,10 @@ binding = "ASSETS"
 # In Fiji Standard Time (FJT = UTC+12, no current DST): 12:00, 16:00, 20:00, 00:00, 04:00, 08:00
 # FJT respectively - i.e. 6 activations per day, evenly spaced.
 #
-# Each activation processes at most 2 due sources (MAX_SOURCES_PER_ACTIVATION in
-# src/deal-agent.ts), selected by next_scan_at ascending. With 6 activations/day x 2
-# sources/activation = up to 12 source-slots/day against 7 currently-approved sources, every
+# Each activation processes at most 3 due sources (MAX_SOURCES_PER_ACTIVATION in
+# src/deal-agent.ts, raised from 2 -> 3 on 2026-08-21 as stage 1 of the P1.3D SCALE directive's
+# conservative staged increase), selected by next_scan_at ascending. With 6 activations/day x 3
+# sources/activation = up to 18 source-slots/day against 7 currently-approved sources, every
 # source clears its next_scan_at (advanced +24h on each successful or classified-failure scan)
 # well within a day, with headroom to spare - this is the fair-rotation mechanism, not a fixed
 # per-source time slot. A stuck-run watchdog (recoverStuckRuns, 10-minute threshold) runs at the

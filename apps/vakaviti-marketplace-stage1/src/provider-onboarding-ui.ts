@@ -120,7 +120,7 @@ legend{font-weight:700;font-size:13px;padding:0 6px}
 a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 </style></head>
 <body>
-<header><a href="/admin/providers">Provider Onboarding</a><nav><a href="/admin/providers">Providers</a><a href="/admin/providers/onboard">+ Onboard</a><a href="/admin/deals">Deal Intelligence</a></nav></header>
+<header><a href="/admin/providers">Provider Onboarding</a><nav><a href="/admin/providers">Providers</a><a href="/admin/providers/onboard">+ Onboard</a><a href="/admin/review">Batch Review</a><a href="/admin/deals">Deal Intelligence</a></nav></header>
 <main>${body}</main>
 <script>function confirmRevoke(f){var r=prompt('Type a short reason for revoking this authorization:');if(!r)return false;f.reason.value=r;return confirm('Revoke pilot authorization? This immediately removes the provider from public view.');}</script>
 </body></html>`;

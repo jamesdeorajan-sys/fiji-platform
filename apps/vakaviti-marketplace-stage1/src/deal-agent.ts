@@ -389,7 +389,19 @@ async function recoverStuckRuns(env: Bindings): Promise<void> {
 // never be blocked by, or consume, an automatic activation's slot. Only one run may be RUNNING
 // at a time (checked after the watchdog clears any genuinely stuck rows) - this is the
 // no-overlap guarantee, simpler and sufficient at this pilot's scale than per-source locking.
-const MAX_SOURCES_PER_ACTIVATION = 2;
+//
+// P1.3D SCALE (2026-08-21): the CEO directive asks for a staged path toward 30 providers/day and
+// 50-100 source pages/day, well beyond today's 6 activations/day x 2 sources = 12 source-slots/
+// day. The directive also explicitly forbids provisioning new Cloudflare resources (Queues/
+// Workflows) without separate authorization, and this bound exists in the first place because an
+// earlier unbounded-batch design caused a real execution-timeout incident (see the P0 containment
+// history above). Rather than jump straight to the target, this is stage 1 of a conservative,
+// reversible staged increase: 2 -> 3 sources/activation (6 activations/day x 3 = 18 slots/day, a
+// 50% increase with the exact same isolation/backoff/watchdog protections, no new infra). The
+// full staged plan (further bounded increases once this one is observed stable, then a
+// Queues/Workflows proposal as a separate, explicitly-authorized decision) is documented in the
+// P1.3D final report rather than implemented here.
+const MAX_SOURCES_PER_ACTIVATION = 3;
 
 export async function runDailyDiscovery(
   env: Bindings,

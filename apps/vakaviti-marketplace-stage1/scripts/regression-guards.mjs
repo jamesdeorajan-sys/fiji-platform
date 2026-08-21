@@ -28,6 +28,9 @@ const dealQualityTs = readFileSync(path.join(ROOT, 'src/deal-quality.ts'), 'utf8
 const providerOnboardingTs = readFileSync(path.join(ROOT, 'src/provider-onboarding.ts'), 'utf8');
 const supplyDashboardTs = readFileSync(path.join(ROOT, 'src/supply-dashboard.ts'), 'utf8');
 const providerOnboardingUiTs = readFileSync(path.join(ROOT, 'src/provider-onboarding-ui.ts'), 'utf8');
+const directoryGateTs = readFileSync(path.join(ROOT, 'src/directory-gate.ts'), 'utf8');
+const batchReviewUiTs = readFileSync(path.join(ROOT, 'src/batch-review-ui.ts'), 'utf8');
+const migration0014Sql = readFileSync(path.join(ROOT, 'migrations/0014_ai_supply_discovery.sql'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -820,6 +823,136 @@ console.log('== 18. P1.3C onboarding console: one governed service, session-gate
     fail('src/provider-onboarding-ui.ts appears to reference ADMIN_TOKEN directly on an HTML-emitting line - it must never be echoed into a response');
   } else {
     ok('src/provider-onboarding-ui.ts never references ADMIN_TOKEN on an HTML-emitting line');
+  }
+}
+
+console.log('== 19. P1.3D directory gate + standing policy: pure logic, AI has zero write path to standing_policies ==');
+{
+  // (a) directory-gate.ts is pure - no D1 access, no AI.run() call, no network fetch. Its output
+  // must be fully inspectable/testable in isolation, same discipline as deal-quality.ts. Comment
+  // lines are excluded first - this file's own header comment explains that discipline in prose
+  // and would otherwise self-trigger the very check it's describing.
+  const directoryGateCodeLines = directoryGateTs.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  if (/\bD1Database\b|AI\.run\(|await fetch\(/.test(directoryGateCodeLines)) {
+    fail('src/directory-gate.ts appears to reference D1/AI.run/fetch - it must remain pure, deterministic logic only');
+  } else {
+    ok('src/directory-gate.ts is pure - no D1, AI.run, or fetch reference');
+  }
+
+  // (b) AI-facing code (deal-agent.ts) must never import the directory promotion path or the
+  // batch review console - it may read/propose evidence, never publish.
+  for (const [label, mod] of [['./candidates (promoteCandidateToDirectoryListing)', "from './candidates'"], ['./batch-review-ui', "from './batch-review-ui'"]]) {
+    if (dealAgentTs.includes(mod)) fail(`src/deal-agent.ts imports ${label} - AI-facing code must not be able to publish a directory listing`);
+    else ok(`src/deal-agent.ts does not import ${label}`);
+  }
+
+  // (c) No application code (only migration SQL) may INSERT or UPDATE standing_policies - a
+  // standing policy may only be granted or revoked outside any code path, per the CEO directive's
+  // "AI must not alter the standing policy" instruction.
+  for (const [label, text] of [['src/candidates.ts', candidatesTs], ['src/batch-review-ui.ts', batchReviewUiTs], ['src/deal-agent.ts', dealAgentTs], ['src/index.ts', indexTs]]) {
+    if (/\b(INSERT INTO|UPDATE)\s+standing_policies\b/i.test(text)) {
+      fail(`${label} contains a write statement against standing_policies - only a migration may create/modify this table`);
+    } else {
+      ok(`${label} contains no write statement against standing_policies`);
+    }
+  }
+  if (!/CREATE TABLE IF NOT EXISTS standing_policies/.test(migration0014Sql) || !/INSERT INTO standing_policies/.test(migration0014Sql)) {
+    fail('migrations/0014_ai_supply_discovery.sql does not both create and seed standing_policies as expected');
+  } else {
+    ok('migrations/0014_ai_supply_discovery.sql creates and seeds the standing_policies table');
+  }
+
+  // (d) promoteCandidateToDirectoryListing() is called only from the authenticated batch review
+  // console, never from within candidates.ts's own Bearer-token routes (which would let a bare
+  // ADMIN_TOKEN request bypass the human batch-review screen) and never from deal-agent.ts.
+  const promoteFnMatch = candidatesTs.match(/export async function promoteCandidateToDirectoryListing[\s\S]*?\n}/);
+  if (!promoteFnMatch) {
+    fail('promoteCandidateToDirectoryListing() not found in src/candidates.ts');
+  } else {
+    ok('promoteCandidateToDirectoryListing() is defined in src/candidates.ts');
+    // Same law as every other promotion path in this app (see check above for the .post routes):
+    // always NOT_VERIFIED, never VAKAVITI_VERIFIED, at the exact INSERT that creates the row.
+    if (/VAKAVITI_VERIFIED/.test(promoteFnMatch[0])) fail('promoteCandidateToDirectoryListing() references VAKAVITI_VERIFIED - it must always force NOT_VERIFIED');
+    else if (!/NOT_VERIFIED/.test(promoteFnMatch[0])) fail('promoteCandidateToDirectoryListing() does not force NOT_VERIFIED anywhere in its INSERT');
+    else ok('promoteCandidateToDirectoryListing() forces NOT_VERIFIED and never references VAKAVITI_VERIFIED');
+  }
+  const candidatesRoutesOnly = candidatesTs.replace(/export async function promoteCandidateToDirectoryListing[\s\S]*?\n}/, '');
+  if (/promoteCandidateToDirectoryListing\(/.test(candidatesRoutesOnly)) {
+    fail('src/candidates.ts calls promoteCandidateToDirectoryListing() from one of its own Bearer-token routes - it must only be called from the batch review console');
+  } else {
+    ok('src/candidates.ts never calls promoteCandidateToDirectoryListing() from its own routes');
+  }
+  if (!/promoteCandidateToDirectoryListing\(/.test(batchReviewUiTs)) {
+    fail('src/batch-review-ui.ts does not call promoteCandidateToDirectoryListing() - the approve action appears disconnected');
+  } else {
+    ok('src/batch-review-ui.ts calls promoteCandidateToDirectoryListing()');
+  }
+}
+
+console.log('== 20. P1.3D batch review console: session-gated, no client-supplied actor, CSRF+Origin enforced, independent per-candidate re-validation ==');
+{
+  // (a) AI has no import path to the console.
+  if (/from ['"]\.\/batch-review-ui['"]/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts imports src/batch-review-ui.ts - AI-facing code must not have access to the batch review console');
+  } else {
+    ok('src/deal-agent.ts does not import src/batch-review-ui.ts');
+  }
+
+  // (b) Every route must be requireAdminSession-gated.
+  const mwIdx = batchReviewUiTs.indexOf(`batchReviewUi.use('*', requireAdminSession)`);
+  if (mwIdx === -1) {
+    fail('src/batch-review-ui.ts is missing the batchReviewUi.use(\'*\', requireAdminSession) middleware registration');
+  } else {
+    const routeIndices = [...batchReviewUiTs.matchAll(/batchReviewUi\.(get|post)\(/g)].map(m => m.index);
+    if (routeIndices.some(i => i < mwIdx)) fail('A batchReviewUi route is registered before requireAdminSession middleware');
+    else ok(`All ${routeIndices.length} batch-review-ui route(s) are registered after requireAdminSession`);
+  }
+
+  // (c) Both POST handlers use the fixed actor literal, never a client-supplied one.
+  const approveMatch = batchReviewUiTs.match(/batchReviewUi\.post\('\/directory\/approve'[\s\S]*?\n\}\);/);
+  const rejectMatch = batchReviewUiTs.match(/batchReviewUi\.post\('\/directory\/reject'[\s\S]*?\n\}\);/);
+  for (const [label, m] of [['POST /directory/approve', approveMatch], ['POST /directory/reject', rejectMatch]]) {
+    if (!m) { fail(`${label} route not found in src/batch-review-ui.ts`); continue; }
+    if (!/'CEO \(batch review session\)'/.test(m[0])) {
+      fail(`${label} does not use the fixed 'CEO (batch review session)' actor literal`);
+    } else if (/body\.actor/.test(m[0])) {
+      fail(`${label} references body.actor - actor must never be read from the submitted form`);
+    } else {
+      ok(`${label} uses the fixed actor literal and never reads actor from the form`);
+    }
+  }
+
+  // (d) CSRF and Origin must both be validated before any write in both POST handlers, checked
+  // against the actual write-call position.
+  for (const [label, m] of [['POST /directory/approve', approveMatch], ['POST /directory/reject', rejectMatch]]) {
+    if (!m) continue;
+    const block = m[0];
+    const writeIdx = Math.min(...['promoteCandidateToDirectoryListing(', "workflow_state='REJECTED'"].map(s => { const i = block.indexOf(s); return i === -1 ? Infinity : i; }));
+    const csrfIdx = block.indexOf('csrfValid(');
+    const originIdx = block.indexOf('originAllowed(c)');
+    if (csrfIdx === -1) fail(`${label} never calls csrfValid()`);
+    else if (writeIdx !== Infinity && csrfIdx > writeIdx) fail(`${label} performs a write before validating CSRF`);
+    else ok(`${label} validates CSRF before any write`);
+    if (originIdx === -1) fail(`${label} never calls originAllowed()`);
+    else if (writeIdx !== Infinity && originIdx > writeIdx) fail(`${label} performs a write before checking Origin/Referer`);
+    else ok(`${label} enforces Origin/Referer before any write`);
+  }
+
+  // (e) The approve handler must re-validate every candidate independently (never trust the
+  // submitted list) - i.e. it must call the governed service inside a loop over the submitted ids,
+  // not assume the list is already safe.
+  if (approveMatch && !/for\s*\(const id of ids\)/.test(approveMatch[0])) {
+    fail('POST /directory/approve does not appear to iterate and independently re-validate each submitted candidate id');
+  } else if (approveMatch) {
+    ok('POST /directory/approve independently re-validates each submitted candidate id via promoteCandidateToDirectoryListing()');
+  }
+
+  // (f) ADMIN_TOKEN must never appear on an HTML-emitting line.
+  const htmlEmitLines = batchReviewUiTs.split('\n').filter(l => /c\.html\(|shell\(/.test(l) && !l.trim().startsWith('//'));
+  if (htmlEmitLines.some(l => /ADMIN_TOKEN/.test(l))) {
+    fail('src/batch-review-ui.ts appears to reference ADMIN_TOKEN directly on an HTML-emitting line');
+  } else {
+    ok('src/batch-review-ui.ts never references ADMIN_TOKEN on an HTML-emitting line');
   }
 }
 

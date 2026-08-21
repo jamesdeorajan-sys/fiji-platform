@@ -78,7 +78,7 @@ legend{font-weight:700;font-size:13px;padding:0 6px}
 a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 </style></head>
 <body>
-<header><a href="/admin/deals">Deal Intelligence</a><nav><a href="/admin/deals">Queue</a><a href="/admin/deals/sources">Sources</a><a href="/admin/deals/runs">Runs</a></nav></header>
+<header><a href="/admin/deals">Deal Intelligence</a><nav><a href="/admin/deals">Queue</a><a href="/admin/deals/sources">Sources</a><a href="/admin/deals/runs">Runs</a><a href="/admin/review">Batch Review</a><a href="/admin/providers">Providers</a></nav></header>
 <main>${body}</main>
 </body></html>`;
 

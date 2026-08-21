@@ -9,6 +9,7 @@ import { runDailyDiscovery } from './deal-agent';
 import { providerOnboarding } from './provider-onboarding';
 import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
+import { batchReviewUi } from './batch-review-ui';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -360,8 +361,11 @@ app.get('/operators', async c => {
   // administration-only concept (see PUBLIC CLAIM-STATUS POLICY) and must never reach a guest
   // page, not even indirectly via conditional text. Pilot Partner status is derived live from
   // whether an unrevoked CEO confirmation exists - never cached, never inferred from claim state.
-  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,COUNT(p.id) as product_count,(SELECT COUNT(*) FROM provider_ceo_confirmations pc WHERE pc.operator_id=o.id AND pc.revoked_at IS NULL) as pilot_partner_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
+  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,o.last_public_check_at,COUNT(p.id) as product_count,(SELECT COUNT(*) FROM provider_ceo_confirmations pc WHERE pc.operator_id=o.id AND pc.revoked_at IS NULL) as pilot_partner_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
+  // P1.3D: last_public_check_at is set ONLY by the AI-discovered-directory-listing promotion path
+  // (src/candidates.ts promoteCandidateToDirectoryListing) - its presence, not a new column, is
+  // what distinguishes an AI-discovered listing from any other non-Pilot-Partner operator here.
+  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -377,7 +381,13 @@ app.get('/operators/:slug', async c => {
   // internal-only). "Claimed"/"unclaimed" text is never shown to guests.
   const pilotPartnerRow = await c.env.DB.prepare(`SELECT 1 FROM provider_ceo_confirmations WHERE operator_id=? AND revoked_at IS NULL LIMIT 1`).bind(o.id).first<any>();
   const pilotPartner = !!pilotPartnerRow;
-  const status = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : 'Publicly listed — information not yet verified by Vakaviti';
+  // P1.3D: AI-discovered directory listings (Path A) are distinguished purely by
+  // last_public_check_at being set - see promoteCandidateToDirectoryListing() in
+  // src/candidates.ts, the only code path that stamps it. This is never shown for Pilot Partners
+  // or Vakaviti Verified operators, and never implies partnership, verification, or endorsement.
+  const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at;
+  const status = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered Fiji provider' : 'Publicly listed — information not yet verified by Vakaviti';
+  const lastCheckedDate = aiDiscovered && o.last_public_check_at ? new Date(o.last_public_check_at).toLocaleDateString('en-FJ', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
   const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
   const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
@@ -386,9 +396,10 @@ app.get('/operators/:slug', async c => {
     <span class="badge${verified ? ' verified' : ''}">${status}</span>
     <h1>${esc(o.canonical_name)}</h1>
     <p class="muted">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
+    ${aiDiscovered ? `<p class="muted" style="font-size:13px">Information sourced from the provider's official website and last checked on ${esc(lastCheckedDate || '')}.</p>` : ''}
     ${o.description ? `<p>${esc(o.description)}</p>` : ''}
-    <div class="cta-row"><a class="btn secondary" href="/claim/${esc(o.slug)}">Claim or manage this business</a></div>
-    ${o.whatsapp ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">Ask Vakaviti on WhatsApp</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
+    <div class="cta-row"><a class="btn secondary" href="/claim/${esc(o.slug)}">${aiDiscovered ? 'Claim this business or report incorrect information' : 'Claim or manage this business'}</a></div>
+    ${o.whatsapp ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">${aiDiscovered ? 'Ask Vakaviti about this provider' : 'Ask Vakaviti on WhatsApp'}</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
   </section>
   <section class="section"><h2>Experiences</h2><div class="grid">${list || '<div class="card"><div class="card-body">No verified products yet.</div></div>'}</div></section>`, { title: `${o.canonical_name} — Vakaviti`, description: `${o.canonical_name}, ${[o.locality, o.region].filter(Boolean).join(', ') || 'Fiji'} — Fiji tourism operator on Vakaviti.`, ogImage: absoluteImage(o.image_url || opHeroImg.url), noindex: true }));
 });
@@ -619,6 +630,10 @@ app.route('/api/admin/providers', providerOnboarding);
 app.route('/admin/providers', providerOnboardingUi);
 // P1.3B Phase 8: read-only supply dashboard - makes onboarding bottlenecks visible, never writes.
 app.route('/api/admin/dashboard/supply', supplyDashboard);
+// P1.3D: cookie-session batch review console for AI-discovered public directory listings (Path
+// A). Same auth model as /admin/deals and /admin/providers. AI has no import path here (see
+// regression-guards.mjs check 20) - only an authenticated human session can approve or reject.
+app.route('/admin/review', batchReviewUi);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
 // pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
 // row returned has already passed isPubliclyEligible() inside dealsPublic itself - see
