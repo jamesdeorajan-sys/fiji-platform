@@ -26,6 +26,7 @@ const dealsAdminUiTs = readFileSync(path.join(ROOT, 'src/deals-admin-ui.ts'), 'u
 const dealsHubTs = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
 const dealQualityTs = readFileSync(path.join(ROOT, 'src/deal-quality.ts'), 'utf8');
 const providerOnboardingTs = readFileSync(path.join(ROOT, 'src/provider-onboarding.ts'), 'utf8');
+const supplyDashboardTs = readFileSync(path.join(ROOT, 'src/supply-dashboard.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -693,6 +694,40 @@ console.log('== 16. P1.3A CEO-confirmed provider fast-track: admin-only, AI has 
     }
   }
   if (!literalLeak) ok('No public /operators route contains a banned claim-status/unsupported-trust literal');
+}
+
+console.log('== 17. P1.3B supply dashboard: admin-only, read-only, no write path at all ==');
+{
+  if (/from ['"]\.\/supply-dashboard['"]/.test(dealAgentTs)) {
+    fail('src/deal-agent.ts imports src/supply-dashboard.ts - AI-facing code must not have access to admin reporting');
+  } else {
+    ok('src/deal-agent.ts does not import src/supply-dashboard.ts');
+  }
+
+  const mwIdx = supplyDashboardTs.indexOf(`supplyDashboard.use('*', requireAdmin)`);
+  if (mwIdx === -1) {
+    fail('src/supply-dashboard.ts is missing the supplyDashboard.use(\'*\', requireAdmin) middleware registration');
+  } else {
+    const routeIndices = [...supplyDashboardTs.matchAll(/supplyDashboard\.(get|post)\(/g)].map(m => m.index);
+    if (routeIndices.some(i => i < mwIdx)) fail('A supplyDashboard route is registered before requireAdmin middleware');
+    else ok(`All ${routeIndices.length} supply-dashboard route(s) are registered after requireAdmin middleware`);
+  }
+
+  // Read-only: no INSERT/UPDATE/DELETE statement anywhere in this file - it must be structurally
+  // incapable of acting on what it reports.
+  if (/\b(INSERT INTO|UPDATE\s+\w+\s+SET|DELETE FROM)\b/i.test(supplyDashboardTs)) {
+    fail('src/supply-dashboard.ts contains a write statement (INSERT/UPDATE/DELETE) - the dashboard must be read-only');
+  } else {
+    ok('src/supply-dashboard.ts contains no INSERT/UPDATE/DELETE statement - fully read-only');
+  }
+
+  // "Deals live" must be computed via the shared isPubliclyEligible() gate, not a second,
+  // independently-drifting SQL definition of "live".
+  if (!/isPubliclyEligible/.test(supplyDashboardTs)) {
+    fail('src/supply-dashboard.ts does not reference isPubliclyEligible() - "deals live" must reuse the one shared eligibility gate, not redefine it');
+  } else {
+    ok('src/supply-dashboard.ts computes "deals live" via the shared isPubliclyEligible() gate');
+  }
 }
 
 console.log('\n----------------------------------------');

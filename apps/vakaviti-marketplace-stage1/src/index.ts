@@ -7,6 +7,7 @@ import { dealsAdminUi } from './deals-admin-ui';
 import { dealsHub } from './deals-hub';
 import { runDailyDiscovery } from './deal-agent';
 import { providerOnboarding } from './provider-onboarding';
+import { supplyDashboard } from './supply-dashboard';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -611,6 +612,8 @@ app.route('/api/admin/deals', deals);
 // P1.3A: the CEO-confirmed provider fast-track. requireAdmin end-to-end (see
 // src/provider-onboarding.ts) - AI has no import path to this file at all.
 app.route('/api/admin/providers', providerOnboarding);
+// P1.3B Phase 8: read-only supply dashboard - makes onboarding bottlenecks visible, never writes.
+app.route('/api/admin/dashboard/supply', supplyDashboard);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
 // pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
 // row returned has already passed isPubliclyEligible() inside dealsPublic itself - see
