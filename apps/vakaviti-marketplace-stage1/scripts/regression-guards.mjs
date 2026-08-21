@@ -31,6 +31,8 @@ const providerOnboardingUiTs = readFileSync(path.join(ROOT, 'src/provider-onboar
 const directoryGateTs = readFileSync(path.join(ROOT, 'src/directory-gate.ts'), 'utf8');
 const batchReviewUiTs = readFileSync(path.join(ROOT, 'src/batch-review-ui.ts'), 'utf8');
 const migration0014Sql = readFileSync(path.join(ROOT, 'migrations/0014_ai_supply_discovery.sql'), 'utf8');
+const discoveryBridgeTs = readFileSync(path.join(ROOT, 'src/discovery-bridge.ts'), 'utf8');
+const supplySprintUiTs = readFileSync(path.join(ROOT, 'src/supply-sprint-ui.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -953,6 +955,128 @@ console.log('== 20. P1.3D batch review console: session-gated, no client-supplie
     fail('src/batch-review-ui.ts appears to reference ADMIN_TOKEN directly on an HTML-emitting line');
   } else {
     ok('src/batch-review-ui.ts never references ADMIN_TOKEN on an HTML-emitting line');
+  }
+}
+
+console.log('== 21. P1.4 discovery bridge: AI-facing, private-only writes, no path to publication ==');
+{
+  // (a) discovery-bridge.ts never writes to operators/products/provider_ceo_confirmations/
+  // standing_policies/deal_offer_candidates - every write must land in the four private
+  // candidate-stage tables only.
+  const forbiddenWrites = [
+    /\b(INSERT INTO|UPDATE)\s+operators\b/i,
+    /\b(INSERT INTO|UPDATE)\s+products\b/i,
+    /\b(INSERT INTO|UPDATE)\s+provider_ceo_confirmations\b/i,
+    /\b(INSERT INTO|UPDATE)\s+standing_policies\b/i,
+    /\b(INSERT INTO|UPDATE)\s+deal_offer_candidates\b/i,
+  ];
+  const violations = forbiddenWrites.filter(re => re.test(discoveryBridgeTs));
+  if (violations.length) {
+    fail(`src/discovery-bridge.ts contains a write statement against a publication/deal table it must never touch`);
+  } else {
+    ok('src/discovery-bridge.ts writes only to private candidate-stage tables');
+  }
+
+  // (b) it must actually write to the 4 expected private tables - a bridge that writes to none
+  // of them would be a silent no-op, not a passing "safe" file.
+  for (const table of ['candidate_operators', 'candidate_sources', 'candidate_claims', 'product_candidates']) {
+    if (!new RegExp(`INSERT INTO\\s+${table}\\b`, 'i').test(discoveryBridgeTs)) {
+      fail(`src/discovery-bridge.ts never inserts into ${table} - the bridge appears incomplete`);
+    } else {
+      ok(`src/discovery-bridge.ts inserts into ${table}`);
+    }
+  }
+
+  // (c) new candidates must never be created in an already-public workflow_state - discovery can
+  // only ever produce DISCOVERED or ENRICHED, never QUALIFIED/SHORTLISTED (which imply human
+  // review has already happened) and never call promoteCandidateToDirectoryListing() itself.
+  // Comment lines are excluded first - this file's own header comment explains that discipline in
+  // prose and would otherwise self-trigger the very check it's describing.
+  const discoveryBridgeCodeLines = discoveryBridgeTs.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  if (/QUALIFIED|SHORTLISTED/.test(discoveryBridgeCodeLines)) {
+    fail('src/discovery-bridge.ts references QUALIFIED/SHORTLISTED workflow_state - AI discovery must only ever produce DISCOVERED or ENRICHED');
+  } else {
+    ok('src/discovery-bridge.ts never references QUALIFIED/SHORTLISTED workflow_state');
+  }
+  if (/promoteCandidateToDirectoryListing/.test(discoveryBridgeCodeLines)) {
+    fail('src/discovery-bridge.ts references promoteCandidateToDirectoryListing() - discovery must never call the publication path directly');
+  } else {
+    ok('src/discovery-bridge.ts never calls promoteCandidateToDirectoryListing()');
+  }
+
+  // (d) idempotency guard must run before any fetch - the existence check(s) must textually
+  // precede the safeFetchSource() call.
+  const fetchIdx = discoveryBridgeTs.indexOf('await safeFetchSource(');
+  const guardIdx = discoveryBridgeTs.indexOf("FROM operators WHERE website_url LIKE");
+  if (fetchIdx === -1) fail('src/discovery-bridge.ts never calls safeFetchSource()');
+  else if (guardIdx === -1) fail('src/discovery-bridge.ts is missing the existing-operator idempotency guard');
+  else if (guardIdx > fetchIdx) fail('src/discovery-bridge.ts fetches before checking for an existing operator - idempotency guard must run first');
+  else ok('src/discovery-bridge.ts checks for an existing operator before fetching');
+}
+
+console.log('== 22. P1.4 supply sprint console: session-gated, no client-supplied actor, CSRF+Origin enforced, bounded batches ==');
+{
+  if (/from ['"]\.\/supply-sprint-ui['"]/.test(dealAgentTs) || /from ['"]\.\/supply-sprint-ui['"]/.test(discoveryBridgeTs)) {
+    fail('AI-facing code imports src/supply-sprint-ui.ts - AI-facing code must not have access to the sprint console');
+  } else {
+    ok('AI-facing code does not import src/supply-sprint-ui.ts');
+  }
+
+  const mwIdx = supplySprintUiTs.indexOf(`supplySprintUi.use('*', requireAdminSession)`);
+  if (mwIdx === -1) {
+    fail('src/supply-sprint-ui.ts is missing the supplySprintUi.use(\'*\', requireAdminSession) middleware registration');
+  } else {
+    const routeIndices = [...supplySprintUiTs.matchAll(/supplySprintUi\.(get|post)\(/g)].map(m => m.index);
+    if (routeIndices.some(i => i < mwIdx)) fail('A supplySprintUi route is registered before requireAdminSession middleware');
+    else ok(`All ${routeIndices.length} supply-sprint-ui route(s) are registered after requireAdminSession`);
+  }
+
+  const startMatch = supplySprintUiTs.match(/supplySprintUi\.post\('\/start'[\s\S]*?\n\}\);/);
+  const continueMatch = supplySprintUiTs.match(/supplySprintUi\.post\('\/:runId\/continue'[\s\S]*?\n\}\);/);
+  for (const [label, m] of [['POST /start', startMatch], ['POST /:runId/continue', continueMatch]]) {
+    if (!m) { fail(`${label} route not found in src/supply-sprint-ui.ts`); continue; }
+    if (/body\.actor/.test(m[0])) fail(`${label} references body.actor - actor must never be read from the submitted form`);
+    else ok(`${label} never reads actor from the form`);
+  }
+  if (!/'CEO \(admin session\)'/.test(supplySprintUiTs)) {
+    fail("src/supply-sprint-ui.ts does not use the fixed 'CEO (admin session)' actor literal anywhere");
+  } else {
+    ok("src/supply-sprint-ui.ts uses the fixed 'CEO (admin session)' actor literal");
+  }
+
+  for (const [label, m] of [['POST /start', startMatch], ['POST /:runId/continue', continueMatch]]) {
+    if (!m) continue;
+    const block = m[0];
+    const writeIdx = Math.min(...['processBatch(', 'INSERT OR IGNORE INTO supply_sprint_runs'].map(s => { const i = block.indexOf(s); return i === -1 ? Infinity : i; }));
+    const csrfIdx = block.indexOf('csrfValid(');
+    const originIdx = block.indexOf('originAllowed(c)');
+    if (csrfIdx === -1) fail(`${label} never calls csrfValid()`);
+    else if (writeIdx !== Infinity && csrfIdx > writeIdx) fail(`${label} performs a write before validating CSRF`);
+    else ok(`${label} validates CSRF before any write`);
+    if (originIdx === -1) fail(`${label} never calls originAllowed()`);
+    else if (writeIdx !== Infinity && originIdx > writeIdx) fail(`${label} performs a write before checking Origin/Referer`);
+    else ok(`${label} enforces Origin/Referer before any write`);
+  }
+
+  // Bounded batch: must cap processing at MAX_SOURCES_PER_BATCH per call, never process the full
+  // source list in one request (the exact failure class this whole staged-scan discipline exists
+  // to prevent - see deal-agent.ts's own P0 containment history).
+  if (!/MAX_SOURCES_PER_BATCH\s*=\s*3/.test(supplySprintUiTs)) {
+    fail('src/supply-sprint-ui.ts does not define MAX_SOURCES_PER_BATCH=3 - batch size must stay bounded and match the CEO directive\'s stated limit');
+  } else {
+    ok('src/supply-sprint-ui.ts caps batches at MAX_SOURCES_PER_BATCH=3');
+  }
+  if (!/\.slice\(run\.next_batch_offset, run\.next_batch_offset \+ MAX_SOURCES_PER_BATCH\)/.test(supplySprintUiTs)) {
+    fail('src/supply-sprint-ui.ts does not appear to slice the source list to a bounded batch before processing');
+  } else {
+    ok('src/supply-sprint-ui.ts processes only a bounded slice of sources per call');
+  }
+
+  const htmlEmitLines = supplySprintUiTs.split('\n').filter(l => /c\.html\(|shell\(/.test(l) && !l.trim().startsWith('//'));
+  if (htmlEmitLines.some(l => /ADMIN_TOKEN/.test(l))) {
+    fail('src/supply-sprint-ui.ts appears to reference ADMIN_TOKEN directly on an HTML-emitting line');
+  } else {
+    ok('src/supply-sprint-ui.ts never references ADMIN_TOKEN on an HTML-emitting line');
   }
 }
 

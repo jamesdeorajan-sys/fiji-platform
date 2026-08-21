@@ -124,7 +124,7 @@ textarea{min-height:70px}
 a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 </style></head>
 <body>
-<header><a href="/admin/review">Batch Review</a><nav><a href="/admin/review">Directory Queue</a><a href="/admin/deals">Deal Intelligence</a><a href="/admin/providers">Providers</a></nav></header>
+<header><a href="/admin/review">Batch Review</a><nav><a href="/admin/review">Directory Queue</a><a href="/admin/supply/sprint">Supply Sprint</a><a href="/admin/deals">Deal Intelligence</a><a href="/admin/providers">Providers</a></nav></header>
 <main>${body}</main>
 </body></html>`;
 

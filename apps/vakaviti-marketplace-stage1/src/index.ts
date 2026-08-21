@@ -10,6 +10,7 @@ import { providerOnboarding } from './provider-onboarding';
 import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
+import { supplySprintUi } from './supply-sprint-ui';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -634,6 +635,10 @@ app.route('/api/admin/dashboard/supply', supplyDashboard);
 // A). Same auth model as /admin/deals and /admin/providers. AI has no import path here (see
 // regression-guards.mjs check 20) - only an authenticated human session can approve or reject.
 app.route('/admin/review', batchReviewUi);
+// P1.4: the initial supply sprint controller - lets James trigger bounded, real Worker-origin
+// provider discovery batches without waiting for the normal Cron rotation. Same cookie-session
+// auth as every other admin console. AI has no import path here (regression-guards.mjs check 22).
+app.route('/admin/supply/sprint', supplySprintUi);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
 // pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
 // row returned has already passed isPubliclyEligible() inside dealsPublic itself - see
