@@ -1923,10 +1923,20 @@ async function submitMarketplaceBooking(ref) {
     ...(commissionBaseFjd !== undefined ? { commission_base_fjd: commissionBaseFjd } : {}),
   };
 
+  // Durable server-side idempotency (E3D): a real UUID, generated once per
+  // booking attempt and cached on state so a network retry of the SAME
+  // attempt reuses it rather than minting a new one - that's what makes a
+  // timeout-then-retry return the original booking instead of creating a
+  // second one. Never regenerated once set; this codebase doesn't re-show
+  // the booking widget after a successful submission, so one page load is
+  // one attempt.
+  state.bookingIdempotencyKey = state.bookingIdempotencyKey || crypto.randomUUID();
+  payload.idempotency_key = state.bookingIdempotencyKey;
+
   try {
     const res = await fetch(`${NADI_API_BASE}/bookings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': state.bookingIdempotencyKey },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => null);
