@@ -1,7 +1,7 @@
 # BRAND / ENTITY MAP
 
 Status: ACTIVE — RECONCILIATION IN PROGRESS
-Last updated: 2026-08-24 (added CEO-directed exclusions: Tour Fiji Tours / tourfijitours.com / tourfiji.tours; bulahappiness.com and Natadola classifications)
+Last updated: 2026-08-24 (CEO Final First-Party Answers — Tour Fiji Tours exclusion finalized, Bula Happiness ownership confirmed, Natadola WhatsApp groups confirmed intentional, Square merchant transition recorded)
 
 Purpose: define how brands, marketplaces, operators, legal entities and technology systems relate so travellers, Google and AI systems receive one coherent explanation.
 
@@ -73,26 +73,25 @@ Specialist domains
 ## Rule
 Do not use `sameAs`, parent/subOrganization or marketplace/operator structured-data relationships simply to create SEO association. Relationships must reflect verifiable real-world identity.
 
-## CEO-Directed Exclusions (added 2026-08-24, CEO Control-Plane Closure Decision)
+## CEO-Directed Exclusions (added 2026-08-24, CEO Control-Plane Closure Decision; finalized 2026-08-24, CEO Final First-Party Answers)
 
 The following are excluded from the active Vakaviti ecosystem by direct CEO
-instruction, independent of and prior to any further identity
-reconciliation:
+instruction. This closes the outstanding first-party ownership question —
+**control/ownership does not override the exclusion**:
 
 | Excluded entity | Classification |
 |---|---|
-| Tour Fiji Tours | `CEO_DIRECTED_EXCLUSION` |
-| tourfijitours.com | `CEO_DIRECTED_EXCLUSION` |
-| tourfiji.tours | `CEO_DIRECTED_EXCLUSION` |
+| tourfijitours.com | `CEO_CONFIRMED_CONTROLLED`, `CEO_DIRECTED_EXCLUSION`, `DO_NOT_INCLUDE_IN_VAKAVITI`, `DO_NOT_IMPORT`, `DO_NOT_LINK_AS_SUPPLY`, `DO_NOT_TREAT_AS_ALIAS`, `DO_NOT_TREAT_AS_PARTNER`, `DO_NOT_TREAT_AS_FULFILMENT_OPERATOR` |
+| tourfiji.tours | `CEO_DIRECTED_EXCLUSION`, `HISTORICAL_OR_LEGACY_REFERENCE_ONLY`, `DO_NOT_INCLUDE_IN_VAKAVITI` |
+| Tour Fiji Tours (the trading/author identity itself) | `CEO_DIRECTED_EXCLUSION`, `DO_NOT_IMPORT`, `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`, `DO_NOT_TREAT_AS_ALIAS`, `DO_NOT_TREAT_AS_PARTNER`, `DO_NOT_TREAT_AS_FULFILMENT_OPERATOR` |
 
-Each carries all of: `DO_NOT_IMPORT`, `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`,
-`DO_NOT_TREAT_AS_ALIAS`, `DO_NOT_TREAT_AS_PARTNER`,
-`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR`. This is a CEO business decision, not
-a finding about whether these domains are legally the same entity as
-fijitourtransfers.com — the `COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` /
-`LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` classification on that separate
-question is unchanged and unresolved. The exclusion applies regardless of
-how that question is eventually answered.
+This is a CEO business decision, made and confirmed with full knowledge
+that tourfijitours.com is CEO-controlled — it does not depend on, and is
+not overridden by, the separate finding of
+`COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` /
+`LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` regarding fijitourtransfers.com.
+Both classifications stand simultaneously: control is confirmed, and the
+exclusion applies regardless.
 
 Existing public occurrences (e.g. the `/author/infotourfiji-tours/`
 byline appearing on fijitourtransfers.com and natadolabayhorseriding.com,
@@ -104,26 +103,62 @@ identified) would be classified
 `LEGACY_OR_CONFLICTING_REFERENCE_TO_EXCLUDED_IDENTITY` /
 `REMEDIATION_DEFERRED` rather than acted on immediately.
 
-### bulahappiness.com
+### bulahappiness.com (updated 2026-08-24, CEO Final First-Party Answers)
 
 | Field | Value |
 |---|---|
-| Ownership | `OWNERSHIP_NEEDS_CEO_CONFIRMATION` |
-| Dependency | `DEPENDENCY_ON_EXCLUDED_IDENTITY` (its booking/deal links point to tourfijitours.com) |
-| Integration | `DO_NOT_INTEGRATE` |
+| Ownership | `CEO_CONFIRMED_OWNED` |
+| Current status | `OWNED_ECOSYSTEM_ASSET` |
+| Dependency | `DEPENDENCY_ON_EXCLUDED_IDENTITY` (its current booking/deal links point to tourfijitours.com, a `CEO_DIRECTED_EXCLUSION`) |
+| Integration | `DO_NOT_INTEGRATE_UNTIL_STRATEGY_AND_LINK_DESTINATIONS_ARE_RECONCILED` |
 
-No product, offer, or claim from bulahappiness.com may be imported into
-Vakaviti while this classification stands.
+Preserved in `02-MASTER-ASSET-REGISTER.md` as an owned ecosystem asset. Do
+not import its current products, deals, or commercial claims into
+Vakaviti. Do not modify the live site during the production freeze.
 
 ### natadolabayhorseriding.com
 
 Status: `CEO_CONFIRMED_OWNED`.
 
-Quarantined pending further evidence (site not modified):
-- Its links to Tour Fiji Tours / tourfijitours.com (see exclusion above —
-  the link itself is preserved as historical evidence, not removed).
-- Unsupported or unlinked review ratings (see TRUTH-018).
-- Currency-ambiguous prices ("$113"/"$400"/"$180" with no currency code,
-  see TRUTH-018).
-- The two public WhatsApp group-invitation links (see TRUTH-017) — pending
-  CEO confirmation of whether these are intended to be public.
+- Its link to Tour Fiji Tours / tourfijitours.com is preserved as
+  historical evidence, not removed (see exclusion above).
+- Unsupported or unlinked review ratings remain quarantined (see
+  TRUTH-018).
+- Currency-ambiguous prices ("$113"/"$400"/"$180" with no currency code)
+  remain quarantined (see TRUTH-018).
+- **The two public WhatsApp group-invitation links are CEO-confirmed
+  intentional** (`CEO_CONFIRMED_INTENTIONAL_PUBLIC_LINKS`, 2026-08-24) —
+  **not a defect.** However: do not copy these group links into Vakaviti;
+  do not treat them as the Vakaviti enquiry route; Vakaviti must use its
+  own attributed one-to-one human sales pathway; do not expose additional
+  private contact information beyond what Natadola itself already
+  publishes.
+
+## Square Merchant Identity Transition (added 2026-08-24, CEO Final First-Party Answers)
+
+| Field | Value |
+|---|---|
+| Status | `MERCHANT_IDENTITY_TRANSITION_IN_PROGRESS` |
+| Target reconciliation date | `TARGET_RECONCILIATION_DATE = MID_SEPTEMBER_2026` |
+| Current final identity | `CURRENT_FINAL_IDENTITY = NOT_YET_CONFIRMED` |
+
+The Square merchant identity behind Fiji Tour Transfers' checkout is
+currently being changed, expected updated mid-September 2026. **Until
+verified:**
+- Do not claim Vakaviti is the legal merchant of record for any
+  transaction.
+- Do not hard-code a legal entity into Vakaviti.
+- Do not change terms, receipts, or structured data based on an
+  assumption about the new identity.
+- Preserve the existing live checkout as-is during the peak-period freeze
+  — no code change to fijitourtransfers.com's checkout is authorized by
+  this entry.
+
+**Scheduled control-plane review — mid-September 2026.** See
+`05-COMMERCIAL-TRUTH-REGISTER.md` TRUTH-019 for the dated review item and
+its 10 required checks (current Square merchant/statement identity; legal
+business/person receiving payment; receipt descriptor; terms-and-conditions
+identity; refund responsibility; tax/invoice responsibility; currency and
+settlement configuration; provider payout responsibility; alignment across
+Fiji Tour Transfers, Vakaviti and Square; Commercial Truth Register
+update).

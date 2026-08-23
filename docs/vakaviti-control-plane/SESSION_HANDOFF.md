@@ -7,10 +7,10 @@ end of every future phase/session — do not create a new dated file for
 routine updates. See `CHANGELOG.md` (same directory) for the append-only
 history of what changed and when.
 
-Last updated: 2026-08-24T01:00:00Z
-Last updated by: Claude (Code), CEO Control-Plane Closure Decision session
+Last updated: 2026-08-24T02:00:00Z
+Last updated by: Claude (Code), CEO Final First-Party Answers session
 
-## Control-plane phase status: CLOSED
+## Control-plane phase status: CLOSED (final answers recorded 2026-08-24)
 
 **CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY
 PHASE MAY PROCEED.** The control-plane/revenue-link-graph workstream
@@ -22,18 +22,39 @@ source-evidenced deals, mobile/UX prep, and search-readiness prep are
 explicitly NOT blocked by the still-open commercial-truth items below;
 those items block only their own specific claims/records.
 
-**CEO-directed exclusion (2026-08-24):** Tour Fiji Tours, tourfijitours.com,
-and tourfiji.tours are excluded from the active Vakaviti ecosystem —
-`CEO_DIRECTED_EXCLUSION` / `DO_NOT_IMPORT` / `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`
-/ `DO_NOT_TREAT_AS_ALIAS` / `DO_NOT_TREAT_AS_PARTNER` /
-`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR`. See `ceo-war-room/04-BRAND-ENTITY-MAP.md`
-for full detail. bulahappiness.com is `OWNERSHIP_NEEDS_CEO_CONFIRMATION` /
-`DEPENDENCY_ON_EXCLUDED_IDENTITY` / `DO_NOT_INTEGRATE`.
-natadolabayhorseriding.com remains `CEO_CONFIRMED_OWNED`, with specific
-items quarantined (its links to the excluded identity, unsupported
-ratings, currency-ambiguous prices, and its two public WhatsApp
-group-invite links pending CEO confirmation) — the live site itself is
-NOT modified.
+**CEO-directed exclusion, finalized 2026-08-24 (CEO Final First-Party
+Answers):** tourfijitours.com is `CEO_CONFIRMED_CONTROLLED` yet still
+`CEO_DIRECTED_EXCLUSION` / `DO_NOT_INCLUDE_IN_VAKAVITI` / `DO_NOT_IMPORT` /
+`DO_NOT_LINK_AS_SUPPLY` / `DO_NOT_TREAT_AS_ALIAS` /
+`DO_NOT_TREAT_AS_PARTNER` / `DO_NOT_TREAT_AS_FULFILMENT_OPERATOR` —
+**control/ownership does not override the exclusion.** tourfiji.tours is
+`CEO_DIRECTED_EXCLUSION` / `HISTORICAL_OR_LEGACY_REFERENCE_ONLY` /
+`DO_NOT_INCLUDE_IN_VAKAVITI`. See `ceo-war-room/04-BRAND-ENTITY-MAP.md` for
+full detail.
+
+bulahappiness.com is `CEO_CONFIRMED_OWNED` / `OWNED_ECOSYSTEM_ASSET`,
+preserved in `02-MASTER-ASSET-REGISTER.md`, but remains
+`DEPENDENCY_ON_EXCLUDED_IDENTITY` /
+`DO_NOT_INTEGRATE_UNTIL_STRATEGY_AND_LINK_DESTINATIONS_ARE_RECONCILED` — no
+products/deals/claims imported, live site not modified.
+
+natadolabayhorseriding.com remains `CEO_CONFIRMED_OWNED`. Its two public
+WhatsApp group-invite links are now `CEO_CONFIRMED_INTENTIONAL_PUBLIC_LINKS`
+(TRUTH-017 resolved — not a defect), but must not be copied into Vakaviti
+or treated as the Vakaviti enquiry route (Vakaviti uses its own attributed
+one-to-one human sales pathway; no additional private contact information
+is to be exposed). Its link to the excluded identity and TRUTH-018
+(unsupported ratings, currency-ambiguous prices) remain quarantined. Live
+site not modified.
+
+**Square merchant identity transition (2026-08-24):**
+`MERCHANT_IDENTITY_TRANSITION_IN_PROGRESS`, target reconciliation
+mid-September 2026, current final identity not yet confirmed (TRUTH-019).
+Until verified: do not claim Vakaviti is the legal merchant of record, do
+not hard-code a legal entity into Vakaviti, do not change terms/receipts/
+structured data on an assumption, preserve the existing live checkout
+during the peak-period freeze. A dated review is required mid-September
+2026 covering all 10 items listed in TRUTH-019.
 
 ## Mission
 
@@ -137,19 +158,36 @@ truth quarantine, 5-microsite coverage) → **CEO Final Reconciliation
 (this session: ComeToFiji + Natadola coverage, this handoff/changelog
 pair)**.
 
+## Scheduled reviews
+
+- **Mid-September 2026 — Square merchant identity review (TRUTH-019).**
+  Required once the Square merchant identity change behind Fiji Tour
+  Transfers' checkout completes. Covers: current Square merchant/statement
+  identity; legal business/person receiving payment; receipt descriptor;
+  terms-and-conditions identity; refund responsibility; tax/invoice
+  responsibility; currency and settlement configuration; provider payout
+  responsibility; alignment across Fiji Tour Transfers, Vakaviti and
+  Square; and a Commercial Truth Register update. Whoever picks up this
+  file after mid-September 2026 should treat this as due and check
+  whether it has been actioned.
+
 ## Active blockers
 
 - E3F's halted Pages deployment step cannot resume until the 24-hour
   observation window closes AND a fresh CEO authorization is given — it is
   not auto-resumable.
-- Identity questions across fijitourtransfers.com / tourfiji.tours /
-  tourfijitours.com / natadolabayhorseriding.com / "Fiji Tourism Guide" are
-  all `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` — blocks any Vakaviti
-  import of facts from those domains.
+- **Resolved 2026-08-24:** the tourfijitours.com/tourfiji.tours exclusion,
+  Bula Happiness ownership, and Natadola's WhatsApp group links are no
+  longer open blockers — see CEO Final First-Party Answers above.
+- fijitourtransfers.com's own legal/commercial identity relative to the
+  excluded Tour Fiji Tours identity remains
+  `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` — this is a separate question
+  from the exclusion (which stands regardless) and still blocks any
+  Vakaviti import of facts from fijitourtransfers.com.
 - ComeToFiji's own commercial claims (repeating FTT's "zero commission")
   are quarantined (TRUTH-016) pending first-party evidence.
-- tourfijitours.com and bulahappiness.com are newly discovered and
-  uninspected.
+- Square merchant identity is mid-transition (TRUTH-019) — blocks any
+  merchant-of-record claim until the mid-September 2026 review.
 
 ## Commercial-truth quarantines (current)
 

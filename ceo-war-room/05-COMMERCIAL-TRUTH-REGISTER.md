@@ -1,18 +1,29 @@
 # COMMERCIAL TRUTH REGISTER
 
 Status: **CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY PHASE MAY PROCEED**
-Last updated: 2026-08-24 (CEO Control-Plane Closure Decision — CEO-directed exclusions applied; phase closed)
+Last updated: 2026-08-24 (CEO Final First-Party Answers — Tour Fiji Tours exclusion finalized, Natadola WhatsApp groups confirmed intentional (TRUTH-017 resolved), Square merchant transition recorded (TRUTH-019); control-plane workstream closed)
 
-## CEO Control-Plane Closure Decision (2026-08-24)
+## CEO Control-Plane Closure Decision (2026-08-24, finalized with CEO Final First-Party Answers)
 
 The control-plane and revenue-link-graph phase is accepted as substantially
-complete. Per direct CEO instruction, **Tour Fiji Tours, tourfijitours.com,
-and tourfiji.tours are excluded from the active Vakaviti ecosystem** —
-`CEO_DIRECTED_EXCLUSION` / `DO_NOT_IMPORT` / `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`
-/ `DO_NOT_TREAT_AS_ALIAS` / `DO_NOT_TREAT_AS_PARTNER` /
-`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR` (full detail in
-`04-BRAND-ENTITY-MAP.md`). This is a business decision, independent of the
-unresolved `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` question below.
+complete and is now closed. Per direct CEO instruction, **tourfijitours.com,
+tourfiji.tours, and the Tour Fiji Tours identity are excluded from the
+active Vakaviti ecosystem** — `CEO_CONFIRMED_CONTROLLED` +
+`CEO_DIRECTED_EXCLUSION` / `DO_NOT_INCLUDE_IN_VAKAVITI` / `DO_NOT_IMPORT` /
+`DO_NOT_LINK_AS_SUPPLY` / `DO_NOT_TREAT_AS_ALIAS` /
+`DO_NOT_TREAT_AS_PARTNER` / `DO_NOT_TREAT_AS_FULFILMENT_OPERATOR`
+(tourfiji.tours additionally `HISTORICAL_OR_LEGACY_REFERENCE_ONLY`) — full
+detail in `04-BRAND-ENTITY-MAP.md`. **Control/ownership does not override
+the exclusion**: this decision was made and confirmed with full knowledge
+that tourfijitours.com is CEO-controlled, and stands independently of the
+unresolved `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` question regarding
+fijitourtransfers.com below.
+
+Bula Happiness (bulahappiness.com) is `CEO_CONFIRMED_OWNED` /
+`OWNED_ECOSYSTEM_ASSET`, but remains `DEPENDENCY_ON_EXCLUDED_IDENTITY` /
+`DO_NOT_INTEGRATE_UNTIL_STRATEGY_AND_LINK_DESTINATIONS_ARE_RECONCILED` —
+preserved in `02-MASTER-ASSET-REGISTER.md`, not imported, live site not
+modified.
 
 **Unreconciled commercial claims below block only those individual claims
 and records.** They do NOT block independent Vakaviti supply research,
@@ -42,24 +53,28 @@ No value in this register should be pushed to production until its evidence and 
 | TRUTH-014 | fijitourtransfers.com mixed-itinerary product page (Jewels of Fiji tour) | The same product page's "Included/Excluded" copy describes a boat ride, waterfall swim, bamboo rafting, village visit and buffet lunch, while its own FAQ block on the identical page describes a different itinerary (Nadi Town market, Garden of the Sleeping Giant, Sigatoka Sand Dunes, Beqa Island firewalking, Navua River canoe tour, Mamanuca snorkelling) | QUARANTINED — CONTRADICTORY, directly observed 2026-08-23, live checkout active on this page (WooCommerce+Square) | P0 trust/commercial | Determine which itinerary (if either, as written) is the real product before this page's content is treated as a source of fact anywhere; likely a templating/content-population defect, not assessed here as intentional |
 | TRUTH-015 | fijitourtransfers.com product-page structured-data price conflict | The Jewels of Fiji product page carries two different Offer prices in its own JSON-LD: a Service block at AUD 155 (duplicated ~14 times, a templating artifact) and a Product block at AUD 259 (matching the visible price, but branded "Tour Fiji" with URLs on tourstransfers.hostmejames.online / tourfiji.tours, not fijitourtransfers.com) | QUARANTINED — CONTRADICTORY, directly observed 2026-08-24 | P1 trust | Do not treat either structured-data price as authoritative independent of the visible page price; resolve which template/plugin is producing the duplicate blocks |
 | TRUTH-016 | ComeToFiji.com repeats FTT's unverified commercial claim | ComeToFiji's own Organization structured data states it is "funneling tour and transfer bookings to Fiji Tour Transfers - zero commission, direct Fijian operator pricing" - repeating fijitourtransfers.com's own unverified TRUTH-013 claim as ComeToFiji's own structured fact | QUARANTINED — NEEDS_SOURCE, directly observed 2026-08-24 | P1 trust | Do not treat "zero commission" as verified anywhere in the ecosystem, including on ComeToFiji, until first-party evidence is supplied |
-| TRUTH-017 | natadolabayhorseriding.com public WhatsApp group invite links | Two distinct `chat.whatsapp.com` GROUP invite links (not 1:1 contact links) are exposed directly in site navigation, alongside the usual `wa.me` contact number | QUARANTINED — UNKNOWN risk, directly observed 2026-08-24 | P1 trust/privacy | Confirm whether these are intended to be public before treating them as an authorized/managed customer channel; a public group-invite link lets anyone join and see other members, unlike a 1:1 `wa.me` link |
+| TRUTH-017 | natadolabayhorseriding.com public WhatsApp group invite links | Two distinct `chat.whatsapp.com` GROUP invite links (not 1:1 contact links) are exposed directly in site navigation, alongside the usual `wa.me` contact number | RESOLVED 2026-08-24 — `CEO_CONFIRMED_INTENTIONAL_PUBLIC_LINKS`, not a defect | P2 (downgraded from P1 — confirmed intentional) | No live-site action required. For Vakaviti: do not copy these group links into Vakaviti, do not treat them as the Vakaviti enquiry route, use Vakaviti's own attributed one-to-one human sales pathway, and do not expose additional private contact information beyond what Natadola itself already publishes |
+| TRUTH-019 | Square merchant identity behind Fiji Tour Transfers' checkout | Merchant identity is currently being changed, expected updated mid-September 2026; current final identity not yet confirmed | `MERCHANT_IDENTITY_TRANSITION_IN_PROGRESS`, `TARGET_RECONCILIATION_DATE = MID_SEPTEMBER_2026`, `CURRENT_FINAL_IDENTITY = NOT_YET_CONFIRMED` | P0 commercial/legal | **Dated control-plane review required, mid-September 2026**, covering: (1) current Square merchant/statement identity; (2) legal business/person receiving payment; (3) receipt descriptor; (4) terms-and-conditions identity; (5) refund responsibility; (6) tax/invoice responsibility; (7) currency and settlement configuration; (8) provider payout responsibility; (9) alignment across Fiji Tour Transfers, Vakaviti and Square; (10) this Commercial Truth Register update. Until this review: do not claim Vakaviti is the legal merchant of record, do not hard-code a legal entity into Vakaviti, do not change terms/receipts/structured data on an assumption, preserve the existing live checkout during the peak-period freeze |
 | TRUTH-018 | natadolabayhorseriding.com repeated reviews and price-currency ambiguity | The same two customer reviews appear verbatim, repeated 3 times each, in the page's own review carousel; displayed tour prices ($113, $400, $180) show no currency code or symbol beyond a bare "$" | QUARANTINED — NEEDS_SOURCE, directly observed 2026-08-24 | P1 trust | Do not import review counts or "$" prices from this domain until review authenticity and currency are independently confirmed |
 
-## Note on TRUTH-009 through TRUTH-018 (added 2026-08-24, extended 2026-08-24 CEO Final Reconciliation)
+## Note on TRUTH-009 through TRUTH-019 (added/updated across 2026-08-24 sessions)
 
 TRUTH-009 through TRUTH-015 were added following a read-only inspection of fijitourtransfers.com.
 TRUTH-016 through TRUTH-018 were added following read-only inspection of cometofiji.com and
-natadolabayhorseriding.com per the CEO Final Reconciliation directive. All describe the current
-state of **third-party-operated, publicly reachable pages** as observed. No claim is made here
-about intent, and no legal or reputational conclusion is drawn — the register's job is only to
-prevent an unverified external fact from silently becoming a Vakaviti-side fact. **None of
-TRUTH-009 through TRUTH-018 may be imported into Vakaviti (as displayed content, structured data,
-or comparison data) until reconciled per the canonical fact envelope below.** Separately, see
-`04-BRAND-ENTITY-MAP.md` and the `REVENUE_LINK_REGISTRY.json` `entity_identity_findings` section
-for the related — and explicitly distinct — question of *who controls* these domains: that
-evidence supports `COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` only, never
-`LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED`'s resolution, and is not a finding about the truth or
-falsity of any domain's own commercial claims.
+natadolabayhorseriding.com. TRUTH-017 was subsequently RESOLVED (CEO-confirmed intentional, not a
+defect) and TRUTH-019 (Square merchant identity transition) was added, both per CEO Final
+First-Party Answers. TRUTH-009 through TRUTH-016 and TRUTH-018 describe the current state of
+**third-party-operated, publicly reachable pages** as observed — no claim is made about intent,
+and no legal or reputational conclusion is drawn; the register's job is only to prevent an
+unverified external fact from silently becoming a Vakaviti-side fact. **None of TRUTH-009 through
+TRUTH-016, TRUTH-018, or TRUTH-019 may be imported into Vakaviti (as displayed content, structured
+data, comparison data, or an assumed legal identity) until reconciled per the canonical fact
+envelope below.** Separately, see `04-BRAND-ENTITY-MAP.md` and the `REVENUE_LINK_REGISTRY.json`
+`entity_identity_findings` section for the related — and explicitly distinct — question of *who
+controls* these domains: that evidence supports `COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` only,
+never `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED`'s resolution, and is not a finding about the truth
+or falsity of any domain's own commercial claims. The Tour Fiji Tours exclusion (see above) is a
+separate CEO business decision that stands regardless of how that identity question resolves.
 
 ## Required canonical fact envelope
 Every governed fact should ultimately support:

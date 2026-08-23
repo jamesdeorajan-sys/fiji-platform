@@ -3,7 +3,7 @@
     "purpose": "Inventory of discoverable public booking/buy/reserve/enquire/WhatsApp CTAs across the Cloudflare-managed Fiji ecosystem plus the two named primary revenue platforms. Read-only evidence only - no cart, booking, payment or enquiry was ever submitted to produce this file.",
     "generated_at": "2026-08-24T00:00:00Z",
     "status": "CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY PHASE MAY PROCEED",
-    "closure_note": "Per the 2026-08-24 CEO Control-Plane Closure Decision, this control-plane/revenue-link-graph phase is accepted as substantially complete and is now closed to further indefinite expansion. Tour Fiji Tours / tourfijitours.com / tourfiji.tours are CEO_DIRECTED_EXCLUSION (see 04-BRAND-ENTITY-MAP.md). Unreconciled commercial claims (TRUTH-009 through TRUTH-018) block only those individual claims/records - they do not block independent Vakaviti supply research, evidence-backed provider/product candidates, source-evidenced deals, mobile/UX prep, or search-readiness prep. Next active phase: Vakaviti supply activation.",
+    "closure_note": "Per the 2026-08-24 CEO Control-Plane Closure Decision, finalized the same day with CEO Final First-Party Answers, this control-plane/revenue-link-graph phase is accepted as substantially complete and is now CLOSED. Final answers: tourfijitours.com is CEO_CONFIRMED_CONTROLLED yet still CEO_DIRECTED_EXCLUSION / DO_NOT_INCLUDE_IN_VAKAVITI (control does not override exclusion); tourfiji.tours is CEO_DIRECTED_EXCLUSION / HISTORICAL_OR_LEGACY_REFERENCE_ONLY; bulahappiness.com is CEO_CONFIRMED_OWNED / OWNED_ECOSYSTEM_ASSET but DO_NOT_INTEGRATE_UNTIL_STRATEGY_AND_LINK_DESTINATIONS_ARE_RECONCILED; Natadola's two public WhatsApp group links are CEO_CONFIRMED_INTENTIONAL_PUBLIC_LINKS (TRUTH-017 resolved, not a defect, but not to be copied into Vakaviti or used as its enquiry route); the Square merchant identity behind FTT's checkout is MERCHANT_IDENTITY_TRANSITION_IN_PROGRESS with a dated review scheduled mid-September 2026 (TRUTH-019). Unreconciled commercial claims (TRUTH-009 through TRUTH-016, TRUTH-018, TRUTH-019) block only those individual claims/records - they do not block independent Vakaviti supply research, evidence-backed provider/product candidates, source-evidenced deals, mobile/UX prep, or search-readiness prep. Next active phase: Vakaviti supply activation.",
     "coverage_note": "This pass inspected fijitourtransfers.com fresh and in depth (new focus per this addendum). nadiairporttransfers.com, book.fijidash.com and lagi.vakaviti.ai entries are backed by live evidence already gathered across this engagement's E1-E3F phases, re-confirmed where noted. Remaining Vakaviti microsites (divingfijiguide, honeymoonfijiguide, familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, vakaviti-join-page) and ComeToFiji properties are NOT yet individually inventoried at CTA level in this pass - see 'coverage_gaps' below. This registry should be extended, not replaced, on the next pass.",
     "coverage_gaps": [
       "vakaviti-marketplace-stage1 (workers.dev preview, not indexed/public yet - already fully mapped as a build artifact in E1-E3, not re-listed here as a 'public' CTA since it is noindex/preview only)",
@@ -390,9 +390,9 @@
         "source_page": "/",
         "cta_text": "\"Contact Us\" (header) and two more WhatsApp icons",
         "destination_url": "https://chat.whatsapp.com/KyBgMfeWLAD6gWY8KpXTj8 and https://chat.whatsapp.com/LXxyHse5rsdGUvA3Qwzr9K",
-        "note": "Two DIFFERENT public WhatsApp GROUP invite links (not 1:1 contact links) exposed directly in site navigation/header - distinct from the wa.me contact number pattern used elsewhere",
+        "note": "Two DIFFERENT public WhatsApp GROUP invite links (not 1:1 contact links) exposed directly in site navigation/header - distinct from the wa.me contact number pattern used elsewhere. CEO-confirmed 2026-08-24: CEO_CONFIRMED_INTENTIONAL_PUBLIC_LINKS, not a defect.",
         "attribution_parameters": "NONE",
-        "classification": "QUARANTINED - see TRUTH-017 (public group-invite links carry their own exposure risk, e.g. anyone with the link can join and see other members)"
+        "classification": "ACTIVE - RESOLVED per TRUTH-017. Not to be copied into Vakaviti, not to be treated as the Vakaviti enquiry route (Vakaviti uses its own attributed one-to-one human sales pathway), and no additional private contact information is to be exposed"
       },
       {
         "id": "NBHR-CTA-003",
@@ -450,7 +450,7 @@
       "robots_txt": "200 OK",
       "sitemap_xml": "200 OK"
     },
-    "unresolved_third_party_domain": "https://bulahappiness.com/ - linked once from the homepage ('Creating Bula Happiness At Natadola'). Per the 2026-08-24 CEO Control-Plane Closure Decision, classified OWNERSHIP_NEEDS_CEO_CONFIRMATION / DEPENDENCY_ON_EXCLUDED_IDENTITY (its own booking/deal links point to tourfijitours.com, itself a CEO_DIRECTED_EXCLUSION) / DO_NOT_INTEGRATE. No product, offer, or claim from this domain may be imported into Vakaviti."
+    "unresolved_third_party_domain": "https://bulahappiness.com/ - linked once from the homepage ('Creating Bula Happiness At Natadola'). CEO-confirmed 2026-08-24 (CEO Final First-Party Answers): CEO_CONFIRMED_OWNED / OWNED_ECOSYSTEM_ASSET, preserved in 02-MASTER-ASSET-REGISTER.md. Remains DEPENDENCY_ON_EXCLUDED_IDENTITY (its current booking/deal links point to tourfijitours.com, a CEO_DIRECTED_EXCLUSION) / DO_NOT_INTEGRATE_UNTIL_STRATEGY_AND_LINK_DESTINATIONS_ARE_RECONCILED. No product, offer, or claim from this domain may be imported into Vakaviti; live site not modified."
   },
   "entity_identity_findings": [
     {
