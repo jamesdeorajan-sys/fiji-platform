@@ -429,7 +429,7 @@ app.get('/enquire/:operatorSlug', async c => {
     .bind(id, operator.id, product ? product.id : null, c.req.path, c.req.header('referer') || null).run();
   const messageLines = ['Vakaviti enquiry', `Operator: ${operator.canonical_name}`];
   if (product) messageLines.push(`Experience: ${product.canonical_name}`);
-  messageLines.push('Source: Vakaviti', "Hi, I'm interested in this Fiji experience — can you help me with availability and pricing?");
+  messageLines.push('Source: Vakaviti', "Hi, I'm interested in this Fiji experience — can you help me with availability and pricing?", `Reference: ${id}`);
   return c.redirect(waLink(destination, messageLines.join('\n')), 302);
 });
 

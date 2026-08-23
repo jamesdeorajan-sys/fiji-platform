@@ -313,9 +313,13 @@ dealsHub.get('/:offerSlug/enquire', async c => {
   const recent = await c.env.DB.prepare(
     `SELECT id FROM deal_enquiries WHERE offer_candidate_id=? AND (referrer IS ? OR referrer = ?) AND created_at > datetime('now', '-10 seconds') LIMIT 1`
   ).bind(row.id, referrer, referrer).first<any>();
-  if (!recent) {
+  let enquiryId: string;
+  if (recent) {
+    enquiryId = recent.id;
+  } else {
+    enquiryId = crypto.randomUUID();
     await c.env.DB.prepare(`INSERT INTO deal_enquiries (id, offer_candidate_id, channel, source_page, referrer) VALUES (?,?,?,?,?)`)
-      .bind(crypto.randomUUID(), row.id, 'WHATSAPP', c.req.path, referrer).run();
+      .bind(enquiryId, row.id, 'WHATSAPP', c.req.path, referrer).run();
     await logEvent(c.env.DB, 'ENQUIRY_CREATED', { offer_id: row.id, category: row.category, place: row.fiji_location });
   }
   await logEvent(c.env.DB, 'CTA_SELECTED', { offer_id: row.id });
@@ -325,7 +329,9 @@ dealsHub.get('/:offerSlug/enquire', async c => {
   // misconfigured destination never loses the lead record. Message wording is the CEO's exact
   // required template; price/basis and validity are only ever included when the source actually
   // supports them (never fabricated), and it explicitly asks for confirmation rather than
-  // implying one already exists.
+  // implying one already exists. Reference is the deal_enquiries row id itself - opaque, and
+  // traceable back to provider/offer/source-page/timestamp without exposing any of that in the
+  // message text (Supply Operations Activation Phase 6).
   const destination = resolveEnquiryDestination(c.env);
   const priceBasis = priceBasisText(row);
   const validity = validityText(row);
@@ -333,6 +339,7 @@ dealsHub.get('/:offerSlug/enquire', async c => {
   if (priceBasis) message += ` I saw ${priceBasis}${validity ? ' and ' + validity : ''}.`;
   else if (validity) message += ` I saw ${validity}.`;
   message += ' Please help me confirm current availability and final terms.';
+  message += ` Reference: ${enquiryId}`;
 
   if (!destination) {
     const body = `<main class="empty"><h1 style="font-size:20px">Enquiries aren't available right now</h1>
