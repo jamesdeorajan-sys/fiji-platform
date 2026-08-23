@@ -2,6 +2,8 @@
   "_meta": {
     "purpose": "Inventory of discoverable public booking/buy/reserve/enquire/WhatsApp CTAs across the Cloudflare-managed Fiji ecosystem plus the two named primary revenue platforms. Read-only evidence only - no cart, booking, payment or enquiry was ever submitted to produce this file.",
     "generated_at": "2026-08-24T00:00:00Z",
+    "status": "CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY PHASE MAY PROCEED",
+    "closure_note": "Per the 2026-08-24 CEO Control-Plane Closure Decision, this control-plane/revenue-link-graph phase is accepted as substantially complete and is now closed to further indefinite expansion. Tour Fiji Tours / tourfijitours.com / tourfiji.tours are CEO_DIRECTED_EXCLUSION (see 04-BRAND-ENTITY-MAP.md). Unreconciled commercial claims (TRUTH-009 through TRUTH-018) block only those individual claims/records - they do not block independent Vakaviti supply research, evidence-backed provider/product candidates, source-evidenced deals, mobile/UX prep, or search-readiness prep. Next active phase: Vakaviti supply activation.",
     "coverage_note": "This pass inspected fijitourtransfers.com fresh and in depth (new focus per this addendum). nadiairporttransfers.com, book.fijidash.com and lagi.vakaviti.ai entries are backed by live evidence already gathered across this engagement's E1-E3F phases, re-confirmed where noted. Remaining Vakaviti microsites (divingfijiguide, honeymoonfijiguide, familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, vakaviti-join-page) and ComeToFiji properties are NOT yet individually inventoried at CTA level in this pass - see 'coverage_gaps' below. This registry should be extended, not replaced, on the next pass.",
     "coverage_gaps": [
       "vakaviti-marketplace-stage1 (workers.dev preview, not indexed/public yet - already fully mapped as a build artifact in E1-E3, not re-listed here as a 'public' CTA since it is noindex/preview only)",
@@ -407,9 +409,9 @@
         "source_page": "/",
         "cta_text": "12 repeated links to a tours listing",
         "destination_url": "https://tourfijitours.com/tours/",
-        "note": "A THIRD near-identical domain not previously catalogued: tourfijitours.com (distinct from tourfiji.tours and fijitourtransfers.com). No direct link to fijitourtransfers.com was found anywhere on this homepage.",
+        "note": "A THIRD near-identical domain not previously catalogued: tourfijitours.com (distinct from tourfiji.tours and fijitourtransfers.com). No direct link to fijitourtransfers.com was found anywhere on this homepage. Per the 2026-08-24 CEO Control-Plane Closure Decision, tourfijitours.com is now CEO_DIRECTED_EXCLUSION - not to be imported, linked as Vakaviti supply, or treated as an alias/partner/fulfilment operator.",
         "attribution_parameters": "NONE",
-        "classification": "QUARANTINED - see new entity_identity_findings entry below"
+        "classification": "CEO_DIRECTED_EXCLUSION (destination) - link itself preserved as historical evidence on Natadola's CEO_CONFIRMED_OWNED site, not removed; quarantined per LEGACY_OR_CONFLICTING_REFERENCE_TO_EXCLUDED_IDENTITY / REMEDIATION_DEFERRED"
       },
       {
         "id": "NBHR-CTA-005",
@@ -448,7 +450,7 @@
       "robots_txt": "200 OK",
       "sitemap_xml": "200 OK"
     },
-    "unresolved_third_party_domain": "https://bulahappiness.com/ - linked once from the homepage ('Creating Bula Happiness At Natadola'), relationship to the rest of the ecosystem not established this pass"
+    "unresolved_third_party_domain": "https://bulahappiness.com/ - linked once from the homepage ('Creating Bula Happiness At Natadola'). Per the 2026-08-24 CEO Control-Plane Closure Decision, classified OWNERSHIP_NEEDS_CEO_CONFIRMATION / DEPENDENCY_ON_EXCLUDED_IDENTITY (its own booking/deal links point to tourfijitours.com, itself a CEO_DIRECTED_EXCLUSION) / DO_NOT_INTEGRATE. No product, offer, or claim from this domain may be imported into Vakaviti."
   },
   "entity_identity_findings": [
     {

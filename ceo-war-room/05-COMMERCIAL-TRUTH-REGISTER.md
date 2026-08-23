@@ -1,7 +1,25 @@
 # COMMERCIAL TRUTH REGISTER
 
-Status: ACTIVE — READ-ONLY RECONCILIATION
-Last updated: 2026-08-24 (CEO Final Reconciliation pass — added TRUTH-015 through TRUTH-018)
+Status: **CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY PHASE MAY PROCEED**
+Last updated: 2026-08-24 (CEO Control-Plane Closure Decision — CEO-directed exclusions applied; phase closed)
+
+## CEO Control-Plane Closure Decision (2026-08-24)
+
+The control-plane and revenue-link-graph phase is accepted as substantially
+complete. Per direct CEO instruction, **Tour Fiji Tours, tourfijitours.com,
+and tourfiji.tours are excluded from the active Vakaviti ecosystem** —
+`CEO_DIRECTED_EXCLUSION` / `DO_NOT_IMPORT` / `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`
+/ `DO_NOT_TREAT_AS_ALIAS` / `DO_NOT_TREAT_AS_PARTNER` /
+`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR` (full detail in
+`04-BRAND-ENTITY-MAP.md`). This is a business decision, independent of the
+unresolved `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` question below.
+
+**Unreconciled commercial claims below block only those individual claims
+and records.** They do NOT block independent Vakaviti supply research,
+evidence-backed provider/product candidates, qualifying source-evidenced
+deals, mobile/UX preparation, or search-readiness preparation. This
+register does not gate the Vakaviti supply activation phase — it gates
+only the specific quarantined facts listed in the table.
 
 Purpose: identify facts that must have one authority and prevent cross-surface drift.
 No value in this register should be pushed to production until its evidence and authority are verified.

@@ -7,8 +7,33 @@ end of every future phase/session — do not create a new dated file for
 routine updates. See `CHANGELOG.md` (same directory) for the append-only
 history of what changed and when.
 
-Last updated: 2026-08-24T00:00:00Z
-Last updated by: Claude (Code), CEO Final Reconciliation session
+Last updated: 2026-08-24T01:00:00Z
+Last updated by: Claude (Code), CEO Control-Plane Closure Decision session
+
+## Control-plane phase status: CLOSED
+
+**CONTROL PLANE READY — COMMERCIAL CLAIMS QUARANTINED — VAKAVITI SUPPLY
+PHASE MAY PROCEED.** The control-plane/revenue-link-graph workstream
+(sections below describing it are preserved as history) is accepted by
+the CEO as substantially complete and is not to be expanded indefinitely.
+**The next active phase is Vakaviti supply activation** — independent
+supply research, evidence-backed provider/product candidates,
+source-evidenced deals, mobile/UX prep, and search-readiness prep are
+explicitly NOT blocked by the still-open commercial-truth items below;
+those items block only their own specific claims/records.
+
+**CEO-directed exclusion (2026-08-24):** Tour Fiji Tours, tourfijitours.com,
+and tourfiji.tours are excluded from the active Vakaviti ecosystem —
+`CEO_DIRECTED_EXCLUSION` / `DO_NOT_IMPORT` / `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`
+/ `DO_NOT_TREAT_AS_ALIAS` / `DO_NOT_TREAT_AS_PARTNER` /
+`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR`. See `ceo-war-room/04-BRAND-ENTITY-MAP.md`
+for full detail. bulahappiness.com is `OWNERSHIP_NEEDS_CEO_CONFIRMATION` /
+`DEPENDENCY_ON_EXCLUDED_IDENTITY` / `DO_NOT_INTEGRATE`.
+natadolabayhorseriding.com remains `CEO_CONFIRMED_OWNED`, with specific
+items quarantined (its links to the excluded identity, unsupported
+ratings, currency-ambiguous prices, and its two public WhatsApp
+group-invite links pending CEO confirmation) — the live site itself is
+NOT modified.
 
 ## Mission
 
@@ -91,10 +116,12 @@ Repo: `jamesdeorajan-sys/fiji-platform` (GitHub).
    `ScheduleWakeup` independent of this document. Will resolve to either
    "E3F INCIDENT OBSERVED — WORKER ROLLBACK AUTHORIZATION REQUIRED" or "E3F
    PARTIAL DEPLOYMENT STABLE — PRODUCTION FREEZE CONTINUES."
-2. **Revenue link graph / control plane** — this document set. Status:
-   substantially complete for the domains inspected so far (see Completed
-   phases); two new domains surfaced (tourfijitours.com, bulahappiness.com)
-   remain uninspected.
+2. **Revenue link graph / control plane** — CLOSED, 2026-08-24 (see status
+   banner above). tourfijitours.com and tourfiji.tours are CEO-excluded, not
+   pending inspection; bulahappiness.com is DO_NOT_INTEGRATE pending
+   ownership confirmation. No further indefinite expansion of this
+   workstream is authorized.
+3. **Vakaviti supply activation** — NEXT ACTIVE PHASE, not yet started.
 
 ## Completed phases (summary — see CHANGELOG.md for the itemized record)
 
@@ -133,9 +160,15 @@ TRUTH-009 through TRUTH-018 may be imported into Vakaviti until reconciled.
 
 ## Next approved action
 
-Continue passive observation of the E3F window (no action required until
-it resolves or an abort condition fires). No other production action is
-currently authorized.
+1. Continue passive observation of the E3F window (no action required
+   until it resolves or an abort condition fires).
+2. Begin Vakaviti supply activation planning — independent supply
+   research, evidence-backed provider/product candidates, source-evidenced
+   deals, mobile/UX prep, search-readiness prep. Not gated by the
+   commercial-truth quarantine list.
+
+No production/Cloudflare/D1 action is currently authorized under either
+item.
 
 ## Actions requiring CEO authorization (not yet given)
 

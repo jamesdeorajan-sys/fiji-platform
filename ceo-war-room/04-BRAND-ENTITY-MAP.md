@@ -1,7 +1,7 @@
 # BRAND / ENTITY MAP
 
 Status: ACTIVE — RECONCILIATION IN PROGRESS
-Last updated: 2026-08-15
+Last updated: 2026-08-24 (added CEO-directed exclusions: Tour Fiji Tours / tourfijitours.com / tourfiji.tours; bulahappiness.com and Natadola classifications)
 
 Purpose: define how brands, marketplaces, operators, legal entities and technology systems relate so travellers, Google and AI systems receive one coherent explanation.
 
@@ -72,3 +72,58 @@ Specialist domains
 
 ## Rule
 Do not use `sameAs`, parent/subOrganization or marketplace/operator structured-data relationships simply to create SEO association. Relationships must reflect verifiable real-world identity.
+
+## CEO-Directed Exclusions (added 2026-08-24, CEO Control-Plane Closure Decision)
+
+The following are excluded from the active Vakaviti ecosystem by direct CEO
+instruction, independent of and prior to any further identity
+reconciliation:
+
+| Excluded entity | Classification |
+|---|---|
+| Tour Fiji Tours | `CEO_DIRECTED_EXCLUSION` |
+| tourfijitours.com | `CEO_DIRECTED_EXCLUSION` |
+| tourfiji.tours | `CEO_DIRECTED_EXCLUSION` |
+
+Each carries all of: `DO_NOT_IMPORT`, `DO_NOT_LINK_AS_VAKAVITI_SUPPLY`,
+`DO_NOT_TREAT_AS_ALIAS`, `DO_NOT_TREAT_AS_PARTNER`,
+`DO_NOT_TREAT_AS_FULFILMENT_OPERATOR`. This is a CEO business decision, not
+a finding about whether these domains are legally the same entity as
+fijitourtransfers.com — the `COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` /
+`LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED` classification on that separate
+question is unchanged and unresolved. The exclusion applies regardless of
+how that question is eventually answered.
+
+Existing public occurrences (e.g. the `/author/infotourfiji-tours/`
+byline appearing on fijitourtransfers.com and natadolabayhorseriding.com,
+or Natadola's own links to tourfijitours.com) are preserved as historical
+evidence and are NOT to be deleted or edited — the production freeze
+applies, and no live site is touched by this decision. Any such existing
+reference inside a Vakaviti/Fiji Dash-owned surface (none currently
+identified) would be classified
+`LEGACY_OR_CONFLICTING_REFERENCE_TO_EXCLUDED_IDENTITY` /
+`REMEDIATION_DEFERRED` rather than acted on immediately.
+
+### bulahappiness.com
+
+| Field | Value |
+|---|---|
+| Ownership | `OWNERSHIP_NEEDS_CEO_CONFIRMATION` |
+| Dependency | `DEPENDENCY_ON_EXCLUDED_IDENTITY` (its booking/deal links point to tourfijitours.com) |
+| Integration | `DO_NOT_INTEGRATE` |
+
+No product, offer, or claim from bulahappiness.com may be imported into
+Vakaviti while this classification stands.
+
+### natadolabayhorseriding.com
+
+Status: `CEO_CONFIRMED_OWNED`.
+
+Quarantined pending further evidence (site not modified):
+- Its links to Tour Fiji Tours / tourfijitours.com (see exclusion above —
+  the link itself is preserved as historical evidence, not removed).
+- Unsupported or unlinked review ratings (see TRUTH-018).
+- Currency-ambiguous prices ("$113"/"$400"/"$180" with no currency code,
+  see TRUTH-018).
+- The two public WhatsApp group-invitation links (see TRUTH-017) — pending
+  CEO confirmation of whether these are intended to be public.
