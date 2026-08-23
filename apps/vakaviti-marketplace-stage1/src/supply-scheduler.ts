@@ -50,14 +50,31 @@ const MAX_RUNNING_MINUTES = 10;
 const BOOTSTRAP_IDEMPOTENCY_KEY = 'supply-bootstrap-p1.5-2026-08-21';
 const AUTO_PUBLISH_ACTOR = 'AI (standing policy auto-publish, Cron-triggered)';
 
+// VAKAVITI SUPPLY OPERATIONS ACTIVATION, Phase 1 fix (2026-08-24, migration 0019): a run spends
+// nearly all of its life between Cron ticks (up to 4 hours apart per wrangler.toml) waiting to
+// continue, not actively processing - the previous watchdog measured time since the run's
+// absolute start (started_at), which made ANY run needing more than one tick structurally
+// guaranteed to be killed within minutes of its first batch finishing, long before the next tick
+// could ever continue it (see migration 0019 for the full incident this caused). A run is now
+// only "stuck" when a batch genuinely STARTED but never finished within MAX_RUNNING_MINUTES -
+// tracked by last_batch_started_at only being newer than last_batch_completed_at (or a run that
+// never got its first batch started at all, using started_at as the fallback for that one case).
 async function recoverStuckSprints(env: Bindings): Promise<void> {
   const stuck = await env.DB.prepare(
-    `SELECT id FROM supply_sprint_runs WHERE status='RUNNING' AND started_at < datetime('now', '-' || ? || ' minutes')`
-  ).bind(MAX_RUNNING_MINUTES).all<any>();
+    `SELECT id FROM supply_sprint_runs
+     WHERE status='RUNNING'
+       AND (
+         (last_batch_started_at IS NOT NULL
+          AND (last_batch_completed_at IS NULL OR last_batch_completed_at < last_batch_started_at)
+          AND last_batch_started_at < datetime('now', '-' || ? || ' minutes'))
+         OR
+         (last_batch_started_at IS NULL AND started_at < datetime('now', '-' || ? || ' minutes'))
+       )`
+  ).bind(MAX_RUNNING_MINUTES, MAX_RUNNING_MINUTES).all<any>();
   for (const row of stuck.results || []) {
     await env.DB.prepare(
       `UPDATE supply_sprint_runs SET status='FAILED', completed_at=CURRENT_TIMESTAMP, summary_json=? WHERE id=? AND status='RUNNING'`
-    ).bind(JSON.stringify({ failure_reason: 'TIMED_OUT', reason: `Exceeded ${MAX_RUNNING_MINUTES}-minute running threshold` }), row.id).run();
+    ).bind(JSON.stringify({ failure_reason: 'TIMED_OUT', reason: `A batch started but did not complete within ${MAX_RUNNING_MINUTES} minutes` }), row.id).run();
   }
 }
 
@@ -113,6 +130,10 @@ export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boo
   const domains: string[] = JSON.parse(run.source_domains_json);
   const batch = domains.slice(run.next_batch_offset, run.next_batch_offset + MAX_SOURCES_PER_TICK);
 
+  // Mark the batch as started BEFORE processing, so a genuine crash mid-batch is still caught by
+  // the watchdog on the next tick (last_batch_started_at newer than last_batch_completed_at).
+  await env.DB.prepare(`UPDATE supply_sprint_runs SET last_batch_started_at=CURRENT_TIMESTAMP WHERE id=?`).bind(run.id).run();
+
   let processed = run.sources_processed, failed = run.sources_failed;
   let created = run.candidates_created, rejected = run.candidates_rejected_weak, products = run.product_candidates_created;
 
@@ -158,7 +179,7 @@ export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boo
     `UPDATE supply_sprint_runs SET
        next_batch_offset=?, sources_processed=?, sources_failed=?, candidates_created=?,
        candidates_rejected_weak=?, product_candidates_created=?,
-       status=?, completed_at=?
+       status=?, completed_at=?, last_batch_completed_at=CURRENT_TIMESTAMP
      WHERE id=?`
   ).bind(
     nextOffset, processed, failed, created, rejected, products,
