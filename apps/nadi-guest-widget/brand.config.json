@@ -1,0 +1,40 @@
+{
+  "_comment": "Hostname-keyed brand configuration. This file controls presentation only — name, logo, domain, metadata, structured data, contact wording, canonical URL, and analytics attribution. It must never be read by, or wired into, any fare/pricing/distance/security logic. functions/_middleware.js is the only consumer of this file.",
+  "default": {
+    "brandId": "fiji-dash",
+    "name": "Fiji Dash",
+    "logoText": "Fiji Dash",
+    "domain": "book.fijidash.com",
+    "canonicalBase": "https://book.fijidash.com",
+    "ogSiteName": "Fiji Dash",
+    "metaDescription": "Book Fiji airport transfers from Nadi International Airport to all major resorts. Real-time pricing by distance. Private & shared transfers to Denarau, Coral Coast, Pacific Harbour, Sigatoka and 50+ hotels. 24/7 Fijian-owned service.",
+    "structuredDataName": "Fiji Dash",
+    "structuredDataDescription": "Fiji Dash operates a real-time, automated driver dispatch marketplace for airport transfers and private tours across Fiji - a guest requests a ride, online drivers get the job broadcast to them, and the first to accept is confirmed within seconds.",
+    "footerLegalLine": "© 2026 Fiji Dash. All rights reserved.",
+    "poweredByLine": null,
+    "trustBadgeReviews": null,
+    "whatsappMessageBrandLine": "Fiji Dash",
+    "chatWidgetBrandName": "Fiji Dash",
+    "analyticsAttributionSource": "fijidash_direct"
+  },
+  "nadiairporttransfers.com": {
+    "brandId": "nadi-airport-transfers",
+    "name": "Nadi Airport Transfers",
+    "logoText": "Nadi Airport Transfers",
+    "domain": "nadiairporttransfers.com",
+    "canonicalBase": "https://nadiairporttransfers.com",
+    "ogSiteName": "Nadi Airport Transfers",
+    "metaDescription": "Book Fiji airport transfers from Nadi International Airport to all major resorts. Real-time pricing by distance. Private & shared transfers to Denarau, Coral Coast, Pacific Harbour, Sigatoka and 50+ hotels. 24/7 Fijian-owned service.",
+    "structuredDataName": "Nadi Airport Transfers",
+    "structuredDataDescription": "Nadi Airport Transfers operates a real-time, automated driver dispatch service for airport transfers and private tours across Fiji - a guest requests a ride, online drivers get the job broadcast to them, and the first to accept is confirmed within seconds. Booking and dispatch technology provided by Fiji Dash.",
+    "footerLegalLine": "© 2026 Nadi Airport Transfers. All rights reserved.",
+    "poweredByLine": "Booking and dispatch technology by Fiji Dash",
+    "trustBadgeReviews": null,
+    "whatsappMessageBrandLine": "Nadi Airport Transfers",
+    "chatWidgetBrandName": "Nadi Airport Transfers",
+    "analyticsAttributionSource": "nadi_direct"
+  },
+  "www.nadiairporttransfers.com": {
+    "$ref": "nadiairporttransfers.com"
+  }
+}

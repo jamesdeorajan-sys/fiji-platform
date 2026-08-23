@@ -1,0 +1,14 @@
+# PROPOSED name for a future Pages project - not created, not deployed.
+# The two live projects this branch is derived from keep their own names
+# (nadiairporttransfers, nadi-guest-widget-preview) untouched.
+name = "nadi-guest-widget"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+[build]
+command = ""
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
