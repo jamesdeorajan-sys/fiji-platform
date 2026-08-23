@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { isPubliclyEligible } from './deals';
+import { evaluateDealAutoPublishGates, type DealAutoPublishCandidate } from './deal-quality';
 
 // Vakaviti P1.3B/P1.3D - the supply dashboard. Read-only, admin-gated, no write path at all -
 // this file exists purely to make onboarding bottlenecks visible, not to act on them. Every
@@ -129,6 +130,18 @@ supplyDashboard.get('/', async c => {
     `SELECT status, COUNT(*) n FROM enquiries GROUP BY status`
   ).all<any>();
 
+  // P1.5: how many deal_offer_candidates would qualify for Class B (source-evidenced deal)
+  // auto-publish right now, reusing evaluateDealAutoPublishGates() rather than a second,
+  // drifting SQL approximation. No code path anywhere sets this row's decision - it is
+  // display-only, exactly like batch_review_ready above.
+  const dealCandidateRows = await db.prepare(
+    `SELECT c.*, s.source_approval_status, s.content_fingerprint AS current_source_fingerprint
+     FROM deal_offer_candidates c JOIN deal_sources s ON c.source_id = s.id`
+  ).all<any>();
+  const dealsClassBEligible = (dealCandidateRows.results || [])
+    .filter((row: any) => evaluateDealAutoPublishGates(row as DealAutoPublishCandidate).decision === 'ELIGIBLE')
+    .length;
+
   return c.json({
     ceo_confirmed_providers: ceoConfirmedProviders?.n ?? 0,
     profiles_ready: profilesReady?.n ?? 0,
@@ -149,6 +162,10 @@ supplyDashboard.get('/', async c => {
     enquiries_by_provider: enquiriesByProvider.results || [],
     enquiry_response_status: enquiryResponseStatus.results || [],
     bookings_or_outcomes_tracked: null,
+    // P1.5 Class B visibility - see evaluateDealAutoPublishGates() in src/deal-quality.ts for why
+    // this is expected to be 0 until a human records fulfilment_operator/response_owner/
+    // content_rights_status/image_rights_status on a candidate (no code path auto-sets these).
+    deals_class_b_auto_publish_eligible: dealsClassBEligible,
     generated_at: new Date().toISOString(),
   });
 });

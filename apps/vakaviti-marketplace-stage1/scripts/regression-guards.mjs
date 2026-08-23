@@ -33,6 +33,7 @@ const batchReviewUiTs = readFileSync(path.join(ROOT, 'src/batch-review-ui.ts'), 
 const migration0014Sql = readFileSync(path.join(ROOT, 'migrations/0014_ai_supply_discovery.sql'), 'utf8');
 const discoveryBridgeTs = readFileSync(path.join(ROOT, 'src/discovery-bridge.ts'), 'utf8');
 const supplySprintUiTs = readFileSync(path.join(ROOT, 'src/supply-sprint-ui.ts'), 'utf8');
+const supplySchedulerTs = readFileSync(path.join(ROOT, 'src/supply-scheduler.ts'), 'utf8');
 const wranglerToml = readFileSync(path.join(ROOT, 'wrangler.toml'), 'utf8');
 
 let failures = [];
@@ -1155,6 +1156,97 @@ console.log('== 23. P1.4A activation UX fix: safe return_to, double-submit guard
     fail('A logActivation() call site passes a secret/token/cookie/CSRF value');
   } else {
     ok(`${logCallSites.length} logActivation() call site(s) pass only sanitized fields`);
+  }
+}
+
+console.log('== 24. P1.5 supply scheduler + Class B detection: Cron-only trigger, no fabricated rights, bounded batches ==');
+{
+  // (a) One-way dependency: deal-agent.ts and discovery-bridge.ts must never import the
+  // scheduler (which itself imports them) - no import cycle, and AI-facing per-source logic
+  // stays ignorant of the orchestration/auto-publish layer above it.
+  for (const [label, text] of [['src/deal-agent.ts', dealAgentTs], ['src/discovery-bridge.ts', discoveryBridgeTs]]) {
+    if (/from ['"]\.\/supply-scheduler['"]/.test(text)) fail(`${label} imports src/supply-scheduler.ts - this would create an import cycle`);
+    else ok(`${label} does not import src/supply-scheduler.ts`);
+  }
+
+  // (b) The scheduler must never write to operators/products directly - only through the one
+  // governed promotion function, same as every other caller.
+  if (/\b(INSERT INTO|UPDATE)\s+products\b/i.test(supplySchedulerTs)) {
+    fail('src/supply-scheduler.ts writes to products directly - it must only ever act through promoteCandidateToDirectoryListing()');
+  } else {
+    ok('src/supply-scheduler.ts never writes to products directly');
+  }
+  const schedulerCodeLines = supplySchedulerTs.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  if (/INSERT INTO operators\b/i.test(schedulerCodeLines)) {
+    fail('src/supply-scheduler.ts inserts into operators directly - it must only ever act through promoteCandidateToDirectoryListing()');
+  } else {
+    ok('src/supply-scheduler.ts never inserts into operators directly (only an UPDATE for the freshness withdrawal path is allowed)');
+  }
+  if (/VAKAVITI_VERIFIED/.test(schedulerCodeLines)) {
+    fail('src/supply-scheduler.ts references VAKAVITI_VERIFIED');
+  } else {
+    ok('src/supply-scheduler.ts never references VAKAVITI_VERIFIED');
+  }
+  for (const table of ['provider_ceo_confirmations', 'standing_policies']) {
+    if (new RegExp(`\\b(INSERT INTO|UPDATE)\\s+${table}\\b`, 'i').test(supplySchedulerTs)) {
+      fail(`src/supply-scheduler.ts writes to ${table} - it must never touch this table`);
+    } else {
+      ok(`src/supply-scheduler.ts never writes to ${table}`);
+    }
+  }
+
+  // (c) it must actually call the governed promotion function - not just be present as unused
+  // scaffolding - and index.ts's scheduled() handler must actually invoke it, proving the
+  // "no manual click" wiring is real and not orphaned code.
+  if (!/promoteCandidateToDirectoryListing\(/.test(supplySchedulerTs)) {
+    fail('src/supply-scheduler.ts never calls promoteCandidateToDirectoryListing() - the auto-publish wiring is missing');
+  } else {
+    ok('src/supply-scheduler.ts calls promoteCandidateToDirectoryListing()');
+  }
+  if (!/runSupplyBootstrap\(env\)/.test(indexTs)) {
+    fail('src/index.ts scheduled() handler does not call runSupplyBootstrap() - the bootstrap is not wired to Cron');
+  } else {
+    ok('src/index.ts scheduled() handler calls runSupplyBootstrap()');
+  }
+
+  // (d) bounded batch, same discipline as every other scheduled loop in this app.
+  if (!/MAX_SOURCES_PER_TICK\s*=\s*3/.test(supplySchedulerTs)) {
+    fail('src/supply-scheduler.ts does not cap MAX_SOURCES_PER_TICK at 3');
+  } else {
+    ok('src/supply-scheduler.ts caps MAX_SOURCES_PER_TICK at 3');
+  }
+
+  // (e) Class B detection (evaluateDealAutoPublishGates) must require ALL FOUR human-only
+  // judgment fields - this is the specific property that keeps it from ever silently becoming a
+  // real auto-publish path without a human first recording a rights/ownership decision.
+  const dealAutoPublishFnMatch = dealQualityTs.match(/export function evaluateDealAutoPublishGates[\s\S]*?\n\}/);
+  if (!dealAutoPublishFnMatch) {
+    fail('evaluateDealAutoPublishGates() not found in src/deal-quality.ts');
+  } else {
+    const body = dealAutoPublishFnMatch[0];
+    for (const field of ['fulfilment_operator', 'response_owner', 'content_rights_status', 'image_rights_status']) {
+      if (!body.includes(`c.${field}`)) fail(`evaluateDealAutoPublishGates() does not check c.${field} - a required human-judgment field could be silently skipped`);
+    }
+    if (['fulfilment_operator', 'response_owner', 'content_rights_status', 'image_rights_status'].every(f => body.includes(`c.${f}`))) {
+      ok('evaluateDealAutoPublishGates() checks all four human-only judgment fields');
+    }
+  }
+  // It must not be referenced from any write-capable file - detection only, per its own header.
+  // Comment lines are excluded first - src/supply-scheduler.ts's own header comment explains why
+  // it deliberately does NOT call this function, in prose, which would otherwise self-trigger the
+  // very check it's describing.
+  for (const [label, text] of [['src/deals.ts', dealsTs], ['src/deal-agent.ts', dealAgentTs], ['src/supply-scheduler.ts', supplySchedulerTs], ['src/candidates.ts', candidatesTs]]) {
+    const codeOnly = text.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+    if (codeOnly.includes('evaluateDealAutoPublishGates')) {
+      fail(`${label} references evaluateDealAutoPublishGates() - it must remain display-only (src/supply-dashboard.ts is the only permitted caller)`);
+    } else {
+      ok(`${label} does not reference evaluateDealAutoPublishGates()`);
+    }
+  }
+  if (!supplyDashboardTs.includes('evaluateDealAutoPublishGates')) {
+    fail('src/supply-dashboard.ts does not reference evaluateDealAutoPublishGates() - the Class B visibility metric appears disconnected');
+  } else {
+    ok('src/supply-dashboard.ts references evaluateDealAutoPublishGates() for read-only visibility');
   }
 }
 

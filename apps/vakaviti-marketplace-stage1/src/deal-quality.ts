@@ -334,3 +334,87 @@ export function evaluateQualityGates(
     materialFactCount: attributableMaterialFacts.length,
   };
 }
+
+// --- P1.5 Class B: SOURCE-EVIDENCED DEAL auto-publish detection -------------------------------
+//
+// Pure, deterministic classification only - this function NEVER writes anything and is not
+// currently wired to any auto-publish action anywhere in the app (grep the codebase: nothing
+// calls this except the read-only dashboard/review surfaces that display its verdict).
+//
+// Why: every deal_offer_candidates row that has ever reached PUBLISHED did so through
+// POST /candidates/:id/approve in src/deals.ts, which requires a human to supply, IN THE SAME
+// REQUEST, four fields no source page can ever contain - response_owner and fulfilment_operator
+// (internal business assignment: who at Vakaviti handles this enquiry / who fulfils the booking)
+// and content_rights_status / image_rights_status (a real rights determination - whether Vakaviti
+// may reuse the provider's text/imagery). These are not facts to extract; they are judgment
+// calls with no honest default. Auto-setting content_rights_status='APPROVED' without anyone
+// having actually checked would itself be exactly the "unsupported licensing claim" the CEO
+// directive's own Class C exception list names as a mandatory quarantine trigger.
+//
+// So this gate is written to require ALL of that - including the rights/ownership fields -
+// already being present and valid. On today's actual data (every existing candidate has never
+// been touched by a human, so none of those four fields are set) this correctly classifies every
+// row as NOT_ELIGIBLE, which is the safe and honest outcome: nothing here can silently start
+// auto-publishing deals wholesale. It only ever becomes possible once specific per-provider
+// defaults are given, which is a CEO policy decision, not an inference this function may make -
+// see the P1.5 final report for exactly what would need to be decided to activate it.
+export interface DealAutoPublishCandidate {
+  review_status: string | null;
+  source_approval_status: string | null;
+  source_url: string | null;
+  evidence_state: string | null;
+  seller_or_marketer: string | null;
+  fulfilment_operator: string | null;
+  response_owner: string | null;
+  content_rights_status: string | null;
+  image_rights_status: string | null;
+  proposed_offer_name: string | null;
+  factual_summary: string | null;
+  category: string | null;
+  fiji_location: string | null;
+  advertised_price: string | null;
+  currency: string | null;
+  price_basis: string | null;
+  booking_deadline: string | null;
+  offer_expires_at: string | null;
+  travel_until: string | null;
+  booking_route: string | null;
+  source_fingerprint: string | null;
+  current_source_fingerprint: string | null;
+  source_checked_at: string | null;
+  expiry_status: string | null;
+}
+
+export interface DealAutoPublishResult {
+  decision: 'ELIGIBLE' | 'NOT_ELIGIBLE';
+  passedGates: string[];
+  failedGates: string[];
+}
+
+export function evaluateDealAutoPublishGates(c: DealAutoPublishCandidate): DealAutoPublishResult {
+  const passed: string[] = [];
+  const failed: string[] = [];
+  const check = (name: string, ok: boolean) => { if (ok) passed.push(name); else failed.push(name); };
+
+  check('source_approved', c.source_approval_status === 'APPROVED');
+  check('source_url_present', !!c.source_url);
+  check('fingerprint_unchanged', !!c.source_fingerprint && c.source_fingerprint === c.current_source_fingerprint);
+  check('identity_unambiguous', !!c.seller_or_marketer);
+  check('offer_title_present', !!c.proposed_offer_name);
+  check('factual_summary_present', !!c.factual_summary);
+  check('category_and_location_present', !!c.category && !!c.fiji_location);
+  check('price_or_contact_basis', !!c.advertised_price ? (!!c.currency && !!c.price_basis) : !!c.price_basis);
+  check('validity_or_deadline_present', !!c.booking_deadline || !!c.offer_expires_at || !!c.travel_until);
+  check('booking_route_present', !!c.booking_route);
+  check('checked_recently', !!c.source_checked_at);
+  check('not_expired', c.expiry_status !== 'EXPIRED');
+  // The four fields no webpage can ever supply - see file header. A human must have already
+  // recorded these (via the existing approval endpoint's own required fields) before this gate
+  // can ever pass; this function never sets or infers them.
+  check('fulfilment_operator_recorded', !!c.fulfilment_operator);
+  check('response_owner_recorded', !!c.response_owner);
+  check('content_rights_recorded', c.content_rights_status === 'APPROVED');
+  check('image_rights_recorded', ['APPROVED', 'NO_IMAGE'].includes(String(c.image_rights_status)));
+
+  return { decision: failed.length === 0 ? 'ELIGIBLE' : 'NOT_ELIGIBLE', passedGates: passed, failedGates: failed };
+}

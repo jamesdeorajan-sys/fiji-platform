@@ -11,6 +11,7 @@ import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
+import { runSupplyBootstrap, runFreshnessCheck } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -659,7 +660,16 @@ app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stag
 type ScheduledBindings = Bindings;
 export default {
   fetch: app.fetch,
+  // P1.5: every scheduled tick now also drives the provider-discovery bootstrap (bounded batches
+  // of the 7 CEO-authorized sources, auto-publishing eligible directory listings under the
+  // standing policy - see src/supply-scheduler.ts) and one freshness recheck of the stalest
+  // AI-discovered listing, alongside the pre-existing deal-offer scan. Each is independently
+  // wrapped so one failing does not block the others; this mirrors the same
+  // one-failed-source-never-blocks-another discipline already used inside each of these
+  // functions individually.
   async scheduled(_event: ScheduledEvent, env: ScheduledBindings, ctx: ExecutionContext) {
     ctx.waitUntil(runDailyDiscovery(env));
+    ctx.waitUntil(runSupplyBootstrap(env).catch(() => {}));
+    ctx.waitUntil(runFreshnessCheck(env).catch(() => {}));
   }
 };
