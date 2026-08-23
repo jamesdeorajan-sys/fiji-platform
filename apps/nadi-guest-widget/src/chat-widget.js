@@ -442,13 +442,23 @@ What can I help with?`;
     showLoading();
 
     try {
-      const response = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversation }),
-      });
+      // PREVIEW_MODE (see functions/_middleware.js): never call the real
+      // production chat backend from this isolated preview. Short-circuits
+      // to the same "data" shape a real response would have, so every
+      // branch below is exercised exactly as in production, just without
+      // the network call.
+      const previewDisabled = typeof window !== 'undefined' && window.__PREVIEW_MODE__;
+      const response = previewDisabled
+        ? { ok: true }
+        : await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: conversation }),
+          });
 
-      const data = await response.json().catch(() => null);
+      const data = previewDisabled
+        ? { type: 'reply', message: "AI chat is disabled in this preview — no message is sent anywhere. Use the booking form above to test the real flow." }
+        : await response.json().catch(() => null);
 
       hideLoading();
 

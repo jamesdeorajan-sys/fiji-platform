@@ -1192,8 +1192,9 @@ function updateExtras() {
 // ─── TRIP TYPE ────────────────────────────────────────────────────────────────
 function setTripType(type, btn) {
   state.tripType = type;
-  document.querySelectorAll('.trip-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.trip-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed', 'true');
   updateReturnFieldsVisibility();
   if (state.distanceKm > 0) updatePricing();
 }
@@ -1720,11 +1721,19 @@ function confirmBooking() {
     state.flightPromptDismissed = true;
   }
 
-  // Generate the booking reference
-  const ref = 'FD-' + Date.now().toString(36).toUpperCase().slice(-6);
+  // Generate the booking reference. PREVIEW_MODE (injected by
+  // functions/_middleware.js only on the isolated QA preview deployment)
+  // swaps the prefix so every reference shown or sent is unmistakably
+  // synthetic - real production keeps its own prefix unchanged.
+  const refPrefix = (typeof window !== 'undefined' && window.__PREVIEW_MODE__) ? 'QA-PREVIEW-' : 'FD-';
+  const ref = refPrefix + Date.now().toString(36).toUpperCase().slice(-6);
 
-  // Pre-build the WhatsApp URL with the full booking details
-  const waUrl = buildWhatsAppURL(ref);
+  // Pre-build the WhatsApp URL with the full booking details. In preview
+  // mode the WhatsApp control is disabled entirely (see index.html /
+  // _middleware.js) - buildWhatsAppURL() is still called so the rest of
+  // this function's behavior is unchanged, but the resulting link is never
+  // wired to a live button.
+  const waUrl = (typeof window !== 'undefined' && window.__PREVIEW_MODE__) ? '#preview-whatsapp-disabled' : buildWhatsAppURL(ref);
 
   // Pull customer first name for personalised greeting
   const firstName = document.getElementById('firstName')?.value.trim().split(/\s+/)[0] || 'friend';
@@ -1741,8 +1750,12 @@ function confirmBooking() {
   // doesn't have to retype it. Driver coordinator gets a clear request.
   const bulaModifyLink = document.getElementById('bulaModifyLink');
   if (bulaModifyLink) {
-    const modifyText = `Hi Fiji Dash, I'd like to modify booking ${ref}. The change I need is:`;
-    bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
+    if (typeof window !== 'undefined' && window.__PREVIEW_MODE__) {
+      bulaModifyLink.href = '#preview-whatsapp-disabled';
+    } else {
+      const modifyText = `Hi Fiji Dash, I'd like to modify booking ${ref}. The change I need is:`;
+      bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
+    }
   }
 
   // Hide the entire booking widget, show the Bula success card
@@ -2932,13 +2945,13 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'typeahead-wrap';
   wrap.innerHTML = `
-    <button type="button" class="typeahead-trigger" id="${selectId}_ta_trigger" aria-haspopup="listbox" aria-expanded="false">
+    <button type="button" class="typeahead-trigger" id="${selectId}_ta_trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="${selectId}Label ${selectId}_ta_trigger">
       <span class="typeahead-trigger-text">${opts.placeholder || 'Select...'}</span>
       <span class="typeahead-chevron">▾</span>
     </button>
     <div class="typeahead-panel" id="${selectId}_ta_panel" hidden>
       <div class="typeahead-search-row">
-        <input type="text" class="typeahead-search" id="${selectId}_ta_search" placeholder="${opts.searchPlaceholder || 'Type a hotel or area name...'}" autocomplete="off" />
+        <input type="text" class="typeahead-search" id="${selectId}_ta_search" placeholder="${opts.searchPlaceholder || 'Type a hotel or area name...'}" aria-label="${opts.searchAriaLabel || opts.searchPlaceholder || 'Search'}" autocomplete="off" />
         <button type="button" class="typeahead-close" id="${selectId}_ta_close" aria-label="Close">✕</button>
       </div>
       <div class="typeahead-list" id="${selectId}_ta_list" role="listbox"></div>

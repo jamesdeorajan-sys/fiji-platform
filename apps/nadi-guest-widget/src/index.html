@@ -278,12 +278,12 @@
       <div class="booking-step" id="step1">
         <div class="field-row">
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            <label class="field-label" for="pickup" id="pickupLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
               Pickup location
             </label>
             <div class="select-wrap">
-              <select id="pickup" onchange="onPickupChange()">
+              <select id="pickup" onchange="onPickupChange()" aria-label="Pickup location">
                 <option value="">Select pickup point...</option>
                 <optgroup label="✈ Airports & Cruise Terminals">
                   <option value="NAN"             data-lat="-17.7552" data-lng="177.4441">✈ Nadi International Airport (NAN)</option>
@@ -373,17 +373,17 @@
             </div>
           </div>
           <div class="field-swap">
-            <button class="swap-btn" onclick="swapLocations()" title="Swap">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+            <button class="swap-btn" onclick="swapLocations()" title="Swap" aria-label="Swap pickup and destination">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
             </button>
           </div>
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <label class="field-label" for="destination" id="destinationLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
               Destination / Hotel
             </label>
             <div class="select-wrap">
-              <select id="destination" onchange="onDestinationChange()">
+              <select id="destination" onchange="onDestinationChange()" aria-label="Destination or hotel">
                 <option value="">Select destination...</option>
                 <option value="CUSTOM_DEST">📍 Other hotel / address — not listed</option>
 
@@ -583,11 +583,11 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Your address / hotel / villa name</label>
+              <label class="field-label" for="customPickupAddress">Your address / hotel / villa name</label>
               <input type="text" id="customPickupAddress" class="field-input" placeholder="e.g. Wakaya Villa, 27 Beach Rd, Pacific Harbour" oninput="updatePricing()">
             </div>
             <div class="field-group" style="flex:0 0 240px">
-              <label class="field-label">Pickup area</label>
+              <label class="field-label" for="customPickupZone">Pickup area</label>
               <select id="customPickupZone" class="field-input" onchange="updatePricing()">
                 <option value="">Select zone...</option>
                 <option value="NADI_TOWN"        data-lat="-17.7996" data-lng="177.4096">Nadi / Wailoaloa</option>
@@ -608,7 +608,7 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Your WhatsApp number</label>
+              <label class="field-label" for="customPickupWhatsapp">Your WhatsApp number</label>
               <input type="tel" id="customPickupWhatsapp" class="field-input" placeholder="e.g. +679 XXX XXXX" oninput="updatePricing()">
               <span class="field-hint">Needed so we can reach you if we have to confirm this address manually.</span>
             </div>
@@ -623,11 +623,11 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Hotel / address / villa name</label>
+              <label class="field-label" for="customDestAddress">Hotel / address / villa name</label>
               <input type="text" id="customDestAddress" class="field-input" placeholder="e.g. Wakaya Villa, 27 Beach Rd, Pacific Harbour" oninput="updatePricing()">
             </div>
             <div class="field-group" style="flex:0 0 240px">
-              <label class="field-label">Destination area</label>
+              <label class="field-label" for="customDestZone">Destination area</label>
               <select id="customDestZone" class="field-input" onchange="updatePricing()">
                 <option value="">Select zone...</option>
                 <option value="NADI_TOWN"        data-lat="-17.7996" data-lng="177.4096">Nadi / Wailoaloa</option>
@@ -648,7 +648,7 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Your WhatsApp number</label>
+              <label class="field-label" for="customDestWhatsapp">Your WhatsApp number</label>
               <input type="tel" id="customDestWhatsapp" class="field-input" placeholder="e.g. +679 XXX XXXX" oninput="updatePricing()">
               <span class="field-hint">Needed so we can reach you if we have to confirm this address manually.</span>
             </div>
@@ -657,39 +657,39 @@
 
         <!-- TRIP TYPE -->
         <div class="trip-type-row">
-          <label class="field-label">Transfer type</label>
-          <div class="trip-toggle">
-            <button class="trip-btn active" onclick="setTripType('one-way', this)">One-way</button>
-            <button class="trip-btn" onclick="setTripType('return', this)">Return trip</button>
+          <span class="field-label" id="tripTypeLabel">Transfer type</span>
+          <div class="trip-toggle" role="group" aria-labelledby="tripTypeLabel">
+            <button class="trip-btn active" onclick="setTripType('one-way', this)" aria-pressed="true">One-way</button>
+            <button class="trip-btn" onclick="setTripType('return', this)" aria-pressed="false">Return trip</button>
           </div>
         </div>
 
         <!-- DATE/TIME -->
         <div class="field-row">
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <label class="field-label" for="travelDate">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Date of travel
             </label>
-            <input type="date" id="travelDate" class="field-input" onchange="updatePricing()">
+            <input type="date" id="travelDate" class="field-input" onchange="updatePricing()" required>
           </div>
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <label class="field-label" for="travelTime">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Pickup time
             </label>
             <input type="time" id="travelTime" class="field-input" value="10:00" onchange="updatePricing()">
           </div>
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <span class="field-label" id="paxLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
               Passengers
-            </label>
-            <div class="pax-counter">
-              <button class="pax-btn" onclick="changePax(-1)">−</button>
-              <span class="pax-num" id="paxNum">2</span>
-              <button class="pax-btn" onclick="changePax(1)">+</button>
-              <span class="pax-label">adults</span>
+            </span>
+            <div class="pax-counter" role="group" aria-labelledby="paxLabel">
+              <button class="pax-btn" onclick="changePax(-1)" aria-label="Decrease passengers" aria-controls="paxNum">−</button>
+              <span class="pax-num" id="paxNum" aria-live="polite">2</span>
+              <button class="pax-btn" onclick="changePax(1)" aria-label="Increase passengers" aria-controls="paxNum">+</button>
+              <span class="pax-label" aria-hidden="true">adults</span>
             </div>
           </div>
         </div>
@@ -702,22 +702,22 @@
              stays editable for a guest leaving from somewhere nearby. -->
         <div class="field-row" id="returnTripFields" style="display:none">
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <label class="field-label" for="returnDate">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Return date
             </label>
             <input type="date" id="returnDate" class="field-input" onchange="updatePricing()">
           </div>
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <label class="field-label" for="returnTime">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Return pickup time
             </label>
             <input type="time" id="returnTime" class="field-input" value="10:00">
           </div>
           <div class="field-group">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <label class="field-label" for="returnPickupLocation">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
               Return pickup location
             </label>
             <input type="text" id="returnPickupLocation" class="field-input" placeholder="Defaults to your destination — edit if leaving from elsewhere" oninput="this.dataset.dirty='true'">
@@ -727,8 +727,8 @@
         <!-- FLIGHT -->
         <div class="field-row">
           <div class="field-group" style="flex:1">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+            <label class="field-label" for="flightNum">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
               Flight number
             </label>
             <input type="text" id="flightNum" class="field-input" placeholder="e.g. FJ401, QF351, NZ56" oninput="onFlightInput()">
@@ -737,15 +737,15 @@
             </div>
           </div>
           <div class="field-group" style="flex:1">
-            <label class="field-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span class="field-label" id="luggageLabel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
               Luggage pieces
-            </label>
-            <div class="pax-counter">
-              <button class="pax-btn" onclick="changeLuggage(-1)">−</button>
-              <span class="pax-num" id="luggageNum">2</span>
-              <button class="pax-btn" onclick="changeLuggage(1)">+</button>
-              <span class="pax-label">bags</span>
+            </span>
+            <div class="pax-counter" role="group" aria-labelledby="luggageLabel">
+              <button class="pax-btn" onclick="changeLuggage(-1)" aria-label="Decrease luggage pieces" aria-controls="luggageNum">−</button>
+              <span class="pax-num" id="luggageNum" aria-live="polite">2</span>
+              <button class="pax-btn" onclick="changeLuggage(1)" aria-label="Increase luggage pieces" aria-controls="luggageNum">+</button>
+              <span class="pax-label" aria-hidden="true">bags</span>
             </div>
           </div>
         </div>
@@ -848,23 +848,23 @@
         <h3 class="step-title">Your details</h3>
         <div class="form-grid">
           <div class="field-group">
-            <label class="field-label">First name *</label>
+            <label class="field-label" for="firstName">First name *</label>
             <input type="text" id="firstName" class="field-input" placeholder="John" required>
           </div>
           <div class="field-group">
-            <label class="field-label">Last name *</label>
+            <label class="field-label" for="lastName">Last name *</label>
             <input type="text" id="lastName" class="field-input" placeholder="Smith" required>
           </div>
           <div class="field-group">
-            <label class="field-label">Email address *</label>
+            <label class="field-label" for="email">Email address *</label>
             <input type="email" id="email" class="field-input" placeholder="john@example.com" required>
           </div>
           <div class="field-group">
-            <label class="field-label">WhatsApp / Phone *</label>
+            <label class="field-label" for="phone">WhatsApp / Phone *</label>
             <input type="tel" id="phone" class="field-input" placeholder="+61 400 000 000" required>
           </div>
           <div class="field-group" style="grid-column:1/-1">
-            <label class="field-label">Special requests (optional)</label>
+            <label class="field-label" for="notes">Special requests (optional)</label>
             <textarea id="notes" class="field-input" rows="3" placeholder="e.g. travelling with infant, need wheelchair access, late night pickup..."></textarea>
           </div>
         </div>
@@ -918,7 +918,7 @@
             <p class="fare-tier-copy">Flexible on timing, or hoping for a better rate? Propose your fare — we'll check if a driver's available to take it.</p>
             <div class="flexible-fare-input-row">
               <span class="flexible-fare-prefix">FJ$</span>
-              <input type="number" id="negotiateAmount" class="flexible-fare-input" min="1" step="1" placeholder="0">
+              <input type="number" id="negotiateAmount" class="flexible-fare-input" min="1" step="1" placeholder="0" aria-label="Your proposed fare in Fiji dollars">
             </div>
             <div class="fare-tier-hint" id="flexibleFareFloorHint">Propose from FJ$—</div>
             <div class="negotiate-error" id="negotiateError" style="display:none"></div>

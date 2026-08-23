@@ -901,3 +901,18 @@ textarea.field-input{resize:vertical;min-height:80px}
   text-align:center;margin-top:32px}
 .tours-cta-row .btn-secondary{
   display:inline-block;font-size:14px;padding:12px 24px}
+
+/* Accessibility: honour prefers-reduced-motion. Reduces every animation on
+   the page to a near-instant, single-frame state rather than removing
+   feedback entirely - a user still sees that a panel appeared, a spinner is
+   active, etc., without the actual motion. Added because none of the
+   existing @keyframes rules (badge pulse, panel fade-ins, negotiate spinner,
+   Bula flower, banner slide) were previously gated on this preference. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
