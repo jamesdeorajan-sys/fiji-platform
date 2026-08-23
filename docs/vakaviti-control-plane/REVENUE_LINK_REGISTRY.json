@@ -4,14 +4,11 @@
     "generated_at": "2026-08-24T00:00:00Z",
     "coverage_note": "This pass inspected fijitourtransfers.com fresh and in depth (new focus per this addendum). nadiairporttransfers.com, book.fijidash.com and lagi.vakaviti.ai entries are backed by live evidence already gathered across this engagement's E1-E3F phases, re-confirmed where noted. Remaining Vakaviti microsites (divingfijiguide, honeymoonfijiguide, familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, vakaviti-join-page) and ComeToFiji properties are NOT yet individually inventoried at CTA level in this pass - see 'coverage_gaps' below. This registry should be extended, not replaced, on the next pass.",
     "coverage_gaps": [
-      "divingfijiguide.pages.dev / diving.vakaviti.ai",
-      "honeymoonfijiguide.pages.dev / honeymoon.vakaviti.ai",
-      "familyresortsfiji.pages.dev / familyresorts.vakaviti.ai",
-      "yasawaislandsguide.pages.dev / yasawa.vakaviti.ai",
-      "mamanucaislandsguide.pages.dev / mamanuca.vakaviti.ai",
-      "come-to-fiji-* Workers and their public surface, if any",
+      "ComeToFiji.com - actual live public host is still an OPEN QUESTION per ceo-war-room/02-MASTER-ASSET-REGISTER.md; no ComeToFiji source or domain was found in any inspected Git branch (main, ceo/vakaviti-marketplace-stage1, guest-widget-integration-preview, ceo/war-room-control-plane, ceo/vakaviti-ecosystem-preservation, ceo/nadi-revenue-bridge-preview). Requires James to supply the live URL before this can be inventoried - not guessed at.",
+      "Natadola Bay Horse Riding - live domain is also an OPEN QUESTION per the same register; the only 'Natadola' match found in Git is an unrelated Intercontinental Fiji Natadola resort-transfer page in ftt-booking-site/, not this business. Requires James to supply the live URL.",
       "vakaviti-marketplace-stage1 (workers.dev preview, not indexed/public yet - already fully mapped as a build artifact in E1-E3, not re-listed here as a 'public' CTA since it is noindex/preview only)"
-    ]
+    ],
+    "coverage_resolved_2026_08_24": "The five Vakaviti microsites (diving/honeymoon/family/yasawa/mamanuca) were located in Git (ceo/war-room-control-plane branch, microsites/ directory) and their live custom domains confirmed via each site's own sitemap.xml/llms.txt (diving.vakaviti.ai, familyresorts.vakaviti.ai, honeymoon.vakaviti.ai, mamanuca.vakaviti.ai, yasawa.vakaviti.ai). CTA-level source inspection is recorded as MICRO-CTA-001/002/003 below. This directly resolves REVENUE_FUNNEL_MAP.md funnel #3 (previously 'not inspected') and provides the first confirmed evidence for funnel #4 (previously 'not confirmed')."
   },
   "links": [
     {
@@ -215,26 +212,119 @@
       "indexability": "not checked this pass",
       "last_checked": "2026-08-23 (E2 live source read)",
       "classification": "ACTIVE"
-    }
-  ],
-  "entity_identity_findings": [
-    {
-      "finding": "\"Tour Fiji Tours\" (vakaviti-kb.partners row op_tourfiji_001, domain tourfiji.tours) is very likely the SAME identity as fijitourtransfers.com, not a separate business.",
-      "evidence": "Every tour listing authored on fijitourtransfers.com attributes to WordPress author page /author/infotourfiji-tours/, displayed as 'Tour Fiji Tours'. The footer contact email is info@tourfiji.tours - the exact domain vakaviti-kb's partner row references.",
-      "confidence": "high, not certain (a shared inbox across two related-but-legally-separate businesses is still possible)",
-      "resolves": "the 'possible duplicate, unconfirmed' item flagged in Phase E1's supply-reconciliation.md - recommend upgrading to CONFIRMED once you verify directly."
     },
     {
-      "finding": "fijitourtransfers.com's Organization structured data lists contact email helpronline@gmail.com - the same Google account that owns and operates this entire Cloudflare account (author_email on every single Worker/Pages deployment checked across this whole engagement).",
+      "id": "MICRO-CTA-001",
+      "source_domain": "diving.vakaviti.ai, familyresorts.vakaviti.ai, honeymoon.vakaviti.ai, mamanuca.vakaviti.ai, yasawa.vakaviti.ai",
+      "source_page": "/ (each site is a single-page guide)",
+      "source_brand": "Vakaviti.ai Network (per-topic Fiji guide microsites)",
+      "cta_text": "\"Book Tours\" / \"Book at fijitourtransfers.com\" / \"Book Transfer Now\" / \"Book Private Transfer\" / \"Book Nadi Transfer\" / \"Fiji Tour Transfers\" (multiple CTA instances per page, identical pattern across all 5 sites)",
+      "cta_type": "outbound_link",
+      "destination_url": "https://fijitourtransfers.com",
+      "destination_platform": "fijitourtransfers.com (WordPress/WooCommerce)",
+      "provider_identity": "Fiji Tour Transfers",
+      "product_identity": null,
+      "vakaviti_id": null,
+      "ftt_product_id": null,
+      "square_identifier": null,
+      "revenue_owner": "unresolved - see entity_identity_findings",
+      "fulfilment_operator": "Fiji Tour Transfers",
+      "attribution_parameters": "NONE - bare https://fijitourtransfers.com with no query string, campaign tag, or referral parameter on any of the 5 sites checked",
+      "whatsapp_destination_classification": "not_applicable",
+      "http_result": "not re-verified live this pass (source confirmed via Git index.html on ceo/war-room-control-plane); no reason to expect drift since these are static single-page sites",
+      "redirect_chain": "direct link, no redirect observed in source",
+      "canonical_status": "each site's own canonical points to a corresponding vakaviti.ai page per llms.txt (e.g. diving.vakaviti.ai -> https://vakaviti.ai/fiji-diving-guide)",
+      "indexability": "not checked this pass",
+      "last_checked": "2026-08-24 (Git source read, all 5 microsites)",
+      "classification": "ACTIVE - direct link to homepage only, never a specific product page"
+    },
+    {
+      "id": "MICRO-CTA-002",
+      "source_domain": "diving.vakaviti.ai, familyresorts.vakaviti.ai, honeymoon.vakaviti.ai, mamanuca.vakaviti.ai, yasawa.vakaviti.ai",
+      "source_page": "/ (each site is a single-page guide)",
+      "source_brand": "Vakaviti.ai Network",
+      "cta_text": "\"Ask Lagi\" / \"Lagi\" / \"Lagi AI Concierge\" / \"Ask Lagi for [topic] Help\" (multiple instances per page)",
+      "cta_type": "outbound_link",
+      "destination_url": "https://lagi.vakaviti.ai",
+      "destination_platform": "Lagi AI chat concierge",
+      "provider_identity": "Vakaviti.ai",
+      "product_identity": null,
+      "vakaviti_id": null,
+      "ftt_product_id": null,
+      "square_identifier": null,
+      "revenue_owner": "Vakaviti.ai (routes onward per LAGI-CTA-001, already registered above)",
+      "fulfilment_operator": "varies by Lagi's own partner routing",
+      "attribution_parameters": "NONE - bare https://lagi.vakaviti.ai, no source/campaign tag identifying which microsite the click came from",
+      "whatsapp_destination_classification": "not_applicable (this hop; Lagi itself later hands off to WhatsApp per LAGI-CTA-001)",
+      "http_result": "not re-verified live this pass",
+      "redirect_chain": "direct link, no redirect observed in source",
+      "canonical_status": "not_applicable",
+      "indexability": "not_applicable",
+      "last_checked": "2026-08-24 (Git source read, all 5 microsites)",
+      "classification": "ACTIVE"
+    },
+    {
+      "id": "MICRO-CTA-003",
+      "source_domain": "diving.vakaviti.ai, familyresorts.vakaviti.ai, honeymoon.vakaviti.ai, mamanuca.vakaviti.ai, yasawa.vakaviti.ai",
+      "source_page": "/ (each site is a single-page guide)",
+      "source_brand": "Vakaviti.ai Network",
+      "cta_text": "\"Platform\" / \"Vakaviti.ai\" (nav/footer link)",
+      "cta_type": "outbound_link",
+      "destination_url": "https://vakaviti.ai",
+      "destination_platform": "vakaviti.ai",
+      "provider_identity": "Vakaviti.ai",
+      "product_identity": null,
+      "vakaviti_id": null,
+      "ftt_product_id": null,
+      "square_identifier": null,
+      "revenue_owner": "not_applicable - navigational, not transactional",
+      "fulfilment_operator": "not_applicable",
+      "attribution_parameters": "NONE",
+      "whatsapp_destination_classification": "not_applicable",
+      "http_result": "not re-verified live this pass",
+      "redirect_chain": "direct link, no redirect observed in source",
+      "canonical_status": "not_applicable",
+      "indexability": "not_applicable",
+      "last_checked": "2026-08-24 (Git source read, all 5 microsites)",
+      "classification": "ACTIVE - navigational, not a revenue CTA"
+    }
+  ],
+  "mixed_product_page_report": {
+    "_note": "Read-only. No cart, booking, checkout, or page edit was performed. Direct page visit + JSON-LD read only.",
+    "url": "https://fijitourtransfers.com/st_tour/jewels-of-fiji-tour/",
+    "checked_at": "2026-08-24",
+    "product_title_displayed": "Nadi Jewels of Fiji Full Day Tour",
+    "booking_widget_active": true,
+    "booking_widget_detail": "A 'BOOK' / 'INQUIRY' tab pair is present and interactive-looking, with Date, Adults, Children, Infant and Guest Name fields and a 'BOOK NOW' button. Not clicked, not submitted, no field populated - presence and field labels only, read from page text.",
+    "visible_price": "AU$259 (struck-through 'from AU$370', badged '-30%')",
+    "structured_data_price_1": "Service/@Offer block: price 155, priceCurrency AUD (duplicated verbatim ~14 times in the page's own JSON-LD with different @id suffixes - a templating artifact, matches neither the visible price nor the other structured-data price)",
+    "structured_data_price_2": "Product/@Offer block: price 259, priceCurrency AUD, priceValidUntil 2025-12-31 (a validity date in the past relative to this check) - this one DOES match the visible AU$259, but the brand is listed as 'Tour Fiji' with urls pointing to tourstransfers.hostmejames.online and tourfiji.tours, neither of which is fijitourtransfers.com",
+    "itinerary_identity_1_included_excluded": "Motorized long boat ride, waterfall swim, bamboo rafting, cultural Fijian village visit, Meke entertainment, buffet lunch",
+    "itinerary_identity_2_faq": "Nadi Town market, Garden of the Sleeping Giant, Sigatoka Sand Dunes, Beqa Island firewalking ceremony, Navua River canoe tour, Mamanuca Islands snorkelling/diving",
+    "additional_observation": "This page's own FAQPage structured data is entirely unrelated to either itinerary above - it answers questions about Nadi airport transfer pricing, Natadola Beach Horse Riding, and the Nadi Zip Line Tour, none of which is the Jewels of Fiji product. This appears to be a single site-wide FAQ block injected onto every product page rather than page-specific content - a separate content-templating defect from the Included/Excluded-vs-FAQ mismatch, not assessed here as intentional.",
+    "square_woocommerce_checkout_exposure": "Confirmed present via the wc-square-cart-checkout-blocks.css asset reference (site-wide, already recorded as FTT-CTA-004) - this specific product page uses the same checkout system",
+    "structured_data_match_to_itinerary": "Neither itinerary is explicitly named in the Product/Offer/Service structured data - those blocks contain only the product title, description boilerplate and price, so structured data does not itself resolve which itinerary is real",
+    "likely_customer_harm": "A guest could book expecting one activity set (e.g. bamboo rafting and a village buffet) and receive a materially different one (e.g. a firewalking ceremony and multi-island snorkelling), or vice versa - this is a real pre-purchase expectation-setting defect on a page with an active checkout, independent of any question about who operates the site",
+    "safest_isolated_correction_proposal": "This is a live third-party page outside Vakaviti/Fiji Dash's own Git-controlled properties - no code change is proposed or authorized here. The safest action available to this engagement is to record the defect (done, TRUTH-014) and withhold this specific product's itinerary/price facts from any Vakaviti import until James or the page's own operator corrects the copy. Fixing the live WordPress page itself is outside this engagement's authorized scope (not a Cloudflare/Git-controlled asset)."
+  },
+  "entity_identity_findings": [
+    {
+      "finding": "\"Tour Fiji Tours\" (vakaviti-kb.partners row op_tourfiji_001, domain tourfiji.tours) and fijitourtransfers.com share evidenced administrative/publishing control. This does NOT establish common legal identity, ownership, commercial authority, or fulfilment responsibility.",
+      "evidence": "Every tour listing authored on fijitourtransfers.com attributes to WordPress author page /author/infotourfiji-tours/, displayed as 'Tour Fiji Tours'. The footer contact email is info@tourfiji.tours - the exact domain vakaviti-kb's partner row references.",
+      "classification": "COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED / LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED",
+      "resolves": "Does NOT resolve the 'possible duplicate, unconfirmed' item flagged in Phase E1's supply-reconciliation.md. Do not mark Tour Fiji Tours and Fiji Tour Transfers as fully reconciled without additional first-party business evidence from James (e.g. a direct statement of legal ownership/entity structure)."
+    },
+    {
+      "finding": "fijitourtransfers.com's Organization structured data lists contact email helpronline@gmail.com - the same Google account associated with this Cloudflare account (author_email on every single Worker/Pages deployment checked across this whole engagement).",
       "evidence": "JSON-LD @graph Organization block on the jewels-of-fiji-tour product page: {\"email\":\"helpronline@gmail.com\", ...}. Compare to e.g. nadi-dispatch-api's deployment author_email, identical string, observed dozens of times across E1-E3F.",
-      "confidence": "high",
-      "resolves": "TRUTH-003 (FTT operator vs marketplace identity) - concrete evidence that fijitourtransfers.com is commonly owned/operated with the rest of the ecosystem, not an independent third party. This is new evidence for the existing ceo-war-room/04-BRAND-ENTITY-MAP.md, which currently lists this relationship as a 'CEO DECISION' placeholder rather than a confirmed fact."
+      "classification": "COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED / LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED",
+      "resolves": "Provides new input for TRUTH-003 (FTT operator vs marketplace identity) and for the existing ceo-war-room/04-BRAND-ENTITY-MAP.md 'CEO DECISION' placeholder - evidence of common administrative/publishing control only. It does NOT by itself prove common legal identity, ownership, commercial authority, or fulfilment responsibility, and must not be recorded as such. Resolution requires first-party confirmation from James."
     },
     {
       "finding": "Three different postal addresses for the same business appear across fijitourtransfers.com's own surfaces: footer text says 'Nausori, Fiji' AND '113 Rouse Rd, Rouse Hill NSW 2155, Australia'; the page's own JSON-LD Organization/Place block says street '74', NSW postcode 2763 (Riverstone, not Rouse Hill/2155).",
       "evidence": "Direct page inspection, 2026-08-23.",
-      "confidence": "high (directly observed, not inferred)",
-      "resolves": "new TRUTH candidate - not yet in ceo-war-room/05-COMMERCIAL-TRUTH-REGISTER.md, recommend adding as TRUTH-009."
+      "classification": "QUARANTINED_UNRESOLVED_FACT — directly observed inconsistency, not yet reconciled",
+      "resolves": "New TRUTH candidate, now added as TRUTH-009 in ceo-war-room/05-COMMERCIAL-TRUTH-REGISTER.md. Not importable into Vakaviti until reconciled."
     }
   ],
   "ftt_evidence_reconciliation": {

@@ -56,6 +56,51 @@ a URL.
   document.** Building the actual pipeline that populates this record shape
   is a separate, explicitly-authorized phase.
 
+## Addendum (2026-08-24): narrower URL-parameter contract for outbound Vakaviti links
+
+The record shape above is the full backend attribution model for a later,
+separately-authorized integration phase. It is intentionally too broad to
+put in a URL. This addendum defines the **much smaller** field set that MAY
+eventually be added as query parameters on Vakaviti-outbound links (e.g. the
+microsite → Fiji Tour Transfers / Nadi Airport Transfers links in
+`MICRO-CTA-001`, currently bare with zero attribution) — still design only,
+nothing below is implemented or authorized to ship.
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `source_site` | opaque string | e.g. `diving.vakaviti.ai` |
+| `source_page` | opaque string | path, e.g. `/` for the current single-page microsites |
+| `campaign` | opaque string, nullable | for any future paid/referral tag |
+| `vakaviti_provider_id` | opaque ID, nullable | which partner this click was routed toward |
+| `vakaviti_product_id` | opaque ID, nullable | which product/topic this click was routed from |
+| `vakaviti_deal_id` | opaque ID, nullable | if the click originated from a specific deal/offer |
+| `enquiry_id` | opaque ID, nullable | only if an enquiry record was already created before the redirect (matches the existing Stage 1 `/enquire` pattern) |
+
+This is a strict subset of the full record shape above — it omits every
+field that could ever resolve to a person or a transaction amount
+(`booking_reference`, `revenue_amount`, `currency`, `consent_state`,
+`created_at`/`converted_at`), because those either identify a real
+transaction (and so belong server-side, matched by opaque ID after the
+fact) or have no reason to ever appear in a URL.
+
+**Hard rules, restated for this narrower set:**
+- **Never place names, phone numbers, emails, payment data, or customer
+  notes in a URL.** This set has no field capable of carrying any of those
+  by construction — every value is an opaque ID or a static site/page
+  identifier already public in the link's own URL.
+- **Do not assume Square conversion data can be connected to any of these
+  parameters.** Whether a Fiji Tour Transfers/Square order can ever be
+  matched back to a `vakaviti_provider_id`/`vakaviti_product_id` click
+  depends entirely on Square/WooCommerce checkout and webhook architecture
+  that has not been inspected in this engagement. That is a separate,
+  explicitly-authorized inspection and integration phase — this addendum
+  only defines what could travel in the link itself, not how (or whether)
+  the receiving system would ever report back against it.
+- Same no-sync-job rule as above: this addendum authorizes no code change,
+  no query-parameter addition to any live link, and no receiving-side
+  handling. It exists so that if/when this phase is authorized, the field
+  set is already agreed rather than improvised.
+
 ## Where each existing system would plug in (proposed, not built)
 
 - Stage 1's `/enquire/:slug` and `/deals/:slug/enquire` routes already

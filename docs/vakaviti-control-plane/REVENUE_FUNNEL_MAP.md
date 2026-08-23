@@ -46,18 +46,26 @@ No attribution parameter survives the handoff (confirmed: `LAGI-CTA-001`
 carries none).
 
 ### 3. Content/niche site → relevant Vakaviti page
-**Status: not inspected this pass.** The five Vakaviti microsites
-(diving/honeymoon/family/yasawa/mamanuca guides) are listed as coverage
-gaps in the registry. Recommend a follow-up pass specifically checking
-whether these link back to `vakaviti.ai` or `lagi.vakaviti.ai` at all, and
-with what CTA.
+**Status: confirmed built (2026-08-24).** All five Vakaviti microsites
+(`diving.vakaviti.ai`, `familyresorts.vakaviti.ai`, `honeymoon.vakaviti.ai`,
+`mamanuca.vakaviti.ai`, `yasawa.vakaviti.ai`) link to both `vakaviti.ai`
+directly (`MICRO-CTA-003`) and to `lagi.vakaviti.ai` (`MICRO-CTA-002`),
+each with multiple CTA instances per page. No attribution parameter
+survives either hop.
 
 ### 4. Content/niche site → Fiji Tour Transfers product where direct booking intent exists
-**Status: not confirmed.** No inbound link from any Vakaviti/microsite
-property to a specific `fijitourtransfers.com` product was found or
-checked in this pass (see coverage gaps). Given Fiji Tour Transfers is now
-named the principal Square-enabled revenue platform, this is the funnel
-most worth building and measuring next.
+**Status: partially built, not to a specific product (2026-08-24).** All
+five microsites carry multiple CTAs to `fijitourtransfers.com`
+(`MICRO-CTA-001` — "Book Tours", "Book Transfer Now", etc.), confirming
+this funnel is live. However every link found goes to the bare
+`fijitourtransfers.com` homepage, never to a specific product/tour page
+relevant to that microsite's topic (e.g. the diving guide does not link to
+a diving-specific tour listing) — so intent expressed on the microsite is
+lost at the handoff. No attribution parameter is present on any of these
+links. Given Fiji Tour Transfers is the principal Square-enabled revenue
+platform, tightening this to topic-relevant product links (still with no
+personal data in the URL, per `INTEGRATION_CONTRACT.md`) is the highest-
+value next build step for this funnel.
 
 ### 5. Deal enquiry → Vakaviti WhatsApp team → provider or owned fulfilment
 **Status: built, but coarse.** Both the Vakaviti/Lagi chat widget and
@@ -83,9 +91,15 @@ state — out of scope here by design.
   is no way today to know, from the WhatsApp side alone, which page or
   brand a conversation started from. This is the exact problem
   `INTEGRATION_CONTRACT.md` is written to solve for a future build phase.
-- **Fiji Tour Transfers is not currently linked FROM anywhere else in the
-  ecosystem that was checked.** As the newly-designated principal
-  Square-enabled revenue platform, it currently has no discovered inbound
-  funnel from Vakaviti, Lagi, or any microsite - it appears to stand alone
-  today. Confirming or refuting this with the still-uninspected microsites
-  is the single highest-value next step for this map.
+- **Update, 2026-08-24: Fiji Tour Transfers IS linked from elsewhere in the
+  ecosystem.** All five Vakaviti microsites link to it directly
+  (`MICRO-CTA-001`), refuting the "stands alone" concern raised in the
+  prior pass. The remaining gap is precision, not existence: every link
+  goes to the homepage, not a relevant product, and none carries an
+  attribution parameter.
+- **ComeToFiji and Natadola Bay Horse Riding remain uninspected.** Their
+  live public hosts are open questions in
+  `ceo-war-room/02-MASTER-ASSET-REGISTER.md`; no source for either was
+  found in any Git branch checked (see `REVENUE_LINK_REGISTRY.json`
+  coverage_gaps). This requires James to supply the live URL — guessing a
+  domain risks misidentifying an unrelated third-party site.
