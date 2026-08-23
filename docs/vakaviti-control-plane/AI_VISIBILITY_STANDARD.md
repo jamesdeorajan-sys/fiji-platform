@@ -11,7 +11,11 @@ because a violation of it was directly observed.
 1. **Unique canonical URL.** Every page self-references its own canonical
    tag. *(Confirmed correctly implemented on the one FTT product page
    checked; confirmed MISSING on nadiairporttransfers.com's homepage — see
-   `REVENUE_LINK_REGISTRY.json` NAT-CTA-001.)*
+   `REVENUE_LINK_REGISTRY.json` NAT-CTA-001. Also confirmed MISSING on
+   cometofiji.com's homepage specifically, while PRESENT and correct on its
+   own /deals page — 2026-08-24 — showing the mechanism is implemented but
+   inconsistently applied, which is worse evidence of an oversight than a
+   site missing it everywhere.)*
 2. **Server-rendered factual content.** Price, availability, and structured
    data must be present in the initial HTML response, not injected only by
    client-side JavaScript after load.

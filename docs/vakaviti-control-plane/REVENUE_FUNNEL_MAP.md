@@ -97,9 +97,19 @@ state — out of scope here by design.
   prior pass. The remaining gap is precision, not existence: every link
   goes to the homepage, not a relevant product, and none carries an
   attribution parameter.
-- **ComeToFiji and Natadola Bay Horse Riding remain uninspected.** Their
-  live public hosts are open questions in
-  `ceo-war-room/02-MASTER-ASSET-REGISTER.md`; no source for either was
-  found in any Git branch checked (see `REVENUE_LINK_REGISTRY.json`
-  coverage_gaps). This requires James to supply the live URL — guessing a
-  domain risks misidentifying an unrelated third-party site.
+- **Update, 2026-08-24: ComeToFiji and Natadola Bay Horse Riding inspected.**
+  James supplied both live URLs (cometofiji.com, natadolabayhorseriding.com).
+  ComeToFiji links directly to Fiji Tour Transfers and carries the
+  ecosystem's only attribution-tagged outbound link found to date (a UTM-
+  tagged Fiji Airways affiliate link) — proof the pattern is technically
+  easy to add, making its absence on every FTT/NAT link more clearly a
+  choice not made yet, not a platform limitation. Natadola Bay Horse Riding
+  does not link to fijitourtransfers.com at all; it links instead to a
+  newly-discovered fourth domain, tourfijitours.com, and runs its own
+  overlapping Nadi-airport-transfer product catalogue. See
+  `REVENUE_LINK_REGISTRY.json` `cometofiji_and_natadola_ctas` and
+  `05-COMMERCIAL-TRUTH-REGISTER.md` TRUTH-016 through TRUTH-018 for full
+  detail. Neither site's commercial claims have been imported into
+  Vakaviti.
+- **tourfijitours.com and bulahappiness.com are new, still-uninspected
+  domains** surfaced by the Natadola pass — see coverage_gaps.

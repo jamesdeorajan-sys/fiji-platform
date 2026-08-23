@@ -4,9 +4,8 @@
     "generated_at": "2026-08-24T00:00:00Z",
     "coverage_note": "This pass inspected fijitourtransfers.com fresh and in depth (new focus per this addendum). nadiairporttransfers.com, book.fijidash.com and lagi.vakaviti.ai entries are backed by live evidence already gathered across this engagement's E1-E3F phases, re-confirmed where noted. Remaining Vakaviti microsites (divingfijiguide, honeymoonfijiguide, familyresortsfiji, yasawaislandsguide, mamanucaislandsguide, vakaviti-join-page) and ComeToFiji properties are NOT yet individually inventoried at CTA level in this pass - see 'coverage_gaps' below. This registry should be extended, not replaced, on the next pass.",
     "coverage_gaps": [
-      "ComeToFiji.com - actual live public host is still an OPEN QUESTION per ceo-war-room/02-MASTER-ASSET-REGISTER.md; no ComeToFiji source or domain was found in any inspected Git branch (main, ceo/vakaviti-marketplace-stage1, guest-widget-integration-preview, ceo/war-room-control-plane, ceo/vakaviti-ecosystem-preservation, ceo/nadi-revenue-bridge-preview). Requires James to supply the live URL before this can be inventoried - not guessed at.",
-      "Natadola Bay Horse Riding - live domain is also an OPEN QUESTION per the same register; the only 'Natadola' match found in Git is an unrelated Intercontinental Fiji Natadola resort-transfer page in ftt-booking-site/, not this business. Requires James to supply the live URL.",
-      "vakaviti-marketplace-stage1 (workers.dev preview, not indexed/public yet - already fully mapped as a build artifact in E1-E3, not re-listed here as a 'public' CTA since it is noindex/preview only)"
+      "vakaviti-marketplace-stage1 (workers.dev preview, not indexed/public yet - already fully mapped as a build artifact in E1-E3, not re-listed here as a 'public' CTA since it is noindex/preview only)",
+      "tourfijitours.com and bulahappiness.com - newly discovered 2026-08-24 via natadolabayhorseriding.com's own outbound links; not yet independently inspected at CTA level"
     ],
     "coverage_resolved_2026_08_24": "The five Vakaviti microsites (diving/honeymoon/family/yasawa/mamanuca) were located in Git (ceo/war-room-control-plane branch, microsites/ directory) and their live custom domains confirmed via each site's own sitemap.xml/llms.txt (diving.vakaviti.ai, familyresorts.vakaviti.ai, honeymoon.vakaviti.ai, mamanuca.vakaviti.ai, yasawa.vakaviti.ai). CTA-level source inspection is recorded as MICRO-CTA-001/002/003 below. This directly resolves REVENUE_FUNNEL_MAP.md funnel #3 (previously 'not inspected') and provides the first confirmed evidence for funnel #4 (previously 'not confirmed')."
   },
@@ -307,6 +306,150 @@
     "likely_customer_harm": "A guest could book expecting one activity set (e.g. bamboo rafting and a village buffet) and receive a materially different one (e.g. a firewalking ceremony and multi-island snorkelling), or vice versa - this is a real pre-purchase expectation-setting defect on a page with an active checkout, independent of any question about who operates the site",
     "safest_isolated_correction_proposal": "This is a live third-party page outside Vakaviti/Fiji Dash's own Git-controlled properties - no code change is proposed or authorized here. The safest action available to this engagement is to record the defect (done, TRUTH-014) and withhold this specific product's itinerary/price facts from any Vakaviti import until James or the page's own operator corrects the copy. Fixing the live WordPress page itself is outside this engagement's authorized scope (not a Cloudflare/Git-controlled asset)."
   },
+  "cometofiji_and_natadola_ctas": {
+    "_note": "Added 2026-08-24, CEO Final Reconciliation directive. Read-only: no form (including the deal-alert form), cart, checkout, payment, enquiry, newsletter subscription, login, or WhatsApp message was submitted on either site.",
+    "cometofiji_links": [
+      {
+        "id": "CTF-CTA-001",
+        "source_domain": "cometofiji.com",
+        "source_page": "/ (homepage) and /deals",
+        "cta_text": "\"Tours & Transfers ↗\" / \"Fiji Tour Transfers\"",
+        "destination_url": "https://fijitourtransfers.com",
+        "attribution_parameters": "NONE - bare URL",
+        "classification": "ACTIVE"
+      },
+      {
+        "id": "CTF-CTA-002",
+        "source_domain": "cometofiji.com",
+        "source_page": "/ and /deals",
+        "cta_text": "\"Continue on WhatsApp\"",
+        "destination_url": "https://wa.me/61478886145",
+        "note": "Same shared concierge number used across fijitourtransfers.com, nadiairporttransfers.com/Lagi, and natadolabayhorseriding.com",
+        "attribution_parameters": "NONE",
+        "classification": "ACTIVE"
+      },
+      {
+        "id": "CTF-CTA-003",
+        "source_domain": "cometofiji.com",
+        "source_page": "/ and /deals",
+        "cta_text": "\"powered by vakaviti.ai\"",
+        "destination_url": "https://vakaviti.ai",
+        "attribution_parameters": "NONE",
+        "classification": "ACTIVE - navigational/relationship link, not itself a revenue CTA"
+      },
+      {
+        "id": "CTF-CTA-004",
+        "source_domain": "cometofiji.com",
+        "source_page": "/",
+        "cta_text": "\"See Fiji Airways' current offers →\"",
+        "destination_url": "https://www.fijiairways.com/en-au/flights-australia-to-fiji-airfare-deals?utm_source=cometofiji&utm_medium=homepage_callout&utm_campaign=fiji_airways_sale",
+        "attribution_parameters": "utm_source=cometofiji, utm_medium=homepage_callout, utm_campaign=fiji_airways_sale - the ONLY attribution-tagged outbound link found anywhere in this engagement to date",
+        "classification": "ACTIVE - positive example: this is what MICRO-CTA-001/CTF-CTA-001's fijitourtransfers.com links should look like"
+      },
+      {
+        "id": "CTF-CTA-005",
+        "source_domain": "cometofiji.com",
+        "source_page": "/",
+        "cta_text": "\"Get Fiji Flight Deal Alerts\" / \"Send Me Deal Alerts\"",
+        "destination_url": "not_applicable - inline form, not a link",
+        "note": "Email + airport + travel-month deal-alert form observed present with real input fields. NOT submitted, per explicit instruction.",
+        "classification": "PRESENT_NOT_TESTED"
+      },
+      {
+        "id": "CTF-CTA-006",
+        "source_domain": "cometofiji.com",
+        "source_page": "/ and /deals",
+        "cta_text": "not_applicable - structured data, not a visible CTA",
+        "note": "Organization/@graph JSON-LD description field reads: 'AI-powered Fiji flight search and trip planning, funneling tour and transfer bookings to Fiji Tour Transfers - zero commission, direct Fijian operator pricing.' This repeats fijitourtransfers.com's own unverified 'zero commission' claim (TRUTH-013) as ComeToFiji's own structured fact, without independent verification. sameAs also lists fijitourtransfers.com and vakaviti.ai.",
+        "classification": "QUARANTINED - see TRUTH-016"
+      }
+    ],
+    "cometofiji_indexability": {
+      "homepage_canonical": null,
+      "deals_page_canonical": "https://cometofiji.com/deals",
+      "note": "Canonical tag present on /deals but MISSING on the homepage itself - an internally inconsistent implementation, worse than a blanket absence since it shows the mechanism is known and simply not applied to the most important page. AI_VISIBILITY_STANDARD.md requirement #1 violation.",
+      "robots_txt": "200 OK",
+      "sitemap_xml": "200 OK"
+    },
+    "cometofiji_nadiairporttransfers_links": "NONE FOUND on homepage or /deals - ComeToFiji links to Fiji Tour Transfers for tours/transfers, not directly to nadiairporttransfers.com",
+    "natadola_links": [
+      {
+        "id": "NBHR-CTA-001",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/ (homepage)",
+        "cta_text": "\"Continue on WhatsApp\" / header WhatsApp icon",
+        "destination_url": "https://wa.me/61478886145 and https://api.whatsapp.com/send?phone=61478886145&text=Bula%20Vinaka",
+        "attribution_parameters": "NONE",
+        "classification": "ACTIVE - same shared number as every other property"
+      },
+      {
+        "id": "NBHR-CTA-002",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/",
+        "cta_text": "\"Contact Us\" (header) and two more WhatsApp icons",
+        "destination_url": "https://chat.whatsapp.com/KyBgMfeWLAD6gWY8KpXTj8 and https://chat.whatsapp.com/LXxyHse5rsdGUvA3Qwzr9K",
+        "note": "Two DIFFERENT public WhatsApp GROUP invite links (not 1:1 contact links) exposed directly in site navigation/header - distinct from the wa.me contact number pattern used elsewhere",
+        "attribution_parameters": "NONE",
+        "classification": "QUARANTINED - see TRUTH-017 (public group-invite links carry their own exposure risk, e.g. anyone with the link can join and see other members)"
+      },
+      {
+        "id": "NBHR-CTA-003",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/ and individual tour pages",
+        "cta_text": "\"Explore\" / \"Book Now\" (12+ instances, one per tour card, all under natadolabayhorseriding.com/to_book/*)",
+        "destination_url": "internal booking pages on the same domain (e.g. /to_book/natadola-beach-combinational-horse-riding-fiji/)",
+        "note": "Also includes its own /transfers/ catalogue with Nadi-airport-to-hotel product slugs (Intercontinental Fiji, Smugglers Cove, Beach Club Wailoaloa, Aquarius Beach Resort, Bamboo Resort) - a transfer product catalogue overlapping in category with Nadi Airport Transfers' own catalogue, on a third domain",
+        "classification": "ACTIVE - internal, not an inter-site CTA; recorded for TRUTH-007/008 duplication-risk evidence"
+      },
+      {
+        "id": "NBHR-CTA-004",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/",
+        "cta_text": "12 repeated links to a tours listing",
+        "destination_url": "https://tourfijitours.com/tours/",
+        "note": "A THIRD near-identical domain not previously catalogued: tourfijitours.com (distinct from tourfiji.tours and fijitourtransfers.com). No direct link to fijitourtransfers.com was found anywhere on this homepage.",
+        "attribution_parameters": "NONE",
+        "classification": "QUARANTINED - see new entity_identity_findings entry below"
+      },
+      {
+        "id": "NBHR-CTA-005",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/",
+        "cta_text": "Embedded on-page chat widget: \"Lagi • Fiji Guide - Bula! Looking for horse riding at Natadola Beach? I can check availability right now. How many in your group? [Chat Now →] [Not Now]\"",
+        "destination_url": "not captured - widget not clicked, per no-WhatsApp-message instruction",
+        "note": "Unlike the other properties where Lagi is only a link (lagi.vakaviti.ai), here Lagi is embedded as a live on-page chat widget directly inside natadolabayhorseriding.com",
+        "classification": "PRESENT_NOT_TESTED"
+      },
+      {
+        "id": "NBHR-CTA-006",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/",
+        "cta_text": "\"Subscribe\" (footer newsletter form)",
+        "destination_url": "not_applicable - inline form",
+        "note": "Present, not submitted, per explicit instruction",
+        "classification": "PRESENT_NOT_TESTED"
+      },
+      {
+        "id": "NBHR-CTA-007",
+        "source_domain": "natadolabayhorseriding.com",
+        "source_page": "/",
+        "cta_text": "\"powered by vakaviti.ai\"",
+        "destination_url": "https://vakaviti.ai",
+        "attribution_parameters": "NONE",
+        "classification": "ACTIVE"
+      }
+    ],
+    "natadola_displayed_prices": "Tour cards show $113, $400, $180 with no currency code or symbol beyond a bare '$' - ambiguous AUD/FJD/USD, matching the same price-unit-clarity gap already flagged as TRUTH-005/TRUTH-010 elsewhere in the ecosystem",
+    "natadola_review_claims": "The same two reviews ('Maddie_C' and 'Elk Grove') appear verbatim, repeated 3 times each, in the page's own review carousel markup - a templating artifact that nonetheless makes the review count/diversity look artificially larger than it is; no independent review-platform link found to verify authenticity",
+    "natadola_provider_identity": "JSON-LD @graph names the entity 'Natadola Bay HorseRiding' with combined @type ['Organization','Person'] (a schema-quality irregularity - an entity should not usually be typed as both). The content AUTHOR of the homepage Article/WebPage is 'info@tourfiji.tours' via /author/infotourfiji-tours/ - the identical author path already found on fijitourtransfers.com, extending the COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED finding to a third domain.",
+    "natadola_fiji_tourism_guide_footer": "Footer text reads exactly: 'Copyright © 2026 Fiji Tourism Guide. All Rights Reserved.' - a fourth brand name (distinct from 'Natadola Bay HorseRiding', 'Tour Fiji Tours', and 'Fiji Tour Transfers') appearing in the copyright line of this specific site. Not resolved to a legal entity; recorded as a new identity data point only.",
+    "natadola_indexability": {
+      "homepage_canonical": "https://natadolabayhorseriding.com/ (present and correct)",
+      "robots_txt": "200 OK",
+      "sitemap_xml": "200 OK"
+    },
+    "unresolved_third_party_domain": "https://bulahappiness.com/ - linked once from the homepage ('Creating Bula Happiness At Natadola'), relationship to the rest of the ecosystem not established this pass"
+  },
   "entity_identity_findings": [
     {
       "finding": "\"Tour Fiji Tours\" (vakaviti-kb.partners row op_tourfiji_001, domain tourfiji.tours) and fijitourtransfers.com share evidenced administrative/publishing control. This does NOT establish common legal identity, ownership, commercial authority, or fulfilment responsibility.",
@@ -325,6 +468,12 @@
       "evidence": "Direct page inspection, 2026-08-23.",
       "classification": "QUARANTINED_UNRESOLVED_FACT — directly observed inconsistency, not yet reconciled",
       "resolves": "New TRUTH candidate, now added as TRUTH-009 in ceo-war-room/05-COMMERCIAL-TRUTH-REGISTER.md. Not importable into Vakaviti until reconciled."
+    },
+    {
+      "finding": "natadolabayhorseriding.com's homepage content is authored by the same info@tourfiji.tours / /author/infotourfiji-tours/ identity found on fijitourtransfers.com, extending common-administrative-control evidence to a third domain. Its own tour-catalogue links point to a FOURTH near-identical domain, tourfijitours.com (distinct from tourfiji.tours and fijitourtransfers.com), and its footer copyright reads 'Fiji Tourism Guide' - a fifth name. None of these establish common legal identity, ownership, or fulfilment authority for any of the domains involved.",
+      "evidence": "Direct page inspection, 2026-08-24: JSON-LD Person @id /author/infotourfiji-tours/ on natadolabayhorseriding.com's Article/WebPage; 12 on-page links to https://tourfijitours.com/tours/; footer text 'Copyright © 2026 Fiji Tourism Guide. All Rights Reserved.'",
+      "classification": "COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED / LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED",
+      "resolves": "Widens, does not close, the existing TRUTH-003/entity-mapping question. Recommend James confirm which of tourfiji.tours, tourfijitours.com, fijitourtransfers.com, natadolabayhorseriding.com, and 'Fiji Tourism Guide' are the same registered legal entity versus separately-owned businesses sharing a publisher/admin account or a template."
     }
   ],
   "ftt_evidence_reconciliation": {

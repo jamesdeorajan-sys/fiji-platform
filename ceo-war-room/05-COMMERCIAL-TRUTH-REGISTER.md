@@ -1,7 +1,7 @@
 # COMMERCIAL TRUTH REGISTER
 
 Status: ACTIVE — READ-ONLY RECONCILIATION
-Last updated: 2026-08-24
+Last updated: 2026-08-24 (CEO Final Reconciliation pass — added TRUTH-015 through TRUTH-018)
 
 Purpose: identify facts that must have one authority and prevent cross-surface drift.
 No value in this register should be pushed to production until its evidence and authority are verified.
@@ -22,20 +22,26 @@ No value in this register should be pushed to production until its evidence and 
 | TRUTH-012 | fijitourtransfers.com per-product review counts | Individual product pages display specific star ratings and review counts (e.g. "4.9 (7 Reviews)") with no link to, or corroboration from, an independent review platform (Google, TripAdvisor) | QUARANTINED — NEEDS_SOURCE | P1 trust | Verify counts against an independent review source before importing any rating/review figure from this domain |
 | TRUTH-013 | fijitourtransfers.com licensing/superlative claims | Homepage states "Licensed Local Guides" with no licence number or issuing authority shown; TravelAgency structured data claims "Fiji's largest tour and transfer booking platform... Zero commission... Direct Fijian operator pricing... Free hotel transfers included with every tour" with no supporting evidence on-page | QUARANTINED — NEEDS_SOURCE, overlaps TRUTH-006 | P0/P1 trust | Do not repeat, syndicate, or imply endorsement of any licensing or superlative claim from this domain until an evidence source is attached |
 | TRUTH-014 | fijitourtransfers.com mixed-itinerary product page (Jewels of Fiji tour) | The same product page's "Included/Excluded" copy describes a boat ride, waterfall swim, bamboo rafting, village visit and buffet lunch, while its own FAQ block on the identical page describes a different itinerary (Nadi Town market, Garden of the Sleeping Giant, Sigatoka Sand Dunes, Beqa Island firewalking, Navua River canoe tour, Mamanuca snorkelling) | QUARANTINED — CONTRADICTORY, directly observed 2026-08-23, live checkout active on this page (WooCommerce+Square) | P0 trust/commercial | Determine which itinerary (if either, as written) is the real product before this page's content is treated as a source of fact anywhere; likely a templating/content-population defect, not assessed here as intentional |
+| TRUTH-015 | fijitourtransfers.com product-page structured-data price conflict | The Jewels of Fiji product page carries two different Offer prices in its own JSON-LD: a Service block at AUD 155 (duplicated ~14 times, a templating artifact) and a Product block at AUD 259 (matching the visible price, but branded "Tour Fiji" with URLs on tourstransfers.hostmejames.online / tourfiji.tours, not fijitourtransfers.com) | QUARANTINED — CONTRADICTORY, directly observed 2026-08-24 | P1 trust | Do not treat either structured-data price as authoritative independent of the visible page price; resolve which template/plugin is producing the duplicate blocks |
+| TRUTH-016 | ComeToFiji.com repeats FTT's unverified commercial claim | ComeToFiji's own Organization structured data states it is "funneling tour and transfer bookings to Fiji Tour Transfers - zero commission, direct Fijian operator pricing" - repeating fijitourtransfers.com's own unverified TRUTH-013 claim as ComeToFiji's own structured fact | QUARANTINED — NEEDS_SOURCE, directly observed 2026-08-24 | P1 trust | Do not treat "zero commission" as verified anywhere in the ecosystem, including on ComeToFiji, until first-party evidence is supplied |
+| TRUTH-017 | natadolabayhorseriding.com public WhatsApp group invite links | Two distinct `chat.whatsapp.com` GROUP invite links (not 1:1 contact links) are exposed directly in site navigation, alongside the usual `wa.me` contact number | QUARANTINED — UNKNOWN risk, directly observed 2026-08-24 | P1 trust/privacy | Confirm whether these are intended to be public before treating them as an authorized/managed customer channel; a public group-invite link lets anyone join and see other members, unlike a 1:1 `wa.me` link |
+| TRUTH-018 | natadolabayhorseriding.com repeated reviews and price-currency ambiguity | The same two customer reviews appear verbatim, repeated 3 times each, in the page's own review carousel; displayed tour prices ($113, $400, $180) show no currency code or symbol beyond a bare "$" | QUARANTINED — NEEDS_SOURCE, directly observed 2026-08-24 | P1 trust | Do not import review counts or "$" prices from this domain until review authenticity and currency are independently confirmed |
 
-## Note on TRUTH-009 through TRUTH-014 (added 2026-08-24)
+## Note on TRUTH-009 through TRUTH-018 (added 2026-08-24, extended 2026-08-24 CEO Final Reconciliation)
 
-These six entries were added following a read-only inspection of fijitourtransfers.com during the
-revenue-link-graph addendum. They describe the current state of a **third-party-operated, publicly
-reachable page** as observed. No claim is made here about intent, and no legal or reputational
-conclusion is drawn — the register's job is only to prevent an unverified external fact from
-silently becoming a Vakaviti-side fact. **None of TRUTH-009 through TRUTH-014 may be imported into
-Vakaviti (as displayed content, structured data, or comparison data) until reconciled per the
-canonical fact envelope below.** Separately, see `04-BRAND-ENTITY-MAP.md` and the
-`REVENUE_LINK_REGISTRY.json` `entity_identity_findings` section for the related — and explicitly
-distinct — question of *who controls* this domain: that evidence supports
-`COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` only, not `LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED`'s
-resolution, and is not a finding about the truth or falsity of the domain's own commercial claims.
+TRUTH-009 through TRUTH-015 were added following a read-only inspection of fijitourtransfers.com.
+TRUTH-016 through TRUTH-018 were added following read-only inspection of cometofiji.com and
+natadolabayhorseriding.com per the CEO Final Reconciliation directive. All describe the current
+state of **third-party-operated, publicly reachable pages** as observed. No claim is made here
+about intent, and no legal or reputational conclusion is drawn — the register's job is only to
+prevent an unverified external fact from silently becoming a Vakaviti-side fact. **None of
+TRUTH-009 through TRUTH-018 may be imported into Vakaviti (as displayed content, structured data,
+or comparison data) until reconciled per the canonical fact envelope below.** Separately, see
+`04-BRAND-ENTITY-MAP.md` and the `REVENUE_LINK_REGISTRY.json` `entity_identity_findings` section
+for the related — and explicitly distinct — question of *who controls* these domains: that
+evidence supports `COMMON_ADMINISTRATIVE_CONTROL_EVIDENCED` only, never
+`LEGAL_AND_COMMERCIAL_IDENTITY_UNRESOLVED`'s resolution, and is not a finding about the truth or
+falsity of any domain's own commercial claims.
 
 ## Required canonical fact envelope
 Every governed fact should ultimately support:
