@@ -171,8 +171,12 @@ function rewriteBrandedScript(text, brand, previewMode) {
 }
 
 const SECURITY_HEADERS = {
+  // img-src includes fijitourtransfers.com - tour-listing images load
+  // directly from that live site by design (docs/DEPLOYMENT.md), with an
+  // onerror fallback already in the markup. Caught blocking 18 real image
+  // loads during this preview's own QA pass; fixed rather than left broken.
   'Content-Security-Policy':
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://fijitourtransfers.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-Frame-Options': 'DENY',
