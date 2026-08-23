@@ -50,6 +50,21 @@ const MAX_RUNNING_MINUTES = 10;
 const BOOTSTRAP_IDEMPOTENCY_KEY = 'supply-bootstrap-p1.5-2026-08-21';
 const AUTO_PUBLISH_ACTOR = 'AI (standing policy auto-publish, Cron-triggered)';
 
+// VAKAVITI SUPPLY OPERATIONS ACTIVATION, Phase 2 (2026-08-24): a second, independent source list
+// for official Fiji provider domains beyond the original 7-source bootstrap, targeting regions
+// the bootstrap did not reach (Pacific Harbour, Taveuni, Yasawa). Each domain was individually
+// confirmed as the provider's own official site (not an aggregator/OTA/review site) and reachable
+// (HTTP 200) before being added here - see the Supply Operations Activation report for the
+// evidence trail. Kept as its own fixed constant and its own idempotency key, exactly like
+// BOOTSTRAP_SOURCE_DOMAINS above, so this too is a terminal, auditable, one-time batch, not a
+// mutable list a future change could silently alter.
+const PHASE2_SOURCE_DOMAINS = [
+  'fijisharkdive.com',     // Beqa Adventure Divers, Pacific Harbour - activities/diving
+  'gardenislandresort.com', // Garden Island Resort, Taveuni - accommodation
+  'barefootmantafiji.com', // Barefoot Manta Island Resort, Yasawa Islands - accommodation
+];
+const PHASE2_IDEMPOTENCY_KEY = 'supply-phase2-p2-2026-08-24';
+
 // VAKAVITI SUPPLY OPERATIONS ACTIVATION, Phase 1 fix (2026-08-24, migration 0019): a run spends
 // nearly all of its life between Cron ticks (up to 4 hours apart per wrangler.toml) waiting to
 // continue, not actively processing - the previous watchdog measured time since the run's
@@ -102,22 +117,25 @@ async function autoPublishIfEligible(env: Bindings, candidateId: string): Promis
 // the pre-existing deal-agent.ts Cron path for OFFER re-scanning; a future new source list would
 // need its own run (this function only ever processes BOOTSTRAP_SOURCE_DOMAINS, by design, so a
 // completed bootstrap is a terminal, auditable, one-time event, not a recurring loop).
-export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
+async function runSprintCore(env: Bindings, idempotencyKey: string, sourceDomains: string[], startedBy: string): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
   await recoverStuckSprints(env);
 
-  let run = await env.DB.prepare(`SELECT * FROM supply_sprint_runs WHERE idempotency_key=?`).bind(BOOTSTRAP_IDEMPOTENCY_KEY).first<any>();
+  let run = await env.DB.prepare(`SELECT * FROM supply_sprint_runs WHERE idempotency_key=?`).bind(idempotencyKey).first<any>();
 
   if (!run) {
-    const otherRunning = await env.DB.prepare(`SELECT id FROM supply_sprint_runs WHERE status='RUNNING' LIMIT 1`).first<any>();
+    // Only checks for another RUNNING row of a DIFFERENT idempotency key - two distinct sprints
+    // (e.g. the original bootstrap and this Phase 2 batch) are allowed to exist as separate rows,
+    // but only one may be actively RUNNING at a time, same single-flight discipline as before.
+    const otherRunning = await env.DB.prepare(`SELECT id FROM supply_sprint_runs WHERE status='RUNNING' AND idempotency_key != ? LIMIT 1`).bind(idempotencyKey).first<any>();
     if (otherRunning) return { ranBatch: false, skipReason: 'another_run_in_progress' };
 
     const runId = crypto.randomUUID();
     const insertRun = await env.DB.prepare(
       `INSERT OR IGNORE INTO supply_sprint_runs (id, idempotency_key, started_by, source_domains_json) VALUES (?,?,?,?)`
-    ).bind(runId, BOOTSTRAP_IDEMPOTENCY_KEY, 'CRON (P1.5 automated bootstrap)', JSON.stringify(BOOTSTRAP_SOURCE_DOMAINS)).run();
+    ).bind(runId, idempotencyKey, startedBy, JSON.stringify(sourceDomains)).run();
     if ((insertRun.meta as any).changes === 0) {
       // Another concurrent tick won the race to create it - re-read and proceed to continue it.
-      run = await env.DB.prepare(`SELECT * FROM supply_sprint_runs WHERE idempotency_key=?`).bind(BOOTSTRAP_IDEMPOTENCY_KEY).first<any>();
+      run = await env.DB.prepare(`SELECT * FROM supply_sprint_runs WHERE idempotency_key=?`).bind(idempotencyKey).first<any>();
     } else {
       run = await env.DB.prepare(`SELECT * FROM supply_sprint_runs WHERE id=?`).bind(runId).first<any>();
     }
@@ -188,6 +206,19 @@ export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boo
   ).run();
 
   return { ranBatch: true, runId: run.id };
+}
+
+export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
+  return runSprintCore(env, BOOTSTRAP_IDEMPOTENCY_KEY, BOOTSTRAP_SOURCE_DOMAINS, 'CRON (P1.5 automated bootstrap)');
+}
+
+// VAKAVITI SUPPLY OPERATIONS ACTIVATION, Phase 2 (2026-08-24): same governed mechanism as the
+// original bootstrap (same gates, same idempotency/watchdog discipline, same bounded batch size),
+// applied to PHASE2_SOURCE_DOMAINS instead. Runs as its own independent supply_sprint_runs row -
+// see runSprintCore's single-flight check above for why two distinct sprints can coexist without
+// racing each other.
+export async function runPhase2SupplyExpansion(env: Bindings): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
+  return runSprintCore(env, PHASE2_IDEMPOTENCY_KEY, PHASE2_SOURCE_DOMAINS, 'CRON (P2 supply expansion)');
 }
 
 const MAX_DEALS_PER_TICK = 3;

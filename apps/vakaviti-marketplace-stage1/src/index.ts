@@ -11,7 +11,7 @@ import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
-import { runSupplyBootstrap, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
+import { runSupplyBootstrap, runPhase2SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -670,6 +670,10 @@ export default {
   async scheduled(_event: ScheduledEvent, env: ScheduledBindings, ctx: ExecutionContext) {
     ctx.waitUntil(runDailyDiscovery(env));
     ctx.waitUntil(runSupplyBootstrap(env).catch(() => {}));
+    // Supply Operations Activation Phase 2 (2026-08-24): a second, independent, bounded-batch
+    // source list (see supply-scheduler.ts PHASE2_SOURCE_DOMAINS) - runs as its own sprint row,
+    // never competing with the original bootstrap for the same tick's single-flight slot.
+    ctx.waitUntil(runPhase2SupplyExpansion(env).catch(() => {}));
     ctx.waitUntil(runFreshnessCheck(env).catch(() => {}));
     // P1.5A: Class B (source-evidenced deal) auto-publication under the CEO-approved standing
     // policy - see src/supply-scheduler.ts's runClassBAutoPublishPass() and src/deals.ts's
