@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { runDailyDiscovery } from './deal-agent';
+import { evaluateDealAutoPublishGates, type DealAutoPublishCandidate } from './deal-quality';
 
 // Vakaviti Deal Intelligence - OfferApprovalCoordinator + DeterministicOfferPublisher modules.
 // This file is the ONLY place that may write review_status to VAKAVITI_HUMAN_REVIEWED,
@@ -50,6 +51,94 @@ const auditWrite = (c: any, entityType: 'SOURCE' | 'OFFER_CANDIDATE', entityId: 
     extra.audit_metadata ? JSON.stringify(extra.audit_metadata) : null
   ).run();
 };
+
+// --- P1.5A Class B: the ONE governed auto-publication action for source-evidenced deals -------
+//
+// This is the only code path that may set review_status='PUBLISHED' without a human request
+// hitting POST /candidates/:id/approve above. It uses the exact CEO-approved defaults recorded
+// in migrations/0018 for the four fields no webpage can ever supply - it never accepts them as
+// parameters, so no caller (human or automated) can override the wording:
+//
+//   response_owner        = "Vakaviti Concierge — James and authorized team"
+//   fulfilment_operator   = the evidenced provider identity (seller_or_marketer) - records who
+//                           supplies the underlying service; never implies a Vakaviti contract,
+//                           resale authority, availability control, or partnership
+//   content_rights_status = stored as the existing 'APPROVED' enum value (the column's CHECK
+//                           constraint only allows UNKNOWN/APPROVED/DENIED - there is no schema
+//                           value for the CEO's more precise "VAKAVITI_ORIGINAL_FACTUAL_SUMMARY"
+//                           label without a table-rebuild migration, which this pass avoids given
+//                           D1's known DROP-TABLE-blocked-by-FK limitation). The CEO's exact basis
+//                           is recorded in the audit trail's audit_metadata instead, so the
+//                           precise policy distinction is never lost, just not force-fit into a
+//                           column value the schema doesn't have a slot for.
+//   image_rights_status   = stored as the existing 'NO_IMAGE' enum value (same reasoning; CEO's
+//                           "NO_IMAGE_USED" label is semantically identical and recorded verbatim
+//                           in audit_metadata)
+//
+// evaluateDealAutoPublishGates() (src/deal-quality.ts) decides ONLY whether the source evidence
+// justifies publishing at all - an LLM extracts facts elsewhere (deal-agent.ts); it never sets
+// eligibility. If any gate fails, this function changes nothing and returns why.
+const CLASS_B_RESPONSE_OWNER = 'Vakaviti Concierge — James and authorized team';
+const CLASS_B_CONTENT_RIGHTS_BASIS = 'VAKAVITI_ORIGINAL_FACTUAL_SUMMARY';
+const CLASS_B_IMAGE_RIGHTS_BASIS = 'NO_IMAGE_USED';
+
+export type AutoPublishDealResult =
+  | { ok: true; candidateId: string; slug: string }
+  | { ok: false; status: number; error: string; detail?: any };
+
+export async function autoPublishDealIfEligible(env: Bindings, candidateId: string): Promise<AutoPublishDealResult> {
+  const candidate = await env.DB.prepare(
+    `SELECT c.*, s.source_approval_status, s.content_fingerprint AS current_source_fingerprint FROM deal_offer_candidates c JOIN deal_sources s ON c.source_id=s.id WHERE c.id=?`
+  ).bind(candidateId).first<any>();
+  if (!candidate) return { ok: false, status: 404, error: 'not_found' };
+  // MATERIAL_CHANGE_DETECTED is included deliberately: Phase 4's "material change returns the
+  // deal to review unless the new complete version independently passes every Class B gate"
+  // means a re-scan that now fully qualifies may re-publish - the gate re-checks everything
+  // fresh (including fingerprint match against the CURRENT source), so nothing here trusts the
+  // prior approval.
+  if (!['NEEDS_HUMAN_REVIEW', 'DISCOVERED', 'SOURCE_APPROVED', 'EVIDENCE_EXTRACTED', 'MATERIAL_CHANGE_DETECTED'].includes(String(candidate.review_status))) {
+    return { ok: false, status: 409, error: 'not_eligible_review_status', detail: { review_status: candidate.review_status } };
+  }
+
+  const gate = evaluateDealAutoPublishGates(candidate as DealAutoPublishCandidate);
+  if (gate.decision !== 'ELIGIBLE') {
+    return { ok: false, status: 422, error: 'gate_not_eligible', detail: gate };
+  }
+
+  const slug = candidate.slug || slugify(candidate.proposed_offer_name, candidateId);
+  const actor = 'STANDING_POLICY_AUTO_PUBLISH (Class B, Cron-triggered)';
+
+  await env.DB.prepare(
+    `UPDATE deal_offer_candidates SET
+       review_status='PUBLISHED', evidence_state='CURRENT',
+       fulfilment_operator=?, response_owner=?,
+       content_rights_status='APPROVED', image_rights_status='NO_IMAGE',
+       human_review_approved_at=CURRENT_TIMESTAMP, human_review_approved_by=?,
+       provider_approved_at=CURRENT_TIMESTAMP, provider_approved_by=?,
+       publication_approved_at=CURRENT_TIMESTAMP, publication_approved_by=?,
+       source_fingerprint_at_approval=?, slug=?, updated_at=CURRENT_TIMESTAMP
+     WHERE id=?`
+  ).bind(
+    candidate.seller_or_marketer, CLASS_B_RESPONSE_OWNER,
+    actor, actor, actor,
+    candidate.source_fingerprint, slug, candidateId
+  ).run();
+
+  await auditWrite({ env }, 'OFFER_CANDIDATE', candidateId, 'CLASS_B_AUTO_PUBLICATION', actor, candidate.review_status, 'PUBLISHED',
+    'Auto-published under the CEO-approved Class B standing policy (migrations/0018) - every deterministic gate in evaluateDealAutoPublishGates() passed.',
+    {
+      fields_approved: ['fulfilment_operator', 'response_owner', 'content_rights_status', 'image_rights_status'],
+      source_fingerprint: candidate.source_fingerprint,
+      audit_metadata: {
+        content_rights_basis: CLASS_B_CONTENT_RIGHTS_BASIS,
+        image_rights_basis: CLASS_B_IMAGE_RIGHTS_BASIS,
+        gate_passed: gate.passedGates,
+      },
+    }
+  );
+
+  return { ok: true, candidateId, slug };
+}
 
 // --- Source governance --------------------------------------------------------------------
 

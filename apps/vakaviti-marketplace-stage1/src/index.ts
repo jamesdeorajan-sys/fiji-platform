@@ -11,7 +11,7 @@ import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
-import { runSupplyBootstrap, runFreshnessCheck } from './supply-scheduler';
+import { runSupplyBootstrap, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -671,5 +671,9 @@ export default {
     ctx.waitUntil(runDailyDiscovery(env));
     ctx.waitUntil(runSupplyBootstrap(env).catch(() => {}));
     ctx.waitUntil(runFreshnessCheck(env).catch(() => {}));
+    // P1.5A: Class B (source-evidenced deal) auto-publication under the CEO-approved standing
+    // policy - see src/supply-scheduler.ts's runClassBAutoPublishPass() and src/deals.ts's
+    // autoPublishDealIfEligible() for the governed gate + action.
+    ctx.waitUntil(runClassBAutoPublishPass(env).catch(() => {}));
   }
 };

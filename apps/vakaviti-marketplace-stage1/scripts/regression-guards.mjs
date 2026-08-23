@@ -1187,9 +1187,9 @@ console.log('== 24. P1.5 supply scheduler + Class B detection: Cron-only trigger
   } else {
     ok('src/supply-scheduler.ts never references VAKAVITI_VERIFIED');
   }
-  for (const table of ['provider_ceo_confirmations', 'standing_policies']) {
+  for (const table of ['provider_ceo_confirmations', 'standing_policies', 'deal_offer_candidates']) {
     if (new RegExp(`\\b(INSERT INTO|UPDATE)\\s+${table}\\b`, 'i').test(supplySchedulerTs)) {
-      fail(`src/supply-scheduler.ts writes to ${table} - it must never touch this table`);
+      fail(`src/supply-scheduler.ts writes to ${table} - it must never touch this table (Class B publication must go through autoPublishDealIfEligible() in src/deals.ts)`);
     } else {
       ok(`src/supply-scheduler.ts never writes to ${table}`);
     }
@@ -1216,37 +1216,120 @@ console.log('== 24. P1.5 supply scheduler + Class B detection: Cron-only trigger
     ok('src/supply-scheduler.ts caps MAX_SOURCES_PER_TICK at 3');
   }
 
-  // (e) Class B detection (evaluateDealAutoPublishGates) must require ALL FOUR human-only
-  // judgment fields - this is the specific property that keeps it from ever silently becoming a
-  // real auto-publish path without a human first recording a rights/ownership decision.
-  const dealAutoPublishFnMatch = dealQualityTs.match(/export function evaluateDealAutoPublishGates[\s\S]*?\n\}/);
-  if (!dealAutoPublishFnMatch) {
+  // (e) P1.5A: evaluateDealAutoPublishGates() is now the real Class B publish decision (the CEO
+  // has supplied fixed governed defaults for the four fields it used to require as preconditions
+  // - see src/deals.ts's autoPublishDealIfEligible(), which is the ONLY place that may act on it).
+  // It must be called from exactly two places: src/deals.ts (the real decision) and
+  // src/supply-dashboard.ts (read-only visibility) - never from AI-facing code
+  // (deal-agent.ts, discovery-bridge.ts), never from candidates.ts (a different publication
+  // law entirely), and never directly from the scheduler (which must go through the governed
+  // deals.ts function, not call the raw gate itself).
+  if (!dealQualityTs.includes('export function evaluateDealAutoPublishGates')) {
     fail('evaluateDealAutoPublishGates() not found in src/deal-quality.ts');
   } else {
-    const body = dealAutoPublishFnMatch[0];
-    for (const field of ['fulfilment_operator', 'response_owner', 'content_rights_status', 'image_rights_status']) {
-      if (!body.includes(`c.${field}`)) fail(`evaluateDealAutoPublishGates() does not check c.${field} - a required human-judgment field could be silently skipped`);
-    }
-    if (['fulfilment_operator', 'response_owner', 'content_rights_status', 'image_rights_status'].every(f => body.includes(`c.${f}`))) {
-      ok('evaluateDealAutoPublishGates() checks all four human-only judgment fields');
-    }
+    ok('evaluateDealAutoPublishGates() is defined in src/deal-quality.ts');
   }
-  // It must not be referenced from any write-capable file - detection only, per its own header.
-  // Comment lines are excluded first - src/supply-scheduler.ts's own header comment explains why
-  // it deliberately does NOT call this function, in prose, which would otherwise self-trigger the
-  // very check it's describing.
-  for (const [label, text] of [['src/deals.ts', dealsTs], ['src/deal-agent.ts', dealAgentTs], ['src/supply-scheduler.ts', supplySchedulerTs], ['src/candidates.ts', candidatesTs]]) {
+  for (const [label, text] of [['src/deal-agent.ts', dealAgentTs], ['src/discovery-bridge.ts', discoveryBridgeTs], ['src/candidates.ts', candidatesTs], ['src/supply-scheduler.ts', supplySchedulerTs]]) {
     const codeOnly = text.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
     if (codeOnly.includes('evaluateDealAutoPublishGates')) {
-      fail(`${label} references evaluateDealAutoPublishGates() - it must remain display-only (src/supply-dashboard.ts is the only permitted caller)`);
+      fail(`${label} references evaluateDealAutoPublishGates() directly - only src/deals.ts (the governed decision) and src/supply-dashboard.ts (read-only) may call it`);
     } else {
-      ok(`${label} does not reference evaluateDealAutoPublishGates()`);
+      ok(`${label} does not reference evaluateDealAutoPublishGates() directly`);
     }
+  }
+  if (!dealsTs.includes('evaluateDealAutoPublishGates')) {
+    fail('src/deals.ts does not reference evaluateDealAutoPublishGates() - the Class B publish decision appears disconnected');
+  } else {
+    ok('src/deals.ts references evaluateDealAutoPublishGates() as the real publish decision');
   }
   if (!supplyDashboardTs.includes('evaluateDealAutoPublishGates')) {
     fail('src/supply-dashboard.ts does not reference evaluateDealAutoPublishGates() - the Class B visibility metric appears disconnected');
   } else {
     ok('src/supply-dashboard.ts references evaluateDealAutoPublishGates() for read-only visibility');
+  }
+  // The scheduler must reach Class B publication only through the governed deals.ts function -
+  // never by writing review_status itself.
+  if (!supplySchedulerTs.includes('autoPublishDealIfEligible')) {
+    fail('src/supply-scheduler.ts does not call autoPublishDealIfEligible() - Class B orchestration appears missing');
+  } else {
+    ok('src/supply-scheduler.ts calls autoPublishDealIfEligible() (the governed Class B action)');
+  }
+  if (/review_status\s*=\s*'PUBLISHED'/i.test(supplySchedulerTs.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'))) {
+    fail('src/supply-scheduler.ts sets review_status=PUBLISHED directly - it must only ever publish through autoPublishDealIfEligible()');
+  } else {
+    ok('src/supply-scheduler.ts never sets review_status=PUBLISHED directly');
+  }
+}
+
+console.log('== 25. P1.5A Class B activation: fixed CEO defaults, no forbidden wording, real WhatsApp redirect ==');
+{
+  const dealsHubTs2 = readFileSync(path.join(ROOT, 'src/deals-hub.ts'), 'utf8');
+
+  // (a) autoPublishDealIfEligible() must exist, must use the fixed CEO-approved constants, and
+  // must never accept them as parameters (only env + candidateId) - no caller, human or
+  // automated, may override the governed wording.
+  const autoPublishFnMatch = dealsTs.match(/export async function autoPublishDealIfEligible[\s\S]*?\n\}/);
+  if (!autoPublishFnMatch) {
+    fail('autoPublishDealIfEligible() not found in src/deals.ts');
+  } else {
+    const sigMatch = dealsTs.match(/export async function autoPublishDealIfEligible\(([^)]*)\)/);
+    if (sigMatch && /body|input|params|corrections/i.test(sigMatch[1])) {
+      fail('autoPublishDealIfEligible() accepts a body/input/params argument - it must only take (env, candidateId)');
+    } else {
+      ok('autoPublishDealIfEligible() only accepts (env, candidateId)');
+    }
+    if (!/CLASS_B_RESPONSE_OWNER/.test(autoPublishFnMatch[0]) || !/'Vakaviti Concierge/.test(dealsTs)) {
+      fail('autoPublishDealIfEligible() does not use the fixed CEO-approved response_owner constant');
+    } else {
+      ok('autoPublishDealIfEligible() uses the fixed CEO-approved response_owner constant');
+    }
+    if (/response_owner\s*[:=]\s*(body|input)\./.test(autoPublishFnMatch[0])) {
+      fail('autoPublishDealIfEligible() appears to read response_owner from caller input');
+    } else {
+      ok('autoPublishDealIfEligible() never reads response_owner from caller input');
+    }
+  }
+
+  // (b) evaluateDealAutoPublishGates() must check the new evidence-completeness fields added in
+  // P1.5A (inclusions, duplicate identity, contradictions) - not just the original P1.5 subset.
+  const gateFnMatch = dealQualityTs.match(/export function evaluateDealAutoPublishGates[\s\S]*?\n\}/);
+  if (!gateFnMatch) {
+    fail('evaluateDealAutoPublishGates() not found');
+  } else {
+    for (const field of ['c.inclusions', 'c.duplicate_of_id', 'c.contradictions']) {
+      if (!gateFnMatch[0].includes(field)) fail(`evaluateDealAutoPublishGates() does not check ${field}`);
+    }
+    if (['c.inclusions', 'c.duplicate_of_id', 'c.contradictions'].every(f => gateFnMatch[0].includes(f))) {
+      ok('evaluateDealAutoPublishGates() checks inclusions, duplicate identity, and contradictions');
+    }
+  }
+
+  // (c) the public deals hub must never use forbidden commercial wording anywhere outside a
+  // comment - Partner/Claimed/Vakaviti Verified/Guaranteed/Instant confirmation/Exclusive/
+  // Authorized reseller are all reserved for a separate, explicitly governed status.
+  const hubCodeOnly = dealsHubTs2.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  const forbiddenWords = [/\bPartner\b/i, /\bClaimed\b/i, /Vakaviti Verified/i, /Guaranteed/i, /Instant confirmation/i, /\bExclusive\b/i, /Authorized reseller/i];
+  const foundForbidden = forbiddenWords.filter(re => re.test(hubCodeOnly));
+  if (foundForbidden.length) {
+    fail(`src/deals-hub.ts contains forbidden commercial wording: ${foundForbidden.map(r => r.source).join(', ')}`);
+  } else {
+    ok('src/deals-hub.ts contains none of the forbidden commercial wording');
+  }
+
+  // (d) the enquire route must actually redirect via a real WhatsApp deep link, not just record
+  // an enquiry and show a static page.
+  const enquireRouteMatch = dealsHubTs2.match(/dealsHub\.get\('\/:offerSlug\/enquire'[\s\S]*?\n\}\);/);
+  if (!enquireRouteMatch) {
+    fail('GET /:offerSlug/enquire route not found in src/deals-hub.ts');
+  } else if (!/waLink\(/.test(enquireRouteMatch[0]) || !/c\.redirect\(/.test(enquireRouteMatch[0])) {
+    fail('GET /:offerSlug/enquire does not redirect via a real WhatsApp deep link (waLink + c.redirect)');
+  } else {
+    ok('GET /:offerSlug/enquire redirects via a real WhatsApp deep link');
+  }
+  if (!/Please help me confirm current availability and final terms/.test(dealsHubTs2)) {
+    fail('src/deals-hub.ts does not use the CEO-required WhatsApp message closing line');
+  } else {
+    ok('src/deals-hub.ts uses the CEO-required WhatsApp message closing line');
   }
 }
 

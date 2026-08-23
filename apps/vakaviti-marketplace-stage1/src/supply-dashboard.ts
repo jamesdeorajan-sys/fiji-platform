@@ -130,10 +130,11 @@ supplyDashboard.get('/', async c => {
     `SELECT status, COUNT(*) n FROM enquiries GROUP BY status`
   ).all<any>();
 
-  // P1.5: how many deal_offer_candidates would qualify for Class B (source-evidenced deal)
-  // auto-publish right now, reusing evaluateDealAutoPublishGates() rather than a second,
-  // drifting SQL approximation. No code path anywhere sets this row's decision - it is
-  // display-only, exactly like batch_review_ready above.
+  // P1.5A: how many deal_offer_candidates currently pass the Class B (source-evidenced deal)
+  // gate, reusing evaluateDealAutoPublishGates() rather than a second, drifting SQL
+  // approximation. Since P1.5A this count is a live preview of what runClassBAutoPublishPass()
+  // (src/supply-scheduler.ts) will act on at the next Cron tick, not just a static display metric
+  // - this route itself still performs no writes (see check 17), the action happens elsewhere.
   const dealCandidateRows = await db.prepare(
     `SELECT c.*, s.source_approval_status, s.content_fingerprint AS current_source_fingerprint
      FROM deal_offer_candidates c JOIN deal_sources s ON c.source_id = s.id`
@@ -162,9 +163,10 @@ supplyDashboard.get('/', async c => {
     enquiries_by_provider: enquiriesByProvider.results || [],
     enquiry_response_status: enquiryResponseStatus.results || [],
     bookings_or_outcomes_tracked: null,
-    // P1.5 Class B visibility - see evaluateDealAutoPublishGates() in src/deal-quality.ts for why
-    // this is expected to be 0 until a human records fulfilment_operator/response_owner/
-    // content_rights_status/image_rights_status on a candidate (no code path auto-sets these).
+    // P1.5A: since the CEO supplied fixed governed defaults for response_owner/
+    // fulfilment_operator/content_rights_status/image_rights_status, this count reflects real
+    // upcoming auto-publications, not a permanently-zero placeholder - see
+    // runClassBAutoPublishPass() in src/supply-scheduler.ts.
     deals_class_b_auto_publish_eligible: dealsClassBEligible,
     generated_at: new Date().toISOString(),
   });

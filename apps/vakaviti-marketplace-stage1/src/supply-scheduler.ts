@@ -2,6 +2,7 @@ import { discoverProviderFromSource } from './discovery-bridge';
 import { promoteCandidateToDirectoryListing } from './candidates';
 import { evaluateDirectoryListingGates } from './directory-gate';
 import { safeFetchSource } from './deal-agent';
+import { autoPublishDealIfEligible } from './deals';
 
 // Declared locally (not imported from candidates.ts, whose own Bindings is narrower - just
 // {DB, ADMIN_TOKEN?}) because this file also needs AI (for discoverProviderFromSource) and
@@ -166,6 +167,35 @@ export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boo
   ).run();
 
   return { ranBatch: true, runId: run.id };
+}
+
+const MAX_DEALS_PER_TICK = 3;
+
+// Class B orchestration (P1.5A): decides WHEN to re-check a deal candidate, never WHETHER it may
+// publish - that decision is entirely inside autoPublishDealIfEligible() (src/deals.ts), which
+// re-runs evaluateDealAutoPublishGates() fresh on every call regardless of what this loop
+// believes. Deliberately NOT placed inside src/deal-agent.ts, which is AI-facing and must never
+// gain a path to review_status='PUBLISHED' - this orchestration lives here instead, alongside the
+// Class A auto-publish orchestration, both Cron-triggered only. Bounded to
+// MAX_DEALS_PER_TICK per tick, same discipline as every other scheduled loop in this app.
+// Includes MATERIAL_CHANGE_DETECTED so a re-scanned, now-fully-qualifying deal can re-publish
+// (Phase 4) - the gate re-checks the fingerprint against the CURRENT source on every call, so a
+// stale approval is never trusted.
+export async function runClassBAutoPublishPass(env: Bindings): Promise<{ checked: number; published: number; results: any[] }> {
+  const candidates = await env.DB.prepare(
+    `SELECT id FROM deal_offer_candidates
+     WHERE review_status IN ('NEEDS_HUMAN_REVIEW','DISCOVERED','SOURCE_APPROVED','EVIDENCE_EXTRACTED','MATERIAL_CHANGE_DETECTED')
+     ORDER BY created_at ASC LIMIT ?`
+  ).bind(MAX_DEALS_PER_TICK).all<any>();
+
+  let published = 0;
+  const results: any[] = [];
+  for (const row of candidates.results || []) {
+    const result = await autoPublishDealIfEligible(env, row.id);
+    if (result.ok) published++;
+    results.push({ candidateId: row.id, ...result });
+  }
+  return { checked: (candidates.results || []).length, published, results };
 }
 
 // Freshness Agent (Phase 4/6): rechecks the single stalest AI-discovered directory listing per

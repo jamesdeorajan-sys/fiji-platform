@@ -8,11 +8,33 @@ import { isPubliclyEligible } from './deals';
 // flow and the JSON preview API both use - so "what's shown here" and "what's eligible" can
 // never drift apart into two different implementations of the same rule.
 
-type Bindings = { DB: D1Database };
+type Bindings = { DB: D1Database; ENVIRONMENT?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
 export const dealsHub = new Hono<{ Bindings: Bindings }>();
 
 const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const BASE_URL = 'https://vakaviti-marketplace-stage1.helpronline.workers.dev';
+
+// Same preview-only routing rule as src/index.ts's resolveEnquiryDestination() - duplicated
+// rather than imported (importing FROM index.ts here would create a cycle, since index.ts
+// already imports this file) and small enough that duplication is clearer than a shared module.
+const resolveEnquiryDestination = (env: Bindings): string | null => {
+  if (env.ENVIRONMENT === 'preview') return env.MARKETPLACE_ENQUIRY_WHATSAPP || null;
+  return env.MARKETPLACE_ENQUIRY_WHATSAPP || null;
+};
+const waLink = (phone: string, message: string) => {
+  const digits = String(phone || '').replace(/[^0-9]/g, '');
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+};
+const priceBasisText = (row: any): string | null => {
+  if (!row.advertised_price) return row.price_basis ? row.price_basis.replace(/_/g, ' ').toLowerCase() : null;
+  return `${row.currency || ''} ${row.advertised_price}${row.price_basis ? ' / ' + row.price_basis.replace(/_/g, ' ').toLowerCase() : ''}`.trim();
+};
+const validityText = (row: any): string | null => {
+  if (row.booking_deadline) return `book by ${row.booking_deadline}`;
+  if (row.offer_expires_at) return `valid until ${row.offer_expires_at}`;
+  if (row.travel_until) return `travel by ${row.travel_until}`;
+  return null;
+};
 
 async function getEligibleDeals(db: D1Database): Promise<any[]> {
   const rows = await db.prepare(
@@ -79,7 +101,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(-
 <body>
 <header><div class="header-row"><a class="brand" href="/deals">Vakaviti · Live Fiji Deals</a><a href="/" class="muted" style="font-size:13px;text-decoration:none">Main site</a></div></header>
 ${body}
-<footer><p>Vakaviti Deal Intelligence preview. Every deal shown has passed human review and provider approval, and is checked for freshness on an ongoing schedule. This is not a booking confirmation - enquire to check live availability.</p></footer>
+<footer><p>Vakaviti Deal Intelligence preview. Deal discovered on the provider's official website and checked for freshness on an ongoing schedule. Availability and final terms must be confirmed - enquire and Vakaviti will help.</p></footer>
 </body></html>`;
 
 const CATEGORIES = ['ACCOMMODATION', 'ACTIVITY', 'DINING', 'TRANSPORT', 'EXPERIENCE', 'CRUISE'];
@@ -258,7 +280,7 @@ dealsHub.get('/:offerSlug', async c => {
     ${factRow('Last checked', row.source_checked_at)}
     ${factRow('Source', `<a href="${esc(row.source_url)}" target="_blank" rel="noopener nofollow">${esc(row.source_url)}</a>`)}
   </table>
-  <p class="lede">Reviewed and approved by Vakaviti. An enquiry below is not a confirmed booking - availability is subject to the provider.</p>
+  <p class="lede">Deal discovered on the provider's official website. Last checked ${esc(row.source_checked_at || 'recently')}. Availability and final terms must be confirmed - Vakaviti will help with your enquiry.</p>
   ${related.length ? `<h2 style="font-size:16px">Related deals</h2><div class="deal-grid">${related.map(dealCard).join('')}</div>` : ''}
 </main>
 <div class="sticky-cta">
@@ -298,8 +320,25 @@ dealsHub.get('/:offerSlug/enquire', async c => {
   }
   await logEvent(c.env.DB, 'CTA_SELECTED', { offer_id: row.id });
 
-  const body = `<main class="empty"><h1 style="font-size:20px">Thanks - your enquiry is on its way</h1>
-  <p>Vakaviti will help connect your enquiry about <strong>${esc(row.proposed_offer_name)}</strong> with ${esc(row.seller_or_marketer)}. This is not a confirmed booking.</p>
-  <a class="btn secondary" href="/deals/${esc(slug)}" style="max-width:260px;margin:16px auto 0">Back to this deal</a></main>`;
-  return c.html(shell(body, { title: 'Enquiry sent | Vakaviti', description: 'Enquiry confirmation.', canonical: `${BASE_URL}/deals/${slug}/enquire` }));
+  // P1.5A Phase 3: a real WhatsApp deep link, not just a confirmation page - attribution
+  // (deal_enquiries row above) is preserved regardless of whether WhatsApp is reachable, so a
+  // misconfigured destination never loses the lead record. Message wording is the CEO's exact
+  // required template; price/basis and validity are only ever included when the source actually
+  // supports them (never fabricated), and it explicitly asks for confirmation rather than
+  // implying one already exists.
+  const destination = resolveEnquiryDestination(c.env);
+  const priceBasis = priceBasisText(row);
+  const validity = validityText(row);
+  let message = `Hi Vakaviti, I'm interested in ${row.proposed_offer_name} from ${row.seller_or_marketer}.`;
+  if (priceBasis) message += ` I saw ${priceBasis}${validity ? ' and ' + validity : ''}.`;
+  else if (validity) message += ` I saw ${validity}.`;
+  message += ' Please help me confirm current availability and final terms.';
+
+  if (!destination) {
+    const body = `<main class="empty"><h1 style="font-size:20px">Enquiries aren't available right now</h1>
+    <p>Something's missing in our setup and we don't want to risk sending your enquiry to the wrong place. Your interest in <strong>${esc(row.proposed_offer_name)}</strong> has been recorded - please try again shortly.</p>
+    <a class="btn secondary" href="/deals/${esc(slug)}" style="max-width:260px;margin:16px auto 0">Back to this deal</a></main>`;
+    return c.html(shell(body, { title: 'Enquiry unavailable | Vakaviti', description: 'Enquiry confirmation.', canonical: `${BASE_URL}/deals/${slug}/enquire` }), 503);
+  }
+  return c.redirect(waLink(destination, message), 302);
 });
