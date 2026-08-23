@@ -1,0 +1,273 @@
+{
+  "fiji-chat-widget": {
+    "tables_read": [
+      "contact_channels",
+      "conversation_events",
+      "deals",
+      "embed_config",
+      "kb_chunks",
+      "knowledge_items",
+      "knowledge_queue",
+      "leads",
+      "partner_referrals",
+      "partners",
+      "reviews"
+    ],
+    "tables_written": {
+      "conversation_events": [
+        "INSERT"
+      ],
+      "leads": [
+        "INSERT",
+        "UPDATE"
+      ],
+      "knowledge_queue": [
+        "INSERT",
+        "UPDATE"
+      ],
+      "knowledge_items": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "AI",
+      "ANTHROPIC_API_KEY",
+      "CHAT_USAGE",
+      "SENDGRID_API_KEY",
+      "VECTORIZE",
+      "WHATSAPP_PHONE_ID",
+      "WHATSAPP_TOKEN"
+    ]
+  },
+  "seo-visibility-audit": {
+    "tables_read": [
+      "partners",
+      "seo_audit_findings"
+    ],
+    "tables_written": {
+      "seo_audit_findings": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": []
+  },
+  "vakaviti-config": {
+    "tables_read": [
+      "embed_config"
+    ],
+    "tables_written": {},
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": []
+  },
+  "vakaviti-dashboard-api": {
+    "tables_read": [
+      "conversation_events",
+      "embed_config",
+      "leads",
+      "partners"
+    ],
+    "tables_written": {
+      "partners": [
+        "UPDATE"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "CHAT_USAGE",
+      "SENDGRID_API_KEY",
+      "WHATSAPP_PHONE_ID",
+      "WHATSAPP_TOKEN"
+    ]
+  },
+  "vakaviti-directory": {
+    "tables_read": [
+      "deals",
+      "partners"
+    ],
+    "tables_written": {},
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": []
+  },
+  "vakaviti-error-sentinel": {
+    "tables_read": [
+      "sentinel_errors"
+    ],
+    "tables_written": {
+      "sentinel_errors": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "SENDGRID_API_KEY"
+    ]
+  },
+  "vakaviti-events": {
+    "tables_read": [],
+    "tables_written": {
+      "conversation_events": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": []
+  },
+  "vakaviti-kb-inspect": {
+    "tables_read": [
+      "knowledge_items"
+    ],
+    "tables_written": {
+      "knowledge_items": [
+        "DELETE"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": []
+  },
+  "vakaviti-leads": {
+    "tables_read": [
+      "contact_channels",
+      "embed_config",
+      "partner_referrals",
+      "partners"
+    ],
+    "tables_written": {
+      "leads": [
+        "INSERT",
+        "UPDATE"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "SENDGRID_API_KEY"
+    ]
+  },
+  "vakaviti-leads-v2": {
+    "tables_read": [
+      "contact_channels",
+      "embed_config",
+      "meta_traffic_intents",
+      "partner_referrals"
+    ],
+    "tables_written": {
+      "reviews": [
+        "INSERT"
+      ],
+      "leads": [
+        "INSERT",
+        "UPDATE"
+      ],
+      "meta_traffic_intents": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "REVIEW_BASE_URL",
+      "SENDGRID_API_KEY"
+    ]
+  },
+  "vakaviti-onboard": {
+    "tables_read": [
+      "partners"
+    ],
+    "tables_written": {
+      "partners": [
+        "INSERT",
+        "UPDATE"
+      ],
+      "embed_config": [
+        "INSERT"
+      ],
+      "contact_channels": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "ADMIN_TOKEN",
+      "SENDGRID_API_KEY"
+    ]
+  },
+  "vakaviti-reviews": {
+    "tables_read": [
+      "partners",
+      "reviews"
+    ],
+    "tables_written": {
+      "reviews": [
+        "INSERT",
+        "UPDATE"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "ADMIN_TOKEN",
+      "SENDGRID_API_KEY",
+      "TEAM_EMAIL",
+      "WEBHOOK_URL"
+    ]
+  },
+  "vakaviti-reviews-scheduler": {
+    "tables_read": [
+      "partners",
+      "reviews"
+    ],
+    "tables_written": {
+      "reviews": [
+        "INSERT",
+        "UPDATE"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "SENDGRID_API_KEY",
+      "TEAM_EMAIL",
+      "WEBHOOK_URL"
+    ]
+  },
+  "vakaviti-whatsapp": {
+    "tables_read": [],
+    "tables_written": {
+      "leads": [
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": false,
+    "env_refs_besides_DB": [
+      "CHAT_WORKER",
+      "WHATSAPP_ACCESS_TOKEN",
+      "WHATSAPP_PHONE_NUMBER_ID",
+      "WHATSAPP_VERIFY_TOKEN"
+    ]
+  },
+  "vakaviti-zone-manager": {
+    "tables_read": [
+      "partners",
+      "zone_audit_history",
+      "zone_compliance",
+      "zone_speed_history"
+    ],
+    "tables_written": {
+      "zone_speed_history": [
+        "DELETE",
+        "INSERT"
+      ],
+      "zone_compliance": [
+        "INSERT"
+      ],
+      "zone_audit_history": [
+        "DELETE",
+        "INSERT"
+      ]
+    },
+    "has_scheduled_handler": true,
+    "env_refs_besides_DB": [
+      "CF_API_TOKEN",
+      "MANAGER_KEY",
+      "SENDGRID_API_KEY"
+    ]
+  }
+}

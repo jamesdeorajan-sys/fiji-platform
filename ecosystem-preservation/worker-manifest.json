@@ -1,0 +1,471 @@
+{
+  "blue-darkness-e494": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-03-23",
+    "cron": [],
+    "bindings": [],
+    "deploy_src": "assets-only",
+    "created": "2026-03-23",
+    "preserved_bundle_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preserved_bundle_size_bytes": 0,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "come-to-fiji-link-checker": {
+    "handlers": [
+      "scheduled",
+      "fetch"
+    ],
+    "compat": "2024-09-23",
+    "cron": [
+      "unread"
+    ],
+    "bindings": [
+      "DB->come_to_fiji_db"
+    ],
+    "deploy_src": "wrangler",
+    "created": "2026-08-01",
+    "preserved_bundle_sha256": "3f20fff8ca11a195f7b605907f1afd497b81e32f879b68566004b48e3f2b8332",
+    "preserved_bundle_size_bytes": 23744,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "come-to-fiji-sync-fjt-trigger": {
+    "handlers": [
+      "scheduled"
+    ],
+    "compat": "2024-09-23",
+    "cron": [
+      "0 14 * * *"
+    ],
+    "bindings": [
+      "SYNC_SECRET(secret)",
+      "TARGET_URL(var)"
+    ],
+    "deploy_src": "wrangler",
+    "created": "2026-07-07",
+    "preserved_bundle_sha256": "caf31f0e9f0475180ec27944b2a2e2f0237f74c3d8ea5077cc52887ba6fa4c52",
+    "preserved_bundle_size_bytes": 973,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "fiji-chat-widget": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-05",
+    "cron": [],
+    "bindings": [
+      "AI",
+      "ANTHROPIC_API_KEY(secret)",
+      "CHAT_USAGE(kv)",
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)",
+      "VECTORIZE",
+      "WHATSAPP_PHONE_ID(secret)",
+      "WHATSAPP_TOKEN(secret)"
+    ],
+    "deploy_src": "api",
+    "created": "2026-05-05",
+    "preserved_bundle_sha256": "0ddf4c83d810935282aca524c7c1c05d99d2fc1ef7bb5e274f09258e4881b17b",
+    "preserved_bundle_size_bytes": 138866,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "fiji-drafting-console": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-04",
+    "cron": [],
+    "bindings": [
+      "ANTHROPIC_API_KEY(secret)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-04",
+    "preserved_bundle_sha256": "c9c4c3979831c23db620eb779bae8b299804698e0be8a5c273f124d7e76245dc",
+    "preserved_bundle_size_bytes": 4997,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "fijitourtransfers-guides": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-03",
+    "cron": [],
+    "bindings": [],
+    "routes": [
+      "fijitourtransfers.com/guides/*",
+      "fijitourtransfers.com/guides"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-03",
+    "preserved_bundle_sha256": "c0bd40eabfecf1f69c1bf5a25be9d15d7ae40d0b4e714be404a42eb5fbdae120",
+    "preserved_bundle_size_bytes": 34349,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "nadi-dispatch-api": {
+    "handlers": [
+      "fetch",
+      "scheduled"
+    ],
+    "compat": "2026-07-19",
+    "cron": [
+      "*/5 * * * *",
+      "*/15 * * * *",
+      "0 14 * * *",
+      "0 12 * * 6"
+    ],
+    "bindings": [
+      "ADMIN_TOKEN(secret)",
+      "BACKUPS(r2)",
+      "DB->nadi-marketplace-db",
+      "DOCS(r2)",
+      "DOC_SIGNING_SECRET(secret)",
+      "GOOGLE_MAPS_API_KEY(secret)",
+      "WHATSAPP_PHONE_ID(secret)",
+      "WHATSAPP_TOKEN(secret)"
+    ],
+    "custom_domains": [
+      "api.nadiairporttransfers.com",
+      "api.fijidash.com"
+    ],
+    "deploy_src": "wrangler",
+    "created": "2026-07-16",
+    "preserved_bundle_sha256": "1ec6276e84a549944ef6816b3a2921ae7dc6196f7393fb454f4c28ac2c85f194",
+    "preserved_bundle_size_bytes": 171733,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "seo-visibility-audit": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-07-05",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-07-05",
+    "preserved_bundle_sha256": "ffedcf3f7606cc41822ab274afe4e31ac0abfa215f32bf9603cf26c5f7358a54",
+    "preserved_bundle_size_bytes": 10525,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-build-dashboard": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-29",
+    "cron": [],
+    "bindings": [],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-29",
+    "preserved_bundle_sha256": "70005d1ff8695020cd09b560a9dab0374b7831bf6a0317da2ecb28d00764839c",
+    "preserved_bundle_size_bytes": 10249,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-config": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "92cce477fe7853efe5fdb5169f067d50348355bcca98e24f189cde2135c883ba",
+    "preserved_bundle_size_bytes": 3940,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-dashboard-api": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "CHAT_USAGE(kv)",
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "880a26af841025e273ee9114ce31576f02b1c491333d4fe2efe5aa51b18bf715",
+    "preserved_bundle_size_bytes": 12372,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-directory": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-07-09",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-07-09",
+    "preserved_bundle_sha256": "764bc589d78d2853ec37e6695b3a9823c4efad41dac6e3b4e0bf9e58aa0fc605",
+    "preserved_bundle_size_bytes": 9230,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-error-sentinel": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-24",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-24",
+    "preserved_bundle_sha256": "34a7d95a66e30cc3d9f747dbba91f98c226b8896e557219833f69f0ba314af13",
+    "preserved_bundle_size_bytes": 9144,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-events": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "88f256aefa6e209a8f51148a30e21fcffa9dc9b5debcb9999e57167a1cd864c5",
+    "preserved_bundle_size_bytes": 3130,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-ingest-bl": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "AI",
+      "VECTORIZE"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "eae199549a5099aa65cc994f7a7da6c70bd555a500068733c2a3ecf3786ecd50",
+    "preserved_bundle_size_bytes": 16644,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-join": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-12",
+    "cron": [],
+    "bindings": [],
+    "deploy_src": "assets-only",
+    "created": "2026-05-12",
+    "preserved_bundle_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "preserved_bundle_size_bytes": 0,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-kb-inspect": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-06-23",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-06-23",
+    "note": "contains a hardcoded one-off knowledge_queue row-id deletion list - a maintenance script left deployed live, not parameterized",
+    "preserved_bundle_sha256": "c6e4d7a1077b47bc2b802a743c50a486ea51a7bb06fe4e1ee111b42f0bcecc7b",
+    "preserved_bundle_size_bytes": 1580,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-leads": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "0b44ca52ba61cfe340a8f6a28983972aff7f32d3a268c860053de7d6287ea1c0",
+    "preserved_bundle_size_bytes": 13046,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-leads-v2": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-24",
+    "cron": [],
+    "bindings": [
+      "DB->vakaviti-kb",
+      "REVIEW_BASE_URL(var)",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-24",
+    "preserved_bundle_sha256": "5b85939aa66b6c71aa201ede8080f9c3004652b87b7cd4e36ad40dde3b2bd355",
+    "preserved_bundle_size_bytes": 20938,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-marketplace-stage1": {
+    "handlers": [
+      "fetch",
+      "scheduled"
+    ],
+    "compat": "2026-08-01",
+    "cron": [
+      "0 */4 * * *"
+    ],
+    "bindings": [
+      "ADMIN_TOKEN(secret)",
+      "AI",
+      "ASSETS",
+      "DB->vakaviti-marketplace-stage1-db",
+      "ENVIRONMENT(var)",
+      "MARKETPLACE_ENQUIRY_WHATSAPP(var)"
+    ],
+    "deploy_src": "wrangler/CI",
+    "created": "2026-08-17",
+    "git": "jamesdeorajan-sys/fiji-platform @ ceo/vakaviti-marketplace-stage1, root apps/vakaviti-marketplace-stage1",
+    "preserved_bundle_sha256": "f7fcf0564462f0fadcd6d980f15425e43848e03e2609c0f367bbf9bea47b7c83",
+    "preserved_bundle_size_bytes": 367234,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-onboard": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-13",
+    "cron": [],
+    "bindings": [
+      "ADMIN_TOKEN(secret)",
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-13",
+    "preserved_bundle_sha256": "545683ba366467144a8df9f2fa56efeb5129e5cce0a9a25b94515739ad6912f4",
+    "preserved_bundle_size_bytes": 10314,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-reviews": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-23",
+    "cron": [],
+    "bindings": [
+      "ADMIN_TOKEN(secret)",
+      "DB->vakaviti-kb",
+      "SENDGRID_API_KEY(secret)",
+      "TEAM_EMAIL(secret)",
+      "WEBHOOK_URL(secret, discovered)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-23",
+    "preserved_bundle_sha256": "13c1e397e1b5aef72e5e39bc4dbe75e40033e8f8ebc7bef65ac53f35aa869ed7",
+    "preserved_bundle_size_bytes": 32624,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-reviews-scheduler": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-24",
+    "cron": [
+      "0 * * * *"
+    ],
+    "bindings": [
+      "DB->vakaviti-kb",
+      "SCHEDULER_SECRET(secret)",
+      "SENDGRID_API_KEY(secret)",
+      "TEAM_EMAIL(secret)",
+      "WEBHOOK_URL(secret, discovered)"
+    ],
+    "deploy_src": "quick_editor",
+    "created": "2026-05-24",
+    "preserved_bundle_sha256": "1bcb87606ae852d83de4fd4ea475c506ab4380e4308381c956760f637b0e0b58",
+    "preserved_bundle_size_bytes": 27468,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-whatsapp": {
+    "handlers": [
+      "fetch"
+    ],
+    "compat": "2026-05-16",
+    "cron": [],
+    "bindings": [
+      "CHAT_WORKER(service binding)",
+      "DB->vakaviti-kb",
+      "WHATSAPP_ACCESS_TOKEN(secret)",
+      "WHATSAPP_APP_SECRET(secret)",
+      "WHATSAPP_BUSINESS_ACCOUNT_ID(var)",
+      "WHATSAPP_PHONE_NUMBER_ID(var)",
+      "WHATSAPP_VERIFY_TOKEN(var)"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-05-16",
+    "preserved_bundle_sha256": "24c507dc836c075b0e3361cd28651a1dbd231e1988ab75c073b94dd89570d47b",
+    "preserved_bundle_size_bytes": 7646,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  },
+  "vakaviti-zone-manager": {
+    "handlers": [
+      "fetch",
+      "scheduled"
+    ],
+    "compat": "2026-06-17",
+    "cron": [
+      "0 2 * * 1",
+      "0 3 * * mon"
+    ],
+    "bindings": [
+      "CF_API_TOKEN(secret)",
+      "DB->vakaviti-kb",
+      "MANAGER_KEY(secret)",
+      "SENDGRID_API_KEY(secret)"
+    ],
+    "deploy_src": "dash",
+    "created": "2026-06-17",
+    "note": "holds an independent Cloudflare API token as a secret - can act on this account's own zones/DNS",
+    "preserved_bundle_sha256": "a4d6eb19872710317f27af32f430c23a19575f3bd3046fe424f4d5ac0d0b0a62",
+    "preserved_bundle_size_bytes": 31563,
+    "preserved_at_utc": "2026-08-23T07:15:00Z",
+    "source_committed_to_git": false
+  }
+}

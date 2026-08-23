@@ -1,0 +1,137 @@
+{
+  "vakaviti-marketplace-stage1-db": {
+    "id": "f2753057-4319-404d-bcda-84cccd288fe1",
+    "bound_workers": [
+      "vakaviti-marketplace-stage1"
+    ],
+    "tables": 37,
+    "notable_counts": {
+      "operators": 2,
+      "products": 10,
+      "deal_offer_candidates": 7,
+      "enquiries": 9,
+      "candidate_operators": 0
+    },
+    "full_export_sha256": "e6e85ba51bdf5a018ae13c1ceb05c0f3698e478619f1b609289e25443130dadf",
+    "full_export_size_bytes": 185277,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "vakaviti-kb": {
+    "id": "e697a253-e5fc-4201-939c-9aaeca6c5278",
+    "bound_workers": [
+      "fiji-chat-widget",
+      "seo-visibility-audit",
+      "vakaviti-config",
+      "vakaviti-dashboard-api",
+      "vakaviti-directory",
+      "vakaviti-error-sentinel",
+      "vakaviti-events",
+      "vakaviti-kb-inspect",
+      "vakaviti-leads",
+      "vakaviti-leads-v2",
+      "vakaviti-onboard",
+      "vakaviti-reviews",
+      "vakaviti-reviews-scheduler",
+      "vakaviti-whatsapp",
+      "vakaviti-zone-manager"
+    ],
+    "tables": 24,
+    "notable_counts": {
+      "leads": 139,
+      "partners": 39,
+      "deals": 10,
+      "reviews": 4,
+      "knowledge_items": 596,
+      "kb_chunks": 95,
+      "conversation_events": 14724,
+      "sentinel_errors": 1488
+    },
+    "full_export_sha256": "5c47c961960e51d6ee4aeb7307b587424b807d1ea84efc012154a7331a2e0389",
+    "full_export_size_bytes": 13932630,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "nadi-marketplace-db": {
+    "id": "0ec1cd84-fcda-4f7f-8337-0fb70fe1a512",
+    "bound_workers": [
+      "nadi-dispatch-api"
+    ],
+    "tables": 24,
+    "notable_counts": {
+      "bookings": 15,
+      "drivers": 1,
+      "vehicles": 1,
+      "wallets": 1,
+      "wallet_transactions": 1,
+      "zones": 19,
+      "negotiation_requests": 0
+    },
+    "full_export_sha256": "062fcb3945b07fd38bd246db9125d1f659ab7ba165ecbec9dbf52ad38363c462",
+    "full_export_size_bytes": 151683,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "come_to_fiji_db": {
+    "id": "3f06d9b6-c4cc-490c-89d7-18cd35c52425",
+    "bound_workers": [
+      "come-to-fiji-link-checker"
+    ],
+    "tables": 17,
+    "notable_counts": {
+      "tours": 65,
+      "leads": 3,
+      "guides": 4,
+      "consultation_bookings": 0,
+      "places": 19
+    },
+    "full_export_sha256": "f9f87c4900d1140c4df9d5322c7c2755532fa95780539c169db90b3612f8659c",
+    "full_export_size_bytes": 346343,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "fijitransferbooking-db": {
+    "id": "6978b15f-8f05-4ba9-94d3-a62ae719d3bb",
+    "bound_workers": [],
+    "tables": 5,
+    "notable_counts": {
+      "leads": 3,
+      "partners": 0
+    },
+    "note": "no Worker binding found - possibly orphaned or bound only from a Pages Function",
+    "full_export_sha256": "54b1c65f662db3ac1cb032dc1ab2538124966fcd430a1ac68dc429482c20e65e",
+    "full_export_size_bytes": 3612,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "fijiboundless": {
+    "id": "2071ab8c-f315-452e-92b3-547f1f1018e8",
+    "bound_workers": [],
+    "tables": 11,
+    "notable_counts": {
+      "villages": 0,
+      "facilities": 114
+    },
+    "note": "no Worker binding found - possibly orphaned or bound only from a Pages Function",
+    "full_export_sha256": "2a146dc7ff265f93e88e65a19fec8ed1ac7d51f5214e332700a7c838157c25fa",
+    "full_export_size_bytes": 203636,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  },
+  "discoverfiji-content": {
+    "id": "2414dae8-f76f-4e18-877e-031a9d42fca4",
+    "bound_workers": [],
+    "tables": 6,
+    "notable_counts": {
+      "tours": 14,
+      "destinations": 5,
+      "blog_articles": 0,
+      "resorts": 0
+    },
+    "note": "no Worker binding found - possibly orphaned or bound only from a Pages Function",
+    "full_export_sha256": "ccbe09ec7b531bac08fc4b2b118862c0fbf66f04d46ec0cbdaa7841484ff470e",
+    "full_export_size_bytes": 17733,
+    "full_export_delivered_to": "James privately (SendUserFile), NOT committed to git",
+    "exported_at_utc": "2026-08-23T07:12:00Z"
+  }
+}
