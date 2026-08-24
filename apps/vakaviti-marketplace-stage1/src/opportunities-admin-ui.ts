@@ -18,23 +18,11 @@ const getCookie = (c: any, name: string): string | undefined => {
   return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : undefined;
 };
 
-// TEMPORARY, PR #21 hardening QA ONLY (2026-08-24) - accepts a second, separate credential
-// (QA_PREVIEW_TOKEN) alongside the real ADMIN_TOKEN, scoped ONLY to this file's routes
-// (/admin/opportunities/*), never to /admin/deals or /admin/supply/sprint. This exists so the
-// authenticated console walkthrough required by the CEO's hardening directive could be run
-// without ever requesting or seeing the real ADMIN_TOKEN value. QA_PREVIEW_TOKEN is a
-// freshly-generated random secret set only on this Worker resource for the duration of the QA
-// pass and deleted immediately afterward - see the PR #21 hardening report for the exact
-// generation/deletion timestamps. TO REMOVE: delete this whole comment block and the
-// `|| (env.QA_PREVIEW_TOKEN && session === env.QA_PREVIEW_TOKEN)` clause below before/at merge
-// time once QA is complete - do not carry this into a production-authorized version.
 const requireAdminSession = async (c: any, next: any) => {
   const expected = c.env.ADMIN_TOKEN;
-  const qaToken = c.env.QA_PREVIEW_TOKEN;
   if (!expected) return c.html(shell('<p>Admin not configured.</p>', { title: 'Admin unavailable' }), 503);
   const session = getCookie(c, COOKIE_NAME);
-  const authorized = session === expected || (!!qaToken && session === qaToken);
-  if (!authorized) {
+  if (session !== expected) {
     return c.redirect(`/admin/deals/login?return_to=${encodeURIComponent(c.req.path)}`);
   }
   await next();

@@ -14,7 +14,7 @@ import {
 } from './opportunity-gate';
 import { evaluateDealAutoPublishGates, detectPromptInjection, type DealAutoPublishCandidate } from './deal-quality';
 
-export type Bindings = { DB: D1Database; OPPORTUNITY_DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; QA_PREVIEW_TOKEN?: string };
+export type Bindings = { DB: D1Database; OPPORTUNITY_DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 
 export type LifecycleStatus =
   | 'DETECTED' | 'OUTREACH_READY' | 'CONTACTED' | 'PROVIDER_REPLIED' | 'NEEDS_CLARIFICATION'
