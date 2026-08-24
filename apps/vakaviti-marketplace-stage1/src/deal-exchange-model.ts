@@ -366,3 +366,38 @@ export function diffMaterialFacts(before: Record<string, string | null>, after: 
   }
   return diffs;
 }
+
+// --- Month-specific eligibility (added during Milestone 2 real-supply research, 2026-08-24) -----
+// A real failure mode found against live pages: the generic `supported_validity` gate is
+// satisfied by EITHER a booking deadline OR a travel window being present - by design, since not
+// every offer type needs both. But a booking deadline alone (e.g. "book by 31 Aug 2026") says
+// nothing about which months of TRAVEL that booking actually covers. A real example found during
+// research: a seller package had a booking deadline of 31 Aug 2026 while travel itself did not
+// begin until 26 Oct 2026 - passing the generic validity gate while being genuinely ineligible for
+// a visitor asking about September travel. "Do not claim September eligibility merely because a
+// page says 2026" (CEO directive) - this function is the deterministic check for that specific
+// claim, independent of and stricter than the generic publication gate.
+export interface MonthEligibilityResult {
+  eligible: boolean;
+  reason: string;
+}
+
+export function checkMonthEligibility(
+  travelWindowStart: string | null, travelWindowEnd: string | null,
+  requestedYear: number, requestedMonth: number // 1-12
+): MonthEligibilityResult {
+  if (!travelWindowStart || !travelWindowEnd || isNaN(Date.parse(travelWindowStart)) || isNaN(Date.parse(travelWindowEnd))) {
+    return { eligible: false, reason: 'No exact travel window evidence - a booking deadline alone does not establish which travel months are covered.' };
+  }
+  const monthStart = Date.UTC(requestedYear, requestedMonth - 1, 1);
+  const monthEnd = Date.UTC(requestedYear, requestedMonth, 0, 23, 59, 59);
+  const start = Date.parse(travelWindowStart);
+  const end = Date.parse(travelWindowEnd);
+  const overlaps = start <= monthEnd && end >= monthStart;
+  return {
+    eligible: overlaps,
+    reason: overlaps
+      ? `Travel window ${travelWindowStart}..${travelWindowEnd} overlaps the requested month.`
+      : `Travel window ${travelWindowStart}..${travelWindowEnd} does not overlap the requested month - not eligible for this specific date claim even though the offer may otherwise be publication-eligible.`,
+  };
+}

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveEvidenceBundle, evaluateOfferPublicationGates, evaluateFlightQuoteDisplay,
   generatePublicLabel, authoritativeSourceClassFor, isExcludedIdentity,
-  computeOfferFingerprint, computeOfferIdentityKey, diffMaterialFacts,
+  computeOfferFingerprint, computeOfferIdentityKey, diffMaterialFacts, checkMonthEligibility,
   type EvidenceItem, type OfferEntities, type OfferPublicationCandidate, type OfferOwnerType,
 } from '../deal-exchange-model';
 
@@ -359,6 +359,34 @@ describe('prompt injection short-circuits the gate, same discipline as deal-qual
     expect(r.decision).toBe('NOT_ELIGIBLE');
     expect(r.failedGates).toEqual(['no_prompt_injection']);
     expect(r.passedGates).toEqual([]);
+  });
+});
+
+describe('Milestone 2 regression: month-specific eligibility is stricter than the generic validity gate (real failure mode found against live seller pages)', () => {
+  it('a real-world case: booking deadline 31 Aug 2026 but travel does not start until 26 Oct 2026 - NOT eligible for a September claim', () => {
+    const r = checkMonthEligibility('2026-10-26', '2027-07-27', 2026, 9);
+    expect(r.eligible).toBe(false);
+    expect(r.reason).toMatch(/does not overlap/);
+  });
+
+  it('a travel window that genuinely spans September is eligible - not just because the page mentions 2026', () => {
+    const r = checkMonthEligibility('2026-08-01', '2026-12-31', 2026, 9);
+    expect(r.eligible).toBe(true);
+  });
+
+  it('no exact travel window at all (booking deadline only, or nothing) is never eligible for a specific month claim', () => {
+    expect(checkMonthEligibility(null, null, 2026, 9).eligible).toBe(false);
+    expect(checkMonthEligibility(null, null, 2026, 9).reason).toMatch(/booking deadline alone/);
+  });
+
+  it('a window ending exactly at the start of September still counts (boundary inclusive)', () => {
+    const r = checkMonthEligibility('2026-06-01', '2026-09-01', 2026, 9);
+    expect(r.eligible).toBe(true);
+  });
+
+  it('a window ending in August, one day before September, is correctly excluded', () => {
+    const r = checkMonthEligibility('2026-06-01', '2026-08-31', 2026, 9);
+    expect(r.eligible).toBe(false);
   });
 });
 
