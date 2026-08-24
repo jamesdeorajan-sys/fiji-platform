@@ -131,7 +131,15 @@ test.describe('Milestone 4D: AI/search readiness is prepared but not enabled', (
     expect(parsed['@type']).toBe('Product');
     expect(parsed.offers.price).toBe('1500');
     expect(parsed.offers.priceCurrency).toBe('USD');
-    expect(parsed.offers.availability).toBe('https://schema.org/InStock');
+    // "InStock" would be an unsupported availability claim - this app has no confirmed inventory
+    // data, and the same card visibly says "availability not guaranteed until confirmed" right
+    // next to this structured data. availability must be omitted entirely, not asserted.
+    expect(parsed.offers.availability).toBeUndefined();
+    // The seller-of-record is the real provider (Taveuni Palms), never Vakaviti implied by
+    // omission.
+    expect(parsed.offers.seller.name).toBe('Taveuni Palms Resort');
+    // Price basis is machine-readable, not just folded into free text.
+    expect(parsed.offers.priceSpecification.unitText).toBe('per night');
     // No rating/review claim exists anywhere in the payload unless real evidence supports one -
     // this offer has none, so the structured data must not invent one either.
     expect(parsed.aggregateRating).toBeUndefined();

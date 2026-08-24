@@ -191,10 +191,25 @@ dealExchangeUi.get('/live-deals', async c => {
 // regardless - this is preparation for a future branded launch, not activation. The canonical URL
 // points at THIS isolated preview origin, never vakaviti.ai - attaching a real domain is an
 // explicit, separate, not-yet-authorized step.
+// Search safety (Milestone 4 CEO review): three real gaps found and fixed here.
+// 1. "InStock" was an unsupported availability claim - this app has no confirmed inventory/
+//    booking-availability data, and the SAME card already shows "availability not guaranteed
+//    until confirmed" in visible text right next to this structured data, which "InStock" flatly
+//    contradicted. Omitted entirely rather than asserted without evidence - schema.org does not
+//    require an availability value.
+// 2. A PROVIDER_DIRECT offer never set `seller` at all, which risks a consumer defaulting to the
+//    PAGE PUBLISHER (Vakaviti) as the implied seller - explicitly set to the real provider/seller
+//    (never Vakaviti) for every offer type that reaches this function.
+// 3. Price basis (per-night vs per-person vs total etc.) is now represented in machine-readable
+//    form via priceSpecification, not just folded into the free-text description.
 function buildDealSeoHead(c: any, o: PublicDealSummary): string {
   const origin = new URL(c.req.url).origin;
   const canonical = `${origin}/live-deals/${o.id}`;
   const description = `${o.title}${o.providerName ? ' at ' + o.providerName : ''}${o.region ? ', ' + o.region : ''} - ${o.priceAmount ? (o.isFromPrice ? 'from ' : '') + o.currency + ' ' + o.priceAmount : 'price on enquiry'}${o.priceBasis ? ' (' + o.priceBasis.replace(/_/g, ' ').toLowerCase() + ')' : ''}. Last checked ${o.checkedAt ? new Date(o.checkedAt).toISOString().slice(0, 10) : 'recently'}.`;
+  // The real seller-of-record for schema.org purposes: the provider for PROVIDER_DIRECT, the
+  // named seller for SELLER_PACKAGE - never Vakaviti, and never left implicit/undefined (which
+  // some consumers read as "the site itself").
+  const sellerOfRecord = o.sellerName || o.providerName || null;
   const jsonLd = o.priceAmount && o.currency ? {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -204,9 +219,14 @@ function buildDealSeoHead(c: any, o: PublicDealSummary): string {
       '@type': 'Offer',
       price: o.priceAmount,
       priceCurrency: o.currency,
-      availability: 'https://schema.org/InStock',
       url: canonical,
-      seller: o.sellerName ? { '@type': 'Organization', name: o.sellerName } : undefined,
+      seller: sellerOfRecord ? { '@type': 'Organization', name: sellerOfRecord } : undefined,
+      priceSpecification: o.priceBasis ? {
+        '@type': 'UnitPriceSpecification',
+        price: o.priceAmount,
+        priceCurrency: o.currency,
+        unitText: o.priceBasis.replace(/_/g, ' ').toLowerCase(),
+      } : undefined,
     },
   } : null;
   return [
