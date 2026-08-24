@@ -14,8 +14,10 @@
 // evaluateDealAutoPublishGates() (deal-quality.ts) before anything can become a public deal.
 // Nothing in this file can satisfy or bypass that check.
 
-import { detectPromptInjection, canonicalizeUrl } from './deal-quality';
-import { isBlockedHost } from './deal-agent';
+import { detectPromptInjection, canonicalizeUrl, isBlockedHost } from './deal-quality';
+// Note: deliberately NOT importing anything from './deal-agent' here - deal-agent.ts imports
+// from './opportunities', which imports from this file, so an import the other way would create
+// a circular dependency (found and fixed during PR #21 hardening test-suite setup).
 
 // CEO-directed exclusions (ceo-war-room/04-BRAND-ENTITY-MAP.md, 2026-08-24 CEO Final First-Party
 // Answers) - control/ownership does not override the exclusion. Kept as an explicit, small,

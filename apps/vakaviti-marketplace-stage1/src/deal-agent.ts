@@ -19,7 +19,7 @@
 // isolation from the discovery loop that calls it.
 import {
   canonicalizeUrl, classifyPage, computeDealIdentity, diffMaterialFacts,
-  evaluateQualityGates, type ExtractedFields,
+  evaluateQualityGates, isBlockedHost, type ExtractedFields,
 } from './deal-quality';
 // Deal Opportunity Pipeline (2026-08-24) - optional: only imported for its type/function shape,
 // never called unless env.OPPORTUNITY_DB is actually bound (see the integration point below).
@@ -51,24 +51,8 @@ const writeReviewStatus = (target: string): string => {
 // is not achievable in this runtime - there is no raw DNS/socket API exposed to Workers - and
 // this limitation is reported honestly rather than silently claimed as covered.
 
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]',
-  '169.254.169.254', // cloud metadata endpoint (AWS/GCP/Azure IMDS)
-  'metadata.google.internal',
-]);
-const PRIVATE_IPV4_PATTERNS = [
-  /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./
-];
-// Exported (Deal Opportunity Pipeline, 2026-08-24) so opportunity-gate.ts's private capture gate
-// can reuse the exact same private-network/blocked-host blocklist rather than maintaining a
-// second, potentially-drifting copy of security-critical logic.
-export const isBlockedHost = (hostname: string): boolean => {
-  const h = hostname.toLowerCase();
-  if (BLOCKED_HOSTNAMES.has(h)) return true;
-  if (PRIVATE_IPV4_PATTERNS.some(p => p.test(h))) return true;
-  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true; // ULA/link-local IPv6
-  return false;
-};
+// isBlockedHost now lives in deal-quality.ts (moved 2026-08-24, PR #21 hardening, to break a
+// circular import - see that file for the implementation and full rationale).
 
 export type FetchClassification =
   | 'PROVIDER_RESPONSE' | 'DNS_FAILURE' | 'TLS_FAILURE' | 'TIMEOUT' | 'CLOUDFLARE_EGRESS_FAILURE'

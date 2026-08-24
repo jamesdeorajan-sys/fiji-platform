@@ -414,3 +414,26 @@ export function evaluateDealAutoPublishGates(c: DealAutoPublishCandidate): DealA
 
   return { decision: failed.length === 0 ? 'ELIGIBLE' : 'NOT_ELIGIBLE', passedGates: passed, failedGates: failed };
 }
+
+// --- Blocked-host / SSRF-target check ------------------------------------------------------------
+// Moved here (2026-08-24, PR #21 hardening) from deal-agent.ts, which previously exported it -
+// that created a real circular import once opportunity-gate.ts also needed it and
+// opportunities.ts (which opportunity-gate.ts is imported BY) is itself imported by deal-agent.ts
+// for the discovery-integration hook. deal-quality.ts has no dependency on either file, so this is
+// the correct base layer for a check both deal-agent.ts's safeFetchSource() and
+// opportunity-gate.ts's capture gate need to share without re-implementing it twice.
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]',
+  '169.254.169.254', // cloud metadata endpoint (AWS/GCP/Azure IMDS)
+  'metadata.google.internal',
+]);
+const PRIVATE_IPV4_PATTERNS = [
+  /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./
+];
+export const isBlockedHost = (hostname: string): boolean => {
+  const h = hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(h)) return true;
+  if (PRIVATE_IPV4_PATTERNS.some(p => p.test(h))) return true;
+  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true; // ULA/link-local IPv6
+  return false;
+};

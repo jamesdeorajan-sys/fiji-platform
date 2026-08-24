@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { generateOutreachDraft, ingestProviderReply, confirmProviderReplyExtraction, convertOpportunityToDealCandidate, setLifecycleStatus, type Bindings, type LifecycleStatus } from './opportunities';
+import { generateOutreachDraft, ingestProviderReply, confirmProviderReplyExtraction, convertOpportunityToDealCandidate, setLifecycleStatus, deriveOpportunityPublishedState, type Bindings, type LifecycleStatus } from './opportunities';
 
 // VAKAVITI DEAL OPPORTUNITY PIPELINE - private mobile admin console (2026-08-24), Phase 4.
 // Same cookie-session/CSRF/Origin discipline as src/supply-sprint-ui.ts, src/deals-admin-ui.ts,
@@ -173,6 +173,10 @@ opportunitiesUi.get('/:id', async c => {
   const scoreComponents: any[] = JSON.parse(o.score_components_json || '[]');
   const csrf = await csrfField(c.env);
   const draft = generateOutreachDraft(o);
+  // PUBLISHED is never stored on the opportunity itself - derived live, on every read, from the
+  // real Class B eligibility of the linked deal candidate, so a withdrawn deal shows as withdrawn
+  // immediately without rewriting this opportunity's lifecycle history.
+  const publishedState = await deriveOpportunityPublishedState(c.env, o);
 
   const factRow = (label: string, value: any) => `<div class="card" style="margin-bottom:8px"><p class="muted" style="margin:0 0 2px;font-size:12px;text-transform:uppercase">${esc(label)}</p><p style="margin:0" class="${value ? 'fact-yes' : 'fact-no'}">${value ? esc(value) : 'Not captured'}</p></div>`;
 
@@ -210,7 +214,7 @@ opportunitiesUi.get('/:id', async c => {
     ${missingFields.length ? `<div class="card"><p class="muted" style="margin:0 0 4px">Missing fields</p><p style="margin:0">${missingFields.map(f => `<span class="badge warn" style="margin:2px">${esc(f)}</span>`).join('')}</p></div>` : ''}
     ${riskFlags.length ? `<div class="card"><p class="muted" style="margin:0 0 4px">Risk / contradiction flags</p><p style="margin:0">${riskFlags.map(f => `<span class="badge danger" style="margin:2px">${esc(f)}</span>`).join('')}</p></div>` : ''}
     ${duplicates.results && duplicates.results.length ? `<div class="card"><p class="muted" style="margin:0 0 4px">Duplicate cluster</p>${duplicates.results.map((d: any) => `<p style="margin:2px 0"><a href="/admin/opportunities/${esc(d.id)}">${esc(d.provider_name)} (${esc(STATUS_LABEL[d.lifecycle_status])})</a></p>`).join('')}</div>` : ''}
-    ${o.linked_deal_candidate_id ? `<div class="card"><p class="muted" style="margin:0">Linked public deal candidate: <code>${esc(o.linked_deal_candidate_id)}</code> (status: ${esc(o.lifecycle_status)})</p></div>` : ''}
+    ${o.linked_deal_candidate_id ? `<div class="card"><p class="muted" style="margin:0">Linked public deal candidate: <code>${esc(o.linked_deal_candidate_id)}</code></p><p style="margin:4px 0 0"><span class="badge ${publishedState.isPublished ? 'good' : 'warn'}">${publishedState.isPublished ? 'Currently public' : 'Not currently public'}</span> <span class="muted" style="font-size:12px">${esc(publishedState.reason)}</span></p></div>` : ''}
 
     <h2 style="font-size:15px">Score components</h2>
     <div class="card">${scoreComponents.map(sc => `<p style="margin:4px 0;font-size:13px"><b>${sc.delta > 0 ? '+' : ''}${sc.delta}</b> ${esc(sc.name)} - <span class="muted">${esc(sc.reason)}</span></p>`).join('') || '<p class="muted" style="margin:0">No components recorded.</p>'}</div>
@@ -227,7 +231,19 @@ opportunitiesUi.get('/:id', async c => {
         <div class="row"><button class="btn small" type="submit">Record reply (private, not sent anywhere)</button></div>
       </form>
     </div>
-    ${(replies.results || []).map((r: any) => `<div class="card"><p class="muted" style="margin:0 0 4px">Reply ${esc(r.created_at)} ${r.human_confirmed ? '<span class="badge good">confirmed</span>' : '<span class="badge warn">pending confirmation</span>'}</p><p style="margin:0;white-space:pre-wrap">${esc(r.raw_reply_text)}</p></div>`).join('')}
+    ${(replies.results || []).map((r: any) => `<div class="card"><p class="muted" style="margin:0 0 4px">Reply ${esc(r.created_at)} ${r.human_confirmed ? '<span class="badge good">confirmed</span>' : '<span class="badge warn">pending confirmation</span>'}</p><p style="margin:0 0 8px;white-space:pre-wrap">${esc(r.raw_reply_text)}</p>${JSON.parse(r.contradiction_flags_json || '[]').length ? `<p style="margin:0 0 8px" class="badge danger">${esc(JSON.parse(r.contradiction_flags_json || '[]').join('; '))}</p>` : ''}${r.human_confirmed ? '' : `
+      <form method="POST" action="/admin/opportunities/${esc(o.id)}/replies/${esc(r.id)}/confirm">
+        ${csrf.html}
+        <p class="muted" style="margin:0 0 6px;font-size:12px">A human reads the reply above and enters exactly what the provider confirmed - nothing here is auto-filled from AI, and nothing is applied until submitted.</p>
+        <label class="muted" style="font-size:12px">Price amount</label><input type="text" name="price_amount" inputmode="decimal">
+        <label class="muted" style="font-size:12px">Currency</label><input type="text" name="currency">
+        <label class="muted" style="font-size:12px">Price basis</label><input type="text" name="price_basis">
+        <label class="muted" style="font-size:12px">Booking deadline</label><input type="date" name="booking_deadline">
+        <label class="muted" style="font-size:12px">Travel start</label><input type="date" name="travel_start">
+        <label class="muted" style="font-size:12px">Travel end</label><input type="date" name="travel_end">
+        <label class="muted" style="font-size:12px">Minimum stay</label><input type="text" name="minimum_stay">
+        <div class="row"><button class="btn small" type="submit">Confirm extracted facts (human-entered only)</button></div>
+      </form>`}</div>`).join('')}
 
     <h2 style="font-size:15px">Lifecycle controls</h2>
     <div class="card">
@@ -276,6 +292,26 @@ opportunitiesUi.post('/:id/reply', async c => {
     return c.html(shell('<div class="card"><p>This form has expired. Please go back and try again.</p></div>'), 403);
   }
   await ingestProviderReply(c.env, c.req.param('id'), String(body.raw_reply_text || ''), 'admin session', {});
+  return c.redirect(`/admin/opportunities/${c.req.param('id')}`);
+});
+
+// Human-only, two-step confirmation of provider-supplied facts (Phase 6). The reply above is
+// stored verbatim as evidence the moment it's recorded; nothing from it is ever applied to the
+// opportunity's own facts until a human explicitly reads it and submits this form - there is no
+// AI-proposed-field path anywhere in this app, so there is nothing for this step to rubber-stamp.
+const CONFIRMABLE_REPLY_FIELDS = ['price_amount', 'currency', 'price_basis', 'booking_deadline', 'travel_start', 'travel_end', 'minimum_stay'];
+opportunitiesUi.post('/:id/replies/:replyId/confirm', async c => {
+  if (!originAllowed(c)) return c.html(shell('<div class="card"><p>Request blocked: origin check failed.</p></div>'), 403);
+  const body = await c.req.parseBody();
+  if (!(await csrfValid(c.env, String(body.csrf_nonce || ''), String(body.csrf_sig || '')))) {
+    return c.html(shell('<div class="card"><p>This form has expired. Please go back and try again.</p></div>'), 403);
+  }
+  const confirmedFields: Record<string, any> = {};
+  for (const f of CONFIRMABLE_REPLY_FIELDS) {
+    const v = body[f];
+    if (typeof v === 'string' && v.trim().length > 0) confirmedFields[f] = v.trim();
+  }
+  await confirmProviderReplyExtraction(c.env, c.req.param('replyId'), confirmedFields, 'admin session');
   return c.redirect(`/admin/opportunities/${c.req.param('id')}`);
 });
 

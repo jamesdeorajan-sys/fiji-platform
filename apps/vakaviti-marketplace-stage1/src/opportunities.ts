@@ -341,11 +341,49 @@ export async function convertOpportunityToDealCandidate(
   return { ok: true, reason: null, dealCandidateId, publishGateCheck };
 }
 
+// PUBLISHED is a derived state, never a settable one - see deriveOpportunityPublishedState()
+// below. No caller (console, AI, discovery integration) may write it directly, so an opportunity
+// can never carry public eligibility that the real Class B gate didn't independently grant.
+const MANUALLY_SETTABLE_STATUSES = new Set<LifecycleStatus>([
+  'DETECTED', 'OUTREACH_READY', 'CONTACTED', 'PROVIDER_REPLIED', 'NEEDS_CLARIFICATION',
+  'PROVIDER_CONFIRMED', 'PUBLICATION_REVIEW', 'REJECTED', 'EXPIRED', 'WITHDRAWN', 'DUPLICATE',
+]);
+
 export async function setLifecycleStatus(
   env: Bindings, opportunityId: string, newStatus: LifecycleStatus, actorType: 'AI' | 'HUMAN' | 'SYSTEM', actorIdentity: string | null, reason: string
 ): Promise<void> {
+  if (!MANUALLY_SETTABLE_STATUSES.has(newStatus)) {
+    throw new Error(`lifecycle_status_not_manually_settable:${newStatus}`);
+  }
   const o = await env.OPPORTUNITY_DB.prepare(`SELECT lifecycle_status FROM opportunities WHERE id=?`).bind(opportunityId).first<any>();
   if (!o) throw new Error('opportunity_not_found');
   await env.OPPORTUNITY_DB.prepare(`UPDATE opportunities SET lifecycle_status=?, updated_at=? WHERE id=?`).bind(newStatus, new Date().toISOString(), opportunityId).run();
   await recordEvent(env.OPPORTUNITY_DB, opportunityId, o.lifecycle_status, newStatus, actorType, actorIdentity, reason);
+}
+
+// --- PUBLISHED-state derivation (read-only, never persisted to lifecycle_status) -----------------
+// The console displays this instead of trusting any stored status. It never writes anything, so a
+// deal that later loses eligibility (review_status moves off PUBLISHED) is reflected immediately
+// on next read without ever rewriting the opportunity's own history of lifecycle_events.
+export interface PublishedStateResult {
+  isPublished: boolean;
+  linkedDealCandidateId: string | null;
+  reason: string;
+}
+
+export async function deriveOpportunityPublishedState(env: Bindings, opportunity: { linked_deal_candidate_id: string | null }): Promise<PublishedStateResult> {
+  if (!opportunity.linked_deal_candidate_id) {
+    return { isPublished: false, linkedDealCandidateId: null, reason: 'No linked deal candidate exists yet.' };
+  }
+  // Read-only lookup against the existing, unmodified Lane B table - review_status='PUBLISHED' is
+  // set exclusively by the pre-existing autoPublishDealIfEligible()/human-review path, never by
+  // this feature, so this check can never itself grant eligibility.
+  const candidate = await env.DB.prepare(`SELECT review_status FROM deal_offer_candidates WHERE id=?`).bind(opportunity.linked_deal_candidate_id).first<any>();
+  if (!candidate) {
+    return { isPublished: false, linkedDealCandidateId: opportunity.linked_deal_candidate_id, reason: 'Linked deal candidate row not found.' };
+  }
+  if (candidate.review_status === 'PUBLISHED') {
+    return { isPublished: true, linkedDealCandidateId: opportunity.linked_deal_candidate_id, reason: 'Linked deal candidate is currently PUBLISHED and publicly eligible.' };
+  }
+  return { isPublished: false, linkedDealCandidateId: opportunity.linked_deal_candidate_id, reason: `Linked deal candidate is not currently public (review_status=${candidate.review_status}).` };
 }
