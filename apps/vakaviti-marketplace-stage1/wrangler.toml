@@ -63,7 +63,7 @@ DEAL_EXCHANGE_PUBLIC_ENABLED = "true"
 # unique version id/tag at runtime with zero injected secrets and no chicken-and-egg problem
 # (unlike trying to embed this commit's own SHA inside a file committed as part of this same
 # commit). See /internal/build-info in src/deal-exchange-ui.ts and e2e/global-setup.ts.
-[[version_metadata]]
+[version_metadata]
 binding = "CF_VERSION_METADATA"
 
 # Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
@@ -124,7 +124,7 @@ binding = "DEAL_EXCHANGE_QA_DB"
 database_name = "vakaviti-live-deal-exchange-qa-db"
 database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"
 
-[[env.qa.version_metadata]]
+[env.qa.version_metadata]
 binding = "CF_VERSION_METADATA"
 
 [env.qa.assets]
