@@ -9,6 +9,29 @@ binding = "DB"
 database_name = "vakaviti-marketplace-stage1-db"
 database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 
+# =================================================================================================
+# LIVE DEAL EXCHANGE - PRE-MERGE CHECKLIST (read before merging this branch into
+# ceo/vakaviti-marketplace-stage1)
+# =================================================================================================
+# Same finding as PR #21 (2026-08-24): Cloudflare Workers Builds for this project reads only the
+# TOP-LEVEL wrangler.toml config for every branch, so this binding is top-level and WILL merge into
+# production exactly as written unless the steps below are followed first.
+#
+# DO NOT merge this wrangler.toml into ceo/vakaviti-marketplace-stage1 as-is. Before merging:
+#   1. Create a real production database: `vakaviti-live-deal-exchange-db` (a NEW resource - never
+#      reuse the preview database id 3f9a36c7-829c-4f9d-8af0-bb5332860f4b in production).
+#   2. Apply migrations/deal-exchange/0001-0003 to that NEW production database only.
+#   3. Change database_id below to the NEW production database's id.
+#   4. Re-run the full test/QA suite against the real production binding shape.
+#   5. Rollback if needed: remove this [[d1_databases]] block and redeploy - the deal-exchange
+#      router is only mounted when DEAL_EXCHANGE_DB is bound (see src/index.ts), so removing the
+#      binding is sufficient to fully disable the feature.
+# Until all 5 steps are complete and separately CEO-authorized, this branch must not be merged.
+[[d1_databases]]
+binding = "DEAL_EXCHANGE_DB"
+database_name = "vakaviti-live-deal-exchange-preview-db"
+database_id = "3f9a36c7-829c-4f9d-8af0-bb5332860f4b"
+
 [ai]
 binding = "AI"
 
