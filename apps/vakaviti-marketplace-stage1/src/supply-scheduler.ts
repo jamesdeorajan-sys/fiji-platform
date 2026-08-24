@@ -65,6 +65,45 @@ const PHASE2_SOURCE_DOMAINS = [
 ];
 const PHASE2_IDEMPOTENCY_KEY = 'supply-phase2-p2-2026-08-24';
 
+// VAKAVITI SUPPLY EXPANSION WAVE 3 (2026-08-24): a third, independent source batch researched
+// against provider-controlled official HTTPS domains only (never an OTA/aggregator/directory/
+// social profile), each individually confirmed reachable at its domain root before being added
+// here (this pipeline's discoverProviderFromSource always fetches https://{domain}/ - the root
+// path only, per discovery-bridge.ts's canonicalizeDomain - so a source must be meaningful at its
+// own root; a few otherwise-strong candidates were deliberately excluded this pass because their
+// only confirmed official presence was a subpage of a larger multi-property group root domain
+// (e.g. Tanoa Waterfront Hotel at tanoahotels.com/fiji-waterfront-hotel/, Fiji Marriott Momi Bay
+// at marriott.com/.../nanmc-.../) - adding the bare group domain would extract generic
+// multi-country/multi-property content instead of this specific Fiji property's own identity,
+// the same risk already avoided for Warwick Fiji in the Wave 2 report. Two more candidates
+// (wellesleyresort.com.fj, taveunidiveresort.com) were found and then excluded after a direct
+// reachability check failed for real, verifiable reasons - connection refused on 443, and an
+// untrusted TLS certificate chain, respectively - not guessed at or forced through.
+//
+// Regional coverage (combined with the original bootstrap + Phase 2, all 8 CEO-targeted regions
+// are now represented at least once): Mamanuca (maloloisland.com, tokoriki.com), Yasawa
+// (awesomefiji.com), Coral Coast (sigatokariver.com), Savusavu/Vanua Levu (dakuresort.com,
+// tuitai.com), Kadavu (matava.com), Suva (grandpacifichotel.com.fj), Pacific Harbour
+// (rcitours.com, nanukuresort.com, beqalagoonresort.com), plus one adjacent north-Viti-Levu
+// bonus (wananavu.com, Rakiraki) and one Nadi/Denarau-hub transport operator
+// (southseacruisesfiji.com, serves Mamanuca/Yasawa ferry routes from Port Denarau).
+const WAVE3_SOURCE_DOMAINS = [
+  'maloloisland.com',        // Malolo Island Resort, Mamanuca - accommodation
+  'southseacruisesfiji.com', // South Sea Cruises, Denarau hub - inter-island transport/cruises
+  'awesomefiji.com',         // Yasawa Adventures (Yasawa Flyer), Yasawa - inter-island transport
+  'sigatokariver.com',       // Sigatoka River Safari, Coral Coast - cultural experience/tours
+  'dakuresort.com',          // Daku Resort, Savusavu - accommodation/wellness
+  'matava.com',              // Matava Eco Resort, Kadavu - accommodation/diving
+  'tuitai.com',              // Tui Tai Expeditions, Savusavu/Vanua Levu - cruises
+  'rcitours.com',            // Robinson Crusoe Island Tours, Pacific Harbour area - cultural/tours
+  'grandpacifichotel.com.fj',// Grand Pacific Hotel, Suva - accommodation
+  'tokoriki.com',            // Tokoriki Island Resort, Mamanuca - accommodation
+  'nanukuresort.com',        // Nanuku Resort, Pacific Harbour - accommodation
+  'wananavu.com',            // Wananavu Beach Resort, Rakiraki - accommodation
+  'beqalagoonresort.com',    // Beqa Lagoon Resort, Beqa Island/Pacific Harbour - accommodation/diving
+];
+const WAVE3_IDEMPOTENCY_KEY = 'supply-wave3-p3-2026-08-24';
+
 // VAKAVITI SUPPLY OPERATIONS ACTIVATION, Phase 1 fix (2026-08-24, migration 0019): a run spends
 // nearly all of its life between Cron ticks (up to 4 hours apart per wrangler.toml) waiting to
 // continue, not actively processing - the previous watchdog measured time since the run's
@@ -219,6 +258,15 @@ export async function runSupplyBootstrap(env: Bindings): Promise<{ ranBatch: boo
 // racing each other.
 export async function runPhase2SupplyExpansion(env: Bindings): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
   return runSprintCore(env, PHASE2_IDEMPOTENCY_KEY, PHASE2_SOURCE_DOMAINS, 'CRON (P2 supply expansion)');
+}
+
+// VAKAVITI SUPPLY EXPANSION WAVE 3 - same governed mechanism, own idempotency key, own
+// supply_sprint_runs row. runSprintCore's single-flight check (by idempotency_key != ?) means
+// this can only advance once neither the bootstrap nor Phase 2 has an actively RUNNING row -
+// in practice this naturally starts after Phase 2 reaches COMPLETED, mirroring how Phase 2 only
+// started after the original bootstrap completed.
+export async function runWave3SupplyExpansion(env: Bindings): Promise<{ ranBatch: boolean; runId?: string; skipReason?: string }> {
+  return runSprintCore(env, WAVE3_IDEMPOTENCY_KEY, WAVE3_SOURCE_DOMAINS, 'CRON (Wave 3 supply expansion)');
 }
 
 const MAX_DEALS_PER_TICK = 3;

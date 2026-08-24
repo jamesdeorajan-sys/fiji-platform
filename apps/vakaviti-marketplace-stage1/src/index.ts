@@ -11,7 +11,7 @@ import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
-import { runSupplyBootstrap, runPhase2SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
+import { runSupplyBootstrap, runPhase2SupplyExpansion, runWave3SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
@@ -401,7 +401,7 @@ app.get('/operators/:slug', async c => {
     ${aiDiscovered ? `<p class="muted" style="font-size:13px">Information sourced from the provider's official website and last checked on ${esc(lastCheckedDate || '')}.</p>` : ''}
     ${o.description ? `<p>${esc(o.description)}</p>` : ''}
     <div class="cta-row"><a class="btn secondary" href="/claim/${esc(o.slug)}">${aiDiscovered ? 'Claim this business or report incorrect information' : 'Claim or manage this business'}</a></div>
-    ${o.whatsapp ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">${aiDiscovered ? 'Ask Vakaviti about this provider' : 'Ask Vakaviti on WhatsApp'}</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
+    ${resolveEnquiryDestination(c.env) ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">${aiDiscovered ? 'Ask Vakaviti about this provider' : 'Ask Vakaviti on WhatsApp'}</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
   </section>
   <section class="section"><h2>Experiences</h2><div class="grid">${list || '<div class="card"><div class="card-body">No verified products yet.</div></div>'}</div></section>`, { title: `${o.canonical_name} — Vakaviti`, description: `${o.canonical_name}, ${[o.locality, o.region].filter(Boolean).join(', ') || 'Fiji'} — Fiji tourism operator on Vakaviti.`, ogImage: absoluteImage(o.image_url || opHeroImg.url), noindex: true }));
 });
@@ -417,9 +417,13 @@ app.get('/enquire/:operatorSlug', async c => {
     const candidate = await c.env.DB.prepare(`SELECT id,canonical_name,slug,operator_id FROM products WHERE slug=? AND commercial_status='ACTIVE'`).bind(productSlug).first<any>();
     if (candidate && candidate.operator_id === operator.id) product = candidate;
   }
-  if (!operator.whatsapp) {
-    return c.html(html(`<section class="section"><h1>Contact not yet available</h1><p class="muted">${esc(operator.canonical_name)} hasn't confirmed a WhatsApp contact yet. Please check back soon or <a href="/contact">contact Vakaviti support</a>.</p><p><a class="btn secondary" href="/operators/${esc(operator.slug)}">Back to profile</a></p></section>`, { title: 'Contact not available', noindex: true }));
-  }
+  // Supply Wave 3 (2026-08-24) fix: this used to gate on operator.whatsapp being set, which
+  // blocked every enquiry for an AI-discovered operator whose source page had no WhatsApp
+  // number (discovery-bridge.ts correctly never guesses one) - even though
+  // resolveEnquiryDestination() below already provides a real, working destination (the
+  // Vakaviti team's own number) in preview mode regardless of the operator's own contact
+  // fields. The check below is now the single source of truth for whether an enquiry can be
+  // sent at all, matching its own documented fail-closed behavior for production.
   const destination = resolveEnquiryDestination(c.env);
   if (!destination) {
     return c.html(html(`<section class="section"><h1>Enquiries aren't available right now</h1><p class="muted">Something's missing in our setup and we don't want to risk sending your enquiry to the wrong place. Please try again shortly, or <a href="/contact">contact Vakaviti support</a> directly.</p></section>`, { title: 'Enquiry unavailable', noindex: true }), 503);
@@ -674,6 +678,9 @@ export default {
     // source list (see supply-scheduler.ts PHASE2_SOURCE_DOMAINS) - runs as its own sprint row,
     // never competing with the original bootstrap for the same tick's single-flight slot.
     ctx.waitUntil(runPhase2SupplyExpansion(env).catch(() => {}));
+    // Supply Expansion Wave 3 (2026-08-24): same governed mechanism, own idempotency key, own
+    // sprint row - see supply-scheduler.ts WAVE3_SOURCE_DOMAINS.
+    ctx.waitUntil(runWave3SupplyExpansion(env).catch(() => {}));
     ctx.waitUntil(runFreshnessCheck(env).catch(() => {}));
     // P1.5A: Class B (source-evidenced deal) auto-publication under the CEO-approved standing
     // policy - see src/supply-scheduler.ts's runClassBAutoPublishPass() and src/deals.ts's
