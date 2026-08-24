@@ -24,10 +24,11 @@ dealExchangeUi.use('*', async (c, next) => {
 
 const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const shell = (body: string, opts: { title?: string; active?: string } = {}) => `<!doctype html>
+const shell = (body: string, opts: { title?: string; active?: string; extraHead?: string } = {}) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(opts.title || 'Explore Fiji')} - Vakaviti</title>
 <meta name="robots" content="noindex,nofollow">
+${opts.extraHead || ''}
 <style>
 :root{--ink:#12231b;--muted:#607068;--line:#dde5e0;--bg:#f6f8f7;--accent:#0f6e6a;--warn:#a15c00;--danger:#a1272b;--good:#1f7a4d}
 *{box-sizing:border-box}
@@ -169,13 +170,44 @@ dealExchangeUi.get('/live-deals', async c => {
   `, { title: 'Deals', active: 'deals' }));
 });
 
+// --- AI/search readiness (Milestone 4D) - PREPARED, NOT ENABLED --------------------------------
+// Every field here is copied from data already visible on the rendered card (structured data must
+// match visible facts, never assert more than the page shows). robots stays noindex,nofollow
+// regardless - this is preparation for a future branded launch, not activation. The canonical URL
+// points at THIS isolated preview origin, never vakaviti.ai - attaching a real domain is an
+// explicit, separate, not-yet-authorized step.
+function buildDealSeoHead(c: any, o: PublicDealSummary): string {
+  const origin = new URL(c.req.url).origin;
+  const canonical = `${origin}/live-deals/${o.id}`;
+  const description = `${o.title}${o.providerName ? ' at ' + o.providerName : ''}${o.region ? ', ' + o.region : ''} - ${o.priceAmount ? (o.isFromPrice ? 'from ' : '') + o.currency + ' ' + o.priceAmount : 'price on enquiry'}${o.priceBasis ? ' (' + o.priceBasis.replace(/_/g, ' ').toLowerCase() + ')' : ''}. Last checked ${o.checkedAt ? new Date(o.checkedAt).toISOString().slice(0, 10) : 'recently'}.`;
+  const jsonLd = o.priceAmount && o.currency ? {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: o.title,
+    description,
+    offers: {
+      '@type': 'Offer',
+      price: o.priceAmount,
+      priceCurrency: o.currency,
+      availability: 'https://schema.org/InStock',
+      url: canonical,
+      seller: o.sellerName ? { '@type': 'Organization', name: o.sellerName } : undefined,
+    },
+  } : null;
+  return [
+    `<link rel="canonical" href="${esc(canonical)}">`,
+    `<meta name="description" content="${esc(description)}">`,
+    jsonLd ? `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : '',
+  ].join('\n');
+}
+
 // --- Deal detail -------------------------------------------------------------------------------
 dealExchangeUi.get('/live-deals/:id', async c => {
   const db = c.env.DEAL_EXCHANGE_DB!;
   const o = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=?`).bind(c.req.param('id')).first<any>();
   if (!o || o.publication_decision !== 'ELIGIBLE') return c.notFound();
   const summary = toSummary(o);
-  return c.html(shell(dealCard(summary) + SAVED_TRIP_SCRIPT, { title: summary.title, active: 'deals' }));
+  return c.html(shell(dealCard(summary) + SAVED_TRIP_SCRIPT, { title: summary.title, active: 'deals', extraHead: buildDealSeoHead(c, summary) }));
 });
 
 // --- Compare (up to 3) ---------------------------------------------------------------------------

@@ -401,3 +401,59 @@ export function checkMonthEligibility(
       : `Travel window ${travelWindowStart}..${travelWindowEnd} does not overlap the requested month - not eligible for this specific date claim even though the offer may otherwise be publication-eligible.`,
   };
 }
+
+// --- Freshness (Milestone 4C) -------------------------------------------------------------------
+// Five volatility classes, each with its own recheck window. A stale LIVE_SELLER_PRICE must
+// recheck before ANY outbound/booking action regardless of how stale, not just before display -
+// "recheck before outbound action for volatile prices" is a distinct requirement from "recheck
+// before display when evidence is stale."
+export type VolatilityClass = 'LIVE_SELLER_PRICE' | 'DATED_SELLER_PACKAGE' | 'PROVIDER_DIRECT_PROMOTION' | 'STABLE_PRODUCT' | 'LIVE_QUOTE';
+
+export const VOLATILITY_WINDOW_HOURS: Record<VolatilityClass, number> = {
+  LIVE_SELLER_PRICE: 4,
+  DATED_SELLER_PACKAGE: 24,
+  PROVIDER_DIRECT_PROMOTION: 24,
+  STABLE_PRODUCT: 168,
+  LIVE_QUOTE: 0,
+};
+
+export type FreshnessAction = 'DISPLAY_AS_CURRENT' | 'RECHECK_BEFORE_DISPLAY' | 'RECHECK_BEFORE_OUTBOUND' | 'ASK_VAKAVITI_TO_CONFIRM' | 'WITHDRAW';
+export interface FreshnessDecision {
+  action: FreshnessAction;
+  reason: string;
+}
+
+// "Degrade safely to 'Ask Vakaviti to confirm' only when public wording remains accurate;
+// otherwise remove from public results" - implemented as a second, wider threshold: within the
+// class's own window -> current; within 3x the window -> the wording ("last checked X ago") is
+// still literally true, so degrade rather than withdraw; beyond that -> withdraw outright, since
+// continuing to show a very old check risks the wording itself becoming misleading.
+export function evaluateFreshness(volatilityClass: VolatilityClass, checkedAt: string | null, now: number = Date.now()): FreshnessDecision {
+  if (volatilityClass === 'LIVE_QUOTE') {
+    return { action: 'RECHECK_BEFORE_DISPLAY', reason: 'Live quotes are never cached - always fetched fresh, never displayed from a stored value.' };
+  }
+  if (!checkedAt || isNaN(Date.parse(checkedAt))) {
+    return { action: 'WITHDRAW', reason: 'No checked timestamp at all - cannot safely display a price/availability claim with no evidence of when it was last true.' };
+  }
+  const ageHours = (now - Date.parse(checkedAt)) / 3600000;
+  const window = VOLATILITY_WINDOW_HOURS[volatilityClass];
+  if (ageHours <= window) {
+    return { action: 'DISPLAY_AS_CURRENT', reason: `Checked ${ageHours.toFixed(1)}h ago, within the ${window}h window for ${volatilityClass}.` };
+  }
+  if (volatilityClass === 'LIVE_SELLER_PRICE') {
+    return { action: 'RECHECK_BEFORE_OUTBOUND', reason: `Stale (${ageHours.toFixed(1)}h > ${window}h) - a volatile price must be rechecked before any booking/outbound action, not just before display.` };
+  }
+  if (ageHours <= window * 3) {
+    return { action: 'ASK_VAKAVITI_TO_CONFIRM', reason: `Stale (${ageHours.toFixed(1)}h > ${window}h) but not so stale that the "last checked" wording itself becomes misleading - degrade rather than withdraw.` };
+  }
+  return { action: 'WITHDRAW', reason: `Very stale (${ageHours.toFixed(1)}h, over 3x the ${window}h window) - removed from public results rather than risk an inaccurate claim.` };
+}
+
+export interface WithdrawalCheckResult {
+  shouldWithdraw: boolean;
+  decision: FreshnessDecision;
+}
+export function checkForWithdrawal(volatilityClass: VolatilityClass, checkedAt: string | null, now?: number): WithdrawalCheckResult {
+  const decision = evaluateFreshness(volatilityClass, checkedAt, now);
+  return { shouldWithdraw: decision.action === 'WITHDRAW', decision };
+}

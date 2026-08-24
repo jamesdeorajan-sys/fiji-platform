@@ -95,7 +95,12 @@ test('September filter visibly excludes the October-only deal (re-verification o
   await page.goto('/live-deals?month=9&year=2026');
   const text = await page.locator('main').innerText();
   expect(text).toMatch(/2 of 3 public deals match for September 2026/);
-  expect(text).not.toContain('October');
+  // The month <select> legitimately lists "October" as one of its 12 options - assert against the
+  // rendered DEAL CARDS specifically (by provider/seller name), not the whole page's text, so the
+  // filter dropdown's own option list can't produce a false failure here.
+  const cardText = await page.locator('.card').allInnerTexts();
+  const cardsContainingOctoberDeal = cardText.filter(t => t.includes('Radisson') || t.includes('My Fiji'));
+  expect(cardsContainingOctoberDeal).toHaveLength(0);
 });
 
 test('empty results state renders an explicit message, not a blank page', async ({ page }) => {

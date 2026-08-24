@@ -78,3 +78,25 @@ test.describe('Milestone 4 entry gate 2: WhatsApp review/handoff full lifecycle 
     expect(secondText).toContain(reference); // same reference, not a new one
   });
 });
+
+test.describe('Milestone 4D: AI/search readiness is prepared but not enabled', () => {
+  test('deal detail page carries canonical URL, meta description, and JSON-LD matching visible facts - but stays noindex', async ({ page }) => {
+    await page.goto('/live-deals/off-tp-1');
+    const robots = await page.locator('meta[name=robots]').getAttribute('content');
+    expect(robots).toBe('noindex,nofollow'); // still not enabled for real indexing
+    const canonical = await page.locator('link[rel=canonical]').getAttribute('href');
+    expect(canonical).toContain('/live-deals/off-tp-1');
+    const description = await page.locator('meta[name=description]').getAttribute('content');
+    expect(description).toContain('Taveuni Palms Resort');
+    const ldJson = await page.locator('script[type="application/ld+json"]').textContent();
+    expect(ldJson).toBeTruthy();
+    const parsed = JSON.parse(ldJson!);
+    expect(parsed['@type']).toBe('Product');
+    expect(parsed.offers.price).toBe('1500');
+    expect(parsed.offers.priceCurrency).toBe('USD');
+    // The structured price matches what a visitor actually sees on the card - not a separate,
+    // unverified claim.
+    const cardText = await page.locator('.card').first().innerText();
+    expect(cardText).toContain('1500');
+  });
+});

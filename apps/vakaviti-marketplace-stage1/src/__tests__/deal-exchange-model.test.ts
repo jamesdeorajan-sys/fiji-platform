@@ -3,6 +3,7 @@ import {
   resolveEvidenceBundle, evaluateOfferPublicationGates, evaluateFlightQuoteDisplay,
   generatePublicLabel, authoritativeSourceClassFor, isExcludedIdentity,
   computeOfferFingerprint, computeOfferIdentityKey, diffMaterialFacts, checkMonthEligibility,
+  evaluateFreshness, checkForWithdrawal,
   type EvidenceItem, type OfferEntities, type OfferPublicationCandidate, type OfferOwnerType,
 } from '../deal-exchange-model';
 
@@ -395,5 +396,56 @@ describe('duplicate identity gate', () => {
     const r = evaluateOfferPublicationGates(baseCandidate({ isDuplicateOfId: 'other-offer-id' }));
     expect(r.decision).toBe('NOT_ELIGIBLE');
     expect(r.failedGates).toContain('no_duplicate_identity');
+  });
+});
+
+describe('Milestone 4C: freshness / volatility classes', () => {
+  const NOW_MS = Date.parse('2026-08-24T12:00:00Z');
+
+  it('a live seller price checked within its 4h window displays as current', () => {
+    const checked = new Date(NOW_MS - 2 * 3600000).toISOString();
+    const d = evaluateFreshness('LIVE_SELLER_PRICE', checked, NOW_MS);
+    expect(d.action).toBe('DISPLAY_AS_CURRENT');
+  });
+
+  it('a stale live seller price (past its window) must recheck before any outbound action, not just before display', () => {
+    const checked = new Date(NOW_MS - 10 * 3600000).toISOString();
+    const d = evaluateFreshness('LIVE_SELLER_PRICE', checked, NOW_MS);
+    expect(d.action).toBe('RECHECK_BEFORE_OUTBOUND');
+  });
+
+  it('a live quote is always RECHECK_BEFORE_DISPLAY, never displayed from a stored value regardless of checkedAt', () => {
+    expect(evaluateFreshness('LIVE_QUOTE', null, NOW_MS).action).toBe('RECHECK_BEFORE_DISPLAY');
+    expect(evaluateFreshness('LIVE_QUOTE', new Date(NOW_MS).toISOString(), NOW_MS).action).toBe('RECHECK_BEFORE_DISPLAY');
+  });
+
+  it('no checked timestamp at all always withdraws, for any volatility class', () => {
+    expect(evaluateFreshness('STABLE_PRODUCT', null, NOW_MS).action).toBe('WITHDRAW');
+    expect(evaluateFreshness('DATED_SELLER_PACKAGE', null, NOW_MS).action).toBe('WITHDRAW');
+  });
+
+  it('moderately stale (within 3x window) degrades to "ask Vakaviti to confirm" rather than withdrawing outright', () => {
+    const checked = new Date(NOW_MS - 48 * 3600000).toISOString(); // 48h, DATED_SELLER_PACKAGE window is 24h, 3x=72h
+    const d = evaluateFreshness('DATED_SELLER_PACKAGE', checked, NOW_MS);
+    expect(d.action).toBe('ASK_VAKAVITI_TO_CONFIRM');
+  });
+
+  it('very stale (beyond 3x window) withdraws rather than risk an inaccurate claim', () => {
+    const checked = new Date(NOW_MS - 100 * 3600000).toISOString(); // 100h > 72h (3x 24h)
+    const d = evaluateFreshness('DATED_SELLER_PACKAGE', checked, NOW_MS);
+    expect(d.action).toBe('WITHDRAW');
+  });
+
+  it('checkForWithdrawal correctly derives shouldWithdraw from the same decision', () => {
+    const stale = checkForWithdrawal('STABLE_PRODUCT', new Date(NOW_MS - 1000 * 3600000).toISOString(), NOW_MS);
+    expect(stale.shouldWithdraw).toBe(true);
+    const fresh = checkForWithdrawal('STABLE_PRODUCT', new Date(NOW_MS - 1 * 3600000).toISOString(), NOW_MS);
+    expect(fresh.shouldWithdraw).toBe(false);
+  });
+
+  it('a genuinely fresh provider-direct promotion (the real Taveuni Palms case, checked minutes ago) never withdraws', () => {
+    const checked = new Date(NOW_MS - 5 * 60000).toISOString();
+    const d = evaluateFreshness('PROVIDER_DIRECT_PROMOTION', checked, NOW_MS);
+    expect(d.action).toBe('DISPLAY_AS_CURRENT');
   });
 });
