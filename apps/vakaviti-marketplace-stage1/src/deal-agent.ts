@@ -19,10 +19,13 @@
 // isolation from the discovery loop that calls it.
 import {
   canonicalizeUrl, classifyPage, computeDealIdentity, diffMaterialFacts,
-  evaluateQualityGates, type ExtractedFields,
+  evaluateQualityGates, isBlockedHost, type ExtractedFields,
 } from './deal-quality';
+// Deal Opportunity Pipeline (2026-08-24) - optional: only imported for its type/function shape,
+// never called unless env.OPPORTUNITY_DB is actually bound (see the integration point below).
+import { captureOrUpdateOpportunity } from './opportunities';
 
-type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
+type Bindings = { DB: D1Database; OPPORTUNITY_DB?: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 
 const DISCOVERY_WRITABLE_STATES = new Set([
   'DISCOVERED', 'SOURCE_REVIEW_REQUIRED', 'EVIDENCE_EXTRACTED', 'NEEDS_HUMAN_REVIEW',
@@ -48,21 +51,8 @@ const writeReviewStatus = (target: string): string => {
 // is not achievable in this runtime - there is no raw DNS/socket API exposed to Workers - and
 // this limitation is reported honestly rather than silently claimed as covered.
 
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]',
-  '169.254.169.254', // cloud metadata endpoint (AWS/GCP/Azure IMDS)
-  'metadata.google.internal',
-]);
-const PRIVATE_IPV4_PATTERNS = [
-  /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^169\.254\./, /^127\./
-];
-const isBlockedHost = (hostname: string): boolean => {
-  const h = hostname.toLowerCase();
-  if (BLOCKED_HOSTNAMES.has(h)) return true;
-  if (PRIVATE_IPV4_PATTERNS.some(p => p.test(h))) return true;
-  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true; // ULA/link-local IPv6
-  return false;
-};
+// isBlockedHost now lives in deal-quality.ts (moved 2026-08-24, PR #21 hardening, to break a
+// circular import - see that file for the implementation and full rationale).
 
 export type FetchClassification =
   | 'PROVIDER_RESPONSE' | 'DNS_FAILURE' | 'TLS_FAILURE' | 'TIMEOUT' | 'CLOUDFLARE_EGRESS_FAILURE'
@@ -503,6 +493,45 @@ export async function runDailyDiscovery(
 
       if (quality.decision === 'QUALITY_REJECTED') {
         await recordScanOutcome(env, scanIdemKey, 'REJECTED', canonicalUrl, null, quality);
+        // Deal Opportunity Pipeline, Phase 8 (2026-08-24): a source that fails the strict public
+        // Lane B gate may still be worth private outreach - captureOrUpdateOpportunity() runs its
+        // OWN, separate, more lenient capture gate (opportunity-gate.ts) and only persists
+        // anything if THAT gate independently passes; it never overrides or weakens the Lane B
+        // rejection recorded just above. Structurally inert wherever OPPORTUNITY_DB is not bound
+        // (i.e. always inert in production today - see wrangler.toml, which has no such binding).
+        if (env.OPPORTUNITY_DB) {
+          const oppEnv = env as Required<Pick<Bindings, 'OPPORTUNITY_DB'>> & Bindings;
+          await captureOrUpdateOpportunity(oppEnv, {
+            canonicalSourceUrl: canonicalUrl,
+            providerName: null,
+            providerDomain: source.canonical_domain || new URL(source.source_url).hostname,
+            detectedTitle: extraction.fields.proposed_offer_name,
+            detectedOfferText: extraction.fields.factual_summary,
+            evidenceExcerpt: (result.body || '').slice(0, 600),
+            pageText: result.body || '',
+            region: null,
+            locality: extraction.fields.fiji_location,
+            category: extraction.fields.category,
+            priceAmount: extraction.fields.advertised_price,
+            currency: extraction.fields.currency,
+            priceBasis: extraction.fields.price_basis,
+            bookingDeadline: extraction.fields.booking_deadline,
+            travelStart: extraction.fields.travel_from,
+            travelEnd: extraction.fields.travel_until,
+            expiry: extraction.fields.offer_expires_at,
+            inclusionsJson: extraction.fields.inclusions ? JSON.stringify([extraction.fields.inclusions]) : null,
+            exclusionsJson: extraction.fields.exclusions ? JSON.stringify([extraction.fields.exclusions]) : null,
+            occupancyBasis: null,
+            minimumStay: extraction.fields.minimum_stay,
+            bookingRoute: extraction.fields.booking_route,
+            providerContactRoute: null,
+            sourceId: source.id,
+            sourceScanId: scanIdemKey,
+            isAggregatorEvidence: false,
+          }, 'deal-agent (Lane B rejection -> Lane A capture attempt)').catch(() => {
+            // Never let an opportunity-capture failure break the real, existing deal scan loop.
+          });
+        }
         continue; // no candidate created, no existing candidate touched - complete scan evidence already recorded above
       }
 

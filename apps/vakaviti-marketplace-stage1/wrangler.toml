@@ -9,6 +9,40 @@ binding = "DB"
 database_name = "vakaviti-marketplace-stage1-db"
 database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 
+# =================================================================================================
+# DEAL OPPORTUNITY PIPELINE - PRE-MERGE CHECKLIST (read before merging PR #21 or any branch that
+# still contains this block into ceo/vakaviti-marketplace-stage1)
+# =================================================================================================
+# EMPIRICAL FINDING (2026-08-24): a named-environment binding ([env.preview.d1_databases]) was
+# tested on this exact project and confirmed NOT to be picked up by Cloudflare Workers Builds'
+# branch-preview mechanism - the resulting version's bindings omitted OPPORTUNITY_DB entirely
+# when it lived under [env.preview]. Workers Builds for this project reads ONLY the top-level
+# config, for both preview and production branches alike - there is no config-level mechanism
+# available to make this binding "preview-only" automatically. The binding below is therefore
+# TOP-LEVEL, and WILL merge into production exactly as written unless the steps below are
+# followed first.
+#
+# DO NOT merge this wrangler.toml into ceo/vakaviti-marketplace-stage1 as-is. Before merging:
+#   1. Create the real production database: `vakaviti-opportunity-pipeline-db` (a NEW resource -
+#      never reuse the preview database id 7779e1ae-46be-44f7-abbd-1178cf46f145 in production).
+#   2. Apply migrations/opportunity/0001_opportunity_pipeline.sql to that NEW production database
+#      only (same manual D1-API-driven process used for the preview database - see the PR #21
+#      hardening report for the exact commands).
+#   3. Change database_id below (or in whatever this block becomes at merge time) to the NEW
+#      production database's id - never the preview id.
+#   4. Re-run the full test/QA suite against a disposable copy of the new production database
+#      before the merge is authorized to actually deploy.
+#   5. Rollback if something goes wrong post-merge: remove this [[d1_databases]] block (or set
+#      database_id back to a value that does not exist / revert the commit) and redeploy - the
+#      discovery-integration hook in deal-agent.ts and the /admin/opportunities console both
+#      already fail closed (no-op) whenever OPPORTUNITY_DB is absent or misconfigured, so removing
+#      the binding is sufficient to fully disable the feature without touching any other code path.
+# Until all 5 steps above are complete and separately CEO-authorized, this PR must not be merged.
+[[d1_databases]]
+binding = "OPPORTUNITY_DB"
+database_name = "vakaviti-opportunity-pipeline-preview-db"
+database_id = "7779e1ae-46be-44f7-abbd-1178cf46f145"
+
 [ai]
 binding = "AI"
 

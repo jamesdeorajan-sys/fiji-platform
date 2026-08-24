@@ -11,10 +11,11 @@ import { providerOnboardingUi } from './provider-onboarding-ui';
 import { supplyDashboard } from './supply-dashboard';
 import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
+import { opportunitiesUi } from './opportunities-admin-ui';
 import { runSupplyBootstrap, runPhase2SupplyExpansion, runWave3SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 
-type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
+type Bindings = { DB: D1Database; OPPORTUNITY_DB?: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
 
 // Centralised Stage 1 enquiry-routing decision. This is a preview/testing routing rule only -
 // it decides where the WhatsApp message goes, it never touches an operator's own stored
@@ -700,6 +701,9 @@ app.route('/admin/review', batchReviewUi);
 // provider discovery batches without waiting for the normal Cron rotation. Same cookie-session
 // auth as every other admin console. AI has no import path here (regression-guards.mjs check 22).
 app.route('/admin/supply/sprint', supplySprintUi);
+// Deal Opportunity Pipeline (2026-08-24) - private mobile admin console, Lane A only. Same
+// cookie-session/CSRF/Origin auth as every other admin console above. AI has no import path here.
+app.route('/admin/opportunities', opportunitiesUi);
 // Controlled public Deal Intelligence preview - JSON only (this app has no HTML admin/preview
 // pages anywhere), never linked from any indexed page, no custom domain, not promoted. Every
 // row returned has already passed isPubliclyEligible() inside dealsPublic itself - see
