@@ -96,7 +96,7 @@ describe('ingestProviderReply / confirmProviderReplyExtraction - Phase 6 evidenc
     const { env, oppDb } = makeEnv();
     const cap = await captureOrUpdateOpportunity(env, validInput(), 'test-actor');
     await ingestProviderReply(env, cap.opportunityId!, 'Yes still available, 249 FJD per night.', 'admin', { price_amount: '249' });
-    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId);
+    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId)!;
     expect(opp.lifecycle_status).toBe('PROVIDER_REPLIED');
     expect(opp.price_amount).toBe('199'); // unchanged - reply alone never applies facts
     const reply = oppDb.tables['opportunity_provider_replies'][0];
@@ -120,11 +120,11 @@ describe('ingestProviderReply / confirmProviderReplyExtraction - Phase 6 evidenc
       provider_permission_status: 'GRANTED', // not in the allowed list - must be silently ignored
       image_rights_status: 'GRANTED', // not in the allowed list - must be silently ignored
     }, 'admin');
-    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId);
+    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId)!;
     expect(opp.price_amount).toBe('249');
     expect(opp.provider_permission_status).toBeUndefined();
     expect(opp.image_rights_status).toBeUndefined();
-    const reply = oppDb.tables['opportunity_provider_replies'].find((r: any) => r.id === replyId);
+    const reply = oppDb.tables['opportunity_provider_replies'].find((r: any) => r.id === replyId)!;
     expect(reply.human_confirmed).toBe(1);
     expect(reply.confirmed_by).toBe('admin');
   });
@@ -207,7 +207,7 @@ describe('setLifecycleStatus - PUBLISHED cannot be manually set (CEO hardening i
     const { env, oppDb } = makeEnv();
     const cap = await captureOrUpdateOpportunity(env, validInput(), 'test-actor');
     await setLifecycleStatus(env, cap.opportunityId!, 'OUTREACH_READY', 'HUMAN', 'admin', 'ok');
-    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId);
+    const opp = oppDb.tables['opportunities'].find((o: any) => o.id === cap.opportunityId)!;
     expect(opp.lifecycle_status).toBe('OUTREACH_READY');
   });
 });

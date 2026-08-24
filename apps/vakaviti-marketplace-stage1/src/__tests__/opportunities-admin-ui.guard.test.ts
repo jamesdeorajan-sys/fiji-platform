@@ -5,9 +5,14 @@
 // in a way that broke them - not an approximation of the logic, an inspection of the real file.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SRC = readFileSync(join(__dirname, '..', 'opportunities-admin-ui.ts'), 'utf8');
+// This test directory is excluded from the project's tsconfig.json (see the "exclude" entry
+// added alongside this file) so `npm run typecheck` never needs Node's ambient types just to
+// type this file - `vitest run` transpiles it directly and Node provides these modules for real
+// at test-execution time regardless. import.meta.url + fileURLToPath is used instead of the
+// CommonJS-only __dirname, since this package is "type": "module".
+const SRC = readFileSync(fileURLToPath(new URL('../opportunities-admin-ui.ts', import.meta.url)), 'utf8');
 
 describe('opportunities-admin-ui.ts - structural safety guards (source inspection of the real shipped file)', () => {
   it('CEO test: the lifecycle route always passes a hardcoded HUMAN actor, never one derived from the request - AI cannot mark CONTACTED or any other lifecycle status via this route', () => {
