@@ -66,6 +66,28 @@ test.describe('Group B - live QA environment auth behaviour (needs QA_BASE_URL +
     expect(response.status()).toBe(401);
   });
 
+  test('an expired timestamp fails, even with an otherwise-correct signature', async ({ request }) => {
+    const runId = `pw-sec-${Date.now()}-c`;
+    const timestamp = String(Date.now() - 10 * 60 * 1000); // 10 minutes old - outside the 5 minute skew window
+    const nonce = randomBytes(16).toString('hex');
+    const response = await request.post(`${qaBaseUrl}/internal/qa-cleanup`, {
+      headers: { 'x-vakaviti-qa-run-id': runId, 'x-vakaviti-qa-timestamp': timestamp, 'x-vakaviti-qa-nonce': nonce, 'x-vakaviti-qa-signature': sign(runId, nonce, timestamp) },
+      data: { reference: 'VKV-ABC123' },
+    });
+    expect(response.status()).toBe(401);
+  });
+
+  test('a malformed run id fails (does not match the pw-<worker>-<ts>-<rand> shape)', async ({ request }) => {
+    const runId = 'not-a-valid-run-id';
+    const timestamp = String(Date.now());
+    const nonce = randomBytes(16).toString('hex');
+    const response = await request.post(`${qaBaseUrl}/internal/qa-cleanup`, {
+      headers: { 'x-vakaviti-qa-run-id': runId, 'x-vakaviti-qa-timestamp': timestamp, 'x-vakaviti-qa-nonce': nonce, 'x-vakaviti-qa-signature': sign(runId, nonce, timestamp) },
+      data: { reference: 'VKV-ABC123' },
+    });
+    expect(response.status()).toBe(401);
+  });
+
   test('a replayed (previously-used) signature fails on its second use', async ({ request }) => {
     const runId = `pw-sec-${Date.now()}-b`;
     const timestamp = String(Date.now());

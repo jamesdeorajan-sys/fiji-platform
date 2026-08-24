@@ -16,6 +16,7 @@ export type Bindings = {
   QA_TEST_MODE?: string;
   QA_AUTH_SECRET?: string;
   CF_VERSION_METADATA?: { id: string; tag: string };
+  GIT_COMMIT_SHA?: string;
 };
 
 const QA_RUN_ID_HEADER = 'x-vakaviti-qa-run-id';
@@ -105,13 +106,27 @@ dealExchangeUi.onError((err, c) => {
   throw err;
 });
 
-// Phase 2 (Final Integration Review): non-secret build identity, reachable on every deployment
-// (registered before the gating middleware below) regardless of whether Deal Exchange itself is
-// configured/enabled - globalSetup polls this as its deployment-readiness signal.
+// Phase 2 + CEO DECISION Phase 5 (Final Integration Review, 2026-08-25): non-secret build
+// identity, reachable on every deployment (registered before the gating middleware below)
+// regardless of whether Deal Exchange itself is configured/enabled - globalSetup polls this as
+// its deployment-readiness signal, and (for the dedicated QA deployment only) its exact-commit
+// verification signal.
+//
+// gitCommitSha is deliberately NOT a wrangler.toml value - it changes every push, and a value
+// committed as part of a commit can never correctly name that same commit's own hash (a real
+// chicken-and-egg problem). Instead it is injected transiently at deploy time via
+// `wrangler deploy --env qa --var GIT_COMMIT_SHA:$GITHUB_SHA` (see the QA deploy workflow job) -
+// so it exists ONLY on the QA deployment for the exact push being tested, and is structurally
+// impossible to appear on production or the ordinary preview (their deploy commands never pass
+// this flag - Cloudflare Workers Builds' git integration drives those, not this workflow).
+// version_metadata (Cloudflare's own opaque version id) proves which deployed VERSION answered;
+// this proves which GIT COMMIT that version was built from - together they are the full identity
+// proof Phase 2/5 asked for.
 dealExchangeUi.get('/internal/build-info', c => {
   return c.json({
     versionId: c.env.CF_VERSION_METADATA?.id ?? null,
     versionTag: c.env.CF_VERSION_METADATA?.tag ?? null,
+    gitCommitSha: c.env.GIT_COMMIT_SHA ?? null,
     environment: c.env.ENVIRONMENT ?? null,
     qaModeActive: !!(c.env.DEAL_EXCHANGE_QA_DB && c.env.QA_TEST_MODE === 'true'),
   });
