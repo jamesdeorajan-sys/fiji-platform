@@ -1,8 +1,8 @@
 // VAKAVITI LIVE DEAL EXCHANGE - Milestone 3: mobile journey service layer (2026-08-24).
 //
 // Pure, deterministic functions only where the CEO's directive requires it (owned-product
-// classification, filtering, comparison, natural-language intent parsing, cross-sell) - no
-// AI.run() call anywhere in this file. The one D1-touching function (recordOutboundClick) is kept
+// classification, filtering, comparison, natural-language intent parsing, cross-sell) - this file
+// never invokes the AI binding at all. The one D1-touching function (recordOutboundClick) is kept
 // separate and minimal, following the same discipline as opportunities.ts in PR #21.
 
 import { checkMonthEligibility, type OfferOwnerType, type PriceBasis } from './deal-exchange-model';
@@ -218,7 +218,7 @@ export function suggestCrossSell(offer: { region: string | null; category: strin
 }
 
 // --- Bounded natural-language intent parser (Milestone 3 item 12) --------------------------------
-// Deliberately has NO AI.run() call at all in this MVP - deterministic keyword/regex extraction
+// Deliberately invokes no AI binding at all in this MVP - deterministic keyword/regex extraction
 // only. This trivially satisfies "AI must never invent a result, price, date or availability" (
 // there is no AI in the loop) and "if AI fails, the normal filter interface remains fully usable"
 // (this function is purely additive - the filter UI never depends on it).

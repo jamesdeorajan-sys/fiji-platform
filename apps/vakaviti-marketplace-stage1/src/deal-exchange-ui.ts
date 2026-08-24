@@ -70,7 +70,7 @@ function toSummary(o: any): PublicDealSummary {
     occupancyBasis: o.occupancy_basis, nights: o.nights, inclusions: o.inclusions,
     travelStart: o.travel_start, travelEnd: o.travel_end, bookingDeadline: o.booking_deadline,
     checkedAt: o.checked_at, bookingRoute: o.booking_route,
-    audience: o.audience_tags ? o.audience_tags.split(',') : null,
+    audience: o.audience_tags ? (o.audience_tags.split(',') as ('family' | 'couple' | 'adults_only')[]) : null,
   };
 }
 
