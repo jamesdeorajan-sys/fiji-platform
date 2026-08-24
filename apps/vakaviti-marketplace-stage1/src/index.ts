@@ -15,7 +15,7 @@ import { runSupplyBootstrap, runPhase2SupplyExpansion, runWave3SupplyExpansion, 
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 import { dealExchangeUi } from './deal-exchange-ui';
 
-type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string; DEAL_EXCHANGE_DB?: D1Database };
+type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string; DEAL_EXCHANGE_DB?: D1Database; DEAL_EXCHANGE_PUBLIC_ENABLED?: string };
 
 // Centralised Stage 1 enquiry-routing decision. This is a preview/testing routing rule only -
 // it decides where the WhatsApp message goes, it never touches an operator's own stored

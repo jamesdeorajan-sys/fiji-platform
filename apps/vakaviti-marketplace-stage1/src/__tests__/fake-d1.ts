@@ -75,6 +75,24 @@ export class FakeD1 {
       return rows.map(r => Object.fromEntries(cols.map(c => [c, r[c]])));
     }
 
+    const updateMatch = s.match(/^UPDATE (\w+) SET (.+?) WHERE (.+)$/i);
+    if (updateMatch) {
+      const [, table, setClause, whereClause] = updateMatch;
+      const setParts = setClause.split(',').map(p => p.trim());
+      const assignments: [string, any][] = [];
+      for (const part of setParts) {
+        const m = part.match(/^(\w+)\s*=\s*(.+)$/);
+        if (!m) continue;
+        assignments.push([m[1], this.literalOrNext(m[2], next)]);
+      }
+      const eq = whereClause.match(/^(\w+)\s*=\s*\?$/);
+      if (!eq) throw new Error('FakeD1: unsupported UPDATE WHERE clause: ' + whereClause);
+      const v = next();
+      const rows = this.table(table).filter(r => r[eq[1]] === v);
+      for (const r of rows) for (const [col, val] of assignments) r[col] = val;
+      return rows;
+    }
+
     throw new Error('FakeD1: unsupported SQL shape in test mock: ' + s);
   }
 }

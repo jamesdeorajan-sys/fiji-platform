@@ -302,21 +302,61 @@ export interface EnquiryReviewInput {
   dealId: string | null; productId: string | null;
   travelDates: string | null; partySize: string | null; hotelOrArrivalPoint: string | null;
   unresolvedQuestions: string | null;
+  idempotencyKey: string; // caller-supplied - see buildEnquiryIdempotencyKey()
 }
 export interface EnquiryReviewResult {
   enquiryId: string;
   enquiryReference: string;
+  alreadyExisted: boolean;
 }
 
 function makeEnquiryReference(): string {
   return 'VKV-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
+// Deterministic from the review-screen content itself (not a random per-request token) - a
+// browser refresh or a double-click resubmits the exact same form content, so it collapses to the
+// same key and therefore the same enquiry, rather than minting a second reference for what the
+// visitor experienced as one action.
+export async function buildEnquiryIdempotencyKey(input: Omit<EnquiryReviewInput, 'idempotencyKey'>): Promise<string> {
+  const basis = [input.dealId, input.productId, input.travelDates, input.partySize, input.hotelOrArrivalPoint, input.unresolvedQuestions].map(v => normalizeText(v)).join('::');
+  const data = new TextEncoder().encode(basis);
+  const hashBuf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(hashBuf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function createEnquiryReview(db: D1Database, input: EnquiryReviewInput): Promise<EnquiryReviewResult> {
+  const existing = await db.prepare('SELECT id, enquiry_reference FROM deal_exchange_enquiries WHERE idempotency_key=?').bind(input.idempotencyKey).first<any>();
+  if (existing) return { enquiryId: existing.id, enquiryReference: existing.enquiry_reference, alreadyExisted: true };
   const id = crypto.randomUUID();
   const reference = makeEnquiryReference();
   await db.prepare(
-    `INSERT INTO deal_exchange_enquiries (id, deal_id, product_id, travel_dates, party_size, hotel_or_arrival_point, unresolved_questions, enquiry_reference) VALUES (?,?,?,?,?,?,?,?)`
-  ).bind(id, input.dealId, input.productId, input.travelDates, input.partySize, input.hotelOrArrivalPoint, input.unresolvedQuestions, reference).run();
-  return { enquiryId: id, enquiryReference: reference };
+    `INSERT INTO deal_exchange_enquiries (id, deal_id, product_id, travel_dates, party_size, hotel_or_arrival_point, unresolved_questions, enquiry_reference, idempotency_key, status, booking_outcome) VALUES (?,?,?,?,?,?,?,?,?,'REVIEW_CREATED','UNKNOWN')`
+  ).bind(id, input.dealId, input.productId, input.travelDates, input.partySize, input.hotelOrArrivalPoint, input.unresolvedQuestions, reference, input.idempotencyKey).run();
+  return { enquiryId: id, enquiryReference: reference, alreadyExisted: false };
+}
+
+// Called from a tracked redirect route (never from the wa.me link directly) so the transition is
+// genuinely observable server-side - see deal-exchange-ui.ts's /chat/open-whatsapp/:id route,
+// which records this BEFORE issuing the 302 to wa.me, same discipline as recordOutboundClick().
+// This records only that the visitor clicked through, never that a message was sent or received.
+export async function markWhatsappLinkOpened(db: D1Database, enquiryId: string): Promise<{ updated: boolean }> {
+  const existing = await db.prepare('SELECT status FROM deal_exchange_enquiries WHERE id=?').bind(enquiryId).first<any>();
+  if (!existing) return { updated: false };
+  if (existing.status !== 'REVIEW_CREATED') return { updated: false }; // already advanced - do not regress or duplicate
+  await db.prepare(`UPDATE deal_exchange_enquiries SET status='WHATSAPP_LINK_OPENED', whatsapp_link_opened_at=? WHERE id=?`)
+    .bind(new Date().toISOString(), enquiryId).run();
+  return { updated: true };
+}
+
+// Deliberately has no caller anywhere in the visitor-facing UI in this milestone - "only from
+// later evidence" means a human (a future staff console, out of scope here) confirms this after
+// the fact. The function exists and is tested so the mechanism is real, not merely a planned enum
+// value with nothing behind it.
+export async function confirmHumanContact(db: D1Database, enquiryId: string, confirmedBy: string): Promise<{ updated: boolean }> {
+  const existing = await db.prepare('SELECT status FROM deal_exchange_enquiries WHERE id=?').bind(enquiryId).first<any>();
+  if (!existing) return { updated: false };
+  await db.prepare(`UPDATE deal_exchange_enquiries SET status='HUMAN_CONTACT_CONFIRMED', human_contact_confirmed_at=?, human_contact_confirmed_by=? WHERE id=?`)
+    .bind(new Date().toISOString(), confirmedBy, enquiryId).run();
+  return { updated: true };
 }

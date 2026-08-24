@@ -43,6 +43,12 @@ ENVIRONMENT = "preview"
 # (see src/index.ts resolveEnquiryDestination). A future production routing policy requires
 # its own explicit decision/configuration - it is not inferred from this value.
 MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
+# Milestone 4 entry gate 4: explicit feature flag, deliberately separate from DEAL_EXCHANGE_DB's
+# mere presence. The future production rollout plan (see DEAL_EXCHANGE_PRODUCTION_PLAN.md)
+# deploys the D1 binding FIRST with this flag left unset/false, runs read-only verification, and
+# only THEN flips it - so "the binding exists" and "the public routes are live" are two
+# independently-controlled steps, never one implicit consequence of the other.
+DEAL_EXCHANGE_PUBLIC_ENABLED = "true"
 
 # Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
 # storage. Files under public/ are served directly at their path (e.g. public/images/x.webp

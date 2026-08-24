@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { determineOfferAction, filterEligibleOffers, compareOffers, parseNaturalLanguageIntent, suggestCrossSell, recordOutboundClick, createEnquiryReview, type PublicDealSummary, type DealSearchFilters } from './deal-exchange-listing';
+import { determineOfferAction, filterEligibleOffers, compareOffers, parseNaturalLanguageIntent, suggestCrossSell, recordOutboundClick, createEnquiryReview, buildEnquiryIdempotencyKey, markWhatsappLinkOpened, type PublicDealSummary, type DealSearchFilters } from './deal-exchange-listing';
 
 // VAKAVITI LIVE DEAL EXCHANGE - Milestone 3 mobile visitor journey (2026-08-24).
 // Public-facing (no admin session required to browse) - this is the visitor-facing surface, NOT
@@ -7,14 +7,18 @@ import { determineOfferAction, filterEligibleOffers, compareOffers, parseNatural
 // here can mutate a deal's public eligibility - it only reads deal_exchange_offers rows whose
 // publication_decision is already 'ELIGIBLE', computed offline by evaluateOfferPublicationGates().
 
-export type Bindings = { DEAL_EXCHANGE_DB?: D1Database; ENVIRONMENT: string };
+export type Bindings = { DEAL_EXCHANGE_DB?: D1Database; ENVIRONMENT: string; DEAL_EXCHANGE_PUBLIC_ENABLED?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
 export const dealExchangeUi = new Hono<{ Bindings: Bindings }>();
 
 // Structurally inert whenever DEAL_EXCHANGE_DB is absent (e.g. production, until a separately
-// authorized merge/migration - see the wrangler.toml pre-merge checklist) - same discipline as PR
-// #21's OPPORTUNITY_DB guard. Every route below can assume the binding exists past this point.
+// authorized merge/migration - see the wrangler.toml pre-merge checklist), AND independently
+// gated by DEAL_EXCHANGE_PUBLIC_ENABLED (Milestone 4 entry gate 4) - a future production rollout
+// deploys the binding first, with this flag left unset, so the two are never conflated: a bound
+// database does not by itself make the public routes live. Every route below can assume both
+// conditions hold past this point.
 dealExchangeUi.use('*', async (c, next) => {
   if (!c.env.DEAL_EXCHANGE_DB) return c.text('Live Deal Exchange is not configured on this environment.', 503);
+  if (c.env.DEAL_EXCHANGE_PUBLIC_ENABLED !== 'true') return c.text('Live Deal Exchange is not yet publicly enabled on this environment.', 503);
   await next();
 });
 
@@ -241,14 +245,15 @@ dealExchangeUi.get('/chat', async c => {
 dealExchangeUi.post('/chat/review', async c => {
   const body = await c.req.parseBody();
   const db = c.env.DEAL_EXCHANGE_DB!;
-  const review = await createEnquiryReview(db, {
+  const reviewInput = {
     dealId: null, productId: null,
     travelDates: String(body.travel_dates || '') || null,
     partySize: String(body.party_size || '') || null,
     hotelOrArrivalPoint: String(body.hotel_point || '') || null,
     unresolvedQuestions: String(body.questions || '') || null,
-  });
-  const waText = encodeURIComponent(`Bula - enquiry ref ${review.enquiryReference}. Dates: ${body.travel_dates || 'not specified'}. Party: ${body.party_size || 'not specified'}. Arrival: ${body.hotel_point || 'not specified'}. ${body.questions || ''}`);
+  };
+  const idempotencyKey = await buildEnquiryIdempotencyKey(reviewInput);
+  const review = await createEnquiryReview(db, { ...reviewInput, idempotencyKey });
   return c.html(shell(`
     <h1 style="font-size:20px">Review before you go</h1>
     <div class="card">
@@ -258,9 +263,25 @@ dealExchangeUi.post('/chat/review', async c => {
       <p><b>Arrival point:</b> ${esc(body.hotel_point || 'not specified')}</p>
       <p><b>Questions:</b> ${esc(body.questions || 'none')}</p>
       <p class="muted">This reference lets our team see what you already told us, so you won't need to repeat it.</p>
-      <div class="row"><a class="btn small" href="https://wa.me/?text=${waText}" target="_blank" rel="noopener">Continue to WhatsApp</a> <a class="btn small secondary" href="/chat">Edit</a></div>
+      <div class="row"><a class="btn small" href="/chat/open-whatsapp/${esc(review.enquiryId)}" target="_blank" rel="noopener noreferrer">Continue to WhatsApp</a> <a class="btn small secondary" href="/chat">Edit</a></div>
     </div>
   `, { title: 'Review', active: 'chat' }));
+});
+
+// Tracked WhatsApp handoff - records WHATSAPP_LINK_OPENED (observable: the visitor actually
+// clicked through) BEFORE redirecting to the real wa.me link, same "record before the 302"
+// discipline as recordOutboundClick(). This never claims a message was sent - only that the
+// visitor opened the link. The destination is Vakaviti's own configured WhatsApp number
+// (MARKETPLACE_ENQUIRY_WHATSAPP), never a provider's private contact - this is the Vakaviti
+// concierge handoff, not a provider-direct enquiry route.
+dealExchangeUi.get('/chat/open-whatsapp/:id', async c => {
+  const db = c.env.DEAL_EXCHANGE_DB!;
+  const enquiry = await db.prepare('SELECT * FROM deal_exchange_enquiries WHERE id=?').bind(c.req.param('id')).first<any>();
+  if (!enquiry) return c.notFound();
+  await markWhatsappLinkOpened(db, enquiry.id);
+  const waNumber = (c.env.MARKETPLACE_ENQUIRY_WHATSAPP || '').replace(/[^\d]/g, '');
+  const waText = encodeURIComponent(`Bula - enquiry ref ${enquiry.enquiry_reference}. Dates: ${enquiry.travel_dates || 'not specified'}. Party: ${enquiry.party_size || 'not specified'}. Arrival: ${enquiry.hotel_or_arrival_point || 'not specified'}. ${enquiry.unresolved_questions || ''}`);
+  return c.redirect(`https://wa.me/${waNumber}?text=${waText}`, 302);
 });
 
 // --- Natural-language intent (item 12) -------------------------------------------------------

@@ -3,6 +3,7 @@ import { FakeD1 } from './fake-d1';
 import {
   determineOfferAction, classifyBookingRoute, classifyOwnedProduct, filterEligibleOffers,
   compareOffers, parseNaturalLanguageIntent, recordOutboundClick, createEnquiryReview,
+  buildEnquiryIdempotencyKey, markWhatsappLinkOpened, confirmHumanContact,
   type PublicDealSummary,
 } from '../deal-exchange-listing';
 import { readFileSync } from 'node:fs';
@@ -271,12 +272,79 @@ describe('Milestone 3 test 15: every offer-owner type produces the exact require
 });
 
 describe('createEnquiryReview - WhatsApp handoff never sends anything itself', () => {
-  it('creates a review record with a real reference, does not touch any messaging API', async () => {
+  it('creates a review record with a real reference and starts at REVIEW_CREATED / booking_outcome UNKNOWN', async () => {
     const db = new FakeD1();
-    const result = await createEnquiryReview(db as any, {
-      dealId: 'off-1', productId: null, travelDates: 'Sept 2026', partySize: '4', hotelOrArrivalPoint: 'Denarau', unresolvedQuestions: 'Is breakfast included?',
-    });
+    const input = { dealId: 'off-1', productId: null, travelDates: 'Sept 2026', partySize: '4', hotelOrArrivalPoint: 'Denarau', unresolvedQuestions: 'Is breakfast included?' };
+    const idempotencyKey = await buildEnquiryIdempotencyKey(input);
+    const result = await createEnquiryReview(db as any, { ...input, idempotencyKey });
     expect(result.enquiryReference).toMatch(/^VKV-/);
+    expect(result.alreadyExisted).toBe(false);
     expect(db.tables['deal_exchange_enquiries']).toHaveLength(1);
+    expect(db.tables['deal_exchange_enquiries'][0].status).toBe('REVIEW_CREATED');
+    expect(db.tables['deal_exchange_enquiries'][0].booking_outcome).toBe('UNKNOWN');
+  });
+});
+
+describe('Milestone 4 entry gate 2: WhatsApp review/handoff lifecycle', () => {
+  it('a refresh/double-click resubmit of the identical review does not create a duplicate enquiry', async () => {
+    const db = new FakeD1();
+    const input = { dealId: 'off-1', productId: null, travelDates: 'Sept 2026', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null };
+    const key = await buildEnquiryIdempotencyKey(input);
+    const r1 = await createEnquiryReview(db as any, { ...input, idempotencyKey: key });
+    const r2 = await createEnquiryReview(db as any, { ...input, idempotencyKey: key });
+    expect(r1.alreadyExisted).toBe(false);
+    expect(r2.alreadyExisted).toBe(true);
+    expect(r2.enquiryReference).toBe(r1.enquiryReference);
+    expect(db.tables['deal_exchange_enquiries']).toHaveLength(1);
+  });
+
+  it('genuinely different review content produces a different enquiry', async () => {
+    const a = await buildEnquiryIdempotencyKey({ dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null });
+    const b = await buildEnquiryIdempotencyKey({ dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '4', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null });
+    expect(a).not.toBe(b);
+  });
+
+  it('CEO test: opening the WhatsApp link only ever sets WHATSAPP_LINK_OPENED - it never claims a message was sent', async () => {
+    const db = new FakeD1();
+    const key = await buildEnquiryIdempotencyKey({ dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null });
+    const created = await createEnquiryReview(db as any, { dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null, idempotencyKey: key });
+    const result = await markWhatsappLinkOpened(db as any, created.enquiryId);
+    expect(result.updated).toBe(true);
+    const row = db.tables['deal_exchange_enquiries'].find((r: any) => r.id === created.enquiryId);
+    expect(row.status).toBe('WHATSAPP_LINK_OPENED');
+    expect(row.whatsapp_link_opened_at).toBeTruthy();
+    // Nothing about this call, or anywhere in this module, ever sets a "message sent"/"MESSAGE_SENT"
+    // style status - the only status values that exist at all are the three explicit lifecycle
+    // states, none of which claim delivery.
+    expect(['REVIEW_CREATED', 'WHATSAPP_LINK_OPENED', 'HUMAN_CONTACT_CONFIRMED']).toContain(row.status);
+  });
+
+  it('opening the link twice does not regress or duplicate the transition', async () => {
+    const db = new FakeD1();
+    const key = await buildEnquiryIdempotencyKey({ dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null });
+    const created = await createEnquiryReview(db as any, { dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null, idempotencyKey: key });
+    const first = await markWhatsappLinkOpened(db as any, created.enquiryId);
+    const second = await markWhatsappLinkOpened(db as any, created.enquiryId);
+    expect(first.updated).toBe(true);
+    expect(second.updated).toBe(false); // already past REVIEW_CREATED - not re-applied
+  });
+
+  it('HUMAN_CONTACT_CONFIRMED exists as a real, callable mechanism, even though nothing in the visitor UI calls it yet (it requires later human evidence)', async () => {
+    const db = new FakeD1();
+    const key = await buildEnquiryIdempotencyKey({ dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null });
+    const created = await createEnquiryReview(db as any, { dealId: 'off-1', productId: null, travelDates: 'Sept', partySize: '2', hotelOrArrivalPoint: 'Nadi', unresolvedQuestions: null, idempotencyKey: key });
+    const result = await confirmHumanContact(db as any, created.enquiryId, 'staff-member');
+    expect(result.updated).toBe(true);
+    const row = db.tables['deal_exchange_enquiries'].find((r: any) => r.id === created.enquiryId);
+    expect(row.status).toBe('HUMAN_CONTACT_CONFIRMED');
+    expect(row.human_contact_confirmed_by).toBe('staff-member');
+  });
+
+  it('the migration schema itself only ever allows booking_outcome to be UNKNOWN - a database-level guarantee, not just an application convention', () => {
+    // See migrations/deal-exchange/0004_enquiry_lifecycle.sql: booking_outcome has a CHECK
+    // constraint permitting only the single value 'UNKNOWN' - there is no column value this
+    // module (or any future caller) could set that would let a booking be falsely claimed.
+    const src = readFileSync(fileURLToPath(new URL('../../migrations/deal-exchange/0004_enquiry_lifecycle.sql', import.meta.url)), 'utf8');
+    expect(src).toMatch(/booking_outcome TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK \(booking_outcome IN \('UNKNOWN'\)\)/);
   });
 });
