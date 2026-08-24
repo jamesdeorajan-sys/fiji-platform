@@ -20,7 +20,7 @@ database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 # DO NOT merge this wrangler.toml into ceo/vakaviti-marketplace-stage1 as-is. Before merging:
 #   1. Create a real production database: `vakaviti-live-deal-exchange-db` (a NEW resource - never
 #      reuse the preview database id 3f9a36c7-829c-4f9d-8af0-bb5332860f4b in production).
-#   2. Apply migrations/deal-exchange/0001-0003 to that NEW production database only.
+#   2. Apply migrations/deal-exchange/0001-0004 to that NEW production database only.
 #   3. Change database_id below to the NEW production database's id.
 #   4. Re-run the full test/QA suite against the real production binding shape.
 #   5. Rollback if needed: remove this [[d1_databases]] block and redeploy - the deal-exchange
@@ -32,17 +32,14 @@ binding = "DEAL_EXCHANGE_DB"
 database_name = "vakaviti-live-deal-exchange-preview-db"
 database_id = "3f9a36c7-829c-4f9d-8af0-bb5332860f4b"
 
-# Milestone 4 blocker 1: a SECOND, fully separate isolated database used ONLY by the one
-# authorized end-to-end write smoke test (the WhatsApp review/handoff Playwright test). Every
-# other Playwright/CI test is read-only against DEAL_EXCHANGE_DB above. Routes only write here
-# when the request carries the x-vakaviti-qa-run-id header AND this binding exists - see
-# deal-exchange-ui.ts's getEnquiryDb(). This can never touch DEAL_EXCHANGE_DB's genuine preview
-# evidence, by construction (two entirely separate D1 resources). Preview-only - never bound in a
-# production wrangler.toml.
-[[d1_databases]]
-binding = "DEAL_EXCHANGE_QA_DB"
-database_name = "vakaviti-live-deal-exchange-qa-db"
-database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"
+# FINAL INTEGRATION REVIEW, Phase 1 (2026-08-25): DEAL_EXCHANGE_QA_DB, QA_TEST_MODE and
+# QA_AUTH_SECRET are DELIBERATELY ABSENT from this top-level config. They exist ONLY under
+# [env.qa] below. This is a structural guarantee, not a runtime flag a caller can spoof: a Workers
+# binding that isn't declared for a given deployment does not exist in that deployment's env
+# object at all, full stop - no header, credential, or code path on THIS deployment (the ordinary
+# branch preview, and eventually production) can ever reach a QA database, because there is
+# nothing here for it to bind to. See src/deal-exchange-ui.ts's verifyQaAuth()/getEnquiryDb() for
+# the additional application-level gates that apply only inside [env.qa] itself.
 
 [ai]
 binding = "AI"
@@ -61,6 +58,13 @@ MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 # only THEN flips it - so "the binding exists" and "the public routes are live" are two
 # independently-controlled steps, never one implicit consequence of the other.
 DEAL_EXCHANGE_PUBLIC_ENABLED = "true"
+
+# Phase 2 (Final Integration Review): non-secret, Cloudflare-native build identity - exposes a
+# unique version id/tag at runtime with zero injected secrets and no chicken-and-egg problem
+# (unlike trying to embed this commit's own SHA inside a file committed as part of this same
+# commit). See /internal/build-info in src/deal-exchange-ui.ts and e2e/global-setup.ts.
+[[version_metadata]]
+binding = "CF_VERSION_METADATA"
 
 # Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
 # storage. Files under public/ are served directly at their path (e.g. public/images/x.webp
@@ -88,3 +92,41 @@ binding = "ASSETS"
 # block the next one.
 [triggers]
 crons = ["0 */4 * * *"]
+
+# =================================================================================================
+# DEDICATED QA ENVIRONMENT (Final Integration Review, Phase 1 item 2)
+# =================================================================================================
+# A fully separate Cloudflare Worker deployment (Cloudflare deploys a distinct script named
+# "<name>-qa" for any [env.qa] block by default) - QA_DB binding only, no production/preview DB
+# binding, no custom domain, no Cron (this block deliberately carries no [triggers] section, and
+# wrangler does not inherit top-level triggers into named environments), no public indexing (no
+# [assets] directory is served under a public route here beyond what the Worker itself renders,
+# and DEAL_EXCHANGE_PUBLIC_ENABLED stays false).
+#
+# DEPLOYMENT STATUS (honest, as of this push): this block is not yet deployed anywhere. Cloudflare
+# Workers Builds (the git integration driving the ordinary branch preview) has been empirically
+# confirmed this engagement to read only the TOP-LEVEL config - it will not deploy this block on
+# its own. Actually deploying it requires `wrangler deploy --env qa` to run somewhere with a
+# Cloudflare API token: either a new GitHub Actions secret on this repo (none exist today - see
+# the FINAL REPORT for the exact question this raises) or a one-time manual deploy. QA_AUTH_SECRET
+# is set via `wrangler secret put QA_AUTH_SECRET --env qa` for the same reason - it is never
+# written here in plaintext, and never derived from or equal to ADMIN_TOKEN.
+[env.qa]
+name = "vakaviti-live-deal-exchange-qa"
+
+[env.qa.vars]
+ENVIRONMENT = "qa"
+QA_TEST_MODE = "true"
+DEAL_EXCHANGE_PUBLIC_ENABLED = "false"
+
+[[env.qa.d1_databases]]
+binding = "DEAL_EXCHANGE_QA_DB"
+database_name = "vakaviti-live-deal-exchange-qa-db"
+database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"
+
+[[env.qa.version_metadata]]
+binding = "CF_VERSION_METADATA"
+
+[env.qa.assets]
+directory = "./public"
+binding = "ASSETS"

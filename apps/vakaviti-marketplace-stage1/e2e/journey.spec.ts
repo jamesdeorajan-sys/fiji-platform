@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createHmac, randomBytes } from 'node:crypto';
 
 test.describe('Three-item comparison', () => {
   test('comparing all 3 real preview deals renders and states the incomparability reason (mixed price bases)', async ({ page }) => {
@@ -37,15 +38,30 @@ test.describe('Saved trip (localStorage, no server, no PII)', () => {
 });
 
 test.describe('Milestone 4 entry gate 2: WhatsApp review/handoff full lifecycle (no message sent)', () => {
-  // Blocker 1: this is the ONE authorized end-to-end write smoke test. It writes only to
-  // DEAL_EXCHANGE_QA_DB (a fully separate D1 from the real preview evidence database) by sending
-  // the x-vakaviti-qa-run-id header on every request this test makes - see getEnquiryDb() in
-  // deal-exchange-ui.ts. The run-id is unique per test invocation (parallel runs cannot collide),
-  // and cleanup runs in a finally block so it happens whether the test passes or fails, followed
-  // by an explicit zero-residue assertion against the real server response.
+  // FINAL INTEGRATION REVIEW, Phase 1 (2026-08-25): this is the ONE authorized end-to-end write
+  // smoke test, and it now runs against the DEDICATED QA environment (QA_BASE_URL), not the
+  // shared branch preview - DEAL_EXCHANGE_QA_DB is no longer bound there at all (see
+  // wrangler.toml). Every write request carries a full HMAC-signed header set (run id, timestamp,
+  // single-use nonce, signature) computed with the real QA_AUTH_SECRET - see verifyQaAuth() in
+  // deal-exchange-ui.ts. A bare run-id header (the old scheme) is no longer sufficient anywhere.
+  //
+  // Skipped until QA_BASE_URL/QA_AUTH_SECRET are supplied to CI - the dedicated QA Worker isn't
+  // deployed yet, pending a separate CEO decision on provisioning a Cloudflare credential for CI
+  // (see the FINAL REPORT). This is a disclosed gap, not a silently-lowered bar: the suite still
+  // fails closed (skip, not pass) rather than pretending the write path was proven.
+  const qaBaseUrl = process.env.QA_BASE_URL;
+  const qaSecret = process.env.QA_AUTH_SECRET;
+  test.skip(!qaBaseUrl || !qaSecret, 'QA_BASE_URL/QA_AUTH_SECRET not provided to this CI run - dedicated QA environment deployment is pending a separate CEO infrastructure decision.');
+
+  function qaHeaders(runId: string) {
+    const timestamp = String(Date.now());
+    const nonce = randomBytes(16).toString('hex');
+    const signature = createHmac('sha256', qaSecret!).update(`${runId}.${nonce}.${timestamp}`).digest('hex');
+    return { 'x-vakaviti-qa-run-id': runId, 'x-vakaviti-qa-timestamp': timestamp, 'x-vakaviti-qa-nonce': nonce, 'x-vakaviti-qa-signature': signature };
+  }
+
   test('review -> confirm -> tracked WhatsApp link, stopping before wa.me, with a stable enquiry reference', async ({ page, request }) => {
     const runId = `pw-${test.info().workerIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await page.setExtraHTTPHeaders({ 'x-vakaviti-qa-run-id': runId });
     // Unique per-run content so this run's idempotency key can never collide with another
     // parallel run's - "parallel runs cannot collide" is a real property of the content itself,
     // not just the routing.
@@ -53,7 +69,9 @@ test.describe('Milestone 4 entry gate 2: WhatsApp review/handoff full lifecycle 
     let reference = '';
 
     try {
-      await page.goto('/chat');
+      await page.goto(`${qaBaseUrl}/`); // establish the origin before setting per-origin headers
+      await page.setExtraHTTPHeaders(qaHeaders(runId)); // fresh nonce for this submission only
+      await page.goto(`${qaBaseUrl}/chat`);
       await page.fill('#dates', 'September 2026, 7 nights');
       await page.fill('#party', '2 adults');
       await page.fill('#hotel', 'Denarau');
@@ -82,8 +100,10 @@ test.describe('Milestone 4 entry gate 2: WhatsApp review/handoff full lifecycle 
       expect(rel).toContain('noreferrer');
 
       // Resubmitting the identical form must not create a second reference (idempotency,
-      // exercised here as a real double-submit, not just at the unit level).
-      await page.goto('/chat');
+      // exercised here as a real double-submit, not just at the unit level). Needs a FRESH nonce
+      // (single-use) even though it's the same run id and same content.
+      await page.setExtraHTTPHeaders(qaHeaders(runId));
+      await page.goto(`${qaBaseUrl}/chat`);
       await page.fill('#dates', 'September 2026, 7 nights');
       await page.fill('#party', '2 adults');
       await page.fill('#hotel', 'Denarau');
@@ -93,7 +113,7 @@ test.describe('Milestone 4 entry gate 2: WhatsApp review/handoff full lifecycle 
       expect(secondText).toContain(reference); // same reference, not a new one
     } finally {
       if (reference) {
-        const cleanup = await request.post('/internal/qa-cleanup', { data: { reference } });
+        const cleanup = await request.post(`${qaBaseUrl}/internal/qa-cleanup`, { headers: qaHeaders(runId), data: { reference } });
         expect(cleanup.ok(), 'QA cleanup request itself failed').toBeTruthy();
         const body = await cleanup.json();
         // Post-test zero-residue assertion against the real server response, not an assumption.

@@ -7,33 +7,128 @@ import { determineOfferAction, filterEligibleOffers, compareOffers, parseNatural
 // here can mutate a deal's public eligibility - it only reads deal_exchange_offers rows whose
 // publication_decision is already 'ELIGIBLE', computed offline by evaluateOfferPublicationGates().
 
-export type Bindings = { DEAL_EXCHANGE_DB?: D1Database; DEAL_EXCHANGE_QA_DB?: D1Database; ENVIRONMENT: string; DEAL_EXCHANGE_PUBLIC_ENABLED?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
+export type Bindings = {
+  DEAL_EXCHANGE_DB?: D1Database;
+  DEAL_EXCHANGE_QA_DB?: D1Database;
+  ENVIRONMENT: string;
+  DEAL_EXCHANGE_PUBLIC_ENABLED?: string;
+  MARKETPLACE_ENQUIRY_WHATSAPP?: string;
+  QA_TEST_MODE?: string;
+  QA_AUTH_SECRET?: string;
+  CF_VERSION_METADATA?: { id: string; tag: string };
+};
 
 const QA_RUN_ID_HEADER = 'x-vakaviti-qa-run-id';
+const QA_TIMESTAMP_HEADER = 'x-vakaviti-qa-timestamp';
+const QA_NONCE_HEADER = 'x-vakaviti-qa-nonce';
+const QA_SIGNATURE_HEADER = 'x-vakaviti-qa-signature';
 const QA_RUN_ID_PATTERN = /^pw-[a-z0-9-]{6,64}$/; // matches the run-id format Playwright generates - not a secret, just a namespacing convention
+const QA_NONCE_PATTERN = /^[a-f0-9]{32,64}$/;
+const QA_SIGNATURE_PATTERN = /^[a-f0-9]{64}$/;
+const QA_MAX_SKEW_MS = 5 * 60 * 1000; // rejects stale/replayed-after-a-long-gap requests outright
 
-// Milestone 4 blocker 1: the enquiry write path is the ONE authorized end-to-end write smoke
-// test. When the caller supplies a well-formed QA run-id header AND DEAL_EXCHANGE_QA_DB is bound,
-// writes go to the fully separate QA database instead of the real preview evidence database -
-// this can never touch genuine preview evidence, by construction, regardless of what a caller
-// sends (worst case, a malformed/absent header just uses the real DB, which is the existing,
-// already-safe default).
-function getEnquiryDb(c: any): D1Database {
+// Thrown by getEnquiryDb()/verifyQaAuth() for any auth failure - caught by dealExchangeUi's
+// onError handler below and turned into a 401 with the (non-secret) reason, never a silent
+// fallback and never a raw 500.
+class QaAuthError extends Error {}
+
+export async function hmacHex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// FINAL INTEGRATION REVIEW, Phase 1 (2026-08-25): replaces the old header-only QA gate. A
+// caller-supplied x-vakaviti-qa-run-id is NEVER sufficient on its own - every one of the
+// following must independently hold, in order, cheapest/hardest-to-fake first:
+//   1. This deployment structurally IS the dedicated QA environment. Not a flag a caller can
+//      fake: DEAL_EXCHANGE_QA_DB only exists under [env.qa] in wrangler.toml, so on every other
+//      deployment (ordinary branch preview, eventual production) c.env.DEAL_EXCHANGE_QA_DB is
+//      simply undefined, full stop - no header or credential changes that.
+//   2. QA_TEST_MODE==='true' - a second, independently-set env var (belt and braces with #1).
+//   3. QA_AUTH_SECRET is bound - a real Cloudflare secret (`wrangler secret put ... --env qa`),
+//      never written to wrangler.toml, never logged, never equal to or derived from the
+//      production ADMIN_TOKEN (a wholly separate credential, scoped to QA only).
+//   4. A well-formed run id, a timestamp within QA_MAX_SKEW_MS of now, a nonce never seen before
+//      (checked against qa_auth_nonces, itself only reachable inside the isolated QA database),
+//      and a signature equal to HMAC-SHA256(QA_AUTH_SECRET, `${runId}.${nonce}.${timestamp}`) -
+//      compared in constant time.
+export async function verifyQaAuth(c: any, runId: string | undefined): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!c.env.DEAL_EXCHANGE_QA_DB) return { ok: false, reason: 'not the QA environment' };
+  if (c.env.QA_TEST_MODE !== 'true') return { ok: false, reason: 'QA_TEST_MODE not enabled' };
+  if (!c.env.QA_AUTH_SECRET) return { ok: false, reason: 'QA_AUTH_SECRET not bound' };
+  if (!runId || !QA_RUN_ID_PATTERN.test(runId)) return { ok: false, reason: 'missing or malformed run id' };
+  const timestamp = c.req.header(QA_TIMESTAMP_HEADER);
+  const nonce = c.req.header(QA_NONCE_HEADER);
+  const signature = c.req.header(QA_SIGNATURE_HEADER);
+  if (!timestamp || !/^\d{10,13}$/.test(timestamp)) return { ok: false, reason: 'missing or malformed timestamp' };
+  if (!nonce || !QA_NONCE_PATTERN.test(nonce)) return { ok: false, reason: 'missing or malformed nonce' };
+  if (!signature || !QA_SIGNATURE_PATTERN.test(signature)) return { ok: false, reason: 'missing or malformed signature' };
+  const skew = Math.abs(Date.now() - Number(timestamp));
+  if (skew > QA_MAX_SKEW_MS) return { ok: false, reason: 'timestamp outside allowed skew (stale or replayed)' };
+  const expected = await hmacHex(c.env.QA_AUTH_SECRET, `${runId}.${nonce}.${timestamp}`);
+  if (!timingSafeEqual(expected, signature)) return { ok: false, reason: 'invalid signature' };
+  const already = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT 1 FROM qa_auth_nonces WHERE nonce=?').bind(nonce).first();
+  if (already) return { ok: false, reason: 'nonce already used (replay)' };
+  await c.env.DEAL_EXCHANGE_QA_DB.prepare('INSERT INTO qa_auth_nonces (nonce) VALUES (?)').bind(nonce).run();
+  return { ok: true };
+}
+
+async function getEnquiryDb(c: any): Promise<D1Database> {
   const runId = c.req.header(QA_RUN_ID_HEADER);
-  if (runId && QA_RUN_ID_PATTERN.test(runId) && c.env.DEAL_EXCHANGE_QA_DB) return c.env.DEAL_EXCHANGE_QA_DB;
-  return c.env.DEAL_EXCHANGE_DB!;
+  if (runId) {
+    const auth = await verifyQaAuth(c, runId);
+    if (auth.ok) return c.env.DEAL_EXCHANGE_QA_DB;
+    if (c.env.DEAL_EXCHANGE_QA_DB && c.env.QA_TEST_MODE === 'true') {
+      // We ARE the QA deployment and a QA run id was supplied but failed auth - never silently
+      // fall through to a production/preview DB that, by construction, isn't even bound here.
+      throw new QaAuthError(auth.reason);
+    }
+    // Any other deployment: a QA run id header is simply irrelevant here (there is no QA_DB to
+    // route to), so it has exactly zero effect - not even to select the alternate credential
+    // path. A spoofed header on the ordinary preview behaves identically to no header at all.
+  }
+  if (!c.env.DEAL_EXCHANGE_DB) throw new QaAuthError('no database available for this request');
+  return c.env.DEAL_EXCHANGE_DB;
 }
 export const dealExchangeUi = new Hono<{ Bindings: Bindings }>();
+
+dealExchangeUi.onError((err, c) => {
+  if (err instanceof QaAuthError) return c.json({ error: err.message }, 401);
+  throw err;
+});
+
+// Phase 2 (Final Integration Review): non-secret build identity, reachable on every deployment
+// (registered before the gating middleware below) regardless of whether Deal Exchange itself is
+// configured/enabled - globalSetup polls this as its deployment-readiness signal.
+dealExchangeUi.get('/internal/build-info', c => {
+  return c.json({
+    versionId: c.env.CF_VERSION_METADATA?.id ?? null,
+    versionTag: c.env.CF_VERSION_METADATA?.tag ?? null,
+    environment: c.env.ENVIRONMENT ?? null,
+    qaModeActive: !!(c.env.DEAL_EXCHANGE_QA_DB && c.env.QA_TEST_MODE === 'true'),
+  });
+});
 
 // Structurally inert whenever DEAL_EXCHANGE_DB is absent (e.g. production, until a separately
 // authorized merge/migration - see the wrangler.toml pre-merge checklist), AND independently
 // gated by DEAL_EXCHANGE_PUBLIC_ENABLED (Milestone 4 entry gate 4) - a future production rollout
 // deploys the binding first, with this flag left unset, so the two are never conflated: a bound
 // database does not by itself make the public routes live. Every route below can assume both
-// conditions hold past this point.
+// conditions hold past this point - EXCEPT on the dedicated QA deployment, which deliberately has
+// no DEAL_EXCHANGE_DB and leaves DEAL_EXCHANGE_PUBLIC_ENABLED false (it is not public), so it is
+// let through on a separate, still-structural condition instead (never a per-request header).
 dealExchangeUi.use('*', async (c, next) => {
-  if (!c.env.DEAL_EXCHANGE_DB) return c.text('Live Deal Exchange is not configured on this environment.', 503);
-  if (c.env.DEAL_EXCHANGE_PUBLIC_ENABLED !== 'true') return c.text('Live Deal Exchange is not yet publicly enabled on this environment.', 503);
+  const isQaEnv = !!c.env.DEAL_EXCHANGE_QA_DB && c.env.QA_TEST_MODE === 'true';
+  if (!c.env.DEAL_EXCHANGE_DB && !isQaEnv) return c.text('Live Deal Exchange is not configured on this environment.', 503);
+  if (!isQaEnv && c.env.DEAL_EXCHANGE_PUBLIC_ENABLED !== 'true') return c.text('Live Deal Exchange is not yet publicly enabled on this environment.', 503);
   await next();
 });
 
@@ -311,7 +406,7 @@ dealExchangeUi.get('/chat', async c => {
 
 dealExchangeUi.post('/chat/review', async c => {
   const body = await c.req.parseBody();
-  const db = getEnquiryDb(c);
+  const db = await getEnquiryDb(c);
   const reviewInput = {
     dealId: null, productId: null,
     travelDates: String(body.travel_dates || '') || null,
@@ -342,7 +437,7 @@ dealExchangeUi.post('/chat/review', async c => {
 // (MARKETPLACE_ENQUIRY_WHATSAPP), never a provider's private contact - this is the Vakaviti
 // concierge handoff, not a provider-direct enquiry route.
 dealExchangeUi.get('/chat/open-whatsapp/:id', async c => {
-  const db = getEnquiryDb(c);
+  const db = await getEnquiryDb(c);
   const enquiry = await db.prepare('SELECT * FROM deal_exchange_enquiries WHERE id=?').bind(c.req.param('id')).first<any>();
   if (!enquiry) return c.notFound();
   await markWhatsappLinkOpened(db, enquiry.id);
@@ -351,15 +446,32 @@ dealExchangeUi.get('/chat/open-whatsapp/:id', async c => {
   return c.redirect(`https://wa.me/${waNumber}?text=${waText}`, 302);
 });
 
-// Milestone 4 blocker 1: cleanup for the one authorized QA write smoke test. Hardcoded to
-// DEAL_EXCHANGE_QA_DB ONLY - there is no parameter that could redirect this at the real preview
-// database, by construction. Deletes by exact enquiry_reference (bounded - never a blanket wipe),
-// returns the post-delete residue count for the caller's own zero-residue assertion.
+// FINAL INTEGRATION REVIEW, Phase 1 item 3: cleanup for the one authorized QA write smoke test.
+//   - 404 outside the QA environment (not even a 503 that confirms the route exists at all).
+//   - requires the same full HMAC auth as every other QA write (a run id header alone is not
+//     enough here either - the previous version's only gate).
+//   - hardcoded to DEAL_EXCHANGE_QA_DB ONLY - no parameter can redirect this at the real preview
+//     database, by construction (there is no other D1 binding even referenced in this handler).
+//   - deletes by exact enquiry_reference (bounded - never a blanket wipe), AND only when that
+//     reference belongs to the SAME run id making the request (one run cannot clean another run).
+//   - returns the post-delete residue count for the caller's own zero-residue assertion.
 dealExchangeUi.post('/internal/qa-cleanup', async c => {
-  if (!c.env.DEAL_EXCHANGE_QA_DB) return c.json({ error: 'DEAL_EXCHANGE_QA_DB not bound' }, 503);
+  if (!c.env.DEAL_EXCHANGE_QA_DB || c.env.QA_TEST_MODE !== 'true') return c.notFound();
+  const runId = c.req.header(QA_RUN_ID_HEADER);
+  const auth = await verifyQaAuth(c, runId || undefined);
+  if (!auth.ok) return c.json({ error: auth.reason }, 401);
   const body = await c.req.json().catch(() => ({}));
   const reference = String(body.reference || '');
   if (!reference || !/^VKV-[A-Z0-9]{6}$/.test(reference)) return c.json({ error: 'invalid or missing reference' }, 400);
+  const owned = await c.env.DEAL_EXCHANGE_QA_DB.prepare(
+    `SELECT 1 FROM deal_exchange_enquiries WHERE enquiry_reference=? AND unresolved_questions LIKE ?`
+  ).bind(reference, `%[qa:${runId}]%`).first();
+  if (!owned) {
+    const existsAtAll = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT 1 FROM deal_exchange_enquiries WHERE enquiry_reference=?').bind(reference).first();
+    if (existsAtAll) return c.json({ error: 'reference does not belong to this run id' }, 403);
+    // Reference genuinely doesn't exist (already cleaned, or never created) - a no-op delete
+    // below is safe and lets the caller's zero-residue assertion still pass.
+  }
   await c.env.DEAL_EXCHANGE_QA_DB.prepare('DELETE FROM deal_exchange_enquiries WHERE enquiry_reference=?').bind(reference).run();
   const residue = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT COUNT(*) n FROM deal_exchange_enquiries WHERE enquiry_reference=?').bind(reference).first<any>();
   const totalResidue = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT COUNT(*) n FROM deal_exchange_enquiries').first<any>();
