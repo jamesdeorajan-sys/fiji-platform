@@ -7,7 +7,22 @@ import { determineOfferAction, filterEligibleOffers, compareOffers, parseNatural
 // here can mutate a deal's public eligibility - it only reads deal_exchange_offers rows whose
 // publication_decision is already 'ELIGIBLE', computed offline by evaluateOfferPublicationGates().
 
-export type Bindings = { DEAL_EXCHANGE_DB?: D1Database; ENVIRONMENT: string; DEAL_EXCHANGE_PUBLIC_ENABLED?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
+export type Bindings = { DEAL_EXCHANGE_DB?: D1Database; DEAL_EXCHANGE_QA_DB?: D1Database; ENVIRONMENT: string; DEAL_EXCHANGE_PUBLIC_ENABLED?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
+
+const QA_RUN_ID_HEADER = 'x-vakaviti-qa-run-id';
+const QA_RUN_ID_PATTERN = /^pw-[a-z0-9-]{6,64}$/; // matches the run-id format Playwright generates - not a secret, just a namespacing convention
+
+// Milestone 4 blocker 1: the enquiry write path is the ONE authorized end-to-end write smoke
+// test. When the caller supplies a well-formed QA run-id header AND DEAL_EXCHANGE_QA_DB is bound,
+// writes go to the fully separate QA database instead of the real preview evidence database -
+// this can never touch genuine preview evidence, by construction, regardless of what a caller
+// sends (worst case, a malformed/absent header just uses the real DB, which is the existing,
+// already-safe default).
+function getEnquiryDb(c: any): D1Database {
+  const runId = c.req.header(QA_RUN_ID_HEADER);
+  if (runId && QA_RUN_ID_PATTERN.test(runId) && c.env.DEAL_EXCHANGE_QA_DB) return c.env.DEAL_EXCHANGE_QA_DB;
+  return c.env.DEAL_EXCHANGE_DB!;
+}
 export const dealExchangeUi = new Hono<{ Bindings: Bindings }>();
 
 // Structurally inert whenever DEAL_EXCHANGE_DB is absent (e.g. production, until a separately
@@ -276,7 +291,7 @@ dealExchangeUi.get('/chat', async c => {
 
 dealExchangeUi.post('/chat/review', async c => {
   const body = await c.req.parseBody();
-  const db = c.env.DEAL_EXCHANGE_DB!;
+  const db = getEnquiryDb(c);
   const reviewInput = {
     dealId: null, productId: null,
     travelDates: String(body.travel_dates || '') || null,
@@ -307,13 +322,28 @@ dealExchangeUi.post('/chat/review', async c => {
 // (MARKETPLACE_ENQUIRY_WHATSAPP), never a provider's private contact - this is the Vakaviti
 // concierge handoff, not a provider-direct enquiry route.
 dealExchangeUi.get('/chat/open-whatsapp/:id', async c => {
-  const db = c.env.DEAL_EXCHANGE_DB!;
+  const db = getEnquiryDb(c);
   const enquiry = await db.prepare('SELECT * FROM deal_exchange_enquiries WHERE id=?').bind(c.req.param('id')).first<any>();
   if (!enquiry) return c.notFound();
   await markWhatsappLinkOpened(db, enquiry.id);
   const waNumber = (c.env.MARKETPLACE_ENQUIRY_WHATSAPP || '').replace(/[^\d]/g, '');
   const waText = encodeURIComponent(`Bula - enquiry ref ${enquiry.enquiry_reference}. Dates: ${enquiry.travel_dates || 'not specified'}. Party: ${enquiry.party_size || 'not specified'}. Arrival: ${enquiry.hotel_or_arrival_point || 'not specified'}. ${enquiry.unresolved_questions || ''}`);
   return c.redirect(`https://wa.me/${waNumber}?text=${waText}`, 302);
+});
+
+// Milestone 4 blocker 1: cleanup for the one authorized QA write smoke test. Hardcoded to
+// DEAL_EXCHANGE_QA_DB ONLY - there is no parameter that could redirect this at the real preview
+// database, by construction. Deletes by exact enquiry_reference (bounded - never a blanket wipe),
+// returns the post-delete residue count for the caller's own zero-residue assertion.
+dealExchangeUi.post('/internal/qa-cleanup', async c => {
+  if (!c.env.DEAL_EXCHANGE_QA_DB) return c.json({ error: 'DEAL_EXCHANGE_QA_DB not bound' }, 503);
+  const body = await c.req.json().catch(() => ({}));
+  const reference = String(body.reference || '');
+  if (!reference || !/^VKV-[A-Z0-9]{6}$/.test(reference)) return c.json({ error: 'invalid or missing reference' }, 400);
+  await c.env.DEAL_EXCHANGE_QA_DB.prepare('DELETE FROM deal_exchange_enquiries WHERE enquiry_reference=?').bind(reference).run();
+  const residue = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT COUNT(*) n FROM deal_exchange_enquiries WHERE enquiry_reference=?').bind(reference).first<any>();
+  const totalResidue = await c.env.DEAL_EXCHANGE_QA_DB.prepare('SELECT COUNT(*) n FROM deal_exchange_enquiries').first<any>();
+  return c.json({ deleted: true, reference, residueForReference: residue?.n ?? -1, totalQaResidue: totalResidue?.n ?? -1 });
 });
 
 // --- Natural-language intent (item 12) -------------------------------------------------------

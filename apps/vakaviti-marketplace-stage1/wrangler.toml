@@ -32,6 +32,18 @@ binding = "DEAL_EXCHANGE_DB"
 database_name = "vakaviti-live-deal-exchange-preview-db"
 database_id = "3f9a36c7-829c-4f9d-8af0-bb5332860f4b"
 
+# Milestone 4 blocker 1: a SECOND, fully separate isolated database used ONLY by the one
+# authorized end-to-end write smoke test (the WhatsApp review/handoff Playwright test). Every
+# other Playwright/CI test is read-only against DEAL_EXCHANGE_DB above. Routes only write here
+# when the request carries the x-vakaviti-qa-run-id header AND this binding exists - see
+# deal-exchange-ui.ts's getEnquiryDb(). This can never touch DEAL_EXCHANGE_DB's genuine preview
+# evidence, by construction (two entirely separate D1 resources). Preview-only - never bound in a
+# production wrangler.toml.
+[[d1_databases]]
+binding = "DEAL_EXCHANGE_QA_DB"
+database_name = "vakaviti-live-deal-exchange-qa-db"
+database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"
+
 [ai]
 binding = "AI"
 
