@@ -12,7 +12,7 @@ import {
   diffOpportunityMaterialFacts, scoreOpportunity, canonicalizeUrl,
   type OpportunityCaptureCandidate, type OpportunityMaterialFields, type OpportunityScoringInput,
 } from './opportunity-gate';
-import { evaluateDealAutoPublishGates, type DealAutoPublishCandidate } from './deal-quality';
+import { evaluateDealAutoPublishGates, detectPromptInjection, type DealAutoPublishCandidate } from './deal-quality';
 
 export type Bindings = { DB: D1Database; OPPORTUNITY_DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string };
 
@@ -183,9 +183,39 @@ export function generateOutreachDraft(o: { provider_name: string | null; canonic
 // human_confirmed starts at 0 and nothing on the opportunity row changes until a human calls
 // confirmProviderReplyExtraction() below - see index/opportunities-admin-ui.ts for the two-step
 // UI (paste reply -> review proposed fields -> confirm).
+//
+// Data minimization (PR #21 hardening item 7):
+// - MAX_REPLY_LENGTH bounds how much text one reply can carry - this is an admin-pasted summary
+//   of a conversation, not a place to dump an entire email thread or attachment.
+// - The raw text is rendered ONLY behind requireAdminSession, as plain text via the same esc()
+//   HTML-escaping helper used everywhere else in the console - never as executable HTML, and
+//   never in any public route, public HTML, or structured/JSON-LD output anywhere in this app
+//   (grep opportunities-admin-ui.ts / index.ts: raw_reply_text and opportunity_provider_replies
+//   appear only inside the admin-session-gated router).
+// - Reuses detectPromptInjection() (deal-quality.ts) on the pasted text - a provider reply is
+//   still untrusted external input, so it gets the same one-source-of-truth injection check as
+//   scraped page evidence, even though nothing here feeds an AI prompt today.
+// - A lightweight, explicit PII heuristic flags likely payment-card numbers or explicit
+//   ID/passport/bank mentions so a human sees a warning before treating the reply as routine -
+//   never blocks storage (the evidence itself must be retained), only flags for human attention.
+// - Retention: replies are retained for as long as their parent opportunity (append-only, same as
+//   lifecycle_events) - there is no separate automated deletion job. This matches every other
+//   piece of evidence in this pipeline and is documented here explicitly rather than left
+//   implicit; a future automated retention sweep would be a separate, explicitly authorized
+//   change, not something this feature silently does today.
+const MAX_REPLY_LENGTH = 8000;
+const PII_PATTERNS: { name: string; pattern: RegExp }[] = [
+  { name: 'possible_payment_card_number', pattern: /\b(?:\d[ -]?){13,19}\b/ },
+  { name: 'possible_passport_or_id_number', pattern: /\b(passport|national\s*id|driver'?s?\s*licen[cs]e)\s*(no\.?|number)?\s*[:#]?\s*[A-Z0-9]{5,}/i },
+  { name: 'possible_bank_account_details', pattern: /\b(bsb|account\s*number|iban|swift)\b/i },
+];
+
 export async function ingestProviderReply(
   env: Bindings, opportunityId: string, rawReplyText: string, submittedBy: string, proposedFields: Record<string, any>
 ): Promise<{ replyId: string; contradictionFlags: string[] }> {
+  if (rawReplyText.length > MAX_REPLY_LENGTH) {
+    throw new Error(`reply_too_long: ${rawReplyText.length} characters exceeds the ${MAX_REPLY_LENGTH}-character limit`);
+  }
   const opp = await env.OPPORTUNITY_DB.prepare(`SELECT * FROM opportunities WHERE id=?`).bind(opportunityId).first<any>();
   if (!opp) throw new Error('opportunity_not_found');
 
@@ -200,6 +230,14 @@ export async function ingestProviderReply(
   for (const [k, v] of Object.entries(proposedFields)) {
     if (k in websiteFields && websiteFields[k] && v && String(websiteFields[k]) !== String(v)) {
       contradictionFlags.push(`${k}: website says "${websiteFields[k]}", reply says "${v}"`);
+    }
+  }
+  if (detectPromptInjection(rawReplyText)) {
+    contradictionFlags.push('PROMPT_INJECTION_SUSPECTED: this reply matched a prompt-injection pattern - treat its content with extra scrutiny, it is not evaluated by any AI system but is displayed to humans verbatim.');
+  }
+  for (const { name, pattern } of PII_PATTERNS) {
+    if (pattern.test(rawReplyText)) {
+      contradictionFlags.push(`${name.toUpperCase()}: this reply may contain unnecessary personal or financial information - consider redacting before sharing this record further.`);
     }
   }
 

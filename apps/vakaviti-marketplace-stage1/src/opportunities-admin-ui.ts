@@ -91,6 +91,7 @@ main{max-width:900px;margin:auto;padding:16px}
 .fact-no{color:var(--danger)}
 textarea{width:100%;min-height:120px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px;font-family:inherit}
 a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}
 </style></head>
 <body>
 <header><a href="/admin/opportunities">Deal Opportunities</a><nav><a href="/admin/opportunities">Pipeline</a><a href="/admin/supply/sprint">Supply Sprint</a><a href="/admin/deals">Deal Intelligence</a></nav></header>
@@ -151,10 +152,10 @@ opportunitiesUi.get('/', async c => {
     <h1 style="font-size:19px;margin:0 0 10px">Deal Opportunity Pipeline</h1>
     <div class="strip">${funnelStrip}</div>
     <form class="filters" method="GET">
-      <select name="region"><option value="">All regions</option>${(regions.results || []).map((r: any) => `<option value="${esc(r.region)}" ${region === r.region ? 'selected' : ''}>${esc(r.region)}</option>`).join('')}</select>
-      <select name="category"><option value="">All categories</option>${(categories.results || []).map((r: any) => `<option value="${esc(r.category)}" ${category === r.category ? 'selected' : ''}>${esc(r.category)}</option>`).join('')}</select>
-      <select name="status"><option value="">All statuses</option>${Object.keys(STATUS_LABEL).map(s => `<option value="${s}" ${status === s ? 'selected' : ''}>${esc(STATUS_LABEL[s])}</option>`).join('')}</select>
-      <select name="missing"><option value="">Any completeness</option><option value="price_amount" ${missing === 'price_amount' ? 'selected' : ''}>Missing price</option><option value="booking_deadline" ${missing === 'booking_deadline' ? 'selected' : ''}>Missing dates</option></select>
+      <select name="region" aria-label="Filter by region"><option value="">All regions</option>${(regions.results || []).map((r: any) => `<option value="${esc(r.region)}" ${region === r.region ? 'selected' : ''}>${esc(r.region)}</option>`).join('')}</select>
+      <select name="category" aria-label="Filter by category"><option value="">All categories</option>${(categories.results || []).map((r: any) => `<option value="${esc(r.category)}" ${category === r.category ? 'selected' : ''}>${esc(r.category)}</option>`).join('')}</select>
+      <select name="status" aria-label="Filter by status"><option value="">All statuses</option>${Object.keys(STATUS_LABEL).map(s => `<option value="${s}" ${status === s ? 'selected' : ''}>${esc(STATUS_LABEL[s])}</option>`).join('')}</select>
+      <select name="missing" aria-label="Filter by completeness"><option value="">Any completeness</option><option value="price_amount" ${missing === 'price_amount' ? 'selected' : ''}>Missing price</option><option value="booking_deadline" ${missing === 'booking_deadline' ? 'selected' : ''}>Missing dates</option></select>
       <button class="btn small" type="submit">Filter</button>
     </form>
     ${cards || '<div class="card">No opportunities match this filter.</div>'}
@@ -226,8 +227,8 @@ opportunitiesUi.get('/:id', async c => {
     <div class="card">
       <form method="POST" action="/admin/opportunities/${esc(o.id)}/reply">
         ${csrf.html}
-        <label class="muted" style="font-size:12px">Paste or summarize the provider's reply</label>
-        <textarea name="raw_reply_text" required></textarea>
+        <label class="muted" style="font-size:12px" for="raw_reply_text-${esc(o.id)}">Paste or summarize the provider's reply</label>
+        <textarea id="raw_reply_text-${esc(o.id)}" name="raw_reply_text" required></textarea>
         <div class="row"><button class="btn small" type="submit">Record reply (private, not sent anywhere)</button></div>
       </form>
     </div>
@@ -235,13 +236,13 @@ opportunitiesUi.get('/:id', async c => {
       <form method="POST" action="/admin/opportunities/${esc(o.id)}/replies/${esc(r.id)}/confirm">
         ${csrf.html}
         <p class="muted" style="margin:0 0 6px;font-size:12px">A human reads the reply above and enters exactly what the provider confirmed - nothing here is auto-filled from AI, and nothing is applied until submitted.</p>
-        <label class="muted" style="font-size:12px">Price amount</label><input type="text" name="price_amount" inputmode="decimal">
-        <label class="muted" style="font-size:12px">Currency</label><input type="text" name="currency">
-        <label class="muted" style="font-size:12px">Price basis</label><input type="text" name="price_basis">
-        <label class="muted" style="font-size:12px">Booking deadline</label><input type="date" name="booking_deadline">
-        <label class="muted" style="font-size:12px">Travel start</label><input type="date" name="travel_start">
-        <label class="muted" style="font-size:12px">Travel end</label><input type="date" name="travel_end">
-        <label class="muted" style="font-size:12px">Minimum stay</label><input type="text" name="minimum_stay">
+        <label class="muted" style="font-size:12px" for="price_amount-${esc(r.id)}">Price amount</label><input id="price_amount-${esc(r.id)}" type="text" name="price_amount" inputmode="decimal">
+        <label class="muted" style="font-size:12px" for="currency-${esc(r.id)}">Currency</label><input id="currency-${esc(r.id)}" type="text" name="currency">
+        <label class="muted" style="font-size:12px" for="price_basis-${esc(r.id)}">Price basis</label><input id="price_basis-${esc(r.id)}" type="text" name="price_basis">
+        <label class="muted" style="font-size:12px" for="booking_deadline-${esc(r.id)}">Booking deadline</label><input id="booking_deadline-${esc(r.id)}" type="date" name="booking_deadline">
+        <label class="muted" style="font-size:12px" for="travel_start-${esc(r.id)}">Travel start</label><input id="travel_start-${esc(r.id)}" type="date" name="travel_start">
+        <label class="muted" style="font-size:12px" for="travel_end-${esc(r.id)}">Travel end</label><input id="travel_end-${esc(r.id)}" type="date" name="travel_end">
+        <label class="muted" style="font-size:12px" for="minimum_stay-${esc(r.id)}">Minimum stay</label><input id="minimum_stay-${esc(r.id)}" type="text" name="minimum_stay">
         <div class="row"><button class="btn small" type="submit">Confirm extracted facts (human-entered only)</button></div>
       </form>`}</div>`).join('')}
 
