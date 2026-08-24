@@ -39,9 +39,15 @@ export function evaluateDirectoryListingGates(c: DirectoryCandidate): DirectoryG
   if (hasName) passed.push('identity_resolved'); else { failed.push('identity_resolved'); reasons.push('No canonical provider name.'); }
 
   // 2. Official provider-controlled domain exists.
+  // Wave 3 correction (2026-08-24): now requires https:// specifically, not http(s) - a public
+  // profile displays this URL as a clickable "Official source used by Vakaviti" link
+  // (src/index.ts), and that link must never be able to point somewhere non-HTTPS. Tightening
+  // only ever makes future admission stricter, never weaker, and does not affect gates already
+  // passed by existing operators (see the render-time hasSafeOfficialSource() fail-closed check
+  // in src/index.ts, which applies to every current and future row identically).
   const domain = c.website_url || c.primary_url;
-  const hasDomain = !!(domain && /^https?:\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(domain));
-  if (hasDomain) passed.push('official_domain_present'); else { failed.push('official_domain_present'); reasons.push('No official domain on file.'); }
+  const hasDomain = !!(domain && /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(domain));
+  if (hasDomain) passed.push('official_domain_present'); else { failed.push('official_domain_present'); reasons.push('No official HTTPS domain on file.'); }
 
   // 3 & 4. Business name and Fiji relevance / locality or service area supported - this pilot is
   // Fiji-only by construction, so any genuinely-found locality/region is the relevance signal.

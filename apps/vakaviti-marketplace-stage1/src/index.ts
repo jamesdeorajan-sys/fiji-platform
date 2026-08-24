@@ -39,6 +39,43 @@ const waLink = (phone: string, message: string) => {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 };
 
+// Supply Wave 3 correction (2026-08-24): Official-Source Transparency + fail-closed publication.
+// A URL is only ever displayed as "the official source" if it is a real, single, non-redirecting
+// HTTPS domain - never http://, never a bare IP, never something that merely looks like a URL.
+// This is intentionally stricter than directory-gate.ts's own admission check (which only runs
+// once, at candidate-creation time) - this one runs on every single render, so a row that somehow
+// carries an unsafe value (a future data-entry mistake, a manual DB edit, a future extraction bug)
+// can never surface it to a visitor, regardless of how it got there.
+const isSafeHttpsUrl = (url: string | null | undefined): boolean => {
+  if (!url) return false;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  if (parsed.protocol !== 'https:') return false;
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(parsed.hostname)) return false;
+  if (parsed.username || parsed.password) return false;
+  return true;
+};
+
+// An AI-discovered (last_public_check_at set) operator is only publicly eligible while its own
+// official source is safely resolvable per isSafeHttpsUrl() above - "fail closed," not
+// "fail open": a missing/unsafe source hides the whole profile rather than showing it without
+// its evidence link. Pilot Partners and Vakaviti Verified operators are unaffected (their
+// eligibility is governed by provider_ceo_confirmations / verification_status, not this check).
+const hasSafeOfficialSource = (o: { website_url?: string | null; last_public_check_at?: string | null }): boolean => {
+  if (!o.last_public_check_at) return true; // not an AI-discovered row - this check does not apply
+  return isSafeHttpsUrl(o.website_url);
+};
+
+// The visible, clickable "Official source used by Vakaviti" block - the only place a source
+// domain/link is ever rendered. Never shown unless hasSafeOfficialSource() already passed for
+// this exact operator, so this function itself does not need to re-validate - it only formats.
+const officialSourceBlock = (o: { website_url?: string | null; last_public_check_at?: string | null }): string => {
+  if (!o.last_public_check_at || !isSafeHttpsUrl(o.website_url)) return '';
+  const domain = new URL(o.website_url!).hostname.replace(/^www\./, '');
+  const checkedDate = new Date(o.last_public_check_at).toLocaleDateString('en-FJ', { year: 'numeric', month: 'long', day: 'numeric' });
+  return `<p class="muted" style="font-size:13px;word-break:break-word">Official source used by Vakaviti: <a href="${esc(o.website_url!)}" target="_blank" rel="nofollow noopener noreferrer">${esc(domain)}</a> &middot; last checked ${esc(checkedDate)}</p>`;
+};
+
 const PRICING_UNIT_LABEL: Record<string, string> = {
   PER_NIGHT: '/night',
   PER_PERSON_PER_DAY: '/person/day',
@@ -260,11 +297,16 @@ app.notFound(c => c.html(html(`<section class="section" style="padding-top:20px"
 // from public/images/ - a real composited photo, replacing the earlier generated SVG.
 
 app.get('/', async c => {
-  const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.created_at ASC LIMIT 3`).all<any>();
-  const featuredOperators = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 3`).all<any>();
+  // Official-Source Transparency, fail-closed (Wave 3 correction): both queries below now select
+  // website_url/last_public_check_at and are filtered through hasSafeOfficialSource() before
+  // rendering, same as /experiences and /operators - a homepage "featured" slot is exactly the
+  // kind of extra exposure an unsafe-source row must never get. LIMIT is raised slightly so a
+  // filtered-out row still leaves 3 to show in the common case.
+  const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,o.last_public_check_at,o.website_url,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.created_at ASC LIMIT 10`).all<any>();
+  const featuredOperators = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,o.last_public_check_at,o.website_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 10`).all<any>();
 
-  const expCards = (featuredProducts.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
-  const opCards = (featuredOperators.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed'}</span></div></a></article>`; }).join('');
+  const expCards = (featuredProducts.results || []).filter((p: any) => hasSafeOfficialSource(p)).slice(0, 3).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
+  const opCards = (featuredOperators.results || []).filter((o: any) => hasSafeOfficialSource(o)).slice(0, 3).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed'}</span></div></a></article>`; }).join('');
 
   // All 6 categories now have an intentional visual treatment - either a source-verified Fiji
   // photo (4 of 6) or a documented, deliberate branded gradient fallback (Waterfalls & nature,
@@ -314,8 +356,10 @@ app.get('/partners', c => c.html(html(`<section class="section" style="padding-t
   <span class="badge">Founding Partner Program</span><h1>Put your Fiji experience in front of travellers.</h1><p class="muted">Vakaviti is a directory and enquiry channel for Fiji tourism operators. We list your business, travellers find you, and their questions get connected through to you — you stay in full control of price, availability and the booking itself.</p></section><section class="grid"><div class="card"><div class="card-body"><h3>What does it cost?</h3><p class="muted">No setup fee and no monthly fee for founding partners while the program is in preview. Final commercial terms will be confirmed with you directly before anything is charged.</p></div></div><div class="card"><div class="card-body"><h3>How does Vakaviti make money?</h3><p class="muted">Through a share of confirmed bookings once commercial terms are agreed with you — not a forced software subscription.</p></div></div><div class="card"><div class="card-body"><h3>What do you control?</h3><p class="muted">Your prices, availability, policies and identity. Nothing about your business goes live as "verified" without you confirming it first.</p></div></div><div class="card"><div class="card-body"><h3>What information is needed?</h3><p class="muted">Your business name, a WhatsApp number for enquiries, your service area, a short description, and at least one experience or service with a price (or "contact for price").</p></div></div><div class="card"><div class="card-body"><h3>What happens after you apply?</h3><p class="muted">We follow up directly by WhatsApp or email to confirm your details and prepare your public profile before it goes live.</p></div></div><div class="card"><div class="card-body"><h3>How are enquiries delivered?</h3><p class="muted">During this preview, traveller enquiries route through the Vakaviti team first, who pass them on to you with full details of what the traveller asked about — not yet a direct real-time connection to your own WhatsApp.</p></div></div></section><section class="section"><h2>Claim or add your business</h2><form method="post" action="/api/partner-interest"><label>Business name</label><input name="business" autocomplete="organization" required><label>Your name</label><input name="name" autocomplete="name" required><label>Phone / WhatsApp</label><input name="phone" type="tel" autocomplete="tel" required><label>Email</label><input name="email" type="email" autocomplete="email"><label>Website or Facebook page</label><input name="url" autocomplete="url"><button class="btn" type="submit">Start my profile</button></form><p class="muted">Prefer email? Write to <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p></section>`, { title: 'Become a Vakaviti Founding Partner', description: 'Join Vakaviti as a Founding Partner — no setup fee, keep control of your prices and bookings, get enquiries by WhatsApp.' })));
 
 app.get('/experiences', async c => {
-  const rows = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.duration_minutes,p.verification_status,p.image_url,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.canonical_name LIMIT 100`).all<any>();
-  const cards = (rows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
+  const rows = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.duration_minutes,p.verification_status,p.image_url,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,o.last_public_check_at,o.website_url,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.canonical_name LIMIT 100`).all<any>();
+  // Official-Source Transparency, fail-closed (Wave 3 correction): a product inherits its parent
+  // operator's source-safety requirement, same as the product's own detail page.
+  const cards = (rows.results || []).filter((p: any) => hasSafeOfficialSource(p)).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Experiences</span><h1>Fiji tours, activities and transport.</h1><p class="muted">Browse real Fiji experiences and ask Vakaviti on WhatsApp — we'll connect your enquiry with the right operator.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No experiences published yet. Check back soon.</div></div>'}</div>`, { title: 'Fiji Experiences — Vakaviti', description: 'Browse verified Fiji tours, activities and ground transport, and ask Vakaviti on WhatsApp to connect with local operators.', noindex: true }));
 });
 
@@ -327,6 +371,9 @@ app.get('/experiences/:slug', async c => {
   if (!p) return c.notFound();
   const o = await c.env.DB.prepare(`SELECT * FROM operators WHERE id=? AND commercial_status='ACTIVE'`).bind(p.operator_id).first<any>();
   if (!o) return c.notFound();
+  // Official-Source Transparency, fail-closed (Wave 3 correction): a product's page inherits its
+  // parent operator's source-safety requirement - see hasSafeOfficialSource() above.
+  if (!hasSafeOfficialSource(o)) return c.notFound();
   const offer = await c.env.DB.prepare(`SELECT * FROM offers WHERE product_id=? AND active=1 ORDER BY source_observed_at DESC LIMIT 1`).bind(p.id).first<any>();
   const verified = p.verification_status === 'VAKAVITI_VERIFIED';
   const enquireHref = `/enquire/${esc(o.slug)}?product=${esc(p.slug)}`;
@@ -363,11 +410,14 @@ app.get('/operators', async c => {
   // administration-only concept (see PUBLIC CLAIM-STATUS POLICY) and must never reach a guest
   // page, not even indirectly via conditional text. Pilot Partner status is derived live from
   // whether an unrevoked CEO confirmation exists - never cached, never inferred from claim state.
-  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,o.last_public_check_at,COUNT(p.id) as product_count,(SELECT COUNT(*) FROM provider_ceo_confirmations pc WHERE pc.operator_id=o.id AND pc.revoked_at IS NULL) as pilot_partner_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
+  const rows = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,o.last_public_check_at,o.website_url,COUNT(p.id) as product_count,(SELECT COUNT(*) FROM provider_ceo_confirmations pc WHERE pc.operator_id=o.id AND pc.revoked_at IS NULL) as pilot_partner_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 100`).all<any>();
   // P1.3D: last_public_check_at is set ONLY by the AI-discovered-directory-listing promotion path
   // (src/candidates.ts promoteCandidateToDirectoryListing) - its presence, not a new column, is
   // what distinguishes an AI-discovered listing from any other non-Pilot-Partner operator here.
-  const cards = (rows.results || []).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
+  // Official-Source Transparency, fail-closed (Wave 3 correction): an AI-discovered row whose
+  // official source is no longer safely resolvable is filtered out of this list entirely, the
+  // same fail-closed rule enforced on its own profile page.
+  const cards = (rows.results || []).filter((o: any) => hasSafeOfficialSource(o)).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -376,6 +426,10 @@ app.get('/operators/:slug', async c => {
   // products' individual commercial_status.
   const o = await c.env.DB.prepare(`SELECT * FROM operators WHERE slug=? AND commercial_status='ACTIVE'`).bind(c.req.param('slug')).first<any>();
   if (!o) return c.notFound();
+  // Official-Source Transparency, fail-closed (Supply Wave 3 correction, 2026-08-24): an
+  // AI-discovered listing's public eligibility depends on its official source still being
+  // safely resolvable - see hasSafeOfficialSource() above.
+  if (!hasSafeOfficialSource(o)) return c.notFound();
   const productRows = await c.env.DB.prepare(`SELECT id,canonical_name,slug,category,verification_status,image_url FROM products WHERE operator_id=? AND commercial_status='ACTIVE' ORDER BY canonical_name`).bind(o.id).all<any>();
   const verified = o.verification_status === 'VAKAVITI_VERIFIED';
   // P1.3A: Pilot Partner status is derived live from an unrevoked CEO confirmation - claim_status
@@ -389,8 +443,7 @@ app.get('/operators/:slug', async c => {
   // or Vakaviti Verified operators, and never implies partnership, verification, or endorsement.
   const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at;
   const status = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered Fiji provider' : 'Publicly listed — information not yet verified by Vakaviti';
-  const lastCheckedDate = aiDiscovered && o.last_public_check_at ? new Date(o.last_public_check_at).toLocaleDateString('en-FJ', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
-  const list = (productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
+  const list =(productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
   const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
   return c.html(html(`<section class="section">
@@ -398,7 +451,7 @@ app.get('/operators/:slug', async c => {
     <span class="badge${verified ? ' verified' : ''}">${status}</span>
     <h1>${esc(o.canonical_name)}</h1>
     <p class="muted">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
-    ${aiDiscovered ? `<p class="muted" style="font-size:13px">Information sourced from the provider's official website and last checked on ${esc(lastCheckedDate || '')}.</p>` : ''}
+    ${aiDiscovered ? officialSourceBlock(o) : ''}
     ${o.description ? `<p>${esc(o.description)}</p>` : ''}
     <div class="cta-row"><a class="btn secondary" href="/claim/${esc(o.slug)}">${aiDiscovered ? 'Claim this business or report incorrect information' : 'Claim or manage this business'}</a></div>
     ${resolveEnquiryDestination(c.env) ? `<div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:flex">${aiDiscovered ? 'Ask Vakaviti about this provider' : 'Ask Vakaviti on WhatsApp'}</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>` : ''}
@@ -409,8 +462,11 @@ app.get('/operators/:slug', async c => {
 app.get('/enquire/:operatorSlug', async c => {
   // Fail closed: an inactive operator must not accept enquiries either - the publication gate
   // covers the commercial action, not just the listing pages that link to it.
-  const operator = await c.env.DB.prepare(`SELECT id,canonical_name,slug,whatsapp FROM operators WHERE slug=? AND commercial_status='ACTIVE'`).bind(c.req.param('operatorSlug')).first<any>();
+  const operator = await c.env.DB.prepare(`SELECT id,canonical_name,slug,whatsapp,website_url,last_public_check_at FROM operators WHERE slug=? AND commercial_status='ACTIVE'`).bind(c.req.param('operatorSlug')).first<any>();
   if (!operator) return c.notFound();
+  // Official-Source Transparency, fail-closed (Wave 3 correction): an operator whose source is
+  // no longer safely resolvable is not publicly eligible for anything, including enquiries.
+  if (!hasSafeOfficialSource(operator)) return c.notFound();
   const productSlug = c.req.query('product');
   let product: any = null;
   if (productSlug) {
