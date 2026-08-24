@@ -41,6 +41,20 @@ export class FakeD1 {
     };
   }
 
+  // A `?` consumes the next bind param; anything else is a literal from the SQL text itself
+  // (e.g. `human_confirmed=1` or `... VALUES (?,?,0)`) - numeric literals are coerced to real
+  // numbers and quoted literals have their quotes stripped, matching how SQLite itself would
+  // type these values, so a test asserting `toBe(0)` (not `toBe('0')`) sees the same type real
+  // D1 would return.
+  private literalOrNext(token: string, next: () => any): any {
+    const t = token.trim();
+    if (t === '?') return next();
+    if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+    const quoted = t.match(/^'(.*)'$/);
+    if (quoted) return quoted[1];
+    return t;
+  }
+
   private exec(sql: string, binds: any[]): Row[] {
     const s = sql.trim().replace(/\s+/g, ' ');
     let bi = 0;
@@ -55,10 +69,11 @@ export class FakeD1 {
 
     const insertMatch = s.match(/^INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\)/i);
     if (insertMatch) {
-      const [, table, colsStr] = insertMatch;
+      const [, table, colsStr, valuesStr] = insertMatch;
       const cols = colsStr.split(',').map(c => c.trim());
+      const values = valuesStr.split(',').map(v => v.trim());
       const row: Row = {};
-      for (const c of cols) row[c] = next();
+      cols.forEach((c, i) => { row[c] = this.literalOrNext(values[i], next); });
       if (!('created_at' in row)) row.created_at = new Date().toISOString();
       this.table(table).push(row);
       return [];
@@ -73,8 +88,7 @@ export class FakeD1 {
         const m = part.match(/^(\w+)\s*=\s*(.+)$/);
         if (!m) continue;
         const [, col, rhs] = m;
-        if (rhs.trim() === '?') assignments.push([col, next()]);
-        else assignments.push([col, rhs.trim().replace(/^'(.*)'$/, '$1')]); // literal e.g. status='RUNNING'
+        assignments.push([col, this.literalOrNext(rhs, next)]);
       }
       const whereFn = this.buildWhere(whereClause, () => next());
       const rows = this.table(table).filter(whereFn);
