@@ -264,6 +264,11 @@ export async function convertOpportunityToDealCandidate(
   const missing: string[] = JSON.parse(o.missing_fields_json || '[]');
   const contradictions: string[] = JSON.parse(o.contradiction_flags_json || '[]');
   const preconditionFailures: string[] = [];
+  // No lifecycle status may bypass expiry/withdrawal/rejection - blocked here, not just left to
+  // the downstream publish gate, so an EXPIRED/WITHDRAWN/REJECTED/DUPLICATE opportunity can never
+  // even become a candidate, let alone a published one.
+  const TERMINAL_NON_CONVERTIBLE = new Set(['EXPIRED', 'WITHDRAWN', 'REJECTED', 'DUPLICATE']);
+  if (TERMINAL_NON_CONVERTIBLE.has(o.lifecycle_status)) preconditionFailures.push(`lifecycle_status_not_convertible:${o.lifecycle_status}`);
   if (!o.provider_name && !o.provider_domain) preconditionFailures.push('identity_not_resolved');
   if (!o.evidence_excerpt) preconditionFailures.push('official_evidence_not_retained');
   if (missing.length > 0) preconditionFailures.push(`required_facts_still_missing:${missing.join(',')}`);
@@ -279,8 +284,19 @@ export async function convertOpportunityToDealCandidate(
   // no opportunity lifecycle status can bypass it. A candidate that fails this is still created
   // (so a human can see exactly why in the review queue) but is never auto-published by this
   // function - only the existing, unmodified autoPublishDealIfEligible() path can ever do that.
+  //
+  // source_approval_status is read from the REAL existing deal_sources table (env.DB, read-only)
+  // when this opportunity has a source_id - never hardcoded true. An opportunity with no matching
+  // deal_sources row (captured from a source not yet formally registered there) fails closed as
+  // NOT approved, exactly like the existing Lane B pipeline already requires for any other
+  // candidate - private capture never grants a source approval that was never actually given.
+  let sourceApprovalStatus: string | null = null;
+  if (o.source_id) {
+    const src = await env.DB.prepare(`SELECT source_approval_status FROM deal_sources WHERE id=?`).bind(o.source_id).first<any>();
+    sourceApprovalStatus = src?.source_approval_status ?? null;
+  }
   const publishCandidate: DealAutoPublishCandidate = {
-    source_approval_status: 'APPROVED', // this feature never invents source approval - see report: only used in the isolated test mirror, never asserted against a real deal_sources row
+    source_approval_status: sourceApprovalStatus,
     source_url: o.canonical_source_url,
     seller_or_marketer: o.provider_name,
     proposed_offer_name: o.detected_title,
