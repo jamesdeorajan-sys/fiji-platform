@@ -9,6 +9,19 @@ binding = "DB"
 database_name = "vakaviti-marketplace-stage1-db"
 database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 
+# Deal Opportunity Pipeline (2026-08-24) - a second, fully isolated D1, created specifically for
+# this feature branch so the private opportunity pipeline can write freely while never touching
+# the production Stage 1 database above. Application code reads existing evidence (operators,
+# deal_sources, deal_offer_candidates) from DB read-only, and writes every opportunity/lifecycle/
+# reply row only to OPPORTUNITY_DB. The migration for this database
+# (migrations/opportunity/0001_opportunity_pipeline.sql) is applied directly via the D1 API, not
+# through this app's existing db:migrate:remote chain, and is NOT applied to the production DB
+# above - see the Deal Opportunity Pipeline report for the exact commands run.
+[[d1_databases]]
+binding = "OPPORTUNITY_DB"
+database_name = "vakaviti-opportunity-pipeline-preview-db"
+database_id = "7779e1ae-46be-44f7-abbd-1178cf46f145"
+
 [ai]
 binding = "AI"
 
