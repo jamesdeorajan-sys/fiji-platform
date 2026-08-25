@@ -70,6 +70,14 @@ jobs:
         # sees comments at all, because tomllib strips them during parsing, not via a text filter.
         run: python3 scripts/verify_qa_isolation.py wrangler.toml
 
+      - name: Confirm the QA secret cleanup step is correctly scoped and uses supported syntax
+        # CEO CORRECTION (2026-08-25): regression proof, from the committed workflow text itself,
+        # that the two defects found in run 32861733744 cannot silently reappear - the cleanup
+        # step targets exactly QA_AUTH_SECRET with no unsupported --force flag, both the cleanup
+        # and its absence-verification stay under if: always() with no suppressed failures, and
+        # the Playwright step uses EXPECTED_GIT_COMMIT_SHA rather than the reserved GITHUB_SHA.
+        run: python3 scripts/verify_qa_cleanup_workflow.py ../../.github/workflows/vakaviti-marketplace-stage1-ci.yml
+
   qa-deploy-and-test:
     # CEO DECISION, Phase 4 (2026-08-25): the ONE authorized live write-path/security proof
     # target. Everything about this job is deliberately narrow:
@@ -268,26 +276,35 @@ jobs:
         # is skipped and no test is omitted, not that every test targets the same URL when the
         # two environments intentionally expose different surfaces.
         env:
-          # Explicit override: GitHub Actions automatically sets GITHUB_SHA for every job, but for
-          # a pull_request event its value is a transient MERGE commit, not the PR head SHA - it
-          # would never match the GIT_COMMIT_SHA this run actually deployed to the QA Worker
-          # (github.event.pull_request.head.sha, set below), causing global-setup.ts's identity
-          # check to fail closed against the wrong SHA entirely. This step-level value takes
-          # precedence over the runner's automatic one for every process this step spawns.
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+          # CEO CORRECTION (2026-08-25): GITHUB_SHA is one of GitHub Actions' RESERVED default
+          # environment variables. The previous attempt to override it at the step level displayed
+          # the intended value in this step's own logged env block, but the running process still
+          # read GITHUB_SHA as the synthetic refs/pull/22/merge commit instead (confirmed directly
+          # from run 32861733744's own failure message) - GitHub's docs warn that redefining a
+          # default variable "may cause unexpected behavior," and this was exactly that. Using a
+          # dedicated, non-reserved variable name instead removes the collision risk entirely -
+          # see src/build-identity.ts, which reads ONLY this name and never GITHUB_SHA.
+          EXPECTED_GIT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
         run: ./node_modules/.bin/playwright install --with-deps chromium && ./node_modules/.bin/playwright test --retries=0
 
       - name: Rotate the ephemeral QA auth secret out (leave nothing live after this run)
-        # CEO CORRECTION item 4: if: always() so this runs whether the suite passed or failed;
-        # only attempts deletion if the earlier step actually recorded success creating it, and
-        # only ever targets the QA_AUTH_SECRET name on --env qa - nothing else. A failure here is
-        # its own step, with its own red/green status in the run log - it can never overwrite or
-        # hide the Vitest/Playwright step's already-recorded result above it.
+        # CEO CORRECTION item 4, corrected again (2026-08-25): `--force` was never a real
+        # wrangler flag - confirmed directly from the wrangler@4.125.0 source
+        # (packages/wrangler/src/secret/index.ts): secret delete has no force/skip-confirmation
+        # option at all. It does not need one: its confirm() prompt (packages/wrangler/src/
+        # dialogs.ts) calls isNonInteractiveOrCI() first and, in CI (GitHub Actions sets CI=true
+        # automatically), returns the fallback value (true) without prompting - Wrangler itself
+        # logs "Using fallback value in non-interactive context: yes" when this happens, which is
+        # the explicit confirmation record this step relies on. if: always() so this runs whether
+        # the suite passed or failed; only attempts deletion if the earlier step actually recorded
+        # success creating it, and only ever targets the QA_AUTH_SECRET name on --env qa - nothing
+        # else. A failure here is its own step, with its own red/green status in the run log - it
+        # can never overwrite or hide the Vitest/Playwright step's already-recorded result above.
         if: always() && steps.set-secret.outputs.created == 'true'
         id: cleanup-secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: ./node_modules/.bin/wrangler secret delete QA_AUTH_SECRET --env qa --force
+        run: ./node_modules/.bin/wrangler secret delete QA_AUTH_SECRET --env qa
 
       - name: Verify the QA auth secret is actually absent after deletion
         if: always() && steps.set-secret.outputs.created == 'true'

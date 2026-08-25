@@ -8,13 +8,18 @@
 // responding" to "the deployment answers as the expected environment", using the non-secret
 // /internal/build-info route backed by Cloudflare's own version_metadata binding.
 //
-// CEO DECISION - Phase 5 (2026-08-25): "some version is live" is no longer sufficient for the
-// dedicated QA deployment - the exact GIT COMMIT must match. When QA_BASE_URL is set (only true
-// in the protected vakaviti-qa deployment job), this also polls the QA deployment's build-info
-// and requires gitCommitSha === GITHUB_SHA exactly, plus environment==='qa' and
-// qaModeActive===true - failing closed (never proceeding to the write-path tests) on any
-// mismatch, timeout, or missing value.
+// CEO CORRECTION (2026-08-25): for the dedicated QA deployment, exact-commit identity is now
+// verified via verifyBuildIdentity() (src/build-identity.ts) against EXPECTED_GIT_COMMIT_SHA -
+// never GITHUB_SHA. Root cause of the prior failure (run 32861733744): GITHUB_SHA is one of
+// GitHub Actions' reserved default environment variables; a step-level `env: GITHUB_SHA: ...`
+// override displayed correctly in the step's own logged env block but did not reliably apply to
+// the running process for a pull_request-triggered job (the process read the synthetic
+// refs/pull/22/merge commit instead of the intended PR head SHA). GitHub's own documentation
+// warns that redefining a default variable "may cause unexpected behavior" - this was that
+// behavior, not a one-off fluke. EXPECTED_GIT_COMMIT_SHA is a plain, non-reserved variable name
+// with no such collision risk.
 import type { FullConfig } from '@playwright/test';
+import { verifyBuildIdentity } from '../src/build-identity';
 
 async function pollBuildInfo(baseURL: string, deadline: number): Promise<any> {
   let last: any = null;
@@ -44,16 +49,14 @@ async function globalSetup(config: FullConfig) {
   }
 
   const qaBaseUrl = process.env.QA_BASE_URL;
-  const expectedCommitSha = process.env.GITHUB_SHA;
   if (qaBaseUrl) {
-    if (!expectedCommitSha) throw new Error('global-setup: QA_BASE_URL is set but GITHUB_SHA is not - cannot verify exact commit identity, refusing to proceed.');
     const qaDeadline = Date.now() + 90000;
     const qa = await pollBuildInfo(qaBaseUrl, qaDeadline);
-    if (qa.environment !== 'qa' || qa.qaModeActive !== true) {
-      throw new Error(`global-setup: QA deployment identity check failed - expected environment=qa, qaModeActive=true, got ${JSON.stringify(qa)}.`);
-    }
-    if (qa.gitCommitSha !== expectedCommitSha) {
-      throw new Error(`global-setup: QA deployment git commit ${qa.gitCommitSha} does not match GITHUB_SHA ${expectedCommitSha} - "some version is live" is not sufficient; refusing to run write-path tests against an unverified commit.`);
+    const identity = verifyBuildIdentity(qa, process.env);
+    // Log only non-sensitive commit identifiers and the outcome - never any secret value.
+    console.log(`global-setup: QA build-identity comparison - deployed=${qa.gitCommitSha ?? 'null'} expected=${process.env.EXPECTED_GIT_COMMIT_SHA ?? 'unset'} match=${identity.ok}`);
+    if (!identity.ok) {
+      throw new Error(`global-setup: QA build identity check failed - ${identity.reason}. "some version is live" is not sufficient; refusing to run write-path tests against an unverified commit.`);
     }
   }
 }
