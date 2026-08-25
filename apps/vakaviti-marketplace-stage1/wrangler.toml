@@ -9,6 +9,41 @@ binding = "DB"
 database_name = "vakaviti-marketplace-stage1-db"
 database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 
+# =================================================================================================
+# LIVE DEAL EXCHANGE - PRODUCTION INTEGRATION BRANCH (2026-08-26)
+# =================================================================================================
+# This branch (ceo/vakaviti-live-deal-exchange-production-integration) carries the corrected
+# production configuration on top of the QA-proven PR #22 code (cea9fb5d), which itself deliberately
+# never changed this file. What changed, all separately CEO-authorized before this branch existed:
+#   1. Created the real production database `vakaviti-live-deal-exchange-db`
+#      (f23a881b-80b9-4c2b-ab28-60751091ac25) - never the preview database
+#      (3f9a36c7-829c-4f9d-8af0-bb5332860f4b), which remains untouched and still in use by the
+#      ordinary PR #22 branch preview only.
+#   2. Applied migrations/deal-exchange/0001-0005 to that new production database.
+#   3. Freshly revalidated all 4 currently-eligible deals directly against their live source pages
+#      (not copied from preview) and seeded only those into the new production database, with
+#      append-only evidence rows recording what was checked and when.
+#   4. database_id below now points at that new production database.
+#   5. DEAL_EXCHANGE_PUBLIC_ENABLED is false below - the binding exists, but the feature is not
+#      public. Rollback: remove this [[d1_databases]] block and redeploy - the deal-exchange router
+#      is only mounted when DEAL_EXCHANGE_DB is bound (see src/index.ts) - or simply leave the flag
+#      false, which is equally sufficient (see src/deal-exchange-ui.ts's fail-closed guard).
+# scripts/verify_production_integration_config.py enforces items 3/4/5 structurally in CI. Enabling
+# the public flag is a separate, later, separately-authorized step - never bundled with this one.
+[[d1_databases]]
+binding = "DEAL_EXCHANGE_DB"
+database_name = "vakaviti-live-deal-exchange-db"
+database_id = "f23a881b-80b9-4c2b-ab28-60751091ac25"
+
+# FINAL INTEGRATION REVIEW, Phase 1 (2026-08-25): DEAL_EXCHANGE_QA_DB, QA_TEST_MODE and
+# QA_AUTH_SECRET are DELIBERATELY ABSENT from this top-level config. They exist ONLY under
+# [env.qa] below. This is a structural guarantee, not a runtime flag a caller can spoof: a Workers
+# binding that isn't declared for a given deployment does not exist in that deployment's env
+# object at all, full stop - no header, credential, or code path on THIS deployment (the ordinary
+# branch preview, and eventually production) can ever reach a QA database, because there is
+# nothing here for it to bind to. See src/deal-exchange-ui.ts's verifyQaAuth()/getEnquiryDb() for
+# the additional application-level gates that apply only inside [env.qa] itself.
+
 [ai]
 binding = "AI"
 
@@ -20,6 +55,19 @@ ENVIRONMENT = "preview"
 # (see src/index.ts resolveEnquiryDestination). A future production routing policy requires
 # its own explicit decision/configuration - it is not inferred from this value.
 MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
+# Milestone 4 entry gate 4: explicit feature flag, deliberately separate from DEAL_EXCHANGE_DB's
+# mere presence. The future production rollout plan (see DEAL_EXCHANGE_PRODUCTION_PLAN.md)
+# deploys the D1 binding FIRST with this flag left unset/false, runs read-only verification, and
+# only THEN flips it - so "the binding exists" and "the public routes are live" are two
+# independently-controlled steps, never one implicit consequence of the other.
+DEAL_EXCHANGE_PUBLIC_ENABLED = "false"
+
+# Phase 2 (Final Integration Review): non-secret, Cloudflare-native build identity - exposes a
+# unique version id/tag at runtime with zero injected secrets and no chicken-and-egg problem
+# (unlike trying to embed this commit's own SHA inside a file committed as part of this same
+# commit). See /internal/build-info in src/deal-exchange-ui.ts and e2e/global-setup.ts.
+[version_metadata]
+binding = "CF_VERSION_METADATA"
 
 # Built-in Workers Static Assets - repo-local files only, no R2/Cloudflare Images/external
 # storage. Files under public/ are served directly at their path (e.g. public/images/x.webp
@@ -47,3 +95,41 @@ binding = "ASSETS"
 # block the next one.
 [triggers]
 crons = ["0 */4 * * *"]
+
+# =================================================================================================
+# DEDICATED QA ENVIRONMENT (Final Integration Review, Phase 1 item 2)
+# =================================================================================================
+# A fully separate Cloudflare Worker deployment (Cloudflare deploys a distinct script named
+# "<name>-qa" for any [env.qa] block by default) - QA_DB binding only, no production/preview DB
+# binding, no custom domain, no Cron (this block deliberately carries no [triggers] section, and
+# wrangler does not inherit top-level triggers into named environments), no public indexing (no
+# [assets] directory is served under a public route here beyond what the Worker itself renders,
+# and DEAL_EXCHANGE_PUBLIC_ENABLED stays false).
+#
+# DEPLOYMENT STATUS (honest, as of this push): this block is not yet deployed anywhere. Cloudflare
+# Workers Builds (the git integration driving the ordinary branch preview) has been empirically
+# confirmed this engagement to read only the TOP-LEVEL config - it will not deploy this block on
+# its own. Actually deploying it requires `wrangler deploy --env qa` to run somewhere with a
+# Cloudflare API token: either a new GitHub Actions secret on this repo (none exist today - see
+# the FINAL REPORT for the exact question this raises) or a one-time manual deploy. QA_AUTH_SECRET
+# is set via `wrangler secret put QA_AUTH_SECRET --env qa` for the same reason - it is never
+# written here in plaintext, and never derived from or equal to ADMIN_TOKEN.
+[env.qa]
+name = "vakaviti-live-deal-exchange-qa"
+
+[env.qa.vars]
+ENVIRONMENT = "qa"
+QA_TEST_MODE = "true"
+DEAL_EXCHANGE_PUBLIC_ENABLED = "false"
+
+[[env.qa.d1_databases]]
+binding = "DEAL_EXCHANGE_QA_DB"
+database_name = "vakaviti-live-deal-exchange-qa-db"
+database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"
+
+[env.qa.version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[env.qa.assets]
+directory = "./public"
+binding = "ASSETS"

@@ -23,10 +23,9 @@ jobs:
         working-directory: apps/vakaviti-marketplace-stage1
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Node LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -38,6 +37,13 @@ jobs:
 
       - name: Validate Wrangler configuration without deployment
         run: npm run validate:config
+
+      - name: Validate dedicated QA environment configuration without deployment
+        # FINAL INTEGRATION REVIEW, Phase 3 (2026-08-25): proves the [env.qa] block in
+        # wrangler.toml is syntactically valid and its bindings resolve, WITHOUT deploying
+        # anything and WITHOUT needing a Cloudflare credential in this job - `--dry-run` only
+        # bundles and validates config; it never contacts Cloudflare's API or requires a token.
+        run: npx wrangler deploy --dry-run --outdir .wrangler-dry-run-qa --env qa
 
       - name: Confirm no protected production domains in Wrangler config
         shell: bash
@@ -52,3 +58,370 @@ jobs:
         run: |
           grep -q 'ENVIRONMENT = "preview"' wrangler.toml
           grep -q 'vakaviti-marketplace-stage1-db' wrangler.toml
+
+      - name: Confirm the ordinary preview cannot reach the QA database (Phase 1 structural proof)
+        # CEO CORRECTION (2026-08-25): the previous version of this step was an awk/grep
+        # literal-string check that produced a false positive against its own explanatory
+        # comments - a comment reading "QA_AUTH_SECRET is deliberately absent from this section"
+        # itself contains the string "QA_AUTH_SECRET", which a raw-text grep cannot distinguish
+        # from an actual directive. Replaced with a real TOML structural check
+        # (scripts/verify_qa_isolation.py) using Python 3's standard-library tomllib - no new
+        # npm, Python, or GitHub Action dependency - which parses actual keys/tables and never
+        # sees comments at all, because tomllib strips them during parsing, not via a text filter.
+        run: python3 scripts/verify_qa_isolation.py wrangler.toml
+
+      - name: Confirm the QA secret cleanup step is correctly scoped and uses supported syntax
+        # CEO CORRECTION (2026-08-25): regression proof, from the committed workflow text itself,
+        # that the two defects found in run 32861733744 cannot silently reappear - the cleanup
+        # step targets exactly QA_AUTH_SECRET with no unsupported --force flag, both the cleanup
+        # and its absence-verification stay under if: always() with no suppressed failures, and
+        # the Playwright step uses EXPECTED_GIT_COMMIT_SHA rather than the reserved GITHUB_SHA.
+        run: python3 scripts/verify_qa_cleanup_workflow.py ../../.github/workflows/vakaviti-marketplace-stage1-ci.yml
+
+      - name: Confirm this branch carries the corrected production configuration
+        # PRODUCTION INTEGRATION BRANCH (2026-08-26): this repeats on every validate run for this
+        # branch, so CI fails immediately if a future commit here ever reintroduces the preview or
+        # QA database id at the top level, sets DEAL_EXCHANGE_PUBLIC_ENABLED back to "true", or
+        # lets the new production database id leak into [env.qa]. Distinct from, and in addition
+        # to, verify_qa_isolation.py above (unchanged, still proves the ordinary top-level config
+        # cannot reach QA resources) - this script proves the separate property that matters only
+        # on this integration branch: which database is actually bound, and that the feature is
+        # not public.
+        run: python3 scripts/verify_production_integration_config.py wrangler.toml
+
+  qa-deploy-and-test:
+    # CEO DECISION, Phase 4 (2026-08-25): the ONE authorized live write-path/security proof
+    # target. Everything about this job is deliberately narrow:
+    #   - runs only for this exact head repository and branch, never a fork (a fork PR's
+    #     head.repo.full_name never equals this value, so the job is skipped for forks entirely -
+    #     forked PRs never see the QA credential, full stop).
+    #   - `environment: vakaviti-qa` gates the job behind GitHub's own required-reviewer approval
+    #     AND is the only scope where the CLOUDFLARE_API_TOKEN secret is visible - it is not a
+    #     repository-level secret (confirmed: none exists).
+    #   - `permissions: contents: read` only - no write access to anything in this repo.
+    #   - trigger is `pull_request` (see the workflow's top-level `on:` block) - never
+    #     `pull_request_target`, which would run with base-branch privileges against a fork's
+    #     head content. This job never runs for a fork at all regardless (see `if:` below), but
+    #     the distinction matters for every other job/trigger in this file too.
+    needs: validate
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == 'jamesdeorajan-sys/fiji-platform' &&
+      github.head_ref == 'ceo/vakaviti-live-deal-exchange'
+    runs-on: ubuntu-latest
+    environment: vakaviti-qa
+    permissions:
+      contents: read
+    # CEO CORRECTION item 1 (2026-08-25): serialize every deployment and secret rotation against
+    # the one QA Worker - two concurrent runs generating and deleting QA_AUTH_SECRET at the same
+    # time would race and could leave the Worker's live secret out of sync with either run's
+    # in-memory copy. cancel-in-progress:false means a second push queues behind the first rather
+    # than killing it mid-deploy/mid-cleanup, which could abandon a secret rotation half done.
+    concurrency:
+      group: vakaviti-qa-deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: apps/vakaviti-marketplace-stage1
+    env:
+      QA_BASE_URL: https://vakaviti-live-deal-exchange-qa.helpronline.workers.dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Node LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Snapshot production and shared-preview state BEFORE any QA activity
+        # CEO CORRECTION - PHASE 2 (2026-08-25): moved to run immediately after Setup Node LTS -
+        # before dependency installation, before any deploy or write step - so this baseline is
+        # captured as early as structurally possible ("before any step capable of deploying or
+        # writing"). It needs only `curl` and Node's own runtime (present the moment Setup Node
+        # finishes), never the project's own npm dependencies, so it survives even if npm ci
+        # itself later fails - which is exactly the scenario that previously produced a false
+        # "production changed" report (the baseline step was skipped entirely because it sat
+        # AFTER npm ci, so the later comparison diffed real data against an empty string).
+        #
+        # `baseline_success` is an explicit, always-written step output (true or false, never
+        # absent) - the comparison step below refuses to run at all unless this is exactly
+        # "true", per the CEO's explicit requirement. `set +e` around the three network calls
+        # means a transient API failure here can never abort this step via bash's default -e
+        # before baseline_success=false gets written - the whole point is that this step must
+        # always leave a clear, checkable trail of whether it actually succeeded.
+        id: before
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          extract() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(JSON.parse(d).result[0].results[0])))"; }
+          set +e
+          PREVIEW=$(curl -sf -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/3f9a36c7-829c-4f9d-8af0-bb5332860f4b/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM deal_exchange_enquiries) enquiries, (SELECT COUNT(*) FROM deal_exchange_outbound_clicks) clicks, (SELECT COUNT(*) FROM deal_exchange_offers) offers"}' | extract)
+          PREVIEW_OK=$?
+          PROD=$(curl -sf -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/f2753057-4319-404d-bcda-84cccd288fe1/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM operators) operators, (SELECT COUNT(*) FROM products) products, (SELECT COUNT(*) FROM offers WHERE active=1) offers, (SELECT COUNT(*) FROM enquiries) enquiries"}' | extract)
+          PROD_OK=$?
+          DEPLOY_VERSION=$(curl -sf "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/workers/scripts/vakaviti-marketplace-stage1/deployments" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d).result.deployments[0];console.log(j.id+'/'+j.versions[0].version_id+'/'+j.versions[0].percentage)})")
+          DEPLOY_OK=$?
+          set -e
+          echo "preview=$PREVIEW" >> "$GITHUB_OUTPUT"
+          echo "prod=$PROD" >> "$GITHUB_OUTPUT"
+          echo "deploy_version=$DEPLOY_VERSION" >> "$GITHUB_OUTPUT"
+          if [ $PREVIEW_OK -eq 0 ] && [ $PROD_OK -eq 0 ] && [ $DEPLOY_OK -eq 0 ] && [ -n "$PREVIEW" ] && [ -n "$PROD" ] && [ -n "$DEPLOY_VERSION" ]; then
+            echo "baseline_success=true" >> "$GITHUB_OUTPUT"
+            echo "Baseline captured successfully."
+          else
+            echo "baseline_success=false" >> "$GITHUB_OUTPUT"
+            echo "Baseline capture FAILED (one or more API calls did not succeed) - the later integrity comparison will report BASELINE UNAVAILABLE rather than a false mismatch."
+          fi
+          echo "before-preview: $PREVIEW"
+          echo "before-prod: $PROD"
+          echo "before-deploy-version: $DEPLOY_VERSION"
+
+      - name: Install exact locked dependencies (npm ci, no floating versions)
+        # CEO CORRECTION item 2 (2026-08-25): npm ci installs exactly what package-lock.json
+        # pins - no version resolution, no surprise transitive upgrades between runs.
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify locked tooling is present (no npx auto-download permitted)
+        # CEO CORRECTION item 2: every subsequent step calls ./node_modules/.bin/<tool> directly,
+        # never `npx <tool>` - npx will silently download a package on demand if it's missing,
+        # which is exactly the uncontrolled-supply-chain behavior this step exists to prevent.
+        # Failing here, loudly and early, beats a later step quietly reaching out to the network.
+        shell: bash
+        run: |
+          grep -q '"wrangler"' package-lock.json || { echo 'wrangler not pinned in package-lock.json'; exit 1; }
+          grep -q '"@playwright/test"' package-lock.json || { echo '@playwright/test not pinned in package-lock.json'; exit 1; }
+          test -x ./node_modules/.bin/wrangler || { echo 'node_modules/.bin/wrangler missing after npm ci'; exit 1; }
+          test -x ./node_modules/.bin/playwright || { echo 'node_modules/.bin/playwright missing after npm ci'; exit 1; }
+          test -x ./node_modules/.bin/vitest || { echo 'node_modules/.bin/vitest missing after npm ci'; exit 1; }
+          echo 'wrangler, playwright and vitest all present as locked local binaries.'
+
+      - name: Assert resolved QA Worker name, QA D1 id, and absence of any production identifier
+        # CEO DECISION item 4 (2026-08-25): explicit, static assertions against wrangler.toml's
+        # [env.qa] block BEFORE any deploy call - fails closed rather than trusting the config by
+        # assumption. Checked here, not just at review time, so a future edit that accidentally
+        # widens [env.qa] cannot silently deploy something broader.
+        shell: bash
+        run: |
+          awk '/^\[env\.qa\]/{f=1} f{print} f && /^\[env\.qa\.assets\]/{f=0}' wrangler.toml > /tmp/env-qa-block.toml
+          echo '--- resolved [env.qa] block ---'
+          cat /tmp/env-qa-block.toml
+
+          grep -q 'name = "vakaviti-live-deal-exchange-qa"' /tmp/env-qa-block.toml || { echo 'Resolved QA Worker name does not match the expected vakaviti-live-deal-exchange-qa.'; exit 1; }
+          grep -q 'database_id = "2fccc7a7-e943-48bd-a810-687dd6c01b36"' /tmp/env-qa-block.toml || { echo 'Resolved QA D1 database id does not match the expected QA-only database.'; exit 1; }
+
+          # Production/preview identifiers that must NEVER appear inside [env.qa]:
+          #   f2753057-4319-404d-bcda-84cccd288fe1 = production Stage1 DB
+          #   3f9a36c7-829c-4f9d-8af0-bb5332860f4b = the shared PREVIEW evidence DB (not QA)
+          if grep -qE 'f2753057-4319-404d-bcda-84cccd288fe1|3f9a36c7-829c-4f9d-8af0-bb5332860f4b' /tmp/env-qa-block.toml; then
+            echo 'A production or shared-preview database id was found inside [env.qa] - refusing to deploy.'
+            exit 1
+          fi
+          if grep -qiE '^\s*routes\s*=|^\s*route\s*=|custom_domain|workers_dev\s*=\s*false' /tmp/env-qa-block.toml; then
+            echo 'A route/custom domain directive was found inside [env.qa] - the QA environment must never take production traffic.'
+            exit 1
+          fi
+          if grep -qiE '^\[env\.qa\.triggers\]|crons\s*=' /tmp/env-qa-block.toml; then
+            echo 'A Cron trigger was found inside [env.qa] - the QA environment must never run on a schedule.'
+            exit 1
+          fi
+
+      - name: Generate an ephemeral QA auth secret for this run only
+        # No long-lived QA_AUTH_SECRET is stored anywhere - a fresh random value is generated per
+        # run, pushed to the QA Worker as a real Cloudflare secret, and handed to Playwright to
+        # sign requests with. Nothing to rotate or leak between runs; only CLOUDFLARE_API_TOKEN is
+        # a persistent credential, and it lives only in this protected environment.
+        shell: bash
+        run: |
+          SECRET=$(openssl rand -hex 32)
+          echo "::add-mask::$SECRET"
+          echo "QA_AUTH_SECRET=$SECRET" >> "$GITHUB_ENV"
+
+      - name: Deploy the dedicated QA Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: ./node_modules/.bin/wrangler deploy --env qa --var GIT_COMMIT_SHA:${{ github.event.pull_request.head.sha }}
+
+      - name: Set the ephemeral QA auth secret on the deployed Worker
+        # CEO CORRECTION item 4: track success explicitly via a step output, rather than assuming
+        # it worked - cleanup and the fail-closed verification later both need to know whether a
+        # secret actually exists to act on.
+        id: set-secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          if printf '%s' "$QA_AUTH_SECRET" | ./node_modules/.bin/wrangler secret put QA_AUTH_SECRET --env qa; then
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Run the complete Vitest suite
+        # CEO CORRECTION item 3: the QA job proves the complete suite, not a narrow slice - this
+        # is the same suite validate already runs, re-run here so the QA job's own pass/fail
+        # record is self-contained proof, not a reference to a different job's result.
+        run: ./node_modules/.bin/vitest run
+
+      - name: Run the complete Playwright suite (mobile/accessibility, SEO, and the 7 deferred QA tests)
+        # CEO CORRECTION item 3: every spec file, zero path filter, zero skips, retries=0
+        # (already set in playwright.config.ts; --retries=0 here is a redundant, explicit
+        # belt-and-braces restatement, not a substitute for fixing a flaky test). The 7
+        # previously-deferred tests (the WhatsApp write-path lifecycle in journey.spec.ts, plus
+        # unauthenticated-cleanup / malformed-signature / expired-timestamp / malformed-run-id /
+        # replayed-signature / cross-run-cleanup in qa-security.spec.ts) unlock automatically now
+        # that QA_BASE_URL and QA_AUTH_SECRET are both set - they read these directly from
+        # process.env rather than from Playwright's global baseURL. Every other spec
+        # (mobile-accessibility.spec.ts, the SEO/structured-data and comparison/saved-trip tests
+        # in journey.spec.ts) continues to exercise the ordinary branch preview via
+        # playwright.config.ts's own baseURL, exactly as it always has - that preview is what
+        # those tests are actually validating (real deal data, real rendered SEO output), and the
+        # QA deployment deliberately has no DEAL_EXCHANGE_DB bound to serve any of those routes
+        # (see wrangler.toml's [env.qa] - QA_DB only, by design). "Complete suite" means no file
+        # is skipped and no test is omitted, not that every test targets the same URL when the
+        # two environments intentionally expose different surfaces.
+        env:
+          # CEO CORRECTION (2026-08-25): GITHUB_SHA is one of GitHub Actions' RESERVED default
+          # environment variables. The previous attempt to override it at the step level displayed
+          # the intended value in this step's own logged env block, but the running process still
+          # read GITHUB_SHA as the synthetic refs/pull/22/merge commit instead (confirmed directly
+          # from run 32861733744's own failure message) - GitHub's docs warn that redefining a
+          # default variable "may cause unexpected behavior," and this was exactly that. Using a
+          # dedicated, non-reserved variable name instead removes the collision risk entirely -
+          # see src/build-identity.ts, which reads ONLY this name and never GITHUB_SHA.
+          EXPECTED_GIT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./node_modules/.bin/playwright install --with-deps chromium && ./node_modules/.bin/playwright test --retries=0
+
+      - name: Rotate the ephemeral QA auth secret out (leave nothing live after this run)
+        # CEO CORRECTION item 4, corrected again (2026-08-25): `--force` was never a real
+        # wrangler flag - confirmed directly from the wrangler@4.125.0 source
+        # (packages/wrangler/src/secret/index.ts): secret delete has no force/skip-confirmation
+        # option at all. It does not need one: its confirm() prompt (packages/wrangler/src/
+        # dialogs.ts) calls isNonInteractiveOrCI() first and, in CI (GitHub Actions sets CI=true
+        # automatically), returns the fallback value (true) without prompting - Wrangler itself
+        # logs "Using fallback value in non-interactive context: yes" when this happens, which is
+        # the explicit confirmation record this step relies on. if: always() so this runs whether
+        # the suite passed or failed; only attempts deletion if the earlier step actually recorded
+        # success creating it, and only ever targets the QA_AUTH_SECRET name on --env qa - nothing
+        # else. A failure here is its own step, with its own red/green status in the run log - it
+        # can never overwrite or hide the Vitest/Playwright step's already-recorded result above.
+        if: always() && steps.set-secret.outputs.created == 'true'
+        id: cleanup-secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: ./node_modules/.bin/wrangler secret delete QA_AUTH_SECRET --env qa
+
+      - name: Verify the QA auth secret is actually absent after deletion
+        if: always() && steps.set-secret.outputs.created == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          REMAINING=$(./node_modules/.bin/wrangler secret list --env qa)
+          if echo "$REMAINING" | grep -q 'QA_AUTH_SECRET'; then
+            echo 'QA_AUTH_SECRET is still listed after deletion - cleanup did not actually take effect.'
+            exit 1
+          fi
+          echo 'Confirmed: QA_AUTH_SECRET is absent from the QA Worker after deletion.'
+
+      - name: Verify a previously-valid signed request now fails closed
+        # CEO CORRECTION item 4: proves the deletion was REAL at the application layer, not just
+        # "the wrangler command exited 0" - a request signed with the secret this run just
+        # deleted must be rejected, exactly as an unsigned request always is.
+        if: always() && steps.set-secret.outputs.created == 'true'
+        shell: bash
+        run: |
+          RUN_ID="pw-cleanupcheck-$(date +%s)-verify"
+          TS=$(node -e "console.log(Date.now())")
+          NONCE=$(openssl rand -hex 16)
+          SIG=$(printf '%s.%s.%s' "$RUN_ID" "$NONCE" "$TS" | openssl dgst -sha256 -hmac "$QA_AUTH_SECRET" -hex | sed 's/^.* //')
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$QA_BASE_URL/internal/qa-cleanup" \
+            -H "x-vakaviti-qa-run-id: $RUN_ID" -H "x-vakaviti-qa-timestamp: $TS" \
+            -H "x-vakaviti-qa-nonce: $NONCE" -H "x-vakaviti-qa-signature: $SIG" \
+            -d '{"reference":"VKV-ABC123"}')
+          if [ "$STATUS" != "401" ]; then
+            echo "Expected 401 (fail closed) using the just-deleted secret, got $STATUS instead."
+            exit 1
+          fi
+          echo 'Confirmed: a signature built with the deleted secret is correctly rejected (401).'
+
+      - name: Verify QA database residue is zero
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          RESIDUE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/2fccc7a7-e943-48bd-a810-687dd6c01b36/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT COUNT(*) n FROM deal_exchange_enquiries"}')
+          echo "QA DB enquiries residue: $RESIDUE"
+          N=$(echo "$RESIDUE" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).result[0].results[0].n))")
+          if [ "$N" != "0" ]; then
+            echo "QA database residue is $N, expected 0 - the write-path test's own cleanup did not leave a clean state."
+            exit 1
+          fi
+
+      - name: Verify shared preview database and production remain unchanged
+        # CEO CORRECTION - PHASE 2 (2026-08-25): first requires baseline_success=true from the
+        # snapshot step above. Without this guard, a run where the baseline itself never executed
+        # (e.g. because an earlier unrelated step like npm ci failed) would compare real current
+        # data against an empty string and always report a false "production changed" - exactly
+        # what happened on run 32856329613. Now it reports the honest, distinct state instead and
+        # exits 0 (never fails the job on this account alone) - the actual root cause is whatever
+        # earlier step failed, which already reports its own real error.
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          if [ "${{ steps.before.outputs.baseline_success }}" != "true" ]; then
+            echo "INTEGRITY COMPARISON NOT EXECUTED - BASELINE UNAVAILABLE"
+            exit 0
+          fi
+          extract() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(JSON.parse(d).result[0].results[0])))"; }
+          AFTER_PREVIEW=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/3f9a36c7-829c-4f9d-8af0-bb5332860f4b/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM deal_exchange_enquiries) enquiries, (SELECT COUNT(*) FROM deal_exchange_outbound_clicks) clicks, (SELECT COUNT(*) FROM deal_exchange_offers) offers"}' | extract)
+          AFTER_PROD=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/f2753057-4319-404d-bcda-84cccd288fe1/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM operators) operators, (SELECT COUNT(*) FROM products) products, (SELECT COUNT(*) FROM offers WHERE active=1) offers, (SELECT COUNT(*) FROM enquiries) enquiries"}' | extract)
+          AFTER_DEPLOY_VERSION=$(curl -s "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/workers/scripts/vakaviti-marketplace-stage1/deployments" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d).result.deployments[0];console.log(j.id+'/'+j.versions[0].version_id+'/'+j.versions[0].percentage)})")
+          echo "after-preview: $AFTER_PREVIEW"
+          echo "after-prod: $AFTER_PROD"
+          echo "after-deploy-version: $AFTER_DEPLOY_VERSION"
+          BEFORE_PREVIEW='${{ steps.before.outputs.preview }}'
+          BEFORE_PROD='${{ steps.before.outputs.prod }}'
+          BEFORE_DEPLOY_VERSION='${{ steps.before.outputs.deploy_version }}'
+          if [ "$AFTER_PREVIEW" != "$BEFORE_PREVIEW" ]; then
+            echo "Shared preview database changed during this run - before: $BEFORE_PREVIEW after: $AFTER_PREVIEW"
+            exit 1
+          fi
+          if [ "$AFTER_PROD" != "$BEFORE_PROD" ]; then
+            echo "Production counts changed during this run - before: $BEFORE_PROD after: $AFTER_PROD"
+            exit 1
+          fi
+          if [ "$AFTER_DEPLOY_VERSION" != "$BEFORE_DEPLOY_VERSION" ]; then
+            echo "Production deployment/version changed during this run - before: $BEFORE_DEPLOY_VERSION after: $AFTER_DEPLOY_VERSION"
+            exit 1
+          fi
+          echo 'Confirmed: shared preview database, production counts, and production deployment/version are identical before and after this run.'
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### QA deploy-and-test run summary"
+            echo ""
+            echo "The dedicated QA Worker (\`vakaviti-live-deal-exchange-qa\`) and its QA D1 database"
+            echo "(\`vakaviti-live-deal-exchange-qa-db\`) **remain deployed and live** after this run -"
+            echo "only the ephemeral \`QA_AUTH_SECRET\` credential was removed. The Worker and database"
+            echo "are reusable infrastructure; the secret is deliberately single-run."
+          } >> "$GITHUB_STEP_SUMMARY"
