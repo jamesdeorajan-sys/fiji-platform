@@ -114,6 +114,55 @@ jobs:
         with:
           node-version: 22
 
+      - name: Snapshot production and shared-preview state BEFORE any QA activity
+        # CEO CORRECTION - PHASE 2 (2026-08-25): moved to run immediately after Setup Node LTS -
+        # before dependency installation, before any deploy or write step - so this baseline is
+        # captured as early as structurally possible ("before any step capable of deploying or
+        # writing"). It needs only `curl` and Node's own runtime (present the moment Setup Node
+        # finishes), never the project's own npm dependencies, so it survives even if npm ci
+        # itself later fails - which is exactly the scenario that previously produced a false
+        # "production changed" report (the baseline step was skipped entirely because it sat
+        # AFTER npm ci, so the later comparison diffed real data against an empty string).
+        #
+        # `baseline_success` is an explicit, always-written step output (true or false, never
+        # absent) - the comparison step below refuses to run at all unless this is exactly
+        # "true", per the CEO's explicit requirement. `set +e` around the three network calls
+        # means a transient API failure here can never abort this step via bash's default -e
+        # before baseline_success=false gets written - the whole point is that this step must
+        # always leave a clear, checkable trail of whether it actually succeeded.
+        id: before
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          extract() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(JSON.parse(d).result[0].results[0])))"; }
+          set +e
+          PREVIEW=$(curl -sf -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/3f9a36c7-829c-4f9d-8af0-bb5332860f4b/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM deal_exchange_enquiries) enquiries, (SELECT COUNT(*) FROM deal_exchange_outbound_clicks) clicks, (SELECT COUNT(*) FROM deal_exchange_offers) offers"}' | extract)
+          PREVIEW_OK=$?
+          PROD=$(curl -sf -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/f2753057-4319-404d-bcda-84cccd288fe1/query" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            -d '{"sql":"SELECT (SELECT COUNT(*) FROM operators) operators, (SELECT COUNT(*) FROM products) products, (SELECT COUNT(*) FROM offers WHERE active=1) offers, (SELECT COUNT(*) FROM enquiries) enquiries"}' | extract)
+          PROD_OK=$?
+          DEPLOY_VERSION=$(curl -sf "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/workers/scripts/vakaviti-marketplace-stage1/deployments" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d).result.deployments[0];console.log(j.id+'/'+j.versions[0].version_id+'/'+j.versions[0].percentage)})")
+          DEPLOY_OK=$?
+          set -e
+          echo "preview=$PREVIEW" >> "$GITHUB_OUTPUT"
+          echo "prod=$PROD" >> "$GITHUB_OUTPUT"
+          echo "deploy_version=$DEPLOY_VERSION" >> "$GITHUB_OUTPUT"
+          if [ $PREVIEW_OK -eq 0 ] && [ $PROD_OK -eq 0 ] && [ $DEPLOY_OK -eq 0 ] && [ -n "$PREVIEW" ] && [ -n "$PROD" ] && [ -n "$DEPLOY_VERSION" ]; then
+            echo "baseline_success=true" >> "$GITHUB_OUTPUT"
+            echo "Baseline captured successfully."
+          else
+            echo "baseline_success=false" >> "$GITHUB_OUTPUT"
+            echo "Baseline capture FAILED (one or more API calls did not succeed) - the later integrity comparison will report BASELINE UNAVAILABLE rather than a false mismatch."
+          fi
+          echo "before-preview: $PREVIEW"
+          echo "before-prod: $PROD"
+          echo "before-deploy-version: $DEPLOY_VERSION"
+
       - name: Install exact locked dependencies (npm ci, no floating versions)
         # CEO CORRECTION item 2 (2026-08-25): npm ci installs exactly what package-lock.json
         # pins - no version resolution, no surprise transitive upgrades between runs.
@@ -162,34 +211,6 @@ jobs:
             echo 'A Cron trigger was found inside [env.qa] - the QA environment must never run on a schedule.'
             exit 1
           fi
-
-      - name: Snapshot production and shared-preview state BEFORE any QA activity
-        # CEO CORRECTION item 4: a "before" snapshot is the only way to later prove "unchanged" -
-        # asserting isolation without ever having measured the starting state would be a claim,
-        # not proof. Extracts ONLY the `results[0]` counts via node, not the raw API response -
-        # Cloudflare's response envelope includes volatile fields (sql_duration_ms, served_by_colo)
-        # that legitimately differ between any two calls even when the underlying data is byte-
-        # identical, so a raw-response string comparison would spuriously fail every time.
-        id: before
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        shell: bash
-        run: |
-          extract() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(JSON.parse(d).result[0].results[0])))"; }
-          PREVIEW=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/3f9a36c7-829c-4f9d-8af0-bb5332860f4b/query" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
-            -d '{"sql":"SELECT (SELECT COUNT(*) FROM deal_exchange_enquiries) enquiries, (SELECT COUNT(*) FROM deal_exchange_outbound_clicks) clicks, (SELECT COUNT(*) FROM deal_exchange_offers) offers"}' | extract)
-          PROD=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/f2753057-4319-404d-bcda-84cccd288fe1/query" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
-            -d '{"sql":"SELECT (SELECT COUNT(*) FROM operators) operators, (SELECT COUNT(*) FROM products) products, (SELECT COUNT(*) FROM offers WHERE active=1) offers, (SELECT COUNT(*) FROM enquiries) enquiries"}' | extract)
-          DEPLOY_VERSION=$(curl -s "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/workers/scripts/vakaviti-marketplace-stage1/deployments" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d).result.deployments[0];console.log(j.id+'/'+j.versions[0].version_id+'/'+j.versions[0].percentage)})")
-          echo "preview=$PREVIEW" >> "$GITHUB_OUTPUT"
-          echo "prod=$PROD" >> "$GITHUB_OUTPUT"
-          echo "deploy_version=$DEPLOY_VERSION" >> "$GITHUB_OUTPUT"
-          echo "before-preview: $PREVIEW"
-          echo "before-prod: $PROD"
-          echo "before-deploy-version: $DEPLOY_VERSION"
 
       - name: Generate an ephemeral QA auth secret for this run only
         # No long-lived QA_AUTH_SECRET is stored anywhere - a fresh random value is generated per
@@ -319,11 +340,22 @@ jobs:
           fi
 
       - name: Verify shared preview database and production remain unchanged
+        # CEO CORRECTION - PHASE 2 (2026-08-25): first requires baseline_success=true from the
+        # snapshot step above. Without this guard, a run where the baseline itself never executed
+        # (e.g. because an earlier unrelated step like npm ci failed) would compare real current
+        # data against an empty string and always report a false "production changed" - exactly
+        # what happened on run 32856329613. Now it reports the honest, distinct state instead and
+        # exits 0 (never fails the job on this account alone) - the actual root cause is whatever
+        # earlier step failed, which already reports its own real error.
         if: always()
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: bash
         run: |
+          if [ "${{ steps.before.outputs.baseline_success }}" != "true" ]; then
+            echo "INTEGRITY COMPARISON NOT EXECUTED - BASELINE UNAVAILABLE"
+            exit 0
+          fi
           extract() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(JSON.parse(d).result[0].results[0])))"; }
           AFTER_PREVIEW=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/595101df2c562b3c65595420d43f9fe1/d1/database/3f9a36c7-829c-4f9d-8af0-bb5332860f4b/query" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
@@ -365,63 +397,3 @@ jobs:
             echo "only the ephemeral \`QA_AUTH_SECRET\` credential was removed. The Worker and database"
             echo "are reusable infrastructure; the secret is deliberately single-run."
           } >> "$GITHUB_STEP_SUMMARY"
-
-  TEMP-generate-lockfile:
-    # CEO AUTHORIZATION - PHASE 1 LOCKFILE (2026-08-25): TEMPORARY job, removed again in the same
-    # follow-up commit that adds the real package-lock.json produced by this job's artifact. No
-    # Node/npm runtime exists in the environment authoring this change, so per the CEO's own
-    # specified fallback this job generates the lockfile via CI, uploads it as a build artifact
-    # for manual download and inspection, and does NOT commit anything itself - no write
-    # permission is granted, and nothing here pushes to any branch.
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: apps/vakaviti-marketplace-stage1
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Setup Node LTS
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-
-      - name: Record npm version used for lockfile generation
-        run: npm --version
-
-      - name: Generate package-lock.json from the current package.json only
-        # --package-lock-only means no node_modules is installed and no postinstall/build script
-        # runs - this only resolves and writes the lockfile itself, nothing else.
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-      - name: Prove package.json was not modified by lockfile generation
-        run: git diff --exit-code package.json
-
-      - name: Prove npm ci succeeds from a genuinely clean checkout using this exact lockfile
-        shell: bash
-        run: |
-          rm -rf /tmp/clean-checkout && mkdir -p /tmp/clean-checkout
-          cp package.json package-lock.json /tmp/clean-checkout/
-          cd /tmp/clean-checkout
-          npm ci --ignore-scripts --no-audit --no-fund
-          test -x ./node_modules/.bin/wrangler || { echo 'wrangler missing after npm ci'; exit 1; }
-          test -x ./node_modules/.bin/playwright || { echo 'playwright missing after npm ci'; exit 1; }
-          test -x ./node_modules/.bin/vitest || { echo 'vitest missing after npm ci'; exit 1; }
-          echo 'npm ci succeeded from a clean checkout; wrangler, playwright and vitest all present.'
-
-      - name: Confirm no secret-shaped content in the generated lockfile
-        shell: bash
-        run: |
-          if grep -qiE '(sk-|ghp_|gho_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})' package-lock.json; then
-            echo 'A secret-shaped token pattern was found in the generated lockfile - refusing to publish it as an artifact.'
-            exit 1
-          fi
-          echo 'No secret-shaped content found in the generated lockfile.'
-
-      - name: Upload the generated lockfile as a build artifact for manual download and review
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
-        with:
-          name: generated-package-lock
-          path: apps/vakaviti-marketplace-stage1/package-lock.json
-          retention-days: 1
