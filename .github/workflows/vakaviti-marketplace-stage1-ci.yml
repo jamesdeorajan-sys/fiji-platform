@@ -365,3 +365,63 @@ jobs:
             echo "only the ephemeral \`QA_AUTH_SECRET\` credential was removed. The Worker and database"
             echo "are reusable infrastructure; the secret is deliberately single-run."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  TEMP-generate-lockfile:
+    # CEO AUTHORIZATION - PHASE 1 LOCKFILE (2026-08-25): TEMPORARY job, removed again in the same
+    # follow-up commit that adds the real package-lock.json produced by this job's artifact. No
+    # Node/npm runtime exists in the environment authoring this change, so per the CEO's own
+    # specified fallback this job generates the lockfile via CI, uploads it as a build artifact
+    # for manual download and inspection, and does NOT commit anything itself - no write
+    # permission is granted, and nothing here pushes to any branch.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/vakaviti-marketplace-stage1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Node LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Record npm version used for lockfile generation
+        run: npm --version
+
+      - name: Generate package-lock.json from the current package.json only
+        # --package-lock-only means no node_modules is installed and no postinstall/build script
+        # runs - this only resolves and writes the lockfile itself, nothing else.
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Prove package.json was not modified by lockfile generation
+        run: git diff --exit-code package.json
+
+      - name: Prove npm ci succeeds from a genuinely clean checkout using this exact lockfile
+        shell: bash
+        run: |
+          rm -rf /tmp/clean-checkout && mkdir -p /tmp/clean-checkout
+          cp package.json package-lock.json /tmp/clean-checkout/
+          cd /tmp/clean-checkout
+          npm ci --ignore-scripts --no-audit --no-fund
+          test -x ./node_modules/.bin/wrangler || { echo 'wrangler missing after npm ci'; exit 1; }
+          test -x ./node_modules/.bin/playwright || { echo 'playwright missing after npm ci'; exit 1; }
+          test -x ./node_modules/.bin/vitest || { echo 'vitest missing after npm ci'; exit 1; }
+          echo 'npm ci succeeded from a clean checkout; wrangler, playwright and vitest all present.'
+
+      - name: Confirm no secret-shaped content in the generated lockfile
+        shell: bash
+        run: |
+          if grep -qiE '(sk-|ghp_|gho_|xox[baprs]-|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})' package-lock.json; then
+            echo 'A secret-shaped token pattern was found in the generated lockfile - refusing to publish it as an artifact.'
+            exit 1
+          fi
+          echo 'No secret-shaped content found in the generated lockfile.'
+
+      - name: Upload the generated lockfile as a build artifact for manual download and review
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: generated-package-lock
+          path: apps/vakaviti-marketplace-stage1/package-lock.json
+          retention-days: 1
