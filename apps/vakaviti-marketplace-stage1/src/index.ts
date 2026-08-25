@@ -13,8 +13,9 @@ import { batchReviewUi } from './batch-review-ui';
 import { supplySprintUi } from './supply-sprint-ui';
 import { runSupplyBootstrap, runPhase2SupplyExpansion, runWave3SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
+import { dealExchangeUi } from './deal-exchange-ui';
 
-type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string };
+type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string; DEAL_EXCHANGE_DB?: D1Database; DEAL_EXCHANGE_PUBLIC_ENABLED?: string };
 
 // Centralised Stage 1 enquiry-routing decision. This is a preview/testing routing rule only -
 // it decides where the WhatsApp message goes, it never touches an operator's own stored
@@ -715,6 +716,13 @@ app.route('/admin/deals', dealsAdminUi);
 // branded domain yet). Every route filters through the same isPubliclyEligible() gate as the
 // admin approval flow and the JSON preview API - see src/deals-hub.ts.
 app.route('/deals', dealsHub);
+// Live Deal Exchange (Milestone 3, 2026-08-24) - public multi-authority mobile visitor journey.
+// Structurally inert whenever DEAL_EXCHANGE_DB is absent (see deal-exchange-ui.ts's own guard
+// middleware and wrangler.toml's pre-merge checklist) - has no relationship to the /deals route
+// above (existing Class B public hub) or to PR #21's private opportunity console on a separate
+// branch. Routes: /explore, /live-deals, /live-deals/:id, /compare, /plan, /saved, /chat,
+// /search-intent, /go/deal/:id.
+app.route('/', dealExchangeUi);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
 
 type ScheduledBindings = Bindings;
