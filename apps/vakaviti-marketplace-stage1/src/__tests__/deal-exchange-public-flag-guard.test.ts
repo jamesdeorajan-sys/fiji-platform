@@ -46,32 +46,55 @@ describe('Production integration test: public routes fail closed before any D1 a
     expect(res.status).toBe(503);
   });
 
-  it('does not use the disabled-flag path when the dedicated QA environment is active', async () => {
-    // Mirrors the real [env.qa] shape: DEAL_EXCHANGE_QA_DB + QA_TEST_MODE='true', no
-    // DEAL_EXCHANGE_DB, no DEAL_EXCHANGE_PUBLIC_ENABLED - the QA bypass this route already relies
-    // on for the QA-only worker (verified extensively by the 32-test Playwright QA run).
+  it('correctly reports qaModeActive for the real [env.qa] shape, via the one route mounted ahead of the disabled-flag gate', async () => {
+    // /internal/build-info is mounted before the gate (see deal-exchange-ui.ts) and touches no D1
+    // binding at all, so it is the one safe route to exercise the real [env.qa] shape with -
+    // DEAL_EXCHANGE_QA_DB + QA_TEST_MODE='true', no DEAL_EXCHANGE_DB. Listing routes such as
+    // /live-deals are never exercised under this shape in any real deployment (the actual QA
+    // Worker deliberately has no DEAL_EXCHANGE_DB to serve them - see wrangler.toml's [env.qa] -
+    // so this test does not attempt that combination.
     const env = {
       ENVIRONMENT: 'qa',
       DEAL_EXCHANGE_QA_DB: throwingDb('qa-env'),
       QA_TEST_MODE: 'true',
     } as any;
-    const res = await dealExchangeUi.request('/live-deals', {}, env);
-    const body = await res.text();
-    expect(body).not.toContain('not configured on this environment');
-    expect(body).not.toContain('not yet publicly enabled');
+    const res = await dealExchangeUi.request('/internal/build-info', {}, env);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.qaModeActive).toBe(true);
   });
 
-  it('/internal/qa-cleanup returns 404 (not merely unauthorized) outside the dedicated QA environment', async () => {
+  it('/internal/qa-cleanup is blocked by the disabled-flag gate before it ever reaches its own handler (no DB bound, production)', async () => {
+    // With no DEAL_EXCHANGE_DB bound at all, the same fail-closed gate that blocks every other
+    // route blocks this one too - the request never reaches /internal/qa-cleanup's own handler,
+    // so this is a 503 ("not configured"), not that handler's own 404. That is a stronger, earlier
+    // block, not a weaker one - see the next two tests for the exact scenario that reaches the
+    // route's own 404 check.
     const env = { ENVIRONMENT: 'production' } as any;
     const res = await dealExchangeUi.request('/internal/qa-cleanup', { method: 'POST' }, env);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
   });
 
-  it('/internal/qa-cleanup stays unreachable even when only DEAL_EXCHANGE_DB (production) is bound, no QA vars', async () => {
+  it('/internal/qa-cleanup is blocked by the disabled-flag gate before it ever reaches its own handler (production DB bound, flag false - this branch\'s actual configuration)', async () => {
     const env = {
       ENVIRONMENT: 'production',
       DEAL_EXCHANGE_DB: throwingDb('prod-cleanup-attempt'),
       DEAL_EXCHANGE_PUBLIC_ENABLED: 'false',
+    } as any;
+    const res = await dealExchangeUi.request('/internal/qa-cleanup', { method: 'POST' }, env);
+    expect(res.status).toBe(503);
+  });
+
+  it('/internal/qa-cleanup only reaches its own handler when the disabled-flag gate is passed (DB bound, flag true, no QA vars) - and even then returns 404, never running the cleanup', async () => {
+    // This is the exact scenario src/deal-exchange-ui.ts's own comment above the route describes
+    // ("404 outside the QA environment, not even a 503 that confirms the route exists at all") -
+    // it requires the global gate to be passed first (DB bound AND flag==='true'), which only ever
+    // happens on the ordinary PR-branch preview, never on this production-integration branch
+    // (where the flag is hard-set to "false" - see the two tests above).
+    const env = {
+      ENVIRONMENT: 'preview',
+      DEAL_EXCHANGE_DB: throwingDb('ordinary-preview-cleanup-attempt'),
+      DEAL_EXCHANGE_PUBLIC_ENABLED: 'true',
     } as any;
     const res = await dealExchangeUi.request('/internal/qa-cleanup', { method: 'POST' }, env);
     expect(res.status).toBe(404);
