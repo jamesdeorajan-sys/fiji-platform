@@ -91,16 +91,68 @@ test('reduced-motion media query is present and disables animation/transition du
   expect(html).toMatch(/prefers-reduced-motion:\s*reduce/);
 });
 
-test('September filter visibly excludes the October-only deal (re-verification of the core Milestone 3 proof)', async ({ page }) => {
+test('September filter is behaviourally correct against the current live dataset (re-verification of the core Milestone 3 proof)', async ({ page }) => {
+  // CEO correction 2026-08-25: the previous version of this test hardcoded "2 of 3 public deals
+  // match" - a fixed denominator that only tests the current data snapshot, not the filtering
+  // logic, and breaks CI every time a legitimate new eligible deal is added (it broke the moment
+  // a 4th eligible deal, Sofitel x Spacifica, was added). The deterministic month-filter LOGIC
+  // itself is already proven exactly, with no live data dependency, by the Vitest unit tests in
+  // src/__tests__/deal-exchange-listing.test.ts - this E2E test's job is only to prove the
+  // DEPLOYED UI and the CURRENT DATA agree with each other, which means it must observe the
+  // current total rather than assume it.
+
+  // Step 1: the unfiltered view's own "N of M" summary IS the current eligible total - read from
+  // the rendered page, never hardcoded and never queried from D1 directly.
+  await page.goto('/live-deals');
+  const unfilteredText = await page.locator('main').innerText();
+  const unfilteredMatch = unfilteredText.match(/(\d+) of (\d+) public deals match/);
+  expect(unfilteredMatch, 'no "N of M public deals match" summary found on the unfiltered view').toBeTruthy();
+  const [, unfilteredShown, unfilteredTotal] = unfilteredMatch!;
+  expect(unfilteredShown, 'unfiltered view should show every eligible deal, not a subset').toBe(unfilteredTotal);
+  const totalEligibleCount = parseInt(unfilteredTotal, 10);
+  expect(totalEligibleCount, 'sanity floor only - never a fixed ceiling on future legitimate growth').toBeGreaterThanOrEqual(3);
+
+  // Step 2: September 2026.
   await page.goto('/live-deals?month=9&year=2026');
-  const text = await page.locator('main').innerText();
-  expect(text).toMatch(/2 of 3 public deals match for September 2026/);
-  // The month <select> legitimately lists "October" as one of its 12 options - assert against the
-  // rendered DEAL CARDS specifically (by provider/seller name), not the whole page's text, so the
-  // filter dropdown's own option list can't produce a false failure here.
-  const cardText = await page.locator('.card').allInnerTexts();
-  const cardsContainingOctoberDeal = cardText.filter(t => t.includes('Radisson') || t.includes('My Fiji'));
-  expect(cardsContainingOctoberDeal).toHaveLength(0);
+  const septemberText = await page.locator('main').innerText();
+  const septemberMatch = septemberText.match(/(\d+) of (\d+) public deals match/);
+  expect(septemberMatch, 'no "N of M public deals match" summary found on the September view').toBeTruthy();
+  const filteredCount = parseInt(septemberMatch![1], 10);
+  const septemberDenominator = parseInt(septemberMatch![2], 10);
+
+  // Step 3: the September view's own denominator must equal the dynamically observed total.
+  expect(septemberDenominator, 'September view denominator does not match the dynamically observed eligible total').toBe(totalEligibleCount);
+
+  // Step 8: a filtered view can never show more than the total.
+  expect(filteredCount).toBeLessThanOrEqual(totalEligibleCount);
+
+  // Step 4: every rendered filtered card's OWN stated travel window must genuinely cover
+  // September 2026 - parsed from the rendered page, not assumed.
+  const cardTexts = await page.locator('.card').allInnerTexts();
+  expect(cardTexts, 'rendered card count does not match the displayed filtered count').toHaveLength(filteredCount);
+  const septemberStart = new Date('2026-09-01T00:00:00Z');
+  const septemberEnd = new Date('2026-09-30T23:59:59Z');
+  for (const cardText of cardTexts) {
+    const travelMatch = cardText.match(/Travel:\s*(\d{4}-\d{2}-\d{2}|\?)\s*to\s*(\d{4}-\d{2}-\d{2}|\?)/);
+    expect(travelMatch, `card has no parseable travel window: ${cardText.slice(0, 80)}`).toBeTruthy();
+    const [, startStr, endStr] = travelMatch!;
+    if (startStr === '?' || endStr === '?') continue; // no dates published - nothing to assert
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T23:59:59Z`);
+    expect(start <= septemberEnd && end >= septemberStart, `card travel window ${startStr} to ${endStr} does not cover September 2026`).toBe(true);
+  }
+
+  // Step 5: the two known Taveuni Palms September offers remain present.
+  const taveuniCards = cardTexts.filter(t => t.includes('Taveuni Palms'));
+  expect(taveuniCards, 'expected both known Taveuni Palms September offers to still be present').toHaveLength(2);
+
+  // Step 6: the known October-only My Fiji/Radisson offer is absent. The month <select>
+  // legitimately lists "October" as one of its 12 options, so this asserts against the rendered
+  // DEAL CARDS specifically (by provider/seller name), never the whole page's text.
+  expect(cardTexts.some(t => t.includes('Radisson') || t.includes('My Fiji')), 'the October-only Radisson/My Fiji offer must not appear in the September filter').toBe(false);
+
+  // Step 7: the known November-only Sofitel/Spacifica offer is absent.
+  expect(cardTexts.some(t => t.includes('Sofitel') || t.includes('Spacifica')), 'the November-only Sofitel/Spacifica offer must not appear in the September filter').toBe(false);
 });
 
 test('empty results state renders an explicit message, not a blank page', async ({ page }) => {
