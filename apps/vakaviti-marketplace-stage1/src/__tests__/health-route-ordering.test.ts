@@ -12,9 +12,14 @@ import worker from '../index';
 // No FakeD1 attempts to fabricate realistic rows for /, /operators, /experiences or /deals -
 // their real queries are complex multi-table joins outside this test's scope. Instead each is
 // given a "sentinel" D1 stand-in whose prepare() throws immediately, recognizably, and before any
-// read or write could execute. Reaching that sentinel (the request rejects with the sentinel
-// error) proves the route's OWN handler ran - i.e. it was not intercepted by the Deal Exchange
-// gate, which would instead have returned a clean 503 response and never touched D1 at all.
+// read or write could execute. Reaching that sentinel proves the route's OWN handler ran - i.e.
+// it was not intercepted by the Deal Exchange gate, which would instead have returned a clean 503
+// response and never touched D1 at all. Confirmed empirically (not assumed): calling the
+// top-level app's exported fetch() for a handler that throws synchronously resolves to a plain
+// Response with status 500 ("Internal Server Error") rather than rejecting the promise - the
+// opposite of dealExchangeUi.request() called directly on the un-mounted sub-app (see
+// deal-exchange-public-flag-guard.test.ts's history) - so these assertions check for a 500
+// response, not a rejected promise.
 
 const SENTINEL = 'SENTINEL_DB_REACHED';
 
@@ -60,7 +65,13 @@ describe('Hotfix regression: pre-existing routes are not intercepted by the Deal
   for (const [path, init] of cases) {
     it(`${path} reaches its own handler (proven by hitting the sentinel D1, never the Deal Exchange 503)`, async () => {
       const env = { ...baseEnv, DB: sentinelDb() };
-      await expect(fetchPath(path, env, init)).rejects.toThrow(SENTINEL);
+      const res = await fetchPath(path, env, init);
+      // The sentinel throw surfaces as a plain 500 ("Internal Server Error") once it reaches the
+      // route's own handler - the point of this assertion is that it is NOT the Deal Exchange
+      // gate's 503, proving this route was never intercepted by that gate.
+      expect(res.status).toBe(500);
+      const body = await res.text();
+      expect(body).not.toContain('Live Deal Exchange is not');
     });
   }
 });
