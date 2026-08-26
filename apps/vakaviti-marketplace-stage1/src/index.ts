@@ -716,14 +716,23 @@ app.route('/admin/deals', dealsAdminUi);
 // branded domain yet). Every route filters through the same isPubliclyEligible() gate as the
 // admin approval flow and the JSON preview API - see src/deals-hub.ts.
 app.route('/deals', dealsHub);
-// Live Deal Exchange (Milestone 3, 2026-08-24) - public multi-authority mobile visitor journey.
-// Structurally inert whenever DEAL_EXCHANGE_DB is absent (see deal-exchange-ui.ts's own guard
-// middleware and wrangler.toml's pre-merge checklist) - has no relationship to the /deals route
-// above (existing Class B public hub) or to PR #21's private opportunity console on a separate
-// branch. Routes: /explore, /live-deals, /live-deals/:id, /compare, /plan, /saved, /chat,
-// /search-intent, /go/deal/:id.
-app.route('/', dealExchangeUi);
 app.get('/api/health', c => c.json({ ok:true, service:'vakaviti-marketplace-stage1', environment:c.env.ENVIRONMENT, ai:true }));
+
+// HOTFIX (2026-08-27): Live Deal Exchange (Milestone 3, 2026-08-24) - public multi-authority
+// mobile visitor journey. Structurally inert whenever DEAL_EXCHANGE_DB is absent (see
+// deal-exchange-ui.ts's own guard middleware) - has no relationship to the /deals route above
+// (existing Class B public hub) or to PR #21's private opportunity console on a separate branch.
+// Routes: /explore, /live-deals, /live-deals/:id, /compare, /plan, /saved, /chat,
+// /search-intent, /go/deal/:id.
+//
+// This mount is registered at '/' (matches every path), and dealExchangeUi's own fail-closed
+// gate is a wildcard middleware - Hono composes matched handlers in REGISTRATION order, so ANY
+// route registered on `app` after this line is intercepted by that gate before its own handler
+// ever runs (this is exactly what broke /api/health in production when the public flag went
+// false - the gate silently passed everything through while the flag was true on every prior
+// deployment, masking the ordering bug). THIS MOUNT MUST STAY LAST among application route
+// registrations on `app` - add any new top-level route above this line, never below it.
+app.route('/', dealExchangeUi);
 
 type ScheduledBindings = Bindings;
 export default {
