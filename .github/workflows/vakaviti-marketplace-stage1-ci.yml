@@ -78,16 +78,28 @@ jobs:
         # the Playwright step uses EXPECTED_GIT_COMMIT_SHA rather than the reserved GITHUB_SHA.
         run: python3 scripts/verify_qa_cleanup_workflow.py ../../.github/workflows/vakaviti-marketplace-stage1-ci.yml
 
-      - name: Confirm this branch carries the corrected production configuration
-        # PRODUCTION INTEGRATION BRANCH (2026-08-26): this repeats on every validate run for this
-        # branch, so CI fails immediately if a future commit here ever reintroduces the preview or
-        # QA database id at the top level, sets DEAL_EXCHANGE_PUBLIC_ENABLED back to "true", or
-        # lets the new production database id leak into [env.qa]. Distinct from, and in addition
-        # to, verify_qa_isolation.py above (unchanged, still proves the ordinary top-level config
-        # cannot reach QA resources) - this script proves the separate property that matters only
-        # on this integration branch: which database is actually bound, and that the feature is
-        # not public.
+      - name: Confirm production Deal Exchange configuration is safe (either flag state)
+        # PRODUCTION CONFIGURATION GUARD, updated for governed activation (2026-08-27): this
+        # repeats on every validate run, so CI fails immediately if a future commit ever
+        # reintroduces the preview or QA database id at the top level, lets the production
+        # database id leak into [env.qa], or (when DEAL_EXCHANGE_PUBLIC_ENABLED is "true") loses
+        # the application-code safety invariants a live activation depends on - the fail-closed
+        # gate, noindex, or ELIGIBLE-only publication. DEAL_EXCHANGE_PUBLIC_ENABLED is permitted
+        # to be either "false" or "true" - this script's job is configuration safety and
+        # isolation, never whether an activation was authorized (that is git history's job, not a
+        # second flag this script checks). Distinct from, and in addition to,
+        # verify_qa_isolation.py above (unchanged, still proves the ordinary top-level config
+        # cannot reach QA resources).
         run: python3 scripts/verify_production_integration_config.py wrangler.toml
+
+      - name: Regression-test the production configuration guard itself
+        # Proves the guard above actually enforces what it claims, in both directions, across 17
+        # cases (both public-flag states passing when everything else is safe; every isolation
+        # violation and every malformed flag value failing; and, specifically for the "true"
+        # state, that removing noindex, eligibility gating, or QA isolation is caught). Runs
+        # entirely against temporary fixtures - never touches this repo's real wrangler.toml or
+        # source files.
+        run: python3 scripts/test_verify_production_integration_config.py
 
       - name: Confirm no application route is registered after the Deal Exchange mount
         # HOTFIX (2026-08-27): the PR #23 post-merge incident - /api/health returning 503 instead
