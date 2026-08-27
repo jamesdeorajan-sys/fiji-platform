@@ -159,7 +159,7 @@ ${opts.extraHead || ''}
 *{box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;padding-bottom:72px}
 header{position:sticky;top:0;background:rgba(246,248,247,.96);backdrop-filter:blur(6px);z-index:10;padding:12px 16px;border-bottom:1px solid var(--line)}
-header a.brand{color:var(--ink);text-decoration:none;font-weight:700;font-size:16px}
+header a.brand{color:var(--ink);text-decoration:none;font-weight:700;font-size:16px;display:inline-flex;align-items:center;min-height:44px}
 main{max-width:900px;margin:auto;padding:16px}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;overflow-wrap:break-word}
 .muted{color:var(--muted);font-size:13px}
@@ -224,15 +224,20 @@ const dealCard = (o: PublicDealSummary, compareIds: string[] = []) => {
     ${crossSell.length ? `<p class="muted" style="margin:0 0 8px;font-size:12px">${crossSell.map(c => esc(c.reason)).join(' ')}</p>` : ''}
     <div class="row">
       <a class="btn small" href="/live-deals/${esc(o.id)}">Details</a>
-      <label class="btn small secondary" style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="compare" value="${esc(o.id)}" ${isChecked ? 'checked' : ''} onchange="toggleCompare('${esc(o.id)}')" style="width:20px;height:20px"> Compare</label>
-      <button class="btn small secondary" onclick="saveDeal('${esc(o.id)}','${esc(o.title)}')">Save</button>
+      <label class="btn small secondary" style="display:flex;align-items:center;gap:6px;min-height:44px;min-width:44px"><input type="checkbox" name="compare" value="${esc(o.id)}" ${isChecked ? 'checked' : ''} onchange="toggleCompare('${esc(o.id)}')" style="width:20px;height:20px;flex-shrink:0"> Compare</label>
+      <button class="btn small secondary" style="min-height:44px;min-width:44px" onclick="saveDeal('${esc(o.id)}','${esc(o.title)}')">Save</button>
       ${action.actionType !== 'NONE' ? `<a class="btn small" href="/go/deal/${esc(o.id)}" data-action="${esc(action.actionType)}">${esc(action.cta)}</a>` : ''}
     </div>
   </div>`;
 };
 
 const SAVED_TRIP_SCRIPT = `<script>
-function readSaved(){ try { return JSON.parse(localStorage.getItem('vakaviti_saved_trip')||'{"deals":[],"products":[]}'); } catch(e){ return {deals:[],products:[]}; } }
+function readSaved(){
+  try {
+    var parsed = JSON.parse(localStorage.getItem('vakaviti_saved_trip')||'{"deals":[],"products":[]}');
+    return { deals: Array.isArray(parsed && parsed.deals) ? parsed.deals : [], products: Array.isArray(parsed && parsed.products) ? parsed.products : [] };
+  } catch(e){ return {deals:[],products:[]}; }
+}
 function writeSaved(s){ localStorage.setItem('vakaviti_saved_trip', JSON.stringify(s)); }
 function saveDeal(id, title){ var s = readSaved(); if(!s.deals.find(function(d){return d.id===id})) s.deals.push({id:id, title:title}); writeSaved(s); alert('Saved to your trip.'); }
 function toggleCompare(id){ var el = document.querySelectorAll('[name=compare]'); var chosen=[]; el.forEach(function(c){ if(c.checked) chosen.push(c.value); }); if(chosen.length>3){ alert('You can compare up to 3 at a time.'); return; } window.__compareIds = chosen; }
@@ -271,6 +276,17 @@ dealExchangeUi.get('/live-deals', async c => {
     audience: (q.audience as any) || undefined,
     offerOwnerType: (q.type as any) || undefined,
   };
+  // HOTFIX (2026-08-27): a month-only deep link (e.g. someone hand-edits or shares "?month=6"
+  // without "&year=...") previously rendered the literal text "undefined" in the results label
+  // and silently skipped the month filter entirely (filterEligibleOffers only applies it when
+  // BOTH travelYear and travelMonth are set - see deal-exchange-listing.ts). The real, rendered
+  // form always submits both via a hidden year field, so this only ever affects a hand-edited or
+  // externally-supplied URL - but it must still degrade safely rather than show "undefined" or
+  // silently ignore the visitor's own filter choice. Same default-to-current-year convention
+  // already used by parseNaturalLanguageIntent() for consistency.
+  if (filters.travelMonth && !filters.travelYear) {
+    filters.travelYear = new Date().getFullYear();
+  }
   const all = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE publication_decision='ELIGIBLE' ORDER BY checked_at DESC`).all<any>();
   const summaries = (all.results || []).map(toSummary);
   const filtered = filterEligibleOffers(summaries, filters);
@@ -383,6 +399,7 @@ dealExchangeUi.get('/plan', async c => {
     <div id="plan-list" class="card">Loading your saved trip&hellip;</div>
     <div class="row"><input id="party-size" type="number" min="1" placeholder="Party size" style="min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;width:120px"><input id="hotel-point" type="text" placeholder="Hotel / arrival point" style="min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;flex:1"></div>
     <div class="row"><button class="btn small secondary" onclick="clearSaved()">Clear all</button></div>
+    ${SAVED_TRIP_SCRIPT}
     <script>
       function render(){
         var s = readSaved();
@@ -394,7 +411,6 @@ dealExchangeUi.get('/plan', async c => {
       function clearSaved(){ localStorage.removeItem('vakaviti_saved_trip'); render(); }
       render();
     </script>
-    ${SAVED_TRIP_SCRIPT}
   `, { title: 'Plan', active: 'plan' }));
 });
 
