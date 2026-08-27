@@ -10,30 +10,25 @@ database_name = "vakaviti-marketplace-stage1-db"
 database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
 
 # =================================================================================================
-# LIVE DEAL EXCHANGE - PRODUCTION INTEGRATION BRANCH (2026-08-26)
+# LIVE DEAL EXCHANGE - LAUNCH-CANDIDATE PREVIEW BRANCH (2026-08-27)
 # =================================================================================================
-# This branch (ceo/vakaviti-live-deal-exchange-production-integration) carries the corrected
-# production configuration on top of the QA-proven PR #22 code (cea9fb5d), which itself deliberately
-# never changed this file. What changed, all separately CEO-authorized before this branch existed:
-#   1. Created the real production database `vakaviti-live-deal-exchange-db`
-#      (f23a881b-80b9-4c2b-ab28-60751091ac25) - never the preview database
-#      (3f9a36c7-829c-4f9d-8af0-bb5332860f4b), which remains untouched and still in use by the
-#      ordinary PR #22 branch preview only.
-#   2. Applied migrations/deal-exchange/0001-0005 to that new production database.
-#   3. Freshly revalidated all 4 currently-eligible deals directly against their live source pages
-#      (not copied from preview) and seeded only those into the new production database, with
-#      append-only evidence rows recording what was checked and when.
-#   4. database_id below now points at that new production database.
-#   5. DEAL_EXCHANGE_PUBLIC_ENABLED is false below - the binding exists, but the feature is not
-#      public. Rollback: remove this [[d1_databases]] block and redeploy - the deal-exchange router
-#      is only mounted when DEAL_EXCHANGE_DB is bound (see src/index.ts) - or simply leave the flag
-#      false, which is equally sufficient (see src/deal-exchange-ui.ts's fail-closed guard).
-# scripts/verify_production_integration_config.py enforces items 3/4/5 structurally in CI. Enabling
-# the public flag is a separate, later, separately-authorized step - never bundled with this one.
+# This branch (ceo/vakaviti-deal-exchange-launch-candidate) is an ISOLATED, NON-PRODUCTION preview
+# for design/journey/accessibility acceptance testing only. It carries the exact production
+# application code (including the /api/health ordering hotfix) but deliberately reverts the two
+# production-only config values back to preview/testing values:
+#   - DEAL_EXCHANGE_DB is bound to the SHARED PREVIEW database (3f9a36c7-...), never the real
+#     production database (f23a881b-...) - the production database and its 4 live-evidenced
+#     offers are never reachable from this branch at all.
+#   - DEAL_EXCHANGE_PUBLIC_ENABLED is "true" so the feature can actually be exercised end-to-end
+#     on this isolated preview URL, which has no custom domain, no route, and is never linked from
+#     any indexed page.
+# [env.qa] below is completely unmodified from production.
+# This branch is NOT intended to be merged as-is - see the separate, already-merged production
+# integration history (PR #22, #23, #24) for the real production configuration.
 [[d1_databases]]
 binding = "DEAL_EXCHANGE_DB"
-database_name = "vakaviti-live-deal-exchange-db"
-database_id = "f23a881b-80b9-4c2b-ab28-60751091ac25"
+database_name = "vakaviti-live-deal-exchange-preview-db"
+database_id = "3f9a36c7-829c-4f9d-8af0-bb5332860f4b"
 
 # FINAL INTEGRATION REVIEW, Phase 1 (2026-08-25): DEAL_EXCHANGE_QA_DB, QA_TEST_MODE and
 # QA_AUTH_SECRET are DELIBERATELY ABSENT from this top-level config. They exist ONLY under
@@ -60,7 +55,7 @@ MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 # deploys the D1 binding FIRST with this flag left unset/false, runs read-only verification, and
 # only THEN flips it - so "the binding exists" and "the public routes are live" are two
 # independently-controlled steps, never one implicit consequence of the other.
-DEAL_EXCHANGE_PUBLIC_ENABLED = "false"
+DEAL_EXCHANGE_PUBLIC_ENABLED = "true"
 
 # Phase 2 (Final Integration Review): non-secret, Cloudflare-native build identity - exposes a
 # unique version id/tag at runtime with zero injected secrets and no chicken-and-egg problem
