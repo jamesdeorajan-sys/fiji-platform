@@ -60,7 +60,7 @@ MARKETPLACE_ENQUIRY_WHATSAPP = "+61413335007"
 # deploys the D1 binding FIRST with this flag left unset/false, runs read-only verification, and
 # only THEN flips it - so "the binding exists" and "the public routes are live" are two
 # independently-controlled steps, never one implicit consequence of the other.
-DEAL_EXCHANGE_PUBLIC_ENABLED = "false"
+DEAL_EXCHANGE_PUBLIC_ENABLED = "true"
 
 # Phase 2 (Final Integration Review): non-secret, Cloudflare-native build identity - exposes a
 # unique version id/tag at runtime with zero injected secrets and no chicken-and-egg problem
