@@ -89,6 +89,16 @@ jobs:
         # not public.
         run: python3 scripts/verify_production_integration_config.py wrangler.toml
 
+      - name: Confirm no application route is registered after the Deal Exchange mount
+        # HOTFIX (2026-08-27): the PR #23 post-merge incident - /api/health returning 503 instead
+        # of 200 once the public flag went false - traced to exactly this: app.route('/',
+        # dealExchangeUi) is a wildcard mount, and its own fail-closed gate is a wildcard
+        # middleware, so any route registered on `app` after that line was intercepted by the
+        # gate before its own handler ever ran. This was invisible on every prior deployment only
+        # because the flag was always "true" there. This script makes the ordering constraint a
+        # permanent, enforced property of src/index.ts, not just a comment above the mount line.
+        run: python3 scripts/verify_health_route_ordering.py src/index.ts
+
   qa-deploy-and-test:
     # CEO DECISION, Phase 4 (2026-08-25): the ONE authorized live write-path/security proof
     # target. Everything about this job is deliberately narrow:
