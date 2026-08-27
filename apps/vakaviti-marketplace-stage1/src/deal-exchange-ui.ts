@@ -159,8 +159,8 @@ ${opts.extraHead || ''}
 *{box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;padding-bottom:72px}
 header{position:sticky;top:0;background:rgba(246,248,247,.96);backdrop-filter:blur(6px);z-index:10;padding:12px 16px;border-bottom:1px solid var(--line)}
-header a.brand{color:var(--ink);text-decoration:none;font-weight:700;font-size:16px}
-main{max-width:900px;margin:auto;padding:16px}
+header a.brand{color:var(--ink);text-decoration:none;font-weight:700;font-size:16px;display:inline-flex;align-items:center;min-height:44px}
+main{max-width:900px;margin:auto;padding:16px;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;overflow-wrap:break-word}
 .muted{color:var(--muted);font-size:13px}
 .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef2ef;color:var(--muted)}
@@ -177,6 +177,9 @@ a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{ou
 nav.tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;z-index:20;padding-bottom:env(safe-area-inset-bottom)}
 nav.tabbar a{flex:1;text-align:center;padding:10px 4px;min-height:44px;text-decoration:none;color:var(--muted);font-size:12px;font-weight:600}
 nav.tabbar a.active{color:var(--accent)}
+.active-section{color:var(--accent);opacity:0.6}
+.scroll-hint{display:block}
+@media (min-width:820px){.scroll-hint{display:none}}
 .overflow-x{overflow-x:auto}
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
 </style></head>
@@ -184,11 +187,19 @@ nav.tabbar a.active{color:var(--accent)}
 <header><a class="brand" href="/explore">Vakaviti</a></header>
 <main>${body}</main>
 <nav class="tabbar">
-  <a href="/explore" class="${opts.active === 'explore' ? 'active' : ''}">Explore</a>
-  <a href="/live-deals" class="${opts.active === 'deals' ? 'active' : ''}">Deals</a>
-  <a href="/plan" class="${opts.active === 'plan' ? 'active' : ''}">Plan</a>
-  <a href="/saved" class="${opts.active === 'saved' ? 'active' : ''}">Saved</a>
-  <a href="/chat" class="${opts.active === 'chat' ? 'active' : ''}">Chat</a>
+  ${(() => {
+    const navState = (key: string) => {
+      if (opts.active === key) return ' class="active" aria-current="page"';
+      if (opts.active === `${key}-detail`) return ' class="active-section" aria-current="true"';
+      return '';
+    };
+    return `
+  <a href="/explore"${navState('explore')}>Explore</a>
+  <a href="/live-deals"${navState('deals')}>Deals</a>
+  <a href="/plan"${navState('plan')}>Plan</a>
+  <a href="/saved"${navState('saved')}>Saved</a>
+  <a href="/chat"${navState('chat')}>Chat</a>`;
+  })()}
 </nav>
 </body></html>`;
 
@@ -224,15 +235,20 @@ const dealCard = (o: PublicDealSummary, compareIds: string[] = []) => {
     ${crossSell.length ? `<p class="muted" style="margin:0 0 8px;font-size:12px">${crossSell.map(c => esc(c.reason)).join(' ')}</p>` : ''}
     <div class="row">
       <a class="btn small" href="/live-deals/${esc(o.id)}">Details</a>
-      <label class="btn small secondary" style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="compare" value="${esc(o.id)}" ${isChecked ? 'checked' : ''} onchange="toggleCompare('${esc(o.id)}')" style="width:20px;height:20px"> Compare</label>
-      <button class="btn small secondary" onclick="saveDeal('${esc(o.id)}','${esc(o.title)}')">Save</button>
+      <label class="btn small secondary" style="display:flex;align-items:center;gap:6px;min-height:44px;min-width:44px"><input type="checkbox" name="compare" value="${esc(o.id)}" ${isChecked ? 'checked' : ''} onchange="toggleCompare('${esc(o.id)}')" style="width:20px;height:20px;flex-shrink:0"> Compare</label>
+      <button class="btn small secondary" style="min-height:44px;min-width:44px" onclick="saveDeal('${esc(o.id)}','${esc(o.title)}')">Save</button>
       ${action.actionType !== 'NONE' ? `<a class="btn small" href="/go/deal/${esc(o.id)}" data-action="${esc(action.actionType)}">${esc(action.cta)}</a>` : ''}
     </div>
   </div>`;
 };
 
 const SAVED_TRIP_SCRIPT = `<script>
-function readSaved(){ try { return JSON.parse(localStorage.getItem('vakaviti_saved_trip')||'{"deals":[],"products":[]}'); } catch(e){ return {deals:[],products:[]}; } }
+function readSaved(){
+  try {
+    var parsed = JSON.parse(localStorage.getItem('vakaviti_saved_trip')||'{"deals":[],"products":[]}');
+    return { deals: Array.isArray(parsed && parsed.deals) ? parsed.deals : [], products: Array.isArray(parsed && parsed.products) ? parsed.products : [] };
+  } catch(e){ return {deals:[],products:[]}; }
+}
 function writeSaved(s){ localStorage.setItem('vakaviti_saved_trip', JSON.stringify(s)); }
 function saveDeal(id, title){ var s = readSaved(); if(!s.deals.find(function(d){return d.id===id})) s.deals.push({id:id, title:title}); writeSaved(s); alert('Saved to your trip.'); }
 function toggleCompare(id){ var el = document.querySelectorAll('[name=compare]'); var chosen=[]; el.forEach(function(c){ if(c.checked) chosen.push(c.value); }); if(chosen.length>3){ alert('You can compare up to 3 at a time.'); return; } window.__compareIds = chosen; }
@@ -271,6 +287,17 @@ dealExchangeUi.get('/live-deals', async c => {
     audience: (q.audience as any) || undefined,
     offerOwnerType: (q.type as any) || undefined,
   };
+  // HOTFIX (2026-08-27): a month-only deep link (e.g. someone hand-edits or shares "?month=6"
+  // without "&year=...") previously rendered the literal text "undefined" in the results label
+  // and silently skipped the month filter entirely (filterEligibleOffers only applies it when
+  // BOTH travelYear and travelMonth are set - see deal-exchange-listing.ts). The real, rendered
+  // form always submits both via a hidden year field, so this only ever affects a hand-edited or
+  // externally-supplied URL - but it must still degrade safely rather than show "undefined" or
+  // silently ignore the visitor's own filter choice. Same default-to-current-year convention
+  // already used by parseNaturalLanguageIntent() for consistency.
+  if (filters.travelMonth && !filters.travelYear) {
+    filters.travelYear = new Date().getFullYear();
+  }
   const all = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE publication_decision='ELIGIBLE' ORDER BY checked_at DESC`).all<any>();
   const summaries = (all.results || []).map(toSummary);
   const filtered = filterEligibleOffers(summaries, filters);
@@ -352,14 +379,14 @@ dealExchangeUi.get('/live-deals/:id', async c => {
   const o = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=?`).bind(c.req.param('id')).first<any>();
   if (!o || o.publication_decision !== 'ELIGIBLE') return c.notFound();
   const summary = toSummary(o);
-  return c.html(shell(dealCard(summary) + SAVED_TRIP_SCRIPT, { title: summary.title, active: 'deals', extraHead: buildDealSeoHead(c, summary) }));
+  return c.html(shell(dealCard(summary) + SAVED_TRIP_SCRIPT, { title: summary.title, active: 'deals-detail', extraHead: buildDealSeoHead(c, summary) }));
 });
 
 // --- Compare (up to 3) ---------------------------------------------------------------------------
 dealExchangeUi.get('/compare', async c => {
   const db = c.env.DEAL_EXCHANGE_DB!;
   const ids = (c.req.query('ids') || '').split(',').filter(Boolean).slice(0, 3);
-  if (ids.length === 0) return c.html(shell('<div class="card">Choose deals from the Deals page to compare.</div>', { title: 'Compare', active: 'deals' }));
+  if (ids.length === 0) return c.html(shell('<div class="card">Choose deals from the Deals page to compare.</div>', { title: 'Compare', active: 'deals-detail' }));
   const rows: any[] = [];
   for (const id of ids) {
     const o = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=? AND publication_decision='ELIGIBLE'`).bind(id).first<any>();
@@ -370,10 +397,11 @@ dealExchangeUi.get('/compare', async c => {
   return c.html(shell(`
     <h1 style="font-size:20px">Compare</h1>
     ${!result.allComparable ? `<div class="card"><span class="badge warn">Not directly comparable</span><p style="margin:8px 0 0;font-size:13px">${esc(result.entries.find(e => !e.comparable)?.incomparabilityReason || 'Price bases differ.')}</p></div>` : ''}
-    <div class="overflow-x"><div style="display:flex;gap:12px;min-width:${result.entries.length * 260}px">
+    ${result.entries.length >= 2 ? '<p class="scroll-hint muted" style="font-size:12px;margin:0 0 8px">Swipe to compare &rarr;</p>' : ''}
+    <div class="overflow-x" ${result.entries.length >= 2 ? 'tabindex="0" role="group" aria-label="Comparison cards - scroll or use arrow keys to see more"' : ''}><div style="display:flex;gap:12px;min-width:${result.entries.length * 260}px">
       ${result.entries.map(e => `<div style="flex:1;min-width:240px">${dealCard(e.offer)}</div>`).join('')}
     </div></div>
-  `, { title: 'Compare', active: 'deals' }));
+  `, { title: 'Compare', active: 'deals-detail' }));
 });
 
 // --- Plan (saved trip, client-side) ----------------------------------------------------------------
@@ -383,6 +411,7 @@ dealExchangeUi.get('/plan', async c => {
     <div id="plan-list" class="card">Loading your saved trip&hellip;</div>
     <div class="row"><input id="party-size" type="number" min="1" placeholder="Party size" style="min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;width:120px"><input id="hotel-point" type="text" placeholder="Hotel / arrival point" style="min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;flex:1"></div>
     <div class="row"><button class="btn small secondary" onclick="clearSaved()">Clear all</button></div>
+    ${SAVED_TRIP_SCRIPT}
     <script>
       function render(){
         var s = readSaved();
@@ -394,7 +423,6 @@ dealExchangeUi.get('/plan', async c => {
       function clearSaved(){ localStorage.removeItem('vakaviti_saved_trip'); render(); }
       render();
     </script>
-    ${SAVED_TRIP_SCRIPT}
   `, { title: 'Plan', active: 'plan' }));
 });
 
