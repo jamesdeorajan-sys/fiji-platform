@@ -13,6 +13,7 @@
 // integration point between the two systems.
 
 import { canonicalizeUrl, detectPromptInjection } from './deal-quality';
+import { validateBookingRoute } from './booking-route-safety';
 export { canonicalizeUrl, detectPromptInjection };
 
 // --- Offer-owner types (Phase 1 item 1) -----------------------------------------------------------
@@ -291,8 +292,12 @@ export function evaluateOfferPublicationGates(c: OfferPublicationCandidate): Off
   const windowField = c.resolution.resolvedFields.travel_window;
   check('supported_validity', !c.requiresValidityForRequestedDates || !deadlineField.isMissing || !windowField.isMissing);
 
+  // Write-time booking-route safety (post-activation hotfix, 2026-08-28): a route must be both
+  // present AND pass the same validator used at redirect-time, so a combined/malformed value can
+  // never reach ELIGIBLE in the first place - not just presence, as this gate previously checked.
   const routeField = c.resolution.resolvedFields.booking_route;
-  check('supported_booking_route', !routeField.isMissing);
+  const routeValidation = validateBookingRoute(routeField.selectedValue);
+  check('supported_booking_route', !routeField.isMissing && routeValidation.ok);
 
   check('no_unresolved_contradiction', c.resolution.contradictingFields.length === 0);
   check('no_duplicate_identity', !c.isDuplicateOfId);

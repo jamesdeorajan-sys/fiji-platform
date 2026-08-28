@@ -61,14 +61,21 @@ export class FakeD1 {
       return [];
     }
 
-    const selectMatch = s.match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.+))?$/i);
+    const selectMatch = s.match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.+))?(?: ORDER BY .+)?$/i);
     if (selectMatch) {
       const [, colsStr, table, whereClause] = selectMatch;
       let rows = this.table(table).slice();
       if (whereClause) {
-        const eq = whereClause.match(/^(\w+)\s*=\s*\?$/);
-        if (eq) { const col = eq[1]; const v = next(); rows = rows.filter(r => r[col] === v); }
-        else throw new Error('FakeD1: unsupported WHERE clause: ' + whereClause);
+        // Supports N conditions joined by AND, each either `col = ?` (bind param) or
+        // `col='literal'` (inline string, e.g. publication_decision='ELIGIBLE').
+        const conditions = whereClause.split(/\s+AND\s+/i);
+        for (const cond of conditions) {
+          const eq = cond.match(/^(\w+)\s*=\s*\?$/);
+          if (eq) { const col = eq[1]; const v = next(); rows = rows.filter(r => r[col] === v); continue; }
+          const eqLit = cond.match(/^(\w+)\s*=\s*'([^']*)'$/);
+          if (eqLit) { const [, col, v] = eqLit; rows = rows.filter(r => r[col] === v); continue; }
+          throw new Error('FakeD1: unsupported WHERE condition: ' + cond);
+        }
       }
       if (colsStr.trim() === '*') return rows;
       const cols = colsStr.split(',').map(c => c.trim());
