@@ -35,6 +35,14 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// Same hand-rolled cookie-read pattern as batch-review-ui.ts / deals-admin-ui.ts /
+// provider-onboarding-ui.ts / supply-sprint-ui.ts, reused here for the enquiry CSRF token.
+const getCookie = (c: any, name: string): string | undefined => {
+  const header = c.req.header('cookie') || '';
+  const match = header.split(';').map((s: string) => s.trim()).find((s: string) => s.startsWith(name + '='));
+  return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : undefined;
+};
+
 const waLink = (phone: string, message: string) => {
   const digits = String(phone || '').replace(/[^0-9]/g, '');
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
@@ -460,6 +468,32 @@ app.get('/operators/:slug', async c => {
   <section class="section"><h2>Experiences</h2><div class="grid">${list || '<div class="card"><div class="card-body">No verified products yet.</div></div>'}</div></section>`, { title: `${o.canonical_name} — Vakaviti`, description: `${o.canonical_name}, ${[o.locality, o.region].filter(Boolean).join(', ') || 'Fiji'} — Fiji tourism operator on Vakaviti.`, ogImage: absoluteImage(o.image_url || opHeroImg.url), noindex: true }));
 });
 
+// Enquiry lifecycle fix (2026-08-28). Was: a plain GET wrote an enquiry row with status='SENT'
+// immediately, before the visitor had seen anything or taken any deliberate action - a page
+// prefetcher, a crawler, or simply loading the URL created a row indistinguishable from a real
+// visitor, and 'SENT' asserted something (message transmission) the server has no way to verify;
+// the redirect to wa.me only ever hands off to the visitor's own browser, which the server cannot
+// observe past that point. Now: GET never writes to the database and renders a review page
+// instead; POST (a real form submission, checked against a CSRF token) records CREATED; a
+// separate deliberate click through a tracked link records WHATSAPP_OPENED - the same
+// review-then-track pattern already used by deal-exchange-ui.ts's /chat/review +
+// /chat/open-whatsapp/:id, applied here for consistency. No schema change was required: `status`
+// is unconstrained TEXT with no CHECK, so writing 'CREATED'/'WHATSAPP_OPENED' instead of 'SENT'
+// needed no migration. What the schema does NOT yet have is a real idempotency-key column (unlike
+// deal_exchange_enquiries, which has always had one) - true per-visitor dedup would need one, so
+// this uses a same-operator/product/hour time-window check against existing columns as a working
+// interim measure. The proper fix (an idempotency_key column + unique index, mirroring
+// deal_exchange_enquiries exactly) is prepared in migrations/0020_enquiries_idempotency_key.sql
+// but NOT applied by this PR - a schema change needs its own separate review and deploy.
+const ENQUIRE_CSRF_COOKIE = 'vakaviti_enquire_csrf';
+
+function buildEnquiryMessage(operatorName: string, productName: string | null, enquiryId: string): string {
+  const lines = ['Vakaviti enquiry', `Operator: ${operatorName}`];
+  if (productName) lines.push(`Experience: ${productName}`);
+  lines.push('Source: Vakaviti', "Hi, I'm interested in this Fiji experience — can you help me with availability and pricing?", `Reference: ${enquiryId}`);
+  return lines.join('\n');
+}
+
 app.get('/enquire/:operatorSlug', async c => {
   // Fail closed: an inactive operator must not accept enquiries either - the publication gate
   // covers the commercial action, not just the listing pages that link to it.
@@ -474,24 +508,90 @@ app.get('/enquire/:operatorSlug', async c => {
     const candidate = await c.env.DB.prepare(`SELECT id,canonical_name,slug,operator_id FROM products WHERE slug=? AND commercial_status='ACTIVE'`).bind(productSlug).first<any>();
     if (candidate && candidate.operator_id === operator.id) product = candidate;
   }
-  // Supply Wave 3 (2026-08-24) fix: this used to gate on operator.whatsapp being set, which
-  // blocked every enquiry for an AI-discovered operator whose source page had no WhatsApp
-  // number (discovery-bridge.ts correctly never guesses one) - even though
-  // resolveEnquiryDestination() below already provides a real, working destination (the
-  // Vakaviti team's own number) in preview mode regardless of the operator's own contact
-  // fields. The check below is now the single source of truth for whether an enquiry can be
-  // sent at all, matching its own documented fail-closed behavior for production.
   const destination = resolveEnquiryDestination(c.env);
   if (!destination) {
     return c.html(html(`<section class="section"><h1>Enquiries aren't available right now</h1><p class="muted">Something's missing in our setup and we don't want to risk sending your enquiry to the wrong place. Please try again shortly, or <a href="/contact">contact Vakaviti support</a> directly.</p></section>`, { title: 'Enquiry unavailable', noindex: true }), 503);
   }
-  const id = crypto.randomUUID();
-  await c.env.DB.prepare(`INSERT INTO enquiries(id,operator_id,product_id,channel,source_page,referrer,status) VALUES(?,?,?, 'WHATSAPP', ?, ?, 'SENT')`)
-    .bind(id, operator.id, product ? product.id : null, c.req.path, c.req.header('referer') || null).run();
-  const messageLines = ['Vakaviti enquiry', `Operator: ${operator.canonical_name}`];
-  if (product) messageLines.push(`Experience: ${product.canonical_name}`);
-  messageLines.push('Source: Vakaviti', "Hi, I'm interested in this Fiji experience — can you help me with availability and pricing?", `Reference: ${id}`);
-  return c.redirect(waLink(destination, messageLines.join('\n')), 302);
+  // GET writes nothing. A per-render CSRF token is set as an HttpOnly cookie and mirrored in a
+  // hidden form field (double-submit pattern) - this app has no session/login, so there is no
+  // server-side place to store a token between GET and POST other than the visitor's own cookie
+  // jar; POST rejects if the two don't match.
+  const csrfToken = crypto.randomUUID();
+  c.header('Set-Cookie', `${ENQUIRE_CSRF_COOKIE}=${csrfToken}; Path=/enquire; Max-Age=600; SameSite=Lax; HttpOnly`);
+  return c.html(html(`<section class="section">
+    <h1>Review before you contact ${esc(operator.canonical_name)}</h1>
+    <div class="card">
+      <p><b>Operator:</b> ${esc(operator.canonical_name)}</p>
+      ${product ? `<p><b>Experience:</b> ${esc(product.canonical_name)}</p>` : ''}
+      <p class="muted">This connects you with the operator on WhatsApp. Nothing is sent until you continue below - Vakaviti does not message the operator on your behalf.</p>
+      <form method="POST" action="/enquire/${esc(operator.slug)}${productSlug ? `?product=${esc(productSlug)}` : ''}">
+        <input type="hidden" name="csrf_token" value="${esc(csrfToken)}">
+        <button class="btn" type="submit">Continue</button>
+      </form>
+    </div>
+  </section>`, { title: `Contact ${operator.canonical_name}`, noindex: true }));
+});
+
+app.post('/enquire/:operatorSlug', async c => {
+  const operator = await c.env.DB.prepare(`SELECT id,canonical_name,slug,whatsapp,website_url,last_public_check_at FROM operators WHERE slug=? AND commercial_status='ACTIVE'`).bind(c.req.param('operatorSlug')).first<any>();
+  if (!operator) return c.notFound();
+  if (!hasSafeOfficialSource(operator)) return c.notFound();
+  const destination = resolveEnquiryDestination(c.env);
+  if (!destination) {
+    return c.html(html(`<section class="section"><h1>Enquiries aren't available right now</h1><p class="muted">Something's missing in our setup and we don't want to risk sending your enquiry to the wrong place. Please try again shortly, or <a href="/contact">contact Vakaviti support</a> directly.</p></section>`, { title: 'Enquiry unavailable', noindex: true }), 503);
+  }
+  const body = await c.req.parseBody();
+  const cookieToken = getCookie(c, ENQUIRE_CSRF_COOKIE);
+  if (!cookieToken || body.csrf_token !== cookieToken) {
+    return c.html(html(`<section class="section"><h1>That link has expired</h1><p class="muted">Please go back to the offer and try again.</p><a class="btn" href="/operators/${esc(operator.slug)}">Back to ${esc(operator.canonical_name)}</a></section>`, { title: 'Expired', noindex: true }), 400);
+  }
+  const productSlug = c.req.query('product');
+  let product: any = null;
+  if (productSlug) {
+    const candidate = await c.env.DB.prepare(`SELECT id,canonical_name,slug,operator_id FROM products WHERE slug=? AND commercial_status='ACTIVE'`).bind(productSlug).first<any>();
+    if (candidate && candidate.operator_id === operator.id) product = candidate;
+  }
+  // Interim time-windowed dedup (see the fix comment above /enquire/:operatorSlug for why this is
+  // not yet a real idempotency-key column): a resubmission of the same operator+product within
+  // the last hour reuses the existing row rather than minting a duplicate.
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM enquiries WHERE operator_id=? AND (product_id=? OR (product_id IS NULL AND ? IS NULL)) AND status IN ('CREATED','WHATSAPP_OPENED') AND created_at > datetime('now','-1 hour') ORDER BY created_at DESC LIMIT 1`
+  ).bind(operator.id, product ? product.id : null, product ? product.id : null).first<any>();
+  const id = existing ? existing.id : crypto.randomUUID();
+  if (!existing) {
+    await c.env.DB.prepare(`INSERT INTO enquiries(id,operator_id,product_id,channel,source_page,referrer,status) VALUES(?,?,?, 'WHATSAPP', ?, ?, 'CREATED')`)
+      .bind(id, operator.id, product ? product.id : null, `/enquire/${operator.slug}`, c.req.header('referer') || null).run();
+  }
+  const openHref = `/enquire/${esc(operator.slug)}/whatsapp/${esc(id)}${productSlug ? `?product=${esc(productSlug)}` : ''}`;
+  return c.html(html(`<section class="section">
+    <h1>Ready to message ${esc(operator.canonical_name)}</h1>
+    <div class="card">
+      <p><b>Reference:</b> ${esc(id)}</p>
+      <p class="muted">Tap below to open WhatsApp with your enquiry pre-filled. Vakaviti only records that you opened the link - not what you send or receive.</p>
+      <a class="btn" href="${openHref}" target="_blank" rel="noopener noreferrer">Continue to WhatsApp</a>
+    </div>
+  </section>`, { title: 'Continue to WhatsApp', noindex: true }));
+});
+
+// The one tracked deliberate-action point: a real click on "Continue to WhatsApp" above. Records
+// WHATSAPP_OPENED (never regressing/duplicating if already set) before redirecting - same
+// discipline as deal-exchange-ui.ts's /chat/open-whatsapp/:id.
+app.get('/enquire/:operatorSlug/whatsapp/:id', async c => {
+  const operator = await c.env.DB.prepare(`SELECT id,canonical_name,slug FROM operators WHERE slug=? AND commercial_status='ACTIVE'`).bind(c.req.param('operatorSlug')).first<any>();
+  if (!operator) return c.notFound();
+  const enquiry = await c.env.DB.prepare(`SELECT id,operator_id,product_id,status FROM enquiries WHERE id=? AND operator_id=?`).bind(c.req.param('id'), operator.id).first<any>();
+  if (!enquiry) return c.notFound();
+  const destination = resolveEnquiryDestination(c.env);
+  if (!destination) return c.text('Enquiries are not available right now.', 503);
+  if (enquiry.status === 'CREATED') {
+    await c.env.DB.prepare(`UPDATE enquiries SET status='WHATSAPP_OPENED' WHERE id=? AND status='CREATED'`).bind(enquiry.id).run();
+  }
+  let productName: string | null = null;
+  if (enquiry.product_id) {
+    const product = await c.env.DB.prepare(`SELECT canonical_name FROM products WHERE id=?`).bind(enquiry.product_id).first<any>();
+    productName = product ? product.canonical_name : null;
+  }
+  return c.redirect(waLink(destination, buildEnquiryMessage(operator.canonical_name, productName, enquiry.id)), 302);
 });
 
 app.get('/claim/:slug', async c => {
