@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { determineOfferAction, filterEligibleOffers, compareOffers, parseNaturalLanguageIntent, suggestCrossSell, recordOutboundClick, createEnquiryReview, buildEnquiryIdempotencyKey, markWhatsappLinkOpened, type PublicDealSummary, type DealSearchFilters } from './deal-exchange-listing';
+import { validateBookingRoute } from './booking-route-safety';
 
 // VAKAVITI LIVE DEAL EXCHANGE - Milestone 3 mobile visitor journey (2026-08-24).
 // Public-facing (no admin session required to browse) - this is the visitor-facing surface, NOT
@@ -541,9 +542,19 @@ dealExchangeUi.get('/go/deal/:id', async c => {
   const o = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=? AND publication_decision='ELIGIBLE'`).bind(id).first<any>();
   if (!o) return c.notFound();
   const action = determineOfferAction(o.offer_owner_type, o.seller_name, o.booking_route);
-  let destination: string;
-  if (o.offer_owner_type === 'VAKAVITI_BOOKABLE') destination = o.booking_route || 'https://fijitourtransfers.com';
-  else destination = o.booking_route || o.canonical_source_url;
+  const rawDestination: string =
+    o.offer_owner_type === 'VAKAVITI_BOOKABLE' ? (o.booking_route || 'https://fijitourtransfers.com')
+    : (o.booking_route || o.canonical_source_url);
+  // Booking-route safety hotfix (2026-08-28): never copy an unvalidated database string straight
+  // into a redirect Location header. Fail closed - no redirect and no attribution row - rather
+  // than guess at a malformed value. The raw value is deliberately never echoed back or logged;
+  // only the offer id and a generic reason code are, since the value has just failed validation.
+  const validation = validateBookingRoute(rawDestination);
+  if (!validation.ok || !validation.canonical) {
+    console.error(`[go/deal] rejected unsafe booking route for offer "${id}": ${validation.reason}`);
+    return c.text('This offer link is temporarily unavailable. Please try again shortly or contact Vakaviti support.', 503);
+  }
+  const destination = validation.canonical;
   const idempotencyKey = `deal:${id}:${c.req.header('cf-connecting-ip') || 'anon'}:${new Date().toISOString().slice(0, 13)}`;
   await recordOutboundClick(db, {
     sourceSite: 'vakaviti-live-deal-exchange', sourcePage: `/live-deals/${id}`, campaign: null, queryRef: c.req.query('ref') || null,
