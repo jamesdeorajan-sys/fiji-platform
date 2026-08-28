@@ -536,15 +536,65 @@ dealExchangeUi.post('/search-intent', async c => {
 });
 
 // --- Attributed outbound routing (item 10) -----------------------------------------------------
+// Contact-journey fix (2026-08-28): the reported defect was that clicking "Enquire with provider"
+// on either Taveuni Palms offer (a mailto: destination) produced no usable outcome at all -
+// Chromium silently aborts the navigation with zero visitor feedback (net::ERR_ABORTED, page
+// never changes, no dialog, nothing), and WebKit was observed instead resolving the mailto: URI to
+// an entirely different https destination (the provider's own marketing site) with a real page
+// load - neither engine does what "Enquire with provider" promises. A raw redirect to mailto:/tel:
+// is not usable as a public journey regardless of the exact per-engine failure mode, so those two
+// schemes now render a review page instead of redirecting immediately (readOnlyDestination() below
+// decides). https destinations are unaffected - a plain web redirect is deterministic across every
+// engine and was never the reported problem - so they keep the original single-step behavior.
+function readOnlyDestination(o: any): string {
+  return o.offer_owner_type === 'VAKAVITI_BOOKABLE' ? (o.booking_route || 'https://fijitourtransfers.com')
+    : (o.booking_route || o.canonical_source_url);
+}
+
+async function loadEligibleOfferOrNull(db: D1Database, id: string) {
+  return db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=? AND publication_decision='ELIGIBLE'`).bind(id).first<any>();
+}
+
+function contactReviewPage(o: any, action: ReturnType<typeof determineOfferAction>, destination: string, contactValue: string): string {
+  const enquiryText = `Vakaviti enquiry\nOffer: ${o.detected_title || o.provider_name || 'Fiji offer'}\nProvider: ${o.provider_name || ''}\n${o.price_amount ? `Price: ${o.currency || ''} ${o.price_amount}\n` : ''}Reference: ${esc(o.id)}`;
+  return `<h1 style="font-size:20px">Review before you contact ${esc(o.provider_name || 'the provider')}</h1>
+  <div class="card">
+    <p><b>Provider:</b> ${esc(o.provider_name || 'Unknown')}</p>
+    <p><b>Offer:</b> ${esc(o.detected_title || o.provider_name || 'Fiji offer')}</p>
+    <p><b>${action.actionType === 'CALL_PROVIDER' ? 'Phone' : 'Email'}:</b> <span id="contact-value">${esc(contactValue)}</span></p>
+    <p><b>Reference:</b> ${esc(o.id)}</p>
+    <p class="muted" style="margin-top:8px">This booking is made directly with the provider, not through Vakaviti. Vakaviti does not send this enquiry on your behalf - nothing is transmitted unless you take one of the actions below yourself.</p>
+    <div class="row" style="margin-top:12px">
+      <form method="POST" action="/go/deal/${esc(o.id)}/confirm" style="display:inline">
+        <button class="btn small" type="submit">${esc(action.cta)}</button>
+      </form>
+      <button class="btn small secondary" type="button" onclick="copyText(document.getElementById('contact-value').textContent, this)">${action.actionType === 'CALL_PROVIDER' ? 'Copy phone number' : 'Copy email address'}</button>
+      <button class="btn small secondary" type="button" onclick="copyText(${JSON.stringify(enquiryText)}, this)">Copy enquiry details</button>
+      <a class="btn small secondary" href="/live-deals/${esc(o.id)}">Back to offer</a>
+    </div>
+  </div>
+  <script>
+    function copyText(text, btn) {
+      var done = function(){ var orig = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = orig; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function(){ fallbackCopy(text); done(); }); }
+      else { fallbackCopy(text); done(); }
+    }
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  </script>`;
+}
+
 dealExchangeUi.get('/go/deal/:id', async c => {
   const db = c.env.DEAL_EXCHANGE_DB!;
   const id = c.req.param('id');
-  const o = await db.prepare(`SELECT * FROM deal_exchange_offers WHERE id=? AND publication_decision='ELIGIBLE'`).bind(id).first<any>();
+  const o = await loadEligibleOfferOrNull(db, id);
   if (!o) return c.notFound();
   const action = determineOfferAction(o.offer_owner_type, o.seller_name, o.booking_route);
-  const rawDestination: string =
-    o.offer_owner_type === 'VAKAVITI_BOOKABLE' ? (o.booking_route || 'https://fijitourtransfers.com')
-    : (o.booking_route || o.canonical_source_url);
+  const rawDestination = readOnlyDestination(o);
   // Booking-route safety hotfix (2026-08-28): never copy an unvalidated database string straight
   // into a redirect Location header. Fail closed - no redirect and no attribution row - rather
   // than guess at a malformed value. The raw value is deliberately never echoed back or logged;
@@ -555,9 +605,44 @@ dealExchangeUi.get('/go/deal/:id', async c => {
     return c.text('This offer link is temporarily unavailable. Please try again shortly or contact Vakaviti support.', 503);
   }
   const destination = validation.canonical;
+
+  if (action.requiresReview) {
+    // GET never writes to the database - viewing the review page creates no attribution row.
+    // Attribution is only recorded when the visitor deliberately submits the form below, via the
+    // POST /go/deal/:id/confirm handler.
+    const contactValue = destination.replace(/^mailto:/i, '').replace(/^tel:/i, '');
+    return c.html(shell(contactReviewPage(o, action, destination, contactValue), { title: `Contact ${o.provider_name || 'provider'}`, active: 'deals-detail' }));
+  }
+
   const idempotencyKey = `deal:${id}:${c.req.header('cf-connecting-ip') || 'anon'}:${new Date().toISOString().slice(0, 13)}`;
   await recordOutboundClick(db, {
     sourceSite: 'vakaviti-live-deal-exchange', sourcePage: `/live-deals/${id}`, campaign: null, queryRef: c.req.query('ref') || null,
+    providerId: o.provider_id, productId: null, dealId: id, sellerId: o.seller_id, enquiryId: null,
+    fulfilmentRoute: action.actionType, outboundDestination: destination, idempotencyKey,
+  });
+  return c.redirect(destination, 302);
+});
+
+// POST-only: the one place attribution is recorded for a mailto:/tel: destination, fired only by
+// the visitor's own deliberate click on the review page above - never by merely loading a page,
+// a prefetcher, or a crawler (none of which issue a POST from a real form submission).
+dealExchangeUi.post('/go/deal/:id/confirm', async c => {
+  const db = c.env.DEAL_EXCHANGE_DB!;
+  const id = c.req.param('id');
+  const o = await loadEligibleOfferOrNull(db, id);
+  if (!o) return c.notFound();
+  const action = determineOfferAction(o.offer_owner_type, o.seller_name, o.booking_route);
+  // Re-validate rather than trust anything about the state between the GET that rendered the
+  // review page and this POST - the offer's data could in principle have changed in between.
+  const validation = validateBookingRoute(readOnlyDestination(o));
+  if (!validation.ok || !validation.canonical) {
+    console.error(`[go/deal/confirm] rejected unsafe booking route for offer "${id}": ${validation.reason}`);
+    return c.text('This offer link is temporarily unavailable. Please try again shortly or contact Vakaviti support.', 503);
+  }
+  const destination = validation.canonical;
+  const idempotencyKey = `deal:${id}:${c.req.header('cf-connecting-ip') || 'anon'}:${new Date().toISOString().slice(0, 13)}`;
+  await recordOutboundClick(db, {
+    sourceSite: 'vakaviti-live-deal-exchange', sourcePage: `/go/deal/${id}`, campaign: null, queryRef: c.req.query('ref') || null,
     providerId: o.provider_id, productId: null, dealId: id, sellerId: o.seller_id, enquiryId: null,
     fulfilmentRoute: action.actionType, outboundDestination: destination, idempotencyKey,
   });

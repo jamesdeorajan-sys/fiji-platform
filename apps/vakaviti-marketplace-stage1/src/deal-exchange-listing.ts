@@ -6,22 +6,29 @@
 // separate and minimal, following the same discipline as opportunities.ts in PR #21.
 
 import { checkMonthEligibility, type OfferOwnerType, type PriceBasis } from './deal-exchange-model';
+import { validateBookingRoute as _validateBookingRoute } from './booking-route-safety';
 export { validateBookingRoute, type BookingRouteValidation } from './booking-route-safety';
 
 const normalizeText = (s: string | null | undefined): string =>
   String(s ?? '').toLowerCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ').replace(/[^\w\s.-]/g, '');
 
 // --- Offer action / CTA per status class (Milestone 3 item 3) ------------------------------------
-// Refines Milestone 1's generatePublicLabel(): PROVIDER_DIRECT now splits into two distinct
-// actions depending on whether the captured booking route is a real bookable URL or only an
-// email/phone enquiry channel - "never render 'Book now'" for the enquiry-only case.
-export type BookingRouteType = 'BOOKABLE_URL' | 'ENQUIRY_ONLY' | 'NONE';
+// Refines Milestone 1's generatePublicLabel(): PROVIDER_DIRECT now splits into three distinct
+// actions depending on the captured booking route's scheme - "never render 'Book now'" for a
+// non-bookable-URL channel, and (contact journey fix, 2026-08-28) never lump email and phone
+// together as one generic "enquire" either, since they need different honest CTA wording and
+// different downstream handling in /go/deal/:id (see OfferAction.requiresReview above).
+// EMAIL_ONLY/PHONE_ONLY are the specific cases the review-page journey is built for; ENQUIRY_ONLY
+// is kept as a defensive fallback for any other non-URL value that reaches this function despite
+// booking-route-safety.ts's write-time validation - callers should treat it the same as
+// EMAIL_ONLY (review before leaving the site), never as a safe one-step redirect.
+export type BookingRouteType = 'BOOKABLE_URL' | 'EMAIL_ONLY' | 'PHONE_ONLY' | 'ENQUIRY_ONLY' | 'NONE';
 
 export function classifyBookingRoute(route: string | null): BookingRouteType {
   if (!route || !route.trim()) return 'NONE';
   const r = route.trim();
-  if (/^mailto:/i.test(r) || (/@/.test(r) && !/^https?:\/\//i.test(r))) return 'ENQUIRY_ONLY';
-  if (/^tel:/i.test(r) || /^\+?[\d\s()-]{7,}$/.test(r)) return 'ENQUIRY_ONLY';
+  if (/^mailto:/i.test(r) || (/@/.test(r) && !/^https?:\/\//i.test(r))) return 'EMAIL_ONLY';
+  if (/^tel:/i.test(r) || /^\+?[\d\s()-]{7,}$/.test(r)) return 'PHONE_ONLY';
   try {
     const u = new URL(r);
     if (u.protocol === 'https:' || u.protocol === 'http:') return 'BOOKABLE_URL';
@@ -29,27 +36,45 @@ export function classifyBookingRoute(route: string | null): BookingRouteType {
   return 'ENQUIRY_ONLY';
 }
 
-export type OfferActionType = 'BOOK_VAKAVITI' | 'BOOK_PROVIDER' | 'ENQUIRE_PROVIDER' | 'VIEW_SELLER_PACKAGE' | 'NONE';
+export type OfferActionType = 'BOOK_VAKAVITI' | 'BOOK_PROVIDER' | 'EMAIL_PROVIDER' | 'CALL_PROVIDER' | 'VIEW_SELLER_PACKAGE' | 'NONE';
 export interface OfferAction {
   label: string;
   cta: string;
   actionType: OfferActionType;
+  // Contact journey fix (2026-08-28): true for any action whose destination is not a plain https
+  // booking page - mailto: and tel: behave inconsistently across browser engines when navigated to
+  // directly (Chromium silently aborts with zero visitor feedback; WebKit was observed falling back
+  // to a totally different https destination). Both need the review-page journey in
+  // deal-exchange-ui.ts's /go/deal/:id instead of an immediate redirect - see that file's comment
+  // for the full defect writeup. https destinations remain a safe, deterministic single-step
+  // redirect and never set this flag.
+  requiresReview: boolean;
+}
+
+// Honest, scheme-driven CTA label - "what happens when you click this" rather than "what kind of
+// offer this is". The same label applies whether the https destination belongs to the provider
+// directly or to a seller/reseller, because from the visitor's seat both are "a website where you
+// book" - the owner-type distinction is preserved in actionType (BOOK_PROVIDER vs
+// VIEW_SELLER_PACKAGE) for internal attribution/reporting, just not exposed as different wording.
+function ctaForScheme(routeType: BookingRouteType, ownerActionType: 'BOOK_PROVIDER' | 'VIEW_SELLER_PACKAGE'): OfferAction {
+  if (routeType === 'BOOKABLE_URL') return { label: 'Book on provider website', cta: 'Book on provider website', actionType: ownerActionType, requiresReview: false };
+  if (routeType === 'PHONE_ONLY') return { label: 'Call provider', cta: 'Call provider', actionType: 'CALL_PROVIDER', requiresReview: true };
+  if (routeType === 'EMAIL_ONLY' || routeType === 'ENQUIRY_ONLY') return { label: 'Email provider', cta: 'Email provider', actionType: 'EMAIL_PROVIDER', requiresReview: true };
+  return { label: '', cta: '', actionType: 'NONE', requiresReview: false };
 }
 
 export function determineOfferAction(offerOwnerType: OfferOwnerType, sellerName: string | null, bookingRoute: string | null): OfferAction {
   if (offerOwnerType === 'VAKAVITI_BOOKABLE') {
-    return { label: 'Book through Vakaviti', cta: 'Book through Vakaviti', actionType: 'BOOK_VAKAVITI' };
+    return { label: 'Book through Vakaviti', cta: 'Book through Vakaviti', actionType: 'BOOK_VAKAVITI', requiresReview: false };
   }
   if (offerOwnerType === 'PROVIDER_DIRECT') {
-    const routeType = classifyBookingRoute(bookingRoute);
-    if (routeType === 'BOOKABLE_URL') return { label: 'Book with provider', cta: 'Book with provider', actionType: 'BOOK_PROVIDER' };
-    return { label: 'Enquire with provider', cta: 'Enquire with provider', actionType: 'ENQUIRE_PROVIDER' };
+    return ctaForScheme(classifyBookingRoute(bookingRoute), 'BOOK_PROVIDER');
   }
   if (offerOwnerType === 'SELLER_PACKAGE') {
-    if (!sellerName || !sellerName.trim()) return { label: '', cta: '', actionType: 'NONE' };
-    return { label: `Available from ${sellerName.trim()}`, cta: `View package at ${sellerName.trim()}`, actionType: 'VIEW_SELLER_PACKAGE' };
+    if (!sellerName || !sellerName.trim()) return { label: '', cta: '', actionType: 'NONE', requiresReview: false };
+    return ctaForScheme(classifyBookingRoute(bookingRoute), 'VIEW_SELLER_PACKAGE');
   }
-  return { label: '', cta: '', actionType: 'NONE' }; // PRICE_CHECK_REQUIRED / FLIGHT_QUOTE never get a public action here
+  return { label: '', cta: '', actionType: 'NONE', requiresReview: false }; // PRICE_CHECK_REQUIRED / FLIGHT_QUOTE never get a public action here
 }
 
 // --- Owned-product classification (Milestone 3 item 5) -------------------------------------------
