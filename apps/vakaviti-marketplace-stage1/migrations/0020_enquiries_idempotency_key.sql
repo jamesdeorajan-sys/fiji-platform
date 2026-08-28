@@ -1,0 +1,21 @@
+-- PREPARED FOR SEPARATE REVIEW - NOT APPLIED by the enquiry-lifecycle PR this migration
+-- accompanies. Per that PR's own governing directive: "Do not deploy or migrate this fix
+-- without separate review if it requires schema changes." The lifecycle fix itself (GET writes
+-- nothing, POST records CREATED, a tracked link records WHATSAPP_OPENED) needed no schema change
+-- at all - `status` is unconstrained TEXT with no CHECK, so it already accepts the new values.
+-- This migration is a genuinely separate, optional hygiene improvement: it gives `enquiries` a
+-- real idempotency-key column, matching the pattern `deal_exchange_enquiries` has always had
+-- (see deal-exchange-listing.ts's buildEnquiryIdempotencyKey()/createEnquiryReview()), so that
+-- true per-visitor dedup no longer has to fall back to the interim same-operator/product/hour
+-- time-window check the application code currently uses (see the fix comment above
+-- app.get('/enquire/:operatorSlug', ...) in src/index.ts for the exact interim logic being
+-- superseded here).
+--
+-- Nullable and with no uniqueness enforced yet, specifically so this migration is safe to apply
+-- to a table that already has real production rows (as of 2026-08-28, ten rows, at least one -
+-- id fbe237b1-5e97-4f6d-96e6-fd49b8cc1825 - classified probable-genuine and must never be
+-- touched): every existing row simply gets idempotency_key = NULL, changing nothing about how it
+-- reads today. A follow-up migration could add a UNIQUE index once the application is confirmed
+-- to always populate the column on new rows - deliberately not bundled here, so each step stays
+-- independently reviewable.
+ALTER TABLE enquiries ADD COLUMN idempotency_key TEXT;
