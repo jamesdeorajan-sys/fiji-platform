@@ -6,6 +6,7 @@
 // separate and minimal, following the same discipline as opportunities.ts in PR #21.
 
 import { checkMonthEligibility, type OfferOwnerType, type PriceBasis } from './deal-exchange-model';
+export { validateBookingRoute, type BookingRouteValidation } from './booking-route-safety';
 
 const normalizeText = (s: string | null | undefined): string =>
   String(s ?? '').toLowerCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ').replace(/[^\w\s.-]/g, '');
