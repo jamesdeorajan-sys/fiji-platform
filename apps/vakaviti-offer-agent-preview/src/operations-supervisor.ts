@@ -20,6 +20,8 @@ export interface StatusReport {
   offersPublished: number;
   reviewRequiredCount: number;
   quarantinedCount: number;
+  // Phase 6: reported honestly, never folded into the genuine counts above.
+  syntheticFixtureCount: number;
   sourceFailures: { sourceFamilyId: string; failureCount: number; status: string }[];
   aiCallsToday: number;
   publicationsToday: { sourceFamilyId: string; count: number }[];
@@ -48,13 +50,18 @@ export async function getStatusReport(env: Env): Promise<StatusReport> {
   ).all<any>();
   for (const row of lastTickSuccess.results || []) lastSuccessfulRunByAgent[row.service_name] = row.last;
 
+  // Phase 6 (CEO incident correction, 2026-08-29): every genuine-count query here excludes
+  // is_synthetic_fixture=1 rows - controlled-test fixtures (DLQ/quarantine simulations) must never
+  // inflate real offer/review/quarantine counts, source performance, or KPI reporting. A separate
+  // syntheticFixtureCount is reported honestly alongside, never silently hidden.
   const candidatesDiscovered = (await env.DB.prepare(`SELECT COUNT(*) c FROM discovered_candidates`).first<any>())?.c ?? 0;
-  const offersExtracted = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers`).first<any>())?.c ?? 0;
-  const offersPublished = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE publication_decision='ELIGIBLE'`).first<any>())?.c ?? 0;
-  const reviewRequiredCount = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE publication_decision='NOT_ELIGIBLE'`).first<any>())?.c ?? 0;
+  const offersExtracted = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE is_synthetic_fixture=0`).first<any>())?.c ?? 0;
+  const offersPublished = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE publication_decision='ELIGIBLE' AND is_synthetic_fixture=0`).first<any>())?.c ?? 0;
+  const reviewRequiredCount = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE publication_decision='NOT_ELIGIBLE' AND is_synthetic_fixture=0`).first<any>())?.c ?? 0;
   const quarantinedCount = (await env.DB.prepare(
-    `SELECT COUNT(*) c FROM authority_transitions WHERE transition_type='OFFER_QUARANTINE'`
+    `SELECT COUNT(*) c FROM authority_transitions at JOIN deal_exchange_offers o ON at.subject_id = o.id WHERE at.transition_type='OFFER_QUARANTINE' AND o.is_synthetic_fixture=0`
   ).first<any>())?.c ?? 0;
+  const syntheticFixtureCount = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers WHERE is_synthetic_fixture=1`).first<any>())?.c ?? 0;
 
   const sourceFailuresRows = await env.DB.prepare(
     `SELECT id as sourceFamilyId, failure_count as failureCount, source_approval_status as status FROM offer_source_families WHERE failure_count > 0`
@@ -69,7 +76,7 @@ export async function getStatusReport(env: Env): Promise<StatusReport> {
   return {
     agentsScheduled: ['DiscoveryAgent', 'OfferProcessingWorkflow', 'PublicationAgent', 'FreshnessAgent', 'OperationsSupervisorAgent'],
     lastSuccessfulRunByAgent,
-    candidatesDiscovered, offersExtracted, offersPublished, reviewRequiredCount, quarantinedCount,
+    candidatesDiscovered, offersExtracted, offersPublished, reviewRequiredCount, quarantinedCount, syntheticFixtureCount,
     sourceFailures: sourceFailuresRows.results || [],
     aiCallsToday,
     publicationsToday: pubTodayRows.results || [],

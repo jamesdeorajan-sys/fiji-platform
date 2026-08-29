@@ -37,10 +37,18 @@ app.get('/internal/build-info', (c) => c.json({
 app.get('/internal/agent-status', async (c) => c.json(await getStatusReport(c.env)));
 
 app.get('/internal/review-queue', async (c) => {
+  // Phase 6 (CEO incident correction, 2026-08-29): genuine review queue excludes synthetic test
+  // fixtures by default - they are reported separately, explicitly labeled, never mixed in.
   const rows = await c.env.DB.prepare(
-    `SELECT id, provider_name, canonical_source_url, failed_gates_json, checked_at FROM deal_exchange_offers WHERE publication_decision='NOT_ELIGIBLE' ORDER BY checked_at DESC LIMIT 50`
+    `SELECT id, provider_name, canonical_source_url, failed_gates_json, checked_at FROM deal_exchange_offers WHERE publication_decision='NOT_ELIGIBLE' AND is_synthetic_fixture=0 ORDER BY checked_at DESC LIMIT 50`
   ).all<any>();
-  return c.json({ count: rows.results?.length ?? 0, items: rows.results ?? [] });
+  const fixtureRows = await c.env.DB.prepare(
+    `SELECT id, provider_name, canonical_source_url, failed_gates_json, checked_at FROM deal_exchange_offers WHERE is_synthetic_fixture=1 ORDER BY checked_at DESC LIMIT 50`
+  ).all<any>();
+  return c.json({
+    count: rows.results?.length ?? 0, items: rows.results ?? [],
+    syntheticFixtures: (fixtureRows.results ?? []).map((r: any) => ({ ...r, label: 'SYNTHETIC_FIXTURE' })),
+  });
 });
 
 app.post('/internal/kill-switch', async (c) => {
