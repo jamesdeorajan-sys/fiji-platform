@@ -14,10 +14,12 @@ import { CATEGORY_PAGE_URLS_BY_FAMILY } from './seed-source-families';
 import { getStatusReport, isUnderDailyAiCallBudget, incrementAiCallCounter } from './operations-supervisor';
 import { setGlobalKillSwitch, pauseSource, approveSource, type Actor } from './authority-model';
 import { registerEnquiryRoutes } from './enquiry-routes';
+import { registerPublicListingRoutes } from './public-listing';
 import { runDueAgentTicks } from './agent-orchestration';
 
 const app = new Hono<{ Bindings: Env }>();
 registerEnquiryRoutes(app);
+registerPublicListingRoutes(app);
 
 function requireHuman(c: any): Actor | Response {
   const token = c.req.header('authorization')?.replace(/^Bearer /i, '');
@@ -27,16 +29,30 @@ function requireHuman(c: any): Actor | Response {
   return { type: 'HUMAN', id: 'admin' };
 }
 
+// Phase 1 (CEO authorization, "SECURE INTERNAL ROUTES", 2026-08-29): two deliberately minimal,
+// unauthenticated public endpoints. /api/health is pre-existing; GET /health is the new, explicitly
+// allowlisted "non-sensitive health endpoint" the directive names - literally nothing but a static
+// ok/service pair, never counts, IDs, queue state or configuration. /internal/build-info remains
+// the allowlisted "non-sensitive build endpoint" (a Cloudflare deployment id and environment name
+// only - no secret, no PII, no operational count) - every OTHER /internal/* route now requires the
+// admin token via requireHuman(), which was already true for every POST route before this change.
 app.get('/api/health', (c) => c.json({ ok: true, service: 'vakaviti-offer-agent-preview' }));
+app.get('/health', (c) => c.json({ ok: true, service: 'vakaviti-offer-agent-preview' }));
 
 app.get('/internal/build-info', (c) => c.json({
   versionId: c.env.CF_VERSION_METADATA?.id ?? null, environment: c.env.ENVIRONMENT,
   forceDisabled: isGloballyForceDisabled(c.env),
 }));
 
-app.get('/internal/agent-status', async (c) => c.json(await getStatusReport(c.env)));
+app.get('/internal/agent-status', async (c) => {
+  const actorOrErr = requireHuman(c);
+  if (actorOrErr instanceof Response) return actorOrErr;
+  return c.json(await getStatusReport(c.env));
+});
 
 app.get('/internal/review-queue', async (c) => {
+  const actorOrErr = requireHuman(c);
+  if (actorOrErr instanceof Response) return actorOrErr;
   // Phase 6 (CEO incident correction, 2026-08-29): genuine review queue excludes synthetic test
   // fixtures by default - they are reported separately, explicitly labeled, never mixed in.
   const rows = await c.env.DB.prepare(
