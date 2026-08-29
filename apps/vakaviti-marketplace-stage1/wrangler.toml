@@ -2,12 +2,14 @@ name = "vakaviti-marketplace-stage1"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 
-# Dedicated Stage 1 preview D1 created in Cloudflare on 2026-08-17.
-# Do not reuse any existing production D1 database.
+# TEMPORARY, this branch only: the same genuinely fresh, disposable QA-only D1 used for PR #29's
+# original preview QA pass (created 2026-08-28), reused here to re-verify the exact rebased tree
+# before merge. Never the real database this comment originally described - that one (f2753057-...)
+# is the one actually serving production Stage 1 traffic. This branch is never merged.
 [[d1_databases]]
 binding = "DB"
-database_name = "vakaviti-marketplace-stage1-db"
-database_id = "f2753057-4319-404d-bcda-84cccd288fe1"
+database_name = "vakaviti-marketplace-stage1-qa-preview-db"
+database_id = "14148023-6ae6-4907-8094-ceccf842de5c"
 
 # =================================================================================================
 # LIVE DEAL EXCHANGE - PRODUCTION INTEGRATION BRANCH (2026-08-26)
