@@ -47,42 +47,47 @@ describe('Milestone 3 test 2: undated package remains private (never surfaces pu
   });
 });
 
-describe('Milestone 3 test 3: enquiry-only route never says "Book"', () => {
-  it('a PROVIDER_DIRECT offer with only an email route gets "Enquire with provider", never "Book now"', () => {
+describe('Milestone 3 test 3 (revised, contact-journey fix 2026-08-28): honest scheme-specific CTAs, never "Book"/"Enquire" for a non-URL route', () => {
+  it('a PROVIDER_DIRECT offer with only an email route gets "Email provider" and requires review, never "Book now"', () => {
     const action = determineOfferAction('PROVIDER_DIRECT', null, 'info@resort.test');
-    expect(action.label).toBe('Enquire with provider');
-    expect(action.cta).toBe('Enquire with provider');
-    expect(action.actionType).toBe('ENQUIRE_PROVIDER');
+    expect(action.label).toBe('Email provider');
+    expect(action.cta).toBe('Email provider');
+    expect(action.actionType).toBe('EMAIL_PROVIDER');
+    expect(action.requiresReview).toBe(true);
     expect(action.label.toLowerCase()).not.toContain('book now');
     expect(action.cta.toLowerCase()).not.toMatch(/^book now/);
   });
 
-  it('a PROVIDER_DIRECT offer with only a phone route also gets "Enquire with provider"', () => {
+  it('a PROVIDER_DIRECT offer with only a phone route gets "Call provider" and requires review', () => {
     const action = determineOfferAction('PROVIDER_DIRECT', null, '+679 229 8969');
-    expect(action.actionType).toBe('ENQUIRE_PROVIDER');
+    expect(action.actionType).toBe('CALL_PROVIDER');
+    expect(action.label).toBe('Call provider');
+    expect(action.requiresReview).toBe(true);
   });
 
-  it('a PROVIDER_DIRECT offer with a real bookable URL gets "Book with provider"', () => {
+  it('a PROVIDER_DIRECT offer with a real bookable URL gets "Book on provider website" and does not require review', () => {
     const action = determineOfferAction('PROVIDER_DIRECT', null, 'https://taveunipalms.com/book');
-    expect(action.label).toBe('Book with provider');
+    expect(action.label).toBe('Book on provider website');
     expect(action.actionType).toBe('BOOK_PROVIDER');
+    expect(action.requiresReview).toBe(false);
   });
 
-  it('classifyBookingRoute correctly distinguishes email/phone from a real URL', () => {
-    expect(classifyBookingRoute('info@resort.test')).toBe('ENQUIRY_ONLY');
-    expect(classifyBookingRoute('mailto:info@resort.test')).toBe('ENQUIRY_ONLY');
-    expect(classifyBookingRoute('+679 229 8969')).toBe('ENQUIRY_ONLY');
+  it('classifyBookingRoute distinguishes email from phone from a real URL', () => {
+    expect(classifyBookingRoute('info@resort.test')).toBe('EMAIL_ONLY');
+    expect(classifyBookingRoute('mailto:info@resort.test')).toBe('EMAIL_ONLY');
+    expect(classifyBookingRoute('+679 229 8969')).toBe('PHONE_ONLY');
     expect(classifyBookingRoute('https://resort.test/book')).toBe('BOOKABLE_URL');
     expect(classifyBookingRoute(null)).toBe('NONE');
   });
 });
 
-describe('Milestone 3 test 4: seller label and route', () => {
-  it('a SELLER_PACKAGE offer gets "Available from [seller]" and a "View package at [seller]" CTA', () => {
+describe('Milestone 3 test 4 (revised, contact-journey fix 2026-08-28): seller label and route', () => {
+  it('a SELLER_PACKAGE offer with an https route gets the same honest "Book on provider website" CTA, keeping VIEW_SELLER_PACKAGE for internal attribution', () => {
     const action = determineOfferAction('SELLER_PACKAGE', 'My Fiji', 'https://myfiji.com/package/x');
-    expect(action.label).toBe('Available from My Fiji');
-    expect(action.cta).toBe('View package at My Fiji');
+    expect(action.label).toBe('Book on provider website');
+    expect(action.cta).toBe('Book on provider website');
     expect(action.actionType).toBe('VIEW_SELLER_PACKAGE');
+    expect(action.requiresReview).toBe(false);
   });
   it('a SELLER_PACKAGE offer with no seller name has no valid public action', () => {
     const action = determineOfferAction('SELLER_PACKAGE', null, 'https://example.test');
@@ -260,12 +265,13 @@ describe('Milestone 3 test 14: empty state', () => {
   });
 });
 
-describe('Milestone 3 test 15: every offer-owner type produces the exact required label', () => {
-  it('VAKAVITI_BOOKABLE, PROVIDER_DIRECT (both route types), SELLER_PACKAGE, and the two never-public types', () => {
+describe('Milestone 3 test 15 (revised, contact-journey fix 2026-08-28): every offer-owner type produces the exact required label', () => {
+  it('VAKAVITI_BOOKABLE, PROVIDER_DIRECT (all three route types), SELLER_PACKAGE, and the two never-public types', () => {
     expect(determineOfferAction('VAKAVITI_BOOKABLE', null, 'https://fijitourtransfers.com').label).toBe('Book through Vakaviti');
-    expect(determineOfferAction('PROVIDER_DIRECT', null, 'https://resort.test/book').label).toBe('Book with provider');
-    expect(determineOfferAction('PROVIDER_DIRECT', null, 'info@resort.test').label).toBe('Enquire with provider');
-    expect(determineOfferAction('SELLER_PACKAGE', 'My Fiji', 'https://myfiji.test').label).toBe('Available from My Fiji');
+    expect(determineOfferAction('PROVIDER_DIRECT', null, 'https://resort.test/book').label).toBe('Book on provider website');
+    expect(determineOfferAction('PROVIDER_DIRECT', null, 'info@resort.test').label).toBe('Email provider');
+    expect(determineOfferAction('PROVIDER_DIRECT', null, '+679 229 8969').label).toBe('Call provider');
+    expect(determineOfferAction('SELLER_PACKAGE', 'My Fiji', 'https://myfiji.test').label).toBe('Book on provider website');
     expect(determineOfferAction('PRICE_CHECK_REQUIRED', null, null).actionType).toBe('NONE');
     expect(determineOfferAction('FLIGHT_QUOTE', null, null).actionType).toBe('NONE');
   });
