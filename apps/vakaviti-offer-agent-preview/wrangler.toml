@@ -1,0 +1,82 @@
+name = "vakaviti-offer-agent-preview"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# ISOLATED PREVIEW ONLY (CEO directive 2026-08-29, "FAST-TRACK VAKAVITI 24/7 OFFER AGENTS").
+# Every binding below is a dedicated, newly-created resource, named to contain
+# "vakaviti-offer-agent-preview" per the directive. Nothing here references any production
+# database, Worker, route, domain or secret. This file has no [routes]/[[routes]] section and no
+# custom domain - it is reachable only at its own *.workers.dev subdomain.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vakaviti-offer-agent-preview-db"
+database_id = "a7a26f33-1ec3-4c78-a0ee-88497a12ae37"
+
+[ai]
+binding = "AI"
+
+[vars]
+ENVIRONMENT = "preview"
+# Emergency stop only - the global kill switch's real, authoritative value lives in the
+# kill_switches D1 table (human-writable only, via setGlobalKillSwitch()). This var is a secondary,
+# redeploy-level circuit breaker: if ever set to "true", the fetch/scheduled/queue handlers refuse
+# to do anything before even reading D1 - useful if D1 itself were ever suspected compromised.
+FORCE_DISABLE_ALL_AGENTS = "false"
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# --- Queue producers: bindings the Worker's own code uses to enqueue work ------------------------
+[[queues.producers]]
+queue = "vakaviti-offer-agent-preview-discovery"
+binding = "DISCOVERY_QUEUE"
+
+[[queues.producers]]
+queue = "vakaviti-offer-agent-preview-fetch-extract"
+binding = "FETCH_EXTRACT_QUEUE"
+
+[[queues.producers]]
+queue = "vakaviti-offer-agent-preview-recheck"
+binding = "RECHECK_QUEUE"
+
+# --- Queue consumers: each with its own dead-letter queue, small batches, bounded retries --------
+[[queues.consumers]]
+queue = "vakaviti-offer-agent-preview-discovery"
+dead_letter_queue = "vakaviti-offer-agent-preview-discovery-dlq"
+max_batch_size = 5
+max_retries = 3
+max_batch_timeout = 5
+
+[[queues.consumers]]
+queue = "vakaviti-offer-agent-preview-fetch-extract"
+dead_letter_queue = "vakaviti-offer-agent-preview-fetch-extract-dlq"
+max_batch_size = 5
+max_retries = 3
+max_batch_timeout = 5
+
+[[queues.consumers]]
+queue = "vakaviti-offer-agent-preview-recheck"
+dead_letter_queue = "vakaviti-offer-agent-preview-recheck-dlq"
+max_batch_size = 5
+max_retries = 3
+max_batch_timeout = 5
+
+# --- Scheduled triggers ----------------------------------------------------------------------------
+# Accelerated cadence for PREVIEW/demonstration purposes only - production's eventual cadence
+# (imminent-expiry every >=6h, volatile-priced daily, ordinary daily, stable-long-validity <=72h)
+# is enforced by RecheckerPort.isDue()'s per-offer volatility-class window (offer-workflow.ts,
+# reused unchanged from Phase A-R), NOT by how often this cron fires. Firing the tick often and
+# letting isDue() gate who actually gets rechecked lets this preview demonstrate genuine, frequent,
+# unattended cycles within an observable window while the PER-OFFER cadence still matches the
+# directive's real production targets exactly.
+#
+# "*/10 * * * *"  -> DiscoveryAgent tick, every 10 minutes.
+# "*/12 * * * *"  -> FreshnessAgent/recheck-enqueue tick, every 12 minutes.
+# "*/15 * * * *"  -> OperationsSupervisorAgent watchdog + status-snapshot tick, every 15 minutes.
+[triggers]
+crons = ["*/10 * * * *", "*/12 * * * *", "*/15 * * * *"]
