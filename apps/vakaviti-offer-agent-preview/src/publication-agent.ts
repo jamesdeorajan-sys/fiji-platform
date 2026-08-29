@@ -70,6 +70,16 @@ export function buildDisclosureCopy(input: {
   ].join(' ');
 }
 
+async function recordPublicationAgentRun(env: Env, outcomeJson: string): Promise<void> {
+  // PublicationAgent has no cron schedule of its own (it runs synchronously inside
+  // OfferProcessingWorkflow whenever a candidate reaches the publish-or-review step) - this is its
+  // only execution record, so OperationsSupervisorAgent's status report can show a real
+  // lastSuccessfulRun for it rather than a permanently-null field.
+  await env.DB.prepare(
+    `INSERT INTO agent_runs (id, agent_name, idempotency_key, status, outcome_json, completed_at) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)`
+  ).bind(crypto.randomUUID(), 'PublicationAgent', crypto.randomUUID(), 'COMPLETED', outcomeJson).run();
+}
+
 export function makePublisherPort(env: Env, sourceFamilyId: string, providerName: string, providerId: string): PublisherPort {
   return {
     async publish(sourceId, canonicalUrl, facts) {
@@ -81,22 +91,26 @@ export function makePublisherPort(env: Env, sourceFamilyId: string, providerName
         // deferred, not silently dropped - it lands in review so a human sees why, rather than
         // disappearing.
         await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], [capCheck.reason]);
+        await recordPublicationAgentRun(env, JSON.stringify({ decision: 'DEFERRED_CAP_REACHED', offerId }));
         return { offerId };
       }
       const routeCheck = validateBookingRoute(facts.booking_route ?? null);
       if (!routeCheck.ok) {
         await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], [`booking_route invalid: ${routeCheck.reason}`]);
+        await recordPublicationAgentRun(env, JSON.stringify({ decision: 'REJECTED_UNSAFE_ROUTE', offerId }));
         return { offerId };
       }
       const publicLabel = generatePublicLabel('PROVIDER_DIRECT', null);
       await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'ELIGIBLE', now, ['capacity_available', 'booking_route_valid'], [], publicLabel);
       await incrementCaps(env, sourceFamilyId);
+      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'PUBLISHED', offerId }));
       return { offerId };
     },
     async sendToReview(sourceId, canonicalUrl, facts, reasons) {
       const offerId = crypto.randomUUID();
       const now = new Date().toISOString();
       await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], reasons);
+      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'SENT_TO_REVIEW', offerId, reasons }));
       return { offerId };
     },
   };
