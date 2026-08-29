@@ -1,5 +1,9 @@
 # Central Vakaviti Enquiry Operating Model
 
+> **CEO DECISION 2026-08-30: APPROVED for initial launch.** See
+> `CEO-DECISIONS-2026-08-30.md` decision 1. Direct provider routing must not be implemented for the
+> initial launch.
+
 ## The model
 
 ```

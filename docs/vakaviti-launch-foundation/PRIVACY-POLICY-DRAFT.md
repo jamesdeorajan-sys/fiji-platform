@@ -1,5 +1,8 @@
 # Privacy Policy — OPERATIONAL DRAFT, NOT LEGAL ADVICE, NOT FOR PUBLICATION
 
+> **CEO DECISION 2026-08-30: NOT APPROVED FOR PUBLICATION** (`CEO-DECISIONS-2026-08-30.md`,
+> decision 6). Every CEO INPUT REQUIRED marker below remains open and unresolved.
+
 > **This is an operational draft prepared from direct inspection of the running system's actual
 > behavior. It has not been reviewed by a lawyer and must not be published, linked, or relied upon
 > as a real Privacy Policy until qualified legal review is complete.** Every blank marked

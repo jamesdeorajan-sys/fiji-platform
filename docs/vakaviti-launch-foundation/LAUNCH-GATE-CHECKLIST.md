@@ -26,12 +26,13 @@ the pre-merge version (`551ab646-bbed-47ea-bcf7-b8fffbb65786` as of this documen
 ## Gate 2 — Provider invitation
 
 **Purpose:** begin the manual Founding-Operator onboarding SOP with a small, controlled number of
-real operators, before any traveller-facing promotion.
+real operators, before any traveller-facing promotion. **CEO DECISION 2026-08-30 (decision 5):
+approved, targeting a first cohort of 10 credible operators, expanding to 30.**
 
 | Evidence required | Owner | GO criteria | HOLD criteria |
 |---|---|---|---|
 | Gate 1 passed | — | — | — |
-| `FOUNDING-OPERATOR-ONBOARDING-SOP.md` process confirmed workable end-to-end on at least 1 real operator | CEO/founder | One full onboarding cycle completed (selection → verification → evidence → publication checklist) without a step proving unworkable | Process breaks down or takes materially longer than expected |
+| `FOUNDING-OPERATOR-ONBOARDING-SOP.md` process confirmed workable end-to-end on at least 1 real operator (of the approved 10-operator first cohort) | CEO/founder | One full onboarding cycle completed (selection → verification → evidence → publication checklist) without a step proving unworkable | Process breaks down or takes materially longer than expected |
 | Central enquiry inbox workflow staffed | CEO/founder | A named person (with a named backup, per `CENTRAL-ENQUIRY-OPERATING-MODEL.md`'s escalation gap) is actively monitoring the central WhatsApp number | No backup named |
 | WhatsApp/contact data integrity check | Engineering | The one suspicious `operators.whatsapp` value flagged in `CENTRAL-ENQUIRY-OPERATING-MODEL.md` confirmed real or corrected | Left unresolved |
 
@@ -70,7 +71,7 @@ does not require taking the site down.
 |---|---|---|---|
 | Gate 3 passed with a real, positive enquiry outcome (at least one traveller successfully connected to an operator) | — | — | — |
 | Real Privacy Policy + Terms of Service published (legally reviewed, not the operational drafts) | CEO + lawyer | Both documents live and linked, replacing the current preview-placeholder text | Placeholder text still live |
-| Canonical hostname decided and `SITE_ORIGIN` updated | CEO + Engineering | `BRANDED-DOMAIN-DECISION.md`'s cross-project question resolved, DNS configured, code updated | Cross-project domain question still open |
+| Canonical hostname DNS/route/certificate/Worker binding live, `SITE_ORIGIN` updated | CEO + Engineering | `marketplace.vakaviti.ai` (approved for planning 2026-08-30, decision 2) actually configured in DNS and code — a separate authorization from the planning approval itself | DNS/route work not yet separately authorized and completed |
 | `sitemap.xml` and `robots.txt` live | Engineering | Both exist and correctly reference only the routes marked `index,follow` in the matrix | Missing either |
 | Per-operator indexing gated on real content (≥1 product) | Engineering | InterContinental/South Sea Cruises (or any future 0-product operator) excluded from the sitemap until they have real products | A thin/empty operator page indexed |
 | Monitoring in place | CEO/Engineering | At minimum, Cloudflare's own Worker error-rate notification configured (see the broader launch-blocker inventory) | No alerting exists |

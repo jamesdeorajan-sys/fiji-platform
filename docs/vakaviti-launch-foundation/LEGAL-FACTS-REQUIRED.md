@@ -1,5 +1,9 @@
 # Legal Facts Required — Before Privacy Policy / Terms of Service Can Be Finalized
 
+> **CEO DECISION 2026-08-30:** publication NOT APPROVED (`CEO-DECISIONS-2026-08-30.md`, decision 6).
+> Every item below remains open. See `CEO-DECISIONS-2026-08-30.md` for two additional items
+> surfaced since this file was first written.
+
 **These drafts are operational placeholders written by an AI agent from the codebase's own known
 behavior. They are NOT legal advice, and they must NOT be published as-is. A qualified lawyer
 (ideally one familiar with Fiji consumer/tourism law and, if Vakaviti operates or has users outside

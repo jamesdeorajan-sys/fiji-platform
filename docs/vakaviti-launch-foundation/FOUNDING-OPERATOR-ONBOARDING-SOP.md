@@ -1,14 +1,21 @@
-# Founding-Operator Onboarding SOP (First 30 Operators)
+# Founding-Operator Onboarding SOP
+
+> **CEO DECISION 2026-08-30: APPROVED** — controlled manual onboarding for the founding cohort
+> (`CEO-DECISIONS-2026-08-30.md`, decision 5). Target: **first controlled cohort of 10 credible
+> operators**, expanding to **30** once that cohort is proven out. Self-service onboarding remains
+> explicitly not authorized before launch.
 
 This is a controlled, manual, human-run process — no self-service signup is required or assumed.
 The existing `/admin/providers` tooling (`src/provider-onboarding.ts` /
 `src/provider-onboarding-ui.ts`) already supports an admin-run onboarding record; this SOP is the
 human process around it, not a new build. **No messages have been sent and no operator has been
-onboarded in producing this document** — it is a procedure, not an execution.
+onboarded in producing this document** — it is a procedure, not an execution. This decision
+approves running this SOP; it does not itself authorize contacting any specific operator, which
+remains an action for the CEO/founder to take when ready.
 
 ## 1. Operator selection criteria
 
-For the first 30, prioritize operators that:
+For the first cohort of 10 (and the subsequent expansion to 30), prioritize operators that:
 - Have a real, verifiable public web presence (a real website or Facebook page, not just a phone
   number) — the existing `hasSafeOfficialSource()` gate already requires this for AI-discovered
   listings, so selecting for it up front avoids listings that would later fail publication anyway.

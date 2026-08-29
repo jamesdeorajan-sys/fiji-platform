@@ -60,8 +60,14 @@ Since `/deals` is not broken, neither remedy the CEO's directive proposed is tec
 - **Option B (separately authorize/validate migration 0010)** — **not applicable**. The migration is
   already fully applied; there is nothing to authorize or validate.
 
-**CEO INPUT REQUIRED:** decide whether to (a) keep the `/deals` nav link visible during initial
-launch with its honest empty state, (b) hide the nav link until at least a handful of deals are
-published, or (c) accelerate publishing 1-3 of the existing 7 candidates through human review before
-launch. This is a content/UX decision, not a technical blocker — no code or schema change is needed
-under any of the three options.
+## CEO DECISION 2026-08-30 (decision 4, `CEO-DECISIONS-2026-08-30.md`)
+
+**`/deals` stays out of primary public navigation** until at least **three** genuine offers are
+simultaneously current, evidenced, human-reviewed, provider-approved where required,
+`review_status='PUBLISHED'`, and carrying visible validity/expiry information on the card. The route
+itself remains directly reachable (already true today, no gating needed) for QA purposes only.
+
+**Current state against that bar:** 0 of 7 candidates are `PUBLISHED` — the bar is not met, so no
+navigation change is due yet, and none is authorized right now regardless. The next action, if any,
+is progressing candidates through the existing human-review process (a content decision), not a
+code or navigation change.
