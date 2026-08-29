@@ -5,8 +5,8 @@
 // evaluateOfferPublicationGates() (deal-exchange-model.ts, reused unchanged) has already decided
 // ELIGIBLE.
 import type { Env } from './env';
-import { validateBookingRoute, generatePublicLabel } from './adapters';
-import { derivePublicPresentation, SOURCE_CHECKED_LABEL, PRICE_ON_CONFIRMATION_LABEL } from './public-presentation';
+import { generatePublicLabel, resolveOfferAction, deterministicOfferId } from './adapters';
+import { SOURCE_CHECKED_LABEL, PRICE_ON_CONFIRMATION_LABEL } from './public-presentation';
 import type { PublisherPort } from './offer-workflow';
 
 export const MAX_NEW_PUBLICATIONS_PER_SOURCE_FAMILY_PER_DAY = 10;
@@ -83,34 +83,35 @@ async function recordPublicationAgentRun(env: Env, outcomeJson: string): Promise
 export function makePublisherPort(env: Env, sourceFamilyId: string, providerName: string, providerId: string): PublisherPort {
   return {
     async publish(sourceId, canonicalUrl, facts) {
-      const capCheck = await checkDailyPublicationCaps(env, sourceFamilyId);
-      const offerId = crypto.randomUUID();
+      // Re-derives the IDENTICAL action decision makeRuleEnginePort already used to reach ELIGIBLE -
+      // pure function, same inputs, same output - rather than trusting a value smuggled across the
+      // fixed offer-workflow.ts port boundary.
+      const { action } = resolveOfferAction(sourceId, canonicalUrl, facts);
+      const offerId = deterministicOfferId(sourceId, canonicalUrl);
       const now = new Date().toISOString();
+
+      const capCheck = await checkDailyPublicationCaps(env, sourceFamilyId);
       if (!capCheck.allowed) {
         // Cap reached: the offer is fully evidenced and gate-passed, but publication itself is
         // deferred, not silently dropped - it lands in review so a human sees why, rather than
         // disappearing.
-        await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], [capCheck.reason]);
+        await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], [capCheck.reason], action);
         await recordPublicationAgentRun(env, JSON.stringify({ decision: 'DEFERRED_CAP_REACHED', offerId }));
         return { offerId };
       }
-      const routeCheck = validateBookingRoute(facts.booking_route ?? null);
-      if (!routeCheck.ok) {
-        await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], [`booking_route invalid: ${routeCheck.reason}`]);
-        await recordPublicationAgentRun(env, JSON.stringify({ decision: 'REJECTED_UNSAFE_ROUTE', offerId }));
-        return { offerId };
-      }
+
       const publicLabel = generatePublicLabel('PROVIDER_DIRECT', null);
-      await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'ELIGIBLE', now, ['capacity_available', 'booking_route_valid'], [], publicLabel);
+      await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'ELIGIBLE', now, ['capacity_available', 'booking_route_valid'], [], action, publicLabel);
       await incrementCaps(env, sourceFamilyId);
-      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'PUBLISHED', offerId }));
+      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'PUBLISHED', offerId, actionType: action.actionType }));
       return { offerId };
     },
     async sendToReview(sourceId, canonicalUrl, facts, reasons) {
-      const offerId = crypto.randomUUID();
+      const { action } = resolveOfferAction(sourceId, canonicalUrl, facts);
+      const offerId = deterministicOfferId(sourceId, canonicalUrl);
       const now = new Date().toISOString();
-      await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], reasons);
-      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'SENT_TO_REVIEW', offerId, reasons }));
+      await insertOffer(env, offerId, sourceFamilyId, providerId, providerName, canonicalUrl, facts, 'NOT_ELIGIBLE', now, [], reasons, action);
+      await recordPublicationAgentRun(env, JSON.stringify({ decision: 'SENT_TO_REVIEW', offerId, reasons, actionType: action.actionType }));
       return { offerId };
     },
   };
@@ -119,20 +120,35 @@ export function makePublisherPort(env: Env, sourceFamilyId: string, providerName
 async function insertOffer(
   env: Env, offerId: string, sourceFamilyId: string, providerId: string, providerName: string,
   canonicalUrl: string, facts: Record<string, string | null>, decision: 'ELIGIBLE' | 'NOT_ELIGIBLE',
-  checkedAt: string, passedGates: string[], failedGates: string[], publicLabel: string | null = null
+  checkedAt: string, passedGates: string[], failedGates: string[],
+  action: { actionType: 'VAKAVITI_ENQUIRY' | 'PROVIDER_DIRECT' | 'NOT_ACTIONABLE'; selectedRoute: string | null },
+  publicLabel: string | null = null
 ): Promise<void> {
   const identityKey = `PROVIDER_DIRECT::${providerId}::${(facts.proposed_offer_name || canonicalUrl).toLowerCase()}`;
   const fingerprintValue = crypto.randomUUID(); // fingerprint uniqueness is enforced by the caller's dedup step before publish() is ever reached
+  const vakavitiEnquiryRoute = action.actionType === 'VAKAVITI_ENQUIRY' ? action.selectedRoute : null;
+  const providerBookingRoute = action.actionType === 'PROVIDER_DIRECT' ? action.selectedRoute : (facts.booking_route ?? null);
+  // Legacy booking_route column: kept populated with whatever route the ACTION actually selected
+  // (never source_url), purely for audit continuity with the original canonical schema - no code
+  // in this app reads it as a redirect target any more; public_action_type/vakaviti_enquiry_route/
+  // provider_booking_route are the fields the new booking-action model actually uses.
   await env.DB.prepare(
     `INSERT INTO deal_exchange_offers (
       id, offer_owner_type, provider_id, provider_name, canonical_source_url, fingerprint, identity_key,
       price_amount, currency, price_basis, booking_deadline, inclusions, booking_route, locality,
-      publication_decision, passed_gates_json, failed_gates_json, public_label, checked_at, source_family_id
-    ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?, ?,?,?,?,?,?)`
+      publication_decision, passed_gates_json, failed_gates_json, public_label, checked_at, source_family_id,
+      public_action_type, vakaviti_enquiry_route, provider_booking_route
+    ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      publication_decision=excluded.publication_decision, passed_gates_json=excluded.passed_gates_json,
+      failed_gates_json=excluded.failed_gates_json, public_label=excluded.public_label, checked_at=excluded.checked_at,
+      public_action_type=excluded.public_action_type, vakaviti_enquiry_route=excluded.vakaviti_enquiry_route,
+      provider_booking_route=excluded.provider_booking_route, updated_at=CURRENT_TIMESTAMP`
   ).bind(
     offerId, 'PROVIDER_DIRECT', providerId, providerName, canonicalUrl, fingerprintValue, identityKey,
     facts.advertised_price ?? null, facts.currency ?? null, facts.price_basis ?? null,
-    facts.booking_deadline ?? null, facts.inclusions ?? null, facts.booking_route ?? null, facts.fiji_location ?? null,
-    decision, JSON.stringify(passedGates), JSON.stringify(failedGates), publicLabel, checkedAt, sourceFamilyId
+    facts.booking_deadline ?? null, facts.inclusions ?? null, action.selectedRoute, facts.fiji_location ?? null,
+    decision, JSON.stringify(passedGates), JSON.stringify(failedGates), publicLabel, checkedAt, sourceFamilyId,
+    action.actionType, vakavitiEnquiryRoute, providerBookingRoute
   ).run();
 }

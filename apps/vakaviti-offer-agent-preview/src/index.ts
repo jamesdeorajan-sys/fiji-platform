@@ -15,8 +15,10 @@ import { CATEGORY_PAGE_URLS_BY_FAMILY } from './seed-source-families';
 import { getStatusReport, recoverStuckAgentRuns, checkAnomalyAndAutoPause, isUnderDailyAiCallBudget, incrementAiCallCounter, MAX_PAGES_PER_SOURCE_PER_RUN } from './operations-supervisor';
 import { setGlobalKillSwitch, pauseSource, approveSource, quarantineOffer, restoreByHuman, type Actor } from './authority-model';
 import { sanitizeDiscoveredCandidate } from './discovery-providers';
+import { registerEnquiryRoutes } from './enquiry-routes';
 
 const app = new Hono<{ Bindings: Env }>();
+registerEnquiryRoutes(app);
 
 function requireHuman(c: any): Actor | Response {
   const token = c.req.header('authorization')?.replace(/^Bearer /i, '');
@@ -92,6 +94,49 @@ app.post('/internal/submit-url', async (c) => {
   const idempotencyKey = `fetch-extract:${body.sourceFamilyId}:${candidate.url}`;
   await c.env.FETCH_EXTRACT_QUEUE.send({ sourceFamilyId: body.sourceFamilyId, url: candidate.url, idempotencyKey });
   return c.json({ ok: true, candidate });
+});
+
+// Phase 7D: reprocess an already-evaluated candidate URL under the corrected booking-action model.
+// The OLD offer row (its own random-UUID id, from before deterministic ids existed) is never
+// touched - a fresh evaluation produces a NEW offer row (a new, deterministic id derived from
+// sourceFamilyId+canonicalUrl), and an explicit history row on the OLD offer links to it so a
+// human reviewing the old row's trail can find the new evaluation. Synchronous (not queued) so the
+// caller gets an immediate, individually-reportable result per the directive's "report every failed
+// gate individually" requirement.
+app.post('/internal/reprocess', async (c) => {
+  const actorOrErr = requireHuman(c);
+  if (actorOrErr instanceof Response) return actorOrErr;
+  const body = await c.req.json<{ oldOfferId: string; sourceFamilyId: string; url: string }>();
+
+  const familyRow = await c.env.DB.prepare(`SELECT * FROM offer_source_families WHERE id=?`).bind(body.sourceFamilyId).first<any>();
+  if (!familyRow) return c.json({ error: 'source family not found' }, 404);
+
+  let offerIdForRecord: string | null = null;
+  const deps: WorkflowDependencies = {
+    fetchAgent: makeFetchPort(), extractionAgent: makeExtractionPort(c.env), normalizer: makeNormalizerPort(),
+    evidenceStore: makeEvidenceStorePort(c.env, () => offerIdForRecord), deduplicator: makeDeduplicatorPort(c.env),
+    ruleEngine: makeRuleEnginePort(familyRow.legal_provider_or_seller_identity, familyRow.id),
+    publisher: makePublisherPort(c.env, familyRow.id, familyRow.legal_provider_or_seller_identity, familyRow.id),
+    rateLimiter: makeRateLimiterPort(c.env), costBudget: makeCostBudgetPort(),
+    idempotencyStore: makeIdempotencyStorePort(c.env, 'OfferProcessingWorkflow'), auditor: makeAuditorPort(c.env),
+    rechecker: makeRechecker(), quarantiner: makeQuarantiner(c.env), clock: { now: () => new Date().toISOString() },
+  };
+  const idempotencyKey = `reprocess:${body.sourceFamilyId}:${body.url}:${new Date().toISOString()}`;
+  const outcome = await runOfferWorkflow(deps, { sourceId: body.sourceFamilyId, url: body.url, idempotencyKey });
+  const newOfferId = (outcome as any).offerId ?? null;
+
+  if (newOfferId && body.oldOfferId) {
+    const oldOffer = await c.env.DB.prepare(`SELECT publication_decision FROM deal_exchange_offers WHERE id=?`).bind(body.oldOfferId).first<any>();
+    if (oldOffer) {
+      await c.env.DB.prepare(
+        `INSERT INTO deal_exchange_offer_history (id, offer_id, field, old_value, new_value, reason) VALUES (?,?,?,?,?,?)`
+      ).bind(crypto.randomUUID(), body.oldOfferId, 'reprocessing_lineage', body.oldOfferId, newOfferId,
+        `REPROCESSED_UNDER_CORRECTED_BOOKING_ACTION_MODEL: superseding evaluation created as ${newOfferId} (old row left byte-identical, never overwritten)`).run();
+    }
+  }
+
+  const newOffer = newOfferId ? await c.env.DB.prepare(`SELECT publication_decision, public_action_type, failed_gates_json FROM deal_exchange_offers WHERE id=?`).bind(newOfferId).first<any>() : null;
+  return c.json({ oldOfferId: body.oldOfferId, newOfferId, outcome, newOffer });
 });
 
 export default {

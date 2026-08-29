@@ -8,14 +8,36 @@ import { canonicalizeUrl } from './deal-quality';
 import {
   resolveEvidenceBundle, evaluateOfferPublicationGates, computeOfferFingerprint,
   generatePublicLabel, type EvidenceItem, type MaterialField, type OfferOwnerType,
+  type EvidenceResolutionResult,
 } from './deal-exchange-model';
 import { validateBookingRoute } from './booking-route-safety';
 import { buildDefaultEvidenceRecord, type DefaultEvidenceRecord } from './evidence-model';
+import { derivePublicOfferAction, buildVakavitiEnquiryRoute, type PublicOfferActionResult } from './public-offer-action';
 import type {
   FetchPort, FetchPortResult, ExtractionPort, ExtractionPortResult, NormalizerPort,
   EvidenceStorePort, DeduplicatorPort, RuleEnginePort, RuleEngineGateResult, RateLimiterPort,
   CostBudgetPort, IdempotencyStorePort, AuditorPort, WorkflowOutcome,
 } from './offer-workflow';
+
+/** Deterministic, synchronous (no crypto.subtle - RuleEnginePort.evaluate() is sync by contract),
+ * content-derived id: same (sourceId, canonicalUrl) always yields the same offer id, so
+ * makeRuleEnginePort and makePublisherPort/insertOffer independently arrive at the IDENTICAL id
+ * without any change to offer-workflow.ts's fixed port interfaces or extra state smuggled between
+ * them. Good enough uniqueness for this preview's scale - not a cryptographic hash, and not used
+ * anywhere dedup/security-sensitive (computeOfferFingerprint(), unrelated and unchanged, still owns
+ * real deduplication). */
+export function deterministicOfferId(sourceId: string, canonicalUrl: string): string {
+  const basis = `${sourceId}::${canonicalUrl}`;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < basis.length; i++) {
+    const ch = basis.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = (h1 ^ (h1 >>> 16)) >>> 0;
+  h2 = (h2 ^ (h2 >>> 16)) >>> 0;
+  return `offer-${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
+}
 
 const EXTRACTION_TO_MATERIAL_FIELD: Partial<Record<string, MaterialField>> = {
   advertised_price: 'price', currency: 'currency', price_basis: 'price_basis',
@@ -96,12 +118,44 @@ export function factsToEvidenceItems(facts: Record<string, string | null>, canon
   return items;
 }
 
+// --- Phase 7A: the booking-action layer, shared by the rule-engine port and the publisher so both
+// independently re-derive the IDENTICAL decision from the identical inputs, rather than smuggling
+// extra state across offer-workflow.ts's fixed port interfaces. ---------------------------------
+const OFFER_AGENT_PREVIEW_BASE_URL = 'https://vakaviti-offer-agent-preview.helpronline.workers.dev';
+
+export interface ResolvedOfferAction {
+  action: PublicOfferActionResult;
+  resolution: EvidenceResolutionResult; // the FINAL resolution (post action-decision), fed to evaluateOfferPublicationGates
+}
+
+export function resolveOfferAction(sourceId: string, canonicalUrl: string, facts: Record<string, string | null>): ResolvedOfferAction {
+  const offerId = deterministicOfferId(sourceId, canonicalUrl);
+  const now = new Date().toISOString();
+  // booking_route is deliberately EXCLUDED from the evidence set fed to resolveEvidenceBundle().
+  // authoritativeSourceClassFor() ties every field's required evidence class to the offer's OWNER
+  // TYPE (PROVIDER_OFFICIAL_PAGE for every field of a PROVIDER_DIRECT offer) - there is no existing
+  // owner type where "most facts come from the provider but the booking route is Vakaviti-sourced,"
+  // so a synthetic VAKAVITI_OWNED_SYSTEM evidence item for booking_route would be silently rejected
+  // as non-authoritative for this owner type (confirmed by live evidence: it was, on the first cut
+  // of this fix). "Which action type applies" is a system-level routing decision, not a material
+  // fact requiring provider-page evidence, so it is evaluated entirely separately below - never by
+  // feeding fabricated evidence into the canonical, unmodified evidence-authority system.
+  const evidence = factsToEvidenceItems(facts, canonicalUrl, now).filter(e => e.field !== 'booking_route');
+  const resolution = resolveEvidenceBundle({ offerOwnerType: 'PROVIDER_DIRECT', evidence, freshnessWindowHours: 24, now });
+
+  const vakavitiEnquiryRoute = buildVakavitiEnquiryRoute(OFFER_AGENT_PREVIEW_BASE_URL, offerId);
+  const action = derivePublicOfferAction(
+    { sourceUrl: canonicalUrl, vakavitiEnquiryRoute, providerBookingRoute: facts.booking_route ?? null },
+    resolution, 'preview'
+  );
+  return { action, resolution };
+}
+
 export function makeRuleEnginePort(providerName: string, providerId: string): RuleEnginePort {
   return {
     evaluate(canonicalUrl: string, facts: Record<string, string | null>, sourceId: string): RuleEngineGateResult {
       const now = new Date().toISOString();
-      const evidence = factsToEvidenceItems(facts, canonicalUrl, now);
-      const resolution = resolveEvidenceBundle({ offerOwnerType: 'PROVIDER_DIRECT', evidence, freshnessWindowHours: 24, now });
+      const { action, resolution } = resolveOfferAction(sourceId, canonicalUrl, facts);
       const priceShown = !resolution.resolvedFields.price.isMissing;
       const result = evaluateOfferPublicationGates({
         offerOwnerType: 'PROVIDER_DIRECT',
@@ -113,7 +167,21 @@ export function makeRuleEnginePort(providerName: string, providerId: string): Ru
         requiresPriceBasis: priceShown, requiresOccupancyBasis: false, requiresValidityForRequestedDates: false,
         freshnessWindowHours: 24, checkedAt: now,
       });
-      return { decision: result.decision, passedGates: result.passedGates, failedGates: result.failedGates };
+
+      // Every OTHER gate (price/currency/basis/dates/contradiction/duplicate/freshness/identity) is
+      // taken verbatim from the unmodified canonical function above - this is the ONLY line that
+      // touches its output, replacing its 'supported_booking_route' verdict (which is always FALSE
+      // here, since booking_route evidence is never fed to it) with the booking-ACTION model's own
+      // verdict instead.
+      const passedGates = result.passedGates.filter(g => g !== 'supported_booking_route');
+      const failedGates = result.failedGates.filter(g => g !== 'supported_booking_route');
+      if (action.actionType === 'NOT_ACTIONABLE') {
+        failedGates.push(`not_actionable: ${action.reason}`);
+      } else {
+        passedGates.push('supported_booking_route');
+      }
+      const decision = failedGates.length === 0 ? 'ELIGIBLE' : 'NOT_ELIGIBLE';
+      return { decision, passedGates, failedGates };
     },
   };
 }
