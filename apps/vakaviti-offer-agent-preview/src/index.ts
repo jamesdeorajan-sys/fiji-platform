@@ -95,6 +95,20 @@ app.post('/internal/submit-url', async (c) => {
   return c.json({ ok: true, candidate });
 });
 
+// All temporary Phase 5 controlled-fixture test endpoints (DLQ injection, quarantine fixture
+// insert/transition, cleanup attempt) have been REMOVED per their own removal commitment, now that
+// the controlled tests have been observed and recorded. What could not be removed: the DLQ fixture
+// message was pulled and acked via the Cloudflare Queues API (confirmed empty afterward) - fully
+// cleaned. The quarantine fixture offer (id 'test-fixture-quarantine-001') could NOT be fully
+// deleted - deal_exchange_offer_history/authority_transitions are append-only by DB trigger (a
+// DELETE attempt was correctly rejected: SQLITE_CONSTRAINT_TRIGGER), and once those child rows
+// exist, a FOREIGN KEY constraint then also blocks deleting the parent offers row (confirmed live:
+// SQLITE_CONSTRAINT_FOREIGNKEY). This is the append-only safety design working exactly as intended,
+// not weakened for test convenience. The fixture remains permanently in its terminal QUARANTINED/
+// NOT_ELIGIBLE state, provider_name literally 'TEST FIXTURE - DO NOT TREAT AS REAL', excluded from
+// offersPublished and from every real functional path - see the Phase 5 return for the exact
+// residual counts this adds.
+
 // Phase 7D: reprocess an already-evaluated candidate URL under the corrected booking-action model.
 // The OLD offer row (its own random-UUID id, from before deterministic ids existed) is never
 // touched - a fresh evaluation produces a NEW offer row (a new, deterministic id derived from
@@ -244,8 +258,21 @@ export default {
           };
           const idem = makeIdempotencyStorePort(env, 'FreshnessAgent');
           if (!(await idem.hasProcessed(idempotencyKey))) {
-            await runRecheckWorkflow(deps, subject);
-            await idem.markProcessed(idempotencyKey, { step: 'PUBLISHED', offerId } as any);
+            // Bug fixed 2026-08-29: this previously hardcoded {step:'PUBLISHED'} regardless of what
+            // runRecheckWorkflow actually returned, discarding the real NOT_DUE/FETCH_FAILED/
+            // STILL_ELIGIBLE_UPDATED/QUARANTINED outcome - found live via the controlled quarantine
+            // fixture test, whose result was unreadable because of this exact bug.
+            const recheckOutcome = await runRecheckWorkflow(deps, subject);
+            // offer-workflow.ts's STILL_ELIGIBLE_UPDATED outcome (reused unchanged from Phase A-R)
+            // does not itself write anything - its own name implies a refresh that never happens.
+            // Rather than modify that shared file, the refresh happens here at the adapter level:
+            // a genuine, observable checked_at update proving the recheck actually ran and confirmed
+            // currency, without touching any other stored fact.
+            if (recheckOutcome.step === 'STILL_ELIGIBLE_UPDATED') {
+              await env.DB.prepare(`UPDATE deal_exchange_offers SET checked_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+                .bind(new Date().toISOString(), offerId).run();
+            }
+            await idem.markProcessed(idempotencyKey, recheckOutcome as any);
           }
           message.ack();
         } catch (e: any) {

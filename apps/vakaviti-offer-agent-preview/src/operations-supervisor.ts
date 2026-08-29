@@ -31,13 +31,22 @@ export interface StatusReport {
 export async function getStatusReport(env: Env): Promise<StatusReport> {
   const today = new Date().toISOString().slice(0, 10);
 
+  // OfferProcessingWorkflow/PublicationAgent still record to agent_runs (queue-triggered, unrelated
+  // to the scheduler correction). DiscoveryAgent/FreshnessAgent/OperationsSupervisorAgent now record
+  // to service_tick_log instead (agent-orchestration.ts) - querying agent_runs for these three would
+  // show stale, pre-correction data forever after this deploy, so they're queried separately here.
   const lastSuccess = await env.DB.prepare(
-    `SELECT agent_name, MAX(completed_at) as last FROM agent_runs WHERE status='COMPLETED' GROUP BY agent_name`
+    `SELECT agent_name, MAX(completed_at) as last FROM agent_runs WHERE status='COMPLETED' AND agent_name IN ('OfferProcessingWorkflow','PublicationAgent') GROUP BY agent_name`
   ).all<any>();
   const lastSuccessfulRunByAgent: Record<string, string | null> = {
     DiscoveryAgent: null, OfferProcessingWorkflow: null, PublicationAgent: null, FreshnessAgent: null, OperationsSupervisorAgent: null,
   };
   for (const row of lastSuccess.results || []) lastSuccessfulRunByAgent[row.agent_name] = row.last;
+
+  const lastTickSuccess = await env.DB.prepare(
+    `SELECT service_name, MAX(completed_at) as last FROM service_tick_log WHERE completed_at IS NOT NULL AND outcome_json IS NOT NULL GROUP BY service_name`
+  ).all<any>();
+  for (const row of lastTickSuccess.results || []) lastSuccessfulRunByAgent[row.service_name] = row.last;
 
   const candidatesDiscovered = (await env.DB.prepare(`SELECT COUNT(*) c FROM discovered_candidates`).first<any>())?.c ?? 0;
   const offersExtracted = (await env.DB.prepare(`SELECT COUNT(*) c FROM deal_exchange_offers`).first<any>())?.c ?? 0;
