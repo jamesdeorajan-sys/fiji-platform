@@ -51,22 +51,30 @@ console.log('== 1. Image assets referenced in code actually exist on disk ==');
   }
 }
 
-console.log('== 2. Every semantic key used by PRODUCT_IMAGE_KEY / OPERATOR_IMAGE_KEY exists in SEMANTIC_IMAGES ==');
+console.log('== 2. Every url used by *_SEMANTIC_ASSIGNMENT resolves to a real SEMANTIC_IMAGES entry, and every entry carries a non-empty disclosureLabel ==');
 {
   const semanticBlockMatch = indexTs.match(/const SEMANTIC_IMAGES:[^=]*=\s*\{([\s\S]*?)\n\};/);
   if (!semanticBlockMatch) fail('Could not locate SEMANTIC_IMAGES definition in src/index.ts');
-  const knownKeys = semanticBlockMatch
-    ? new Set([...semanticBlockMatch[1].matchAll(/^\s*([a-zA-Z0-9_]+):\s*\{/gm)].map(m => m[1]))
+  const knownUrls = semanticBlockMatch
+    ? new Set([...semanticBlockMatch[1].matchAll(/url:\s*'([^']+)'/g)].map(m => m[1]))
     : new Set();
 
-  for (const mapName of ['PRODUCT_IMAGE_KEY', 'OPERATOR_IMAGE_KEY']) {
+  for (const mapName of ['PRODUCT_SEMANTIC_ASSIGNMENT', 'OPERATOR_SEMANTIC_ASSIGNMENT']) {
     const blockMatch = indexTs.match(new RegExp(`const ${mapName}:[^=]*=\\s*\\{([\\s\\S]*?)\\n\\};`));
     if (!blockMatch) { fail(`Could not locate ${mapName} definition in src/index.ts`); continue; }
-    const usedKeys = [...blockMatch[1].matchAll(/:\s*'([a-zA-Z0-9_]+)'/g)].map(m => m[1]);
-    if (usedKeys.length === 0) fail(`${mapName} appears to define no entries - check the regex/file.`);
-    for (const key of usedKeys) {
-      if (knownKeys.has(key)) ok(`${mapName} -> '${key}' is a valid SEMANTIC_IMAGES key`);
-      else fail(`${mapName} references unknown semantic image key '${key}' (not in SEMANTIC_IMAGES)`);
+    const entries = [...blockMatch[1].matchAll(/url:\s*([A-Za-z0-9_.]+\.url|'[^']+'),\s*alt:[^,]+,\s*disclosureLabel:\s*'([^']*)'/g)];
+    if (entries.length === 0) fail(`${mapName} appears to define no entries - check the regex/file.`);
+    for (const [, urlExpr, disclosureLabel] of entries) {
+      if (!disclosureLabel.trim()) fail(`${mapName} has an entry with an empty disclosureLabel - SEMANTIC_CATEGORY requires an honest, non-empty label`);
+      else ok(`${mapName} entry (${urlExpr}) carries a non-empty disclosureLabel`);
+      // Only literal '/images/...' urls are checked against SEMANTIC_IMAGES directly - urls
+      // expressed as SEMANTIC_IMAGES.<key>.url are trivially valid by construction (TypeScript
+      // itself would fail to compile a reference to a non-existent SEMANTIC_IMAGES key).
+      if (urlExpr.startsWith("'") ) {
+        const literal = urlExpr.slice(1, -1);
+        if (knownUrls.has(literal)) ok(`${mapName} literal url '${literal}' matches a real SEMANTIC_IMAGES entry`);
+        else fail(`${mapName} literal url '${literal}' does not match any SEMANTIC_IMAGES entry`);
+      }
     }
   }
 }
@@ -126,9 +134,9 @@ console.log('== 6. Workers AI model is the pinned, non-deprecated value ==');
   if (hardcodedInProducts) fail(`src/products.ts hardcodes a model string directly in an AI.run() call: '${hardcodedInProducts[1]}' - should use DEFAULT_MODEL`);
 }
 
-console.log('== 7. No duplicate product slugs hard-coded across the image-key maps (structural sanity) ==');
+console.log('== 7. No duplicate product slugs hard-coded across the media-assignment maps (structural sanity) ==');
 {
-  for (const mapName of ['PRODUCT_IMAGE_KEY', 'OPERATOR_IMAGE_KEY']) {
+  for (const mapName of ['PRODUCT_SEMANTIC_ASSIGNMENT', 'OPERATOR_SEMANTIC_ASSIGNMENT', 'OPERATOR_FALLBACK_CATEGORY']) {
     const blockMatch = indexTs.match(new RegExp(`const ${mapName}:[^=]*=\\s*\\{([\\s\\S]*?)\\n\\};`));
     if (!blockMatch) continue;
     const slugs = [...blockMatch[1].matchAll(/^\s*'([a-z0-9-]+)':/gm)].map(m => m[1]);

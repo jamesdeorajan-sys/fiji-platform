@@ -1,0 +1,12 @@
+-- CEO AUTHORIZATION — IMPLEMENT MEDIA ACCURACY AND FALLBACK SYSTEM (2026-08-29/30), Phase 4.
+--
+-- deal_offer_candidates already tracks image_rights_status (NO_IMAGE/APPROVED/DENIED) but had
+-- nowhere to store the actual approved photo URL once rights are granted - there was no way to
+-- ever show a real, rights-cleared deal photo even after approval. This is purely additive
+-- (nullable, no default-value backfill, no existing row touched) so it is safe to apply without
+-- any data migration. deals-hub.ts now renders ENTITY_SPECIFIC only when both
+-- image_rights_status='APPROVED' AND image_url IS NOT NULL - never on rights-approval alone.
+--
+-- NOT applied to production by this PR - written and tested only against the isolated
+-- media-completion preview database. Applying it to production is a separate, later step.
+ALTER TABLE deal_offer_candidates ADD COLUMN image_url TEXT;
