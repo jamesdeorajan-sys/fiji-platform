@@ -30,6 +30,15 @@ function fakeStage1Db(operators: Operator[], products: Product[] = [], enquiries
             const o = operators.find(o => o.slug === slug && o.commercial_status === 'ACTIVE');
             return (o as any) ?? null;
           }
+          // Checked BEFORE the broader (slug-based) products branch below - both queries start
+          // with "SELECT canonical_name FROM products" / include "FROM products", so the more
+          // specific id+operator_id+commercial_status shape must be matched first or it is
+          // silently shadowed by the slug-based handler further down.
+          if (sql.startsWith('SELECT canonical_name FROM products WHERE id=? AND operator_id=? AND commercial_status')) {
+            const [id, operatorId] = binds;
+            const p = products.find(p => p.id === id && p.operator_id === operatorId && p.commercial_status === 'ACTIVE');
+            return (p as any) ?? null;
+          }
           if (sql.includes('FROM products')) {
             const slug = binds[0];
             const p = products.find(p => p.slug === slug && p.commercial_status === 'ACTIVE');
@@ -44,11 +53,6 @@ function fakeStage1Db(operators: Operator[], products: Product[] = [], enquiries
             const [id, operatorId] = binds;
             const match = enq.find(e => e.id === id && e.operator_id === operatorId);
             return (match as any) ?? null;
-          }
-          if (sql.startsWith('SELECT canonical_name FROM products')) {
-            const [id] = binds;
-            const p = products.find(p => p.id === id);
-            return (p as any) ?? null;
           }
           throw new Error('fakeStage1Db: unhandled first() query: ' + sql);
         },
@@ -73,13 +77,13 @@ function fakeStage1Db(operators: Operator[], products: Product[] = [], enquiries
 
 const OPERATOR: Operator = { id: 'op-1', canonical_name: 'Test Operator', slug: 'test-operator', whatsapp: '+6799999999', website_url: 'https://test-operator.example', last_public_check_at: null, commercial_status: 'ACTIVE' };
 
-function baseEnv(enquiries: Enquiry[] = []) {
+function baseEnv(enquiries: Enquiry[] = [], products: Product[] = [], operators: Operator[] = [OPERATOR]) {
   return {
     ENVIRONMENT: 'preview',
     AI: {} as any,
     MARKETPLACE_ENQUIRY_WHATSAPP: '+61413335007',
     DEAL_EXCHANGE_PUBLIC_ENABLED: 'false',
-    DB: fakeStage1Db([OPERATOR], [], enquiries),
+    DB: fakeStage1Db(operators, products, enquiries),
   } as any;
 }
 
@@ -191,6 +195,115 @@ describe('GET /enquire/:operatorSlug/whatsapp/:id is the one tracked deliberate-
   it('a nonexistent enquiry id 404s', async () => {
     const res = await fetchPath('/enquire/test-operator/whatsapp/does-not-exist', baseEnv([]));
     expect(res.status).toBe(404);
+  });
+});
+
+// Regression fix (2026-08-29): the product lookup here had no commercial_status='ACTIVE' filter,
+// so a withdrawn/deactivated product's name could still be pulled into the outbound WhatsApp
+// message as if nothing had changed. Fixed to fail closed - checked before the status transition
+// and before the redirect is built, so a failing check writes nothing and redirects nowhere.
+describe('GET /enquire/:operatorSlug/whatsapp/:id fails closed on an inactive/missing/mismatched product', () => {
+  const ACTIVE_OPERATOR: Operator = OPERATOR;
+  const INACTIVE_OPERATOR: Operator = { ...OPERATOR, id: 'op-inactive', slug: 'inactive-operator', commercial_status: 'INACTIVE' };
+  const ACTIVE_PRODUCT: Product = { id: 'prod-1', canonical_name: 'Active Product', slug: 'active-product', operator_id: 'op-1', commercial_status: 'ACTIVE' };
+  const INACTIVE_PRODUCT: Product = { id: 'prod-2', canonical_name: 'Inactive Product', slug: 'inactive-product', operator_id: 'op-1', commercial_status: 'INACTIVE' };
+  const OTHER_OPERATOR_PRODUCT: Product = { id: 'prod-3', canonical_name: 'Someone Else Product', slug: 'other-op-product', operator_id: 'op-other', commercial_status: 'ACTIVE' };
+
+  function enquiryWithProduct(productId: string | null, status: Enquiry['status'] = 'CREATED'): Enquiry {
+    return { id: 'enq-x', operator_id: 'op-1', product_id: productId, channel: 'WHATSAPP', source_page: null, referrer: null, status, created_at: new Date().toISOString() };
+  }
+
+  // 1. Active operator, no product.
+  it('1. active operator, no product - succeeds', async () => {
+    const enquiries = [enquiryWithProduct(null)];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, []), { redirect: 'manual' } as any);
+    expect(res.status).toBe(302);
+    expect(enquiries[0].status).toBe('WHATSAPP_OPENED');
+  });
+
+  // 2. Active operator and active product.
+  it('2. active operator and active product - succeeds, product name reaches the message', async () => {
+    const enquiries = [enquiryWithProduct('prod-1')];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [ACTIVE_PRODUCT]), { redirect: 'manual' } as any);
+    expect(res.status).toBe(302);
+    expect(decodeURIComponent(res.headers.get('location') || '')).toContain('Active Product');
+    expect(enquiries[0].status).toBe('WHATSAPP_OPENED');
+  });
+
+  // 3. Inactive operator.
+  it('3. inactive operator - fails closed with 404 (operator lookup already filters ACTIVE)', async () => {
+    const enquiries = [{ ...enquiryWithProduct(null), operator_id: 'op-inactive' }];
+    const res = await fetchPath('/enquire/inactive-operator/whatsapp/enq-x', baseEnv(enquiries, [], [ACTIVE_OPERATOR, INACTIVE_OPERATOR]));
+    expect(res.status).toBe(404);
+    expect(enquiries[0].status).toBe('CREATED'); // untouched
+  });
+
+  // 4. Inactive product.
+  it('4. inactive product - fails closed with 404, no transition, no redirect', async () => {
+    const enquiries = [enquiryWithProduct('prod-2')];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [INACTIVE_PRODUCT]), { redirect: 'manual' } as any);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('location')).toBeNull();
+    expect(enquiries[0].status).toBe('CREATED'); // never transitioned
+  });
+
+  // 5. Missing operator.
+  it('5. missing operator (nonexistent slug) - 404', async () => {
+    const res = await fetchPath('/enquire/does-not-exist/whatsapp/enq-x', baseEnv([enquiryWithProduct(null)]));
+    expect(res.status).toBe(404);
+  });
+
+  // 6. Missing product.
+  it('6. missing product (product_id references a row that does not exist at all) - fails closed with 404', async () => {
+    const enquiries = [enquiryWithProduct('prod-does-not-exist')];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, []), { redirect: 'manual' } as any);
+    expect(res.status).toBe(404);
+    expect(enquiries[0].status).toBe('CREATED');
+  });
+
+  // 7. Operator/product mismatch.
+  it('7. product exists and is active, but belongs to a DIFFERENT operator - fails closed with 404', async () => {
+    const enquiries = [enquiryWithProduct('prod-3')];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [OTHER_OPERATOR_PRODUCT]), { redirect: 'manual' } as any);
+    expect(res.status).toBe(404);
+    expect(enquiries[0].status).toBe('CREATED');
+  });
+
+  // 8. Repeated WhatsApp-open request.
+  it('8. a repeated request against an already-opened enquiry with a valid active product remains idempotent', async () => {
+    const enquiries = [enquiryWithProduct('prod-1', 'WHATSAPP_OPENED')];
+    const first = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [ACTIVE_PRODUCT]), { redirect: 'manual' } as any);
+    const second = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [ACTIVE_PRODUCT]), { redirect: 'manual' } as any);
+    expect(first.status).toBe(302);
+    expect(second.status).toBe(302);
+    expect(enquiries.length).toBe(1);
+    expect(enquiries[0].status).toBe('WHATSAPP_OPENED');
+  });
+
+  // 9. Failure creates zero writes (covered per-case above via `enquiries[0].status` staying
+  // 'CREATED', consolidated here as one explicit assertion across every failure path).
+  it('9. every failure path above creates zero writes - status never transitions on any of them', async () => {
+    const cases: [string, Enquiry[], Product[], Operator[]][] = [
+      ['inactive product', [enquiryWithProduct('prod-2')], [INACTIVE_PRODUCT], [ACTIVE_OPERATOR]],
+      ['missing product', [enquiryWithProduct('prod-missing')], [], [ACTIVE_OPERATOR]],
+      ['mismatched product', [enquiryWithProduct('prod-3')], [OTHER_OPERATOR_PRODUCT], [ACTIVE_OPERATOR]],
+    ];
+    for (const [, enquiries, products, operators] of cases) {
+      await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, products, operators));
+      expect(enquiries[0].status).toBe('CREATED');
+    }
+  });
+
+  // 10. Failure exposes no WhatsApp destination.
+  it('10. a failure response never contains a wa.me location or any raw internal id in its body', async () => {
+    const enquiries = [enquiryWithProduct('prod-2')];
+    const res = await fetchPath('/enquire/test-operator/whatsapp/enq-x', baseEnv(enquiries, [INACTIVE_PRODUCT]), { redirect: 'manual' } as any);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('location')).toBeNull();
+    const body = await res.text();
+    expect(body).not.toMatch(/wa\.me/);
+    expect(body).not.toContain('prod-2');
+    expect(body).not.toContain('op-1');
   });
 });
 

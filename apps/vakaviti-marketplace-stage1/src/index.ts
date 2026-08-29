@@ -581,15 +581,26 @@ app.get('/enquire/:operatorSlug/whatsapp/:id', async c => {
   if (!operator) return c.notFound();
   const enquiry = await c.env.DB.prepare(`SELECT id,operator_id,product_id,status FROM enquiries WHERE id=? AND operator_id=?`).bind(c.req.param('id'), operator.id).first<any>();
   if (!enquiry) return c.notFound();
+
+  // Fail-closed regression fix (2026-08-29): a product that has since gone INACTIVE (or was never
+  // genuinely this operator's own product) must never let the enquiry proceed as if nothing
+  // changed. Checked BEFORE the status transition and BEFORE the redirect is built, so a failure
+  // here writes nothing and exposes nothing beyond a plain 404 - the same fail-closed shape already
+  // used for an unknown operator/enquiry above. A NULL product_id (no product referenced at all) is
+  // not subject to this check - that is the valid "operator-only enquiry" case.
+  let productName: string | null = null;
+  if (enquiry.product_id) {
+    const product = await c.env.DB.prepare(
+      `SELECT canonical_name FROM products WHERE id=? AND operator_id=? AND commercial_status='ACTIVE'`
+    ).bind(enquiry.product_id, operator.id).first<any>();
+    if (!product) return c.notFound();
+    productName = product.canonical_name;
+  }
+
   const destination = resolveEnquiryDestination(c.env);
   if (!destination) return c.text('Enquiries are not available right now.', 503);
   if (enquiry.status === 'CREATED') {
     await c.env.DB.prepare(`UPDATE enquiries SET status='WHATSAPP_OPENED' WHERE id=? AND status='CREATED'`).bind(enquiry.id).run();
-  }
-  let productName: string | null = null;
-  if (enquiry.product_id) {
-    const product = await c.env.DB.prepare(`SELECT canonical_name FROM products WHERE id=?`).bind(enquiry.product_id).first<any>();
-    productName = product ? product.canonical_name : null;
   }
   return c.redirect(waLink(destination, buildEnquiryMessage(operator.canonical_name, productName, enquiry.id)), 302);
 });
