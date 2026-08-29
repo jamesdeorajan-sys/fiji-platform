@@ -67,22 +67,19 @@ max_retries = 3
 max_batch_timeout = 5
 
 # --- Scheduled triggers ----------------------------------------------------------------------------
-# CORRECTED 2026-08-29: this originally listed three separate sub-hourly expressions
-# ("*/10 * * * *", "*/12 * * * *", "*/15 * * * *"), intended to demonstrate frequent, observable
-# unattended cycles for a preview. Live evidence (agent_runs timestamps across 5 consecutive real
-# hours) showed Cloudflare was NOT honoring the sub-hourly cadence at all - all three collapsed to a
-# single joint invocation exactly once per hour, at :00, every hour, with zero exceptions across the
-# observation window. This matches Cloudflare Cron Triggers' documented minimum interval, which
-# rejects/coalesces anything finer than hourly. Keeping the misleading three-expression config would
-# claim a cadence that was never actually happening - replaced with the one real, honest, achieved
-# cadence instead. Per-offer recheck cadence (imminent-expiry >=6h, volatile/ordinary daily, stable
-# <=72h) is unaffected either way - it's enforced by RecheckerPort.isDue()'s own volatility-class
-# window (offer-workflow.ts), not by how often this cron fires, so it was never dependent on the
-# sub-hourly config being real.
+# CORRECTED 2026-08-29 (second correction). An earlier version of this comment claimed Cloudflare
+# Cron Triggers enforce a 1-hour minimum interval and coalesce finer expressions - THAT CLAIM WAS
+# WRONG and is retracted. Cloudflare's own documentation supports standard every-minute and */N
+# cron expressions with no such floor. The real, evidence-supported issue (see the incident
+# forensics record) was this file previously listing THREE overlapping expressions
+# ("*/10 * * * *", "*/12 * * * *", "*/15 * * * *"), dispatched in code via
+# `if (event.cron === '<exact string>')` branches - a fragile design regardless of the precise
+# historical failure mode, since it depends on exact string equality against whatever Cloudflare
+# delivers in the scheduled event. That branching is removed entirely.
 #
-# A second, INDEPENDENT scheduling mechanism now also exists as a fallback/redundancy layer:
-# Anthropic cloud routine trig_015cLkCXrTsU9hGuWuZbT5sA fires hourly at :30 (offset from this
-# native :00 firing) and calls POST /internal/tick/all - see index.ts. Both paths run the exact same
-# idempotent tick bodies, so running both is harmless, not a double-count risk.
+# Now: ONE native cron, ONE idempotent orchestration entry point (runDueAgentTicks() in
+# agent-orchestration.ts). Each of the three services decides independently whether IT is due,
+# based on its own last-successful-run timestamp - never by comparing controller.cron against a
+# literal string. No external scheduler is used or referenced anywhere in this app.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/10 * * * *"]

@@ -8,14 +8,13 @@ import {
 } from './adapters';
 import { makePublisherPort } from './publication-agent';
 import { makeRechecker } from './freshness-agent';
-import { runFreshnessTick } from './freshness-agent';
 import { makeQuarantiner } from './quarantine';
-import { enqueueDueFamiliesForDiscovery, processDiscoveryForFamily, makeHumanSubmissionDiscoveryProvider } from './discovery-agent';
+import { processDiscoveryForFamily, makeHumanSubmissionDiscoveryProvider } from './discovery-agent';
 import { CATEGORY_PAGE_URLS_BY_FAMILY } from './seed-source-families';
-import { getStatusReport, recoverStuckAgentRuns, checkAnomalyAndAutoPause, isUnderDailyAiCallBudget, incrementAiCallCounter, MAX_PAGES_PER_SOURCE_PER_RUN } from './operations-supervisor';
-import { setGlobalKillSwitch, pauseSource, approveSource, quarantineOffer, restoreByHuman, type Actor } from './authority-model';
-import { sanitizeDiscoveredCandidate } from './discovery-providers';
+import { getStatusReport, isUnderDailyAiCallBudget, incrementAiCallCounter } from './operations-supervisor';
+import { setGlobalKillSwitch, pauseSource, approveSource, type Actor } from './authority-model';
 import { registerEnquiryRoutes } from './enquiry-routes';
+import { runDueAgentTicks } from './agent-orchestration';
 
 const app = new Hono<{ Bindings: Env }>();
 registerEnquiryRoutes(app);
@@ -139,75 +138,25 @@ app.post('/internal/reprocess', async (c) => {
   return c.json({ oldOfferId: body.oldOfferId, newOfferId, outcome, newOffer });
 });
 
-// Shared tick bodies - called from BOTH the native scheduled() handler below AND the
-// /internal/tick/* HTTP endpoints (the external-scheduler fallback, added after native Cloudflare
-// Cron Trigger delivery to this Worker was confirmed silent for 75+ minutes despite correct
-// configuration - see agent_runs.trigger_source for which path actually ran each tick). Extracting
-// these avoids duplicating the write-a-RUNNING-row/do-the-work/mark-COMPLETED pattern in two places.
-async function runDiscoveryTickBody(env: Env, triggerSource: 'cron' | 'external_schedule' | 'manual'): Promise<any> {
-  const runId = crypto.randomUUID();
-  await env.DB.prepare(`INSERT INTO agent_runs (id, agent_name, idempotency_key, status) VALUES (?,?,?,'RUNNING')`)
-    .bind(runId, 'DiscoveryAgent', `discovery-tick:${triggerSource}:${new Date().toISOString()}`).run();
-  const result = await enqueueDueFamiliesForDiscovery(env);
-  await env.DB.prepare(`UPDATE agent_runs SET status='COMPLETED', outcome_json=?, completed_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .bind(JSON.stringify({ ...result, triggerSource }), runId).run();
-  return result;
-}
-async function runFreshnessTickBody(env: Env, triggerSource: 'cron' | 'external_schedule' | 'manual'): Promise<any> {
-  const runId = crypto.randomUUID();
-  await env.DB.prepare(`INSERT INTO agent_runs (id, agent_name, idempotency_key, status) VALUES (?,?,?,'RUNNING')`)
-    .bind(runId, 'FreshnessAgent', `freshness-tick:${triggerSource}:${new Date().toISOString()}`).run();
-  const result = await runFreshnessTick(env);
-  await env.DB.prepare(`UPDATE agent_runs SET status='COMPLETED', outcome_json=?, completed_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .bind(JSON.stringify({ ...result, triggerSource }), runId).run();
-  return result;
-}
-async function runSupervisorTickBody(env: Env, triggerSource: 'cron' | 'external_schedule' | 'manual'): Promise<any> {
-  const runId = crypto.randomUUID();
-  await env.DB.prepare(`INSERT INTO agent_runs (id, agent_name, idempotency_key, status) VALUES (?,?,?,'RUNNING')`)
-    .bind(runId, 'OperationsSupervisorAgent', `supervisor-tick:${triggerSource}:${new Date().toISOString()}`).run();
-  const recovered = await recoverStuckAgentRuns(env);
-  const paused = await checkAnomalyAndAutoPause(env);
-  const result = { recovered, paused };
-  await env.DB.prepare(`UPDATE agent_runs SET status='COMPLETED', outcome_json=?, completed_at=CURRENT_TIMESTAMP WHERE id=?`)
-    .bind(JSON.stringify({ ...result, triggerSource }), runId).run();
-  return result;
-}
-
-// External-scheduler fallback endpoint (admin-token gated - this is an internal operational
-// control, not a public route). Runs all three ticks in sequence on whatever cadence the external
-// scheduler is configured with. Native Cron Triggers remain configured in wrangler.toml and this
-// endpoint does NOT replace them - if/when native delivery resumes, both paths simply run the same
-// idempotent, safe tick bodies redundantly, which is harmless (each tick's own logic - due-family
-// selection, isDue() volatility windows, stuck-run recovery - is itself safe to run more often than
-// strictly necessary).
-app.post('/internal/tick/all', async (c) => {
-  const actorOrErr = requireHuman(c);
-  if (actorOrErr instanceof Response) return actorOrErr;
-  if (isGloballyForceDisabled(c.env)) return c.json({ skipped: 'FORCE_DISABLE_ALL_AGENTS' });
-  const killSwitch = await c.env.DB.prepare(`SELECT active FROM kill_switches WHERE id='global'`).first<any>();
-  if (killSwitch?.active) return c.json({ skipped: 'GLOBAL_KILL_SWITCH_ACTIVE' });
-
-  const discovery = await runDiscoveryTickBody(c.env, 'external_schedule');
-  const freshness = await runFreshnessTickBody(c.env, 'external_schedule');
-  const supervisor = await runSupervisorTickBody(c.env, 'external_schedule');
-  return c.json({ triggerSource: 'external_schedule', timestamp: new Date().toISOString(), discovery, freshness, supervisor });
-});
+// Phase 3 (CEO incident correction, 2026-08-29): /internal/tick/all and the external-scheduler
+// fallback are REMOVED entirely - no third-party routine may hold ADMIN_TOKEN, no external
+// scheduler is used, and native Cron with the corrected per-service isDue() design (see
+// agent-orchestration.ts) makes this endpoint unnecessary. Nothing in this file replaces it.
 
 export default {
   fetch: app.fetch,
 
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  // ONE native Cron Trigger ("*/10 * * * *" - see wrangler.toml). ONE idempotent orchestration
+  // entry point. Dispatch never compares controller.cron against a literal string - that pattern
+  // (three overlapping expressions, each gated by `event.cron === '<exact string>'`) is exactly
+  // what was removed this session. controller.scheduledTime/controller.cron are recorded verbatim
+  // for audit inside runDueAgentTicks(), never used for branching logic.
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     if (isGloballyForceDisabled(env)) return;
     const killSwitch = await env.DB.prepare(`SELECT active FROM kill_switches WHERE id='global'`).first<any>();
     if (killSwitch?.active) return; // human-set global kill switch - honored before any agent runs
 
-    // Single "0 * * * *" schedule now (see wrangler.toml for why) - runs all three ticks together,
-    // matching what Cloudflare was actually delivering even when three separate expressions were
-    // configured.
-    await runDiscoveryTickBody(env, 'cron');
-    await runFreshnessTickBody(env, 'cron');
-    await runSupervisorTickBody(env, 'cron');
+    await runDueAgentTicks(env, controller.scheduledTime, controller.cron);
   },
 
   async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
