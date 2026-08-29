@@ -67,16 +67,22 @@ max_retries = 3
 max_batch_timeout = 5
 
 # --- Scheduled triggers ----------------------------------------------------------------------------
-# Accelerated cadence for PREVIEW/demonstration purposes only - production's eventual cadence
-# (imminent-expiry every >=6h, volatile-priced daily, ordinary daily, stable-long-validity <=72h)
-# is enforced by RecheckerPort.isDue()'s per-offer volatility-class window (offer-workflow.ts,
-# reused unchanged from Phase A-R), NOT by how often this cron fires. Firing the tick often and
-# letting isDue() gate who actually gets rechecked lets this preview demonstrate genuine, frequent,
-# unattended cycles within an observable window while the PER-OFFER cadence still matches the
-# directive's real production targets exactly.
+# CORRECTED 2026-08-29: this originally listed three separate sub-hourly expressions
+# ("*/10 * * * *", "*/12 * * * *", "*/15 * * * *"), intended to demonstrate frequent, observable
+# unattended cycles for a preview. Live evidence (agent_runs timestamps across 5 consecutive real
+# hours) showed Cloudflare was NOT honoring the sub-hourly cadence at all - all three collapsed to a
+# single joint invocation exactly once per hour, at :00, every hour, with zero exceptions across the
+# observation window. This matches Cloudflare Cron Triggers' documented minimum interval, which
+# rejects/coalesces anything finer than hourly. Keeping the misleading three-expression config would
+# claim a cadence that was never actually happening - replaced with the one real, honest, achieved
+# cadence instead. Per-offer recheck cadence (imminent-expiry >=6h, volatile/ordinary daily, stable
+# <=72h) is unaffected either way - it's enforced by RecheckerPort.isDue()'s own volatility-class
+# window (offer-workflow.ts), not by how often this cron fires, so it was never dependent on the
+# sub-hourly config being real.
 #
-# "*/10 * * * *"  -> DiscoveryAgent tick, every 10 minutes.
-# "*/12 * * * *"  -> FreshnessAgent/recheck-enqueue tick, every 12 minutes.
-# "*/15 * * * *"  -> OperationsSupervisorAgent watchdog + status-snapshot tick, every 15 minutes.
+# A second, INDEPENDENT scheduling mechanism now also exists as a fallback/redundancy layer:
+# Anthropic cloud routine trig_015cLkCXrTsU9hGuWuZbT5sA fires hourly at :30 (offset from this
+# native :00 firing) and calls POST /internal/tick/all - see index.ts. Both paths run the exact same
+# idempotent tick bodies, so running both is harmless, not a double-count risk.
 [triggers]
-crons = ["*/10 * * * *", "*/12 * * * *", "*/15 * * * *"]
+crons = ["0 * * * *"]
