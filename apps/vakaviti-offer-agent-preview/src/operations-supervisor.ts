@@ -66,10 +66,13 @@ export async function getStatusReport(env: Env): Promise<StatusReport> {
     publicationsToday: pubTodayRows.results || [],
     globalPublicationsToday,
     globalKillSwitchActive: !!killSwitch?.active,
+    // Corrected 2026-08-29: all three previously ran together every hour regardless of the three
+    // separate expressions configured (Cloudflare's real minimum-interval floor, not a bug in this
+    // app) - wrangler.toml now configures the one real schedule this reflects. A second, independent
+    // mechanism (Anthropic cloud routine trig_015cLkCXrTsU9hGuWuZbT5sA) also calls
+    // POST /internal/tick/all hourly at :30 as a redundant fallback.
     nextScheduledRuns: [
-      { agentName: 'DiscoveryAgent', cron: '*/10 * * * *' },
-      { agentName: 'FreshnessAgent', cron: '*/12 * * * *' },
-      { agentName: 'OperationsSupervisorAgent', cron: '*/15 * * * *' },
+      { agentName: 'DiscoveryAgent+FreshnessAgent+OperationsSupervisorAgent', cron: '0 * * * *' },
     ],
   };
 }
