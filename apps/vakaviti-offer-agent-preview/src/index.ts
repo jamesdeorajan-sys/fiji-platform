@@ -173,6 +173,17 @@ export default {
           await incrementAiCallCounter(env);
           const outcome = await runOfferWorkflow(deps, { sourceId: sourceFamilyId, url, idempotencyKey });
           if (outcome.step === 'PUBLISHED' || outcome.step === 'SENT_TO_REVIEW') offerIdForRecord = outcome.offerId;
+
+          // Wire real fetch outcomes into the anomaly-auto-pause safety control
+          // (operations-supervisor.ts's checkAnomalyAndAutoPause reads failure_count) - a failed
+          // fetch increments it, any other outcome (including a successful fetch that later fails
+          // extraction/gates) resets it, since the SOURCE itself was reachable.
+          if (outcome.step === 'FETCH_FAILED') {
+            await env.DB.prepare(`UPDATE offer_source_families SET failure_count = failure_count + 1, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(sourceFamilyId).run();
+          } else {
+            await env.DB.prepare(`UPDATE offer_source_families SET failure_count = 0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(sourceFamilyId).run();
+          }
+
           await env.DB.prepare(`UPDATE discovered_candidates SET status='PROCESSED' WHERE url=?`).bind(url).run();
           message.ack();
         } catch (e: any) {
