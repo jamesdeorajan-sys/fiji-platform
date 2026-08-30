@@ -83,6 +83,17 @@ describe('renderMedia', () => {
     expect(lazy).not.toContain('fetchpriority');
   });
 
+  it('CEO VISUAL SIGN-OFF FIX: a real <img> sets style height:auto alongside its width/height attributes, so CSS aspect-ratio - not the fixed HTML height attribute - governs the rendered height at any container width (the fix for the 471px container / 343px image blank-gap defect)', () => {
+    const asset = classifyEntityMedia({ ownUrl: 'https://operator.example/photo.jpg', ownAlt: 'x', semanticAssignment: null, fallbackCategory: 'accommodation' });
+    const html = renderMedia(asset, { variant: 'hero', aspect: '21/9' });
+    const styleMatch = html.match(/style="([^"]*)"/);
+    expect(styleMatch).not.toBeNull();
+    expect(styleMatch![1]).toContain('height:auto');
+    expect(styleMatch![1]).toContain('aspect-ratio:21/9');
+    // height:auto must come from the width:100% declaration onward, not override object-fit etc.
+    expect(styleMatch![1]).toMatch(/width:100%;height:auto;aspect-ratio:/);
+  });
+
   it('applies a custom focal point via object-position when supplied, defaults to center', () => {
     const asset = classifyEntityMedia({ ownUrl: 'https://x.example/p.jpg', ownAlt: 'x', semanticAssignment: null, fallbackCategory: 'accommodation' });
     const custom = renderMedia(asset, { variant: 'card', focalPoint: '20% 80%' });

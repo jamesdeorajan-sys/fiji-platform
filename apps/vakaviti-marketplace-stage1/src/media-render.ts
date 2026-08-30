@@ -61,7 +61,16 @@ export function renderMedia(asset: MediaAsset, opts: RenderMediaOpts): string {
   // fallback can never loop.
   const fallbackDataUri = 'data:image/svg+xml,' + encodeURIComponent(brandedFallback(asset.fallbackCategory, opts.variant, { aspect, radius }));
   const srcset = opts.smallSrc ? ` srcset="${esc(opts.smallSrc.url)} ${opts.smallSrc.width}w, ${esc(asset.url)} ${w}w" sizes="(max-width: 640px) ${opts.smallSrc.width}px, ${w}px"` : '';
-  const img = `<img src="${esc(asset.url)}" alt="${esc(asset.alt)}" width="${w}" height="${h}" loading="${loading}"${fp}${srcset} decoding="async" onerror="this.onerror=null;this.src='${fallbackDataUri}'" style="width:100%;aspect-ratio:${aspect};object-fit:cover;object-position:${esc(objectPosition)};border-radius:${radius};display:block;background:#0c2b23">`;
+  // CEO VISUAL SIGN-OFF FIX (2026-08-31): width/height HTML attributes are kept (they still do
+  // their job of hinting the browser's pre-load layout reservation and satisfying the intrinsic-
+  // size accessibility/performance guidance), but the img is a replaced element - when both the
+  // height ATTRIBUTE and the width CSS property resolve to definite values, aspect-ratio has no
+  // remaining auto dimension to solve for and is silently ignored, pinning the image to the fixed
+  // attribute height (343px at the 800px baseWidth) regardless of the container's real rendered
+  // width. Explicit `height:auto` in the style makes height the auto dimension again, so
+  // aspect-ratio correctly recomputes it from the actual 100%-driven width - reproduced and
+  // confirmed via live getBoundingClientRect()/getComputedStyle() inspection before this fix.
+  const img = `<img src="${esc(asset.url)}" alt="${esc(asset.alt)}" width="${w}" height="${h}" loading="${loading}"${fp}${srcset} decoding="async" onerror="this.onerror=null;this.src='${fallbackDataUri}'" style="width:100%;height:auto;aspect-ratio:${aspect};object-fit:cover;object-position:${esc(objectPosition)};border-radius:${radius};display:block;background:#0c2b23">`;
 
   if (asset.class === 'SEMANTIC_CATEGORY' && asset.disclosureLabel) {
     return `<div style="position:relative">${img}<span style="${DISCLOSURE_STYLE}">${esc(asset.disclosureLabel)}</span></div>`;
