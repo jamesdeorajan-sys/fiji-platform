@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { isPubliclyEligible } from './deals';
+import { classifyEntityMedia, type MediaAsset, type BrandedFallbackCategory } from './media-classification';
+import { renderMedia } from './media-render';
 
 // Vakaviti Live Fiji Deals - P1 Part C/D: the mobile-first public hub. Server-rendered, zero
 // client JS (matching this app's site-wide pattern), noindex throughout (preview infrastructure,
@@ -79,8 +81,6 @@ h1{font-size:clamp(1.3rem,4vw,1.7rem);margin:6px 0 4px}
 @media (min-width:640px){.deal-grid{grid-template-columns:1fr 1fr}}
 @media (min-width:960px){.deal-grid{grid-template-columns:1fr 1fr 1fr}}
 .deal-card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.deal-card .img{aspect-ratio:16/10;background:linear-gradient(135deg,#0f6e6a,#12231b);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;padding:12px;text-align:center}
-.deal-card img{width:100%;height:100%;object-fit:cover;display:block}
 .deal-body{padding:14px}
 .deal-body h3{margin:0 0 4px;font-size:16px}
 .price-row{display:flex;align-items:baseline;gap:8px;margin:8px 0}
@@ -111,11 +111,34 @@ function categoryChips(active?: string, activePlace?: string) {
   return `<div class="chips"><a class="${!active && !activePlace ? 'active' : ''}" href="/deals">All deals</a>${cats}</div>`;
 }
 
+// CEO AUTHORIZATION — IMPLEMENT MEDIA ACCURACY AND FALLBACK SYSTEM (2026-08-29/30), Phase 4: a
+// deal candidate only ever gets an ENTITY_SPECIFIC photo once a human has both approved its
+// image rights AND an actual image_url has been recorded (migrations/0020) - rights approval
+// alone is not sufficient, since APPROVED with no url would otherwise silently render nothing.
+// Every other deal renders its category's BRANDED_FALLBACK - truthful publication was never
+// blocked on a photo being absent even before this task; this only replaces the old plain
+// text/gradient tile with the same generated visual used everywhere else on the site.
+const DEAL_CATEGORY_FALLBACK: Record<string, BrandedFallbackCategory> = {
+  ACCOMMODATION: 'accommodation', ACTIVITY: 'tour_activity', DINING: 'dining',
+  TRANSPORT: 'transfer', EXPERIENCE: 'tour_activity', CRUISE: 'cruise_island'
+};
+
+export function dealMedia(d: any): MediaAsset {
+  const fallbackCategory = DEAL_CATEGORY_FALLBACK[d.category] || 'general_operator';
+  const hasApprovedImage = d.image_rights_status === 'APPROVED' && !!d.image_url;
+  return classifyEntityMedia({
+    ownUrl: hasApprovedImage ? d.image_url : null,
+    ownAlt: d.proposed_offer_name || 'Fiji deal',
+    semanticAssignment: null,
+    fallbackCategory,
+  });
+}
+
 function dealCard(d: any): string {
   const priceText = d.advertised_price ? `${esc(d.currency || '')} ${esc(d.advertised_price)}${d.price_basis ? ' / ' + esc(d.price_basis.replace(/_/g, ' ').toLowerCase()) : ''}` : 'Quote required';
   const savingText = (d.explicit_discount) ? esc(d.explicit_discount) : null;
   return `<a class="deal-card" href="/deals/${esc(d.slug)}">
-    <div class="img">${esc(d.fiji_location || d.seller_or_marketer || 'Fiji')}</div>
+    ${renderMedia(dealMedia(d), { variant: 'card', aspect: '16/10', radius: '0', seed: d.id })}
     <div class="deal-body">
       <h3>${esc(d.proposed_offer_name)}</h3>
       <p class="deal-meta">${esc(d.seller_or_marketer)} · ${esc(d.fiji_location)}</p>

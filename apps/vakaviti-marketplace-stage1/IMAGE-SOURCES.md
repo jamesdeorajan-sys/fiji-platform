@@ -175,27 +175,57 @@ region · subjects · allowed use cases · prohibited use cases · confidence.
 
 ---
 
-## Product/operator image assignment record (current as of 2026-08-19)
+## Product/operator image assignment record — superseded 2026-08-30 by the media classification system
 
-Every assignment below is made explicitly in `src/index.ts`'s `PRODUCT_IMAGE_KEY` /
-`OPERATOR_IMAGE_KEY` maps — never inferred from category. `operators.image_url` and
-`products.image_url` remain `null` (unset) for all current D1 inventory; no operator has
-supplied their own authorized photo yet.
+**2026-08-30 CORRECTION (CEO AUTHORIZATION — IMPLEMENT MEDIA ACCURACY AND FALLBACK SYSTEM):** the
+table below (as it stood 2026-08-19) is retained for history, but two of its own decisions were
+found, during a CEO-directed media audit, to create real defects once actually viewed live:
 
-| Operator/product | slug | Asset | Rationale |
-|---|---|---|---|
-| Nadi Airport Transfers (operator) | `nadi-airport-transfers` | context-denarau-marina.webp | Nadi/Denarau destination context for the operator card/hero (not a product-level claim) |
-| Blue Lagoon Beach Resort (operator) | `blue-lagoon-beach-resort` | category-adventure.webp | Yasawa boat/destination context for the operator card/hero |
-| Accommodation Enquiry | `blue-lagoon-accommodation-enquiry` | category-accommodation.webp | Resort/pool photo directly supports "accommodation" understanding — upgraded 2026-08-19 from the generic beach photo |
-| Diving Enquiry | `blue-lagoon-diving-enquiry` | category-diving.webp | Genuine Fiji underwater/seabed subject |
-| Island Transfer Enquiry | `blue-lagoon-island-transfer-enquiry` | category-adventure.webp | Boat departing a Yasawa island — literal match for "island transfer" |
-| Wedding Enquiry | `blue-lagoon-wedding-enquiry` | category-wedding.webp | NEW — beach ceremony arch/chairs, no people, resolves the prior fallback gap |
-| Dining & Meal Plan Enquiry | `blue-lagoon-dining-enquiry` | *(branded fallback)* | No verified Fiji dining photo found — see Rejected Candidates |
-| Denarau to Nadi Airport Transfer | `denarau-nadi-airport-transfer` | context-road-transfer.webp | Real road/vehicle subject in Fiji, replacing the retired sky photo |
-| Nadi Airport to Denarau Transfer | `nadi-airport-denarau-transfer` | context-road-transfer.webp | Same physical route, opposite direction — legitimate share, not a lazy collision |
-| Nadi Airport to Nadi Hotels Transfer | `nadi-airport-nadi-hotels-transfer` | *(branded fallback)* | Deliberately not a 3rd share of context-road-transfer.webp — "stop repetitive image assignment" |
-| Private Fiji Transfer Enquiry | `private-fiji-transfer-enquiry` | *(branded fallback)* | No distinct photo available; marina photo explicitly prohibited (no boat involved) |
-| Private Hotel Transfer | `private-hotel-transfer` | *(branded fallback)* | Same reasoning as above |
+1. **Nadi Airport Transfers' operator hero (context-denarau-marina.webp)** shows a marina full of
+   boats, one hull carrying clearly visible **third-party branding ("FIJI ONE")** — for a
+   ground-transport (car transfer) company. Confirmed live via screenshot. This photo is now
+   retired from every use (kept on disk, unused, same retirement pattern as
+   `context-arrival-sky.webp`).
+2. **Blue Lagoon Beach Resort's operator hero (category-adventure.webp, actually Kuata Island)**
+   was paired with the operator's own real location badge reading "Nacula Island, Yasawa Islands"
+   directly over the image — even though this file's own manifest entry above already said it
+   "must never be captioned as Blue Lagoon's own boat/crew/transfer" location. The code enforced
+   no such rule; the page did exactly that pairing. Confirmed live via screenshot.
+
+Every product/operator image now carries one of three explicit classes (`src/media-classification.ts`):
+
+- **ENTITY_SPECIFIC** — the entity's own supplied `image_url`. May pair a location badge.
+- **SEMANTIC_CATEGORY** — a real, rights-recorded photo, standing in for the entity generically.
+  Carries an on-page disclosure label (e.g. "Representative Fiji transfer imagery") and is
+  **never** paired with the entity's own location badge — this is the structural fix for defect 2.
+- **BRANDED_FALLBACK** — one of 6 Vakaviti-designed generated visuals (`src/media-fallback-art.ts`),
+  used when no real photo exists. No photographic-representation claim, no location badge, and
+  (2026-08-30) no single-letter initial hero — see the Phase 2 defect this superseded below.
+
+`operators.image_url` and `products.image_url` remain `null` (unset) for all current D1
+inventory; no operator has supplied their own authorized photo yet.
+
+| Operator/product | slug | Class | Asset / fallback | Disclosure label |
+|---|---|---|---|---|
+| Nadi Airport Transfers (operator) | `nadi-airport-transfers` | SEMANTIC_CATEGORY | context-road-transfer.webp (reused from its own products below — never the marina photo) | "Representative Fiji transfer imagery" |
+| Blue Lagoon Beach Resort (operator) | `blue-lagoon-beach-resort` | SEMANTIC_CATEGORY | category-adventure.webp | "Representative Yasawa Islands scenery — Kuata Island" |
+| InterContinental Fiji Golf Resort & Spa (operator) | `intercontinental-fiji-golf-resort-spa-4b89448f` | BRANDED_FALLBACK | accommodation visual | — |
+| South Sea Cruises (operator) | `south-sea-cruises-20bdfc25` | BRANDED_FALLBACK | cruise_island visual | — |
+| Accommodation Enquiry | `blue-lagoon-accommodation-enquiry` | SEMANTIC_CATEGORY | category-accommodation.webp | "Representative Fiji resort imagery" |
+| Diving Enquiry | `blue-lagoon-diving-enquiry` | SEMANTIC_CATEGORY | category-diving.webp | "Representative Fiji diving imagery — Warwick" |
+| Island Transfer Enquiry | `blue-lagoon-island-transfer-enquiry` | SEMANTIC_CATEGORY | category-adventure.webp | "Representative Yasawa Islands scenery — Kuata Island" |
+| Wedding Enquiry | `blue-lagoon-wedding-enquiry` | SEMANTIC_CATEGORY | category-wedding.webp | "Representative Fiji wedding imagery — Nadi" |
+| Dining & Meal Plan Enquiry | `blue-lagoon-dining-enquiry` | BRANDED_FALLBACK | dining visual | — |
+| Denarau to Nadi Airport Transfer | `denarau-nadi-airport-transfer` | SEMANTIC_CATEGORY | context-road-transfer.webp | "Representative Fiji transfer imagery" |
+| Nadi Airport to Denarau Transfer | `nadi-airport-denarau-transfer` | SEMANTIC_CATEGORY | context-road-transfer.webp | "Representative Fiji transfer imagery" |
+| Nadi Airport to Nadi Hotels Transfer | `nadi-airport-nadi-hotels-transfer` | BRANDED_FALLBACK | transfer visual | — |
+| Private Fiji Transfer Enquiry | `private-fiji-transfer-enquiry` | BRANDED_FALLBACK | transfer visual | — |
+| Private Hotel Transfer | `private-hotel-transfer` | BRANDED_FALLBACK | transfer visual | — |
+
+`context-denarau-marina.webp` is now unused by any assignment (retired, kept on disk — see
+correction note above). Any future product/operator with no explicit `*_SEMANTIC_ASSIGNMENT`
+entry receives a category-matched `BRANDED_FALLBACK` derived from its own `category` column
+(`PRODUCT_CATEGORY_FALLBACK` in `src/index.ts`) rather than one single generic default.
 
 ## Explore Fiji category grid (all 6 categories, 2026-08-19)
 

@@ -14,6 +14,8 @@ import { supplySprintUi } from './supply-sprint-ui';
 import { runSupplyBootstrap, runPhase2SupplyExpansion, runWave3SupplyExpansion, runFreshnessCheck, runClassBAutoPublishPass } from './supply-scheduler';
 import { enrichCandidate, providerCopilot, createHumanGate } from './ai';
 import { dealExchangeUi } from './deal-exchange-ui';
+import { classifyEntityMedia, type MediaAsset, type SemanticAssignment, type BrandedFallbackCategory } from './media-classification';
+import { renderMedia, locationBadge } from './media-render';
 
 type Bindings = { DB: D1Database; AI: Ai; ENVIRONMENT: string; ADMIN_TOKEN?: string; MARKETPLACE_ENQUIRY_WHATSAPP?: string; DEAL_EXCHANGE_DB?: D1Database; DEAL_EXCHANGE_PUBLIC_ENABLED?: string };
 
@@ -108,50 +110,29 @@ const durationLabel = (minutes: number | null | undefined) => {
   return rem ? `${h}h ${rem}m` : `${h}h`;
 };
 
-// Deterministic small hash so repeated fallback SVGs on one page never collide on gradient ids.
-const idFor = (seed: string) => {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return 'g' + h.toString(36);
-};
-
-// Original, generated placeholder art (no third-party imagery). Used wherever a real,
-// rights-cleared image_url has not yet been supplied. Never intended to look like a photo.
-const fallbackMedia = (label: string, opts: { aspect?: string; radius?: string; seed?: string } = {}) => {
+// CEO AUTHORIZATION — IMPLEMENT MEDIA ACCURACY AND FALLBACK SYSTEM (2026-08-29/30): the prior
+// single-letter SVG fallback (fallbackMedia/mediaBlock) is retired entirely, not merely unused -
+// see media-fallback-art.ts for its replacement. A minimal helper for the small number of
+// call sites that always carry a guaranteed real, non-entity URL (the homepage/404/partners
+// editorial imagery, which never needs the classification system below) remains here.
+const plainImage = (imageUrl: string, alt: string, opts: { aspect?: string; radius?: string; eager?: boolean } = {}) => {
   const aspect = opts.aspect || '16/9';
   const radius = opts.radius || '14px 14px 0 0';
-  const seed = opts.seed || label || 'x';
-  const gid = idFor(seed);
-  const initial = (label || '?').trim().charAt(0).toUpperCase() || '?';
-  return `<svg viewBox="0 0 400 225" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${esc(label)} — photo coming soon" style="width:100%;aspect-ratio:${aspect};display:block;border-radius:${radius}">
-<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#134a3f"/><stop offset="100%" stop-color="#0c2b23"/></linearGradient></defs>
-<rect width="400" height="225" fill="url(#${gid})"/>
-<path d="M0 172 Q100 150 200 168 T400 158 V225 H0 Z" fill="#ffffff" opacity="0.06"/>
-<path d="M0 198 Q100 182 200 195 T400 188 V225 H0 Z" fill="#ffffff" opacity="0.09"/>
-<text x="50%" y="48%" font-family="system-ui,sans-serif" font-size="42" font-weight="700" fill="#ffffff" fill-opacity="0.85" text-anchor="middle" dominant-baseline="middle">${esc(initial)}</text>
-</svg>`;
-};
-
-const mediaBlock = (imageUrl: string | null | undefined, alt: string, opts: { aspect?: string; radius?: string; seed?: string; eager?: boolean } = {}) => {
-  const aspect = opts.aspect || '16/9';
-  const radius = opts.radius || '14px 14px 0 0';
-  if (imageUrl) {
-    const loading = opts.eager ? 'eager' : 'lazy';
-    const fp = opts.eager ? ' fetchpriority="high"' : '';
-    return `<img src="${esc(imageUrl)}" alt="${esc(alt)}" loading="${loading}"${fp} style="width:100%;aspect-ratio:${aspect};object-fit:cover;border-radius:${radius};display:block;background:#0c2b23">`;
-  }
-  return fallbackMedia(alt, { aspect, radius, seed: opts.seed });
+  const loading = opts.eager ? 'eager' : 'lazy';
+  const fp = opts.eager ? ' fetchpriority="high"' : '';
+  return `<img src="${esc(imageUrl)}" alt="${esc(alt)}" loading="${loading}"${fp} style="width:100%;aspect-ratio:${aspect};object-fit:cover;border-radius:${radius};display:block;background:#0c2b23">`;
 };
 
 // Semantic Fiji image registry (Stage 1 Build Accuracy System, 2026-08-19). Every entry is a
 // real, licensed, source-verified photo (see IMAGE-SOURCES.md) with a defined semantic purpose
 // and permitted/prohibited uses documented there. A photo is only ever assigned to a
-// product/operator via the explicit maps below (PRODUCT_IMAGE_KEY / OPERATOR_IMAGE_KEY) - never
-// inferred from a blind category lookup, so every assignment is an individually-reviewed,
-// truthful decision. Nothing here is presented as depicting a specific operator's actual
-// vehicle, room, staff or dive site - these are all generic Fiji destination/semantic context.
-// An operator/product's own authorized image_url from D1 always takes priority - see
-// resolveImage() below.
+// product/operator via the explicit *_SEMANTIC_ASSIGNMENT maps below (media-classification.ts's
+// classifyEntityMedia()) - never inferred from a blind category lookup, so every assignment is an
+// individually-reviewed, truthful decision. Nothing here is presented as depicting a specific
+// operator's actual vehicle, room, staff or dive site - these are all generic Fiji destination/
+// semantic context, and every SEMANTIC_CATEGORY use now carries its own on-page disclosure label
+// saying so (see media-render.ts). An operator/product's own authorized image_url from D1 always
+// takes priority.
 const SEMANTIC_IMAGES: Record<string, { url: string; alt: string }> = {
   hero: { url: '/images/hero-fiji-leleuvia.webp', alt: 'Aerial view of Leleuvia Island, Fiji' },
   islands: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' },
@@ -165,55 +146,78 @@ const SEMANTIC_IMAGES: Record<string, { url: string; alt: string }> = {
   partners: { url: '/images/category-islands-ocean.webp', alt: 'Fiji islands seen from above' }
 };
 
-// Explicit, product-by-product image decisions. A product with NO entry here intentionally
-// renders the premium branded fallback rather than an unreviewed guess (see resolveImage()) -
-// "truthful fallback" beats "irrelevant photograph." Add an entry only after confirming the
-// assigned photo's documented permitted use genuinely covers this specific product; do not
-// add an entry just to fill the rectangle. Every assignment must also pass the Traveller
-// Expectation Test (see IMAGE-SOURCES.md): if a traveller saw only this image and the product
-// title, would it strengthen their understanding of this exact experience?
+// CEO AUTHORIZATION — IMPLEMENT MEDIA ACCURACY AND FALLBACK SYSTEM (2026-08-29/30), Phases 1/3/4.
+// Every product/operator media decision is now one of the three explicit MediaClass outcomes
+// (media-classification.ts). SEMANTIC_CATEGORY assignments below carry their own per-placement
+// disclosureLabel - never the generic photo caption - because the same photo file can need a
+// different honest label depending on what it's placed next to (see Blue Lagoon below: the exact
+// same category-adventure.webp file needed a corrected, location-naming label specifically
+// because it was previously paired with this operator's own "Nacula Island" location badge).
 //
-// 2026-08-19 Visual Truth Correction Pass: the previous 'airport_transfer' key
-// (context-arrival-sky.webp, a flight/sky photo) failed the Traveller Expectation Test - it
-// read as generic sky/sunset, not transport, and was assigned to all 3 airport-route products
-// identically. It has been retired from active assignment (asset kept, unused - see
-// IMAGE-SOURCES.md). The 'nadi_denarau' marina photo was also removed from every Nadi Airport
-// Transfers product, since none of them involve marina/boat transport - a marina photo may only
-// represent a marina/boat-transfer context, never generic road transfers, per the new rule.
-const PRODUCT_IMAGE_KEY: Record<string, string> = {
-  'blue-lagoon-accommodation-enquiry': 'accommodation',
-  'blue-lagoon-diving-enquiry': 'diving',
-  'blue-lagoon-island-transfer-enquiry': 'yasawa_transfer',
-  'blue-lagoon-wedding-enquiry': 'wedding',
+// 2026-08-19 Visual Truth Correction Pass (superseded 2026-08-30 by this task for the 2 entries
+// below): the previous 'airport_transfer' key (context-arrival-sky.webp) failed the Traveller
+// Expectation Test and was retired (asset kept, unused - see IMAGE-SOURCES.md).
+const PRODUCT_SEMANTIC_ASSIGNMENT: Record<string, SemanticAssignment> = {
+  'blue-lagoon-accommodation-enquiry': { url: SEMANTIC_IMAGES.accommodation.url, alt: SEMANTIC_IMAGES.accommodation.alt, disclosureLabel: 'Representative Fiji resort imagery', fallbackCategory: 'accommodation' },
+  'blue-lagoon-diving-enquiry': { url: SEMANTIC_IMAGES.diving.url, alt: SEMANTIC_IMAGES.diving.alt, disclosureLabel: 'Representative Fiji diving imagery — Warwick', fallbackCategory: 'tour_activity' },
+  'blue-lagoon-island-transfer-enquiry': { url: SEMANTIC_IMAGES.yasawa_transfer.url, alt: SEMANTIC_IMAGES.yasawa_transfer.alt, disclosureLabel: 'Representative Yasawa Islands scenery — Kuata Island', fallbackCategory: 'cruise_island' },
+  'blue-lagoon-wedding-enquiry': { url: SEMANTIC_IMAGES.wedding.url, alt: SEMANTIC_IMAGES.wedding.alt, disclosureLabel: 'Representative Fiji wedding imagery — Nadi', fallbackCategory: 'tour_activity' },
   // blue-lagoon-dining-enquiry: no source-verified matching Fiji dining/food photo found after
-  //   searching Unsplash and Pexels - branded fallback (see IMAGE-SOURCES.md rejected list)
-  'denarau-nadi-airport-transfer': 'road_transfer',
-  'nadi-airport-denarau-transfer': 'road_transfer'
+  //   searching Unsplash and Pexels - BRANDED_FALLBACK (see IMAGE-SOURCES.md rejected list).
+  'denarau-nadi-airport-transfer': { url: SEMANTIC_IMAGES.road_transfer.url, alt: SEMANTIC_IMAGES.road_transfer.alt, disclosureLabel: 'Representative Fiji transfer imagery', fallbackCategory: 'transfer' },
+  'nadi-airport-denarau-transfer': { url: SEMANTIC_IMAGES.road_transfer.url, alt: SEMANTIC_IMAGES.road_transfer.alt, disclosureLabel: 'Representative Fiji transfer imagery', fallbackCategory: 'transfer' }
   // nadi-airport-nadi-hotels-transfer, private-fiji-transfer-enquiry, private-hotel-transfer:
-  //   deliberately left on branded fallback rather than reuse road_transfer a 3rd/4th/5th time
-  //   on the same operator's product list - "stop repetitive image assignment" takes priority
-  //   over forcing a 3rd share of one photo. The 2 products above share road_transfer only
-  //   because they are literally the same physical route in opposite directions.
+  //   deliberately left on the transfer BRANDED_FALLBACK - "stop repetitive image assignment"
+  //   still takes priority over forcing a 3rd/4th/5th share of one photo.
 };
 
-// Explicit per-operator image decision (deliberately not inferred from a region-string match -
-// only 2 operators exist, so an explicit, auditable assignment is safer than pattern-matching).
-const OPERATOR_IMAGE_KEY: Record<string, string> = {
-  'nadi-airport-transfers': 'nadi_denarau',
-  'blue-lagoon-beach-resort': 'yasawa_transfer'
+// A product's own D1 `category` value, used only to select which of the 6 BRANDED_FALLBACK
+// visuals it gets when no PRODUCT_SEMANTIC_ASSIGNMENT and no own image_url exist - so every
+// fallback product still gets a category-appropriate visual instead of one generic default.
+const PRODUCT_CATEGORY_FALLBACK: Record<string, BrandedFallbackCategory> = {
+  ACCOMMODATION: 'accommodation', DINING: 'dining', ACTIVITY: 'tour_activity',
+  EXPERIENCE: 'tour_activity', TRANSPORT: 'transfer', GROUND_TRANSPORT: 'transfer'
 };
 
-// Priority order used everywhere on the site (never "some Fiji image is better than no
-// image"): (1) the operator/product's own authorized image_url from D1, (2) an explicitly
-// assigned, permitted-use semantic photo, (3) the generated branded fallback (handled by
-// mediaBlock itself when url is null). A missing semantic assignment is a deliberate truthful
-// fallback, not a bug - never a broken or misleading image.
-const resolveImage = (ownUrl: string | null | undefined, semanticKey: string | null | undefined, ownAlt: string): { url: string | null; alt: string } => {
-  if (ownUrl) return { url: ownUrl, alt: ownAlt };
-  const ctx = semanticKey ? SEMANTIC_IMAGES[semanticKey] : null;
-  if (ctx) return { url: ctx.url, alt: ctx.alt };
-  return { url: null, alt: ownAlt };
+// Phase 3 correction: 'nadi-airport-transfers' no longer uses the marina photo (visible
+// third-party "FIJI ONE" boat branding on an unrelated ground-transport operator's page - see
+// Phase 0 audit) - it now reuses its own products' already-generic road-transfer photo, which
+// IMAGE-SOURCES.md's own manifest already documents as "general Fiji road/ground-transport
+// context... never a specific location," i.e. proven generic/representative, not another
+// operator's vehicle. 'blue-lagoon-beach-resort' keeps its existing photo but with a corrected,
+// location-naming disclosure label instead of the operator's own (different-island) location
+// badge - see media-classification.ts's allowLocationBadge for the structural enforcement.
+const OPERATOR_SEMANTIC_ASSIGNMENT: Record<string, SemanticAssignment> = {
+  'nadi-airport-transfers': { url: SEMANTIC_IMAGES.road_transfer.url, alt: SEMANTIC_IMAGES.road_transfer.alt, disclosureLabel: 'Representative Fiji transfer imagery', fallbackCategory: 'transfer' },
+  'blue-lagoon-beach-resort': { url: SEMANTIC_IMAGES.yasawa_transfer.url, alt: SEMANTIC_IMAGES.yasawa_transfer.alt, disclosureLabel: 'Representative Yasawa Islands scenery — Kuata Island', fallbackCategory: 'accommodation' }
 };
+
+// Phase 3: the two newly-discovered operators with no photo of their own and no safe semantic
+// substitute (a specific competitor's resort/vessel photo would misrepresent a different named
+// business - the same reasoning IMAGE-SOURCES.md already applied when rejecting the "Oarsman's
+// Bay Lodge" candidate) go straight to their category's BRANDED_FALLBACK.
+const OPERATOR_FALLBACK_CATEGORY: Record<string, BrandedFallbackCategory> = {
+  'intercontinental-fiji-golf-resort-spa-4b89448f': 'accommodation',
+  'south-sea-cruises-20bdfc25': 'cruise_island'
+};
+
+function operatorMedia(o: { image_url?: string | null; slug: string; canonical_name: string }): MediaAsset {
+  return classifyEntityMedia({
+    ownUrl: o.image_url,
+    ownAlt: o.canonical_name,
+    semanticAssignment: OPERATOR_SEMANTIC_ASSIGNMENT[o.slug] || null,
+    fallbackCategory: OPERATOR_FALLBACK_CATEGORY[o.slug] || 'general_operator'
+  });
+}
+
+function productMedia(p: { image_url?: string | null; slug: string; canonical_name: string; operator_name?: string | null; category?: string | null }): MediaAsset {
+  return classifyEntityMedia({
+    ownUrl: p.image_url,
+    ownAlt: p.operator_name ? `${p.canonical_name} — ${p.operator_name}` : p.canonical_name,
+    semanticAssignment: PRODUCT_SEMANTIC_ASSIGNMENT[p.slug] || null,
+    fallbackCategory: PRODUCT_CATEGORY_FALLBACK[p.category || ''] || 'general_operator'
+  });
+}
 
 
 const FAVICON = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#12231b"/><text x="32" y="45" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">V</text></svg>');
@@ -299,7 +303,7 @@ const requireAdmin = (c: any) => {
 };
 
 app.notFound(c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px' })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px' })}</div>
   <span class="badge">404</span><h1>Looks like this path doesn't reach Fiji.</h1><p class="muted">The page you're looking for doesn't exist or may have moved.</p><p class="cta-row"><a class="btn" href="/experiences">Explore Fiji</a> <a class="btn secondary" href="/">Go home</a></p><p class="muted">Looking for something specific? <a href="/contact">Contact support</a>.</p></section>`, { title: 'Page not found — Vakaviti', noindex: true }), 404));
 
 // OG_IMAGE_PATH (/images/og-image.jpg) is now served directly by Workers Static Assets
@@ -311,11 +315,11 @@ app.get('/', async c => {
   // rendering, same as /experiences and /operators - a homepage "featured" slot is exactly the
   // kind of extra exposure an unsafe-source row must never get. LIMIT is raised slightly so a
   // filtered-out row still leaves 3 to show in the common case.
-  const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,o.last_public_check_at,o.website_url,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.created_at ASC LIMIT 10`).all<any>();
+  const featuredProducts = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.image_url,p.verification_status,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,o.last_public_check_at,o.website_url,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.created_at ASC LIMIT 10`).all<any>();
   const featuredOperators = await c.env.DB.prepare(`SELECT o.id,o.canonical_name,o.slug,o.locality,o.region,o.verification_status,o.image_url,o.last_public_check_at,o.website_url,COUNT(p.id) as product_count FROM operators o LEFT JOIN products p ON p.operator_id=o.id AND p.commercial_status='ACTIVE' WHERE o.commercial_status='ACTIVE' GROUP BY o.id ORDER BY o.canonical_name LIMIT 10`).all<any>();
 
-  const expCards = (featuredProducts.results || []).filter((p: any) => hasSafeOfficialSource(p)).slice(0, 3).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
-  const opCards = (featuredOperators.results || []).filter((o: any) => hasSafeOfficialSource(o)).slice(0, 3).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed'}</span></div></a></article>`; }).join('');
+  const expCards = (featuredProducts.results || []).filter((p: any) => hasSafeOfficialSource(p)).slice(0, 3).map((p: any) => { const img = productMedia(p); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${renderMedia(img, { variant: 'card', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
+  const opCards = (featuredOperators.results || []).filter((o: any) => hasSafeOfficialSource(o)).slice(0, 3).map((o: any) => { const img = operatorMedia(o); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${renderMedia(img, { variant: 'card', seed: o.id })}<div class="card-body"><h3 style="margin:0 0 2px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 8px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed'}</span></div></a></article>`; }).join('');
 
   // All 6 categories now have an intentional visual treatment - either a source-verified Fiji
   // photo (4 of 6) or a documented, deliberate branded gradient fallback (Waterfalls & nature,
@@ -361,14 +365,14 @@ ${opCards ? `<section class="section"><h2>Local operators</h2><div class="grid">
 });
 
 app.get('/partners', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.partners.url, SEMANTIC_IMAGES.partners.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.partners.url, SEMANTIC_IMAGES.partners.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">Founding Partner Program</span><h1>Put your Fiji experience in front of travellers.</h1><p class="muted">Vakaviti is a directory and enquiry channel for Fiji tourism operators. We list your business, travellers find you, and their questions get connected through to you — you stay in full control of price, availability and the booking itself.</p></section><section class="grid"><div class="card"><div class="card-body"><h3>What does it cost?</h3><p class="muted">No setup fee and no monthly fee for founding partners while the program is in preview. Final commercial terms will be confirmed with you directly before anything is charged.</p></div></div><div class="card"><div class="card-body"><h3>How does Vakaviti make money?</h3><p class="muted">Through a share of confirmed bookings once commercial terms are agreed with you — not a forced software subscription.</p></div></div><div class="card"><div class="card-body"><h3>What do you control?</h3><p class="muted">Your prices, availability, policies and identity. Nothing about your business goes live as "verified" without you confirming it first.</p></div></div><div class="card"><div class="card-body"><h3>What information is needed?</h3><p class="muted">Your business name, a WhatsApp number for enquiries, your service area, a short description, and at least one experience or service with a price (or "contact for price").</p></div></div><div class="card"><div class="card-body"><h3>What happens after you apply?</h3><p class="muted">We follow up directly by WhatsApp or email to confirm your details and prepare your public profile before it goes live.</p></div></div><div class="card"><div class="card-body"><h3>How are enquiries delivered?</h3><p class="muted">During this preview, traveller enquiries route through the Vakaviti team first, who pass them on to you with full details of what the traveller asked about — not yet a direct real-time connection to your own WhatsApp.</p></div></div></section><section class="section"><h2>Claim or add your business</h2><form method="post" action="/api/partner-interest"><label>Business name</label><input name="business" autocomplete="organization" required><label>Your name</label><input name="name" autocomplete="name" required><label>Phone / WhatsApp</label><input name="phone" type="tel" autocomplete="tel" required><label>Email</label><input name="email" type="email" autocomplete="email"><label>Website or Facebook page</label><input name="url" autocomplete="url"><button class="btn" type="submit">Start my profile</button></form><p class="muted">Prefer email? Write to <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p></section>`, { title: 'Become a Vakaviti Founding Partner', description: 'Join Vakaviti as a Founding Partner — no setup fee, keep control of your prices and bookings, get enquiries by WhatsApp.' })));
 
 app.get('/experiences', async c => {
   const rows = await c.env.DB.prepare(`SELECT p.id,p.canonical_name,p.slug,p.category,p.duration_minutes,p.verification_status,p.image_url,o.canonical_name as operator_name,o.slug as operator_slug,o.locality,o.region,o.last_public_check_at,o.website_url,of.amount_minor,of.currency,of.pricing_basis FROM products p JOIN operators o ON o.id=p.operator_id LEFT JOIN offers of ON of.product_id=p.id AND of.active=1 WHERE p.commercial_status='ACTIVE' AND o.commercial_status='ACTIVE' ORDER BY p.canonical_name LIMIT 100`).all<any>();
   // Official-Source Transparency, fail-closed (Wave 3 correction): a product inherits its parent
   // operator's source-safety requirement, same as the product's own detail page.
-  const cards = (rows.results || []).filter((p: any) => hasSafeOfficialSource(p)).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${p.operator_name}`); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
+  const cards = (rows.results || []).filter((p: any) => hasSafeOfficialSource(p)).map((p: any) => { const img = productMedia(p); const verified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<article class="card"><a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit">${renderMedia(img, { variant: 'card', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc(p.operator_name)} &middot; ${esc([p.locality, p.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0;font-weight:600;color:var(--ink)">${priceLabel({ amount_minor: p.amount_minor, currency: p.currency, pricing_basis: p.pricing_basis })}${durationLabel(p.duration_minutes) ? ' &middot; ' + durationLabel(p.duration_minutes) : ''}</p><span class="trust-tag${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Not yet verified'}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Experiences</span><h1>Fiji tours, activities and transport.</h1><p class="muted">Browse real Fiji experiences and ask Vakaviti on WhatsApp — we'll connect your enquiry with the right operator.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No experiences published yet. Check back soon.</div></div>'}</div>`, { title: 'Fiji Experiences — Vakaviti', description: 'Browse verified Fiji tours, activities and ground transport, and ask Vakaviti on WhatsApp to connect with local operators.', noindex: true }));
 });
 
@@ -392,23 +396,27 @@ app.get('/experiences/:slug', async c => {
     offer?.pickup_policy ? { label: 'Pickup', value: offer.pickup_policy } : null,
     offer?.cancellation_policy ? { label: 'Cancellation', value: offer.cancellation_policy } : null
   ].filter(Boolean) as { label: string; value: string }[];
-  const semanticKey = PRODUCT_IMAGE_KEY[p.slug];
-  const heroImg = resolveImage(p.image_url, semanticKey, `${p.canonical_name} — ${o.canonical_name}`);
-  // A second, complementary photo - only shown when the hero itself resolved to a real,
-  // explicitly-assigned semantic photo (never pair a second photo onto the branded fallback,
-  // and never invent a pairing for a product with no verified match).
-  const SUPPORTING_KEY: Record<string, string> = { islands: 'yasawa_transfer', yasawa_transfer: 'islands', diving: 'islands', accommodation: 'islands', wedding: 'islands', day_tour: 'yasawa_transfer', road_transfer: 'nadi_denarau', nadi_denarau: 'road_transfer' };
-  const supportingKey = !p.image_url && semanticKey ? SUPPORTING_KEY[semanticKey] : null;
-  const supportingImg = supportingKey ? SEMANTIC_IMAGES[supportingKey] : null;
+  const heroImg = productMedia({ ...p, operator_name: o.canonical_name });
+  // A second, complementary photo - only shown when the hero itself resolved to a real
+  // SEMANTIC_CATEGORY photo (never pair a second photo onto the branded fallback, and never
+  // invent a pairing for a product with no verified match). Keyed explicitly by product slug,
+  // not by a reusable semantic key, since Phase 3 retired the marina photo from every pairing.
+  const SUPPORTING_IMAGE_BY_PRODUCT_SLUG: Record<string, { url: string; alt: string }> = {
+    'blue-lagoon-accommodation-enquiry': SEMANTIC_IMAGES.islands,
+    'blue-lagoon-diving-enquiry': SEMANTIC_IMAGES.islands,
+    'blue-lagoon-island-transfer-enquiry': SEMANTIC_IMAGES.islands,
+    'blue-lagoon-wedding-enquiry': SEMANTIC_IMAGES.islands
+  };
+  const supportingImg = (!p.image_url && heroImg.class === 'SEMANTIC_CATEGORY') ? (SUPPORTING_IMAGE_BY_PRODUCT_SLUG[p.slug] || null) : null;
   return c.html(html(`<section class="section" style="padding-top:20px">
-    <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(heroImg.url, heroImg.alt, { aspect: '21/9', radius: '20px', seed: p.id, eager: true })}<span class="loc-badge">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</span></div>
+    <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${renderMedia(heroImg, { variant: 'hero', aspect: '21/9', radius: '20px', seed: p.id, eager: true })}${heroImg.allowLocationBadge ? locationBadge([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji') : ''}</div>
     <span class="badge${verified ? ' verified' : ''}">${verified ? '✓ Vakaviti Verified' : 'Publicly listed — not yet verified'}</span>
     <h1>${esc(p.canonical_name)}</h1>
     <p class="muted">${esc(o.canonical_name)} &middot; ${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
     ${p.description ? `<p>${esc(p.description)}</p>` : ''}
     <div class="grid">${facts.map(f => `<div class="card"><div class="card-body"><h3 style="margin:0 0 6px;font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">${esc(f.label)}</h3><p style="margin:0;font-weight:600">${esc(f.value)}</p></div></div>`).join('')}</div>
     <p class="muted">Operated by ${esc(o.canonical_name)}. ${verified ? 'Identity and details verified by Vakaviti.' : 'This listing is publicly discovered and has not yet been verified by Vakaviti — confirm details directly with the operator.'}</p>
-    ${supportingImg ? `<div style="margin:20px 0;border-radius:16px;overflow:hidden">${mediaBlock(supportingImg.url, supportingImg.alt, { aspect: '16/7', radius: '16px' })}</div>` : ''}
+    ${supportingImg ? `<div style="margin:20px 0;border-radius:16px;overflow:hidden">${plainImage(supportingImg.url, supportingImg.alt, { aspect: '16/7', radius: '16px' })}</div>` : ''}
     <div class="wa-sticky"><a class="btn whatsapp" href="${enquireHref}" style="width:100%;text-align:center;box-sizing:border-box;display:block">Ask Vakaviti on WhatsApp</a><p class="muted" style="margin:8px 0 0;font-size:13px">Vakaviti will help connect your enquiry with the right local operator.</p></div>
     <p><a class="btn secondary" href="/operators/${esc(o.slug)}">View operator</a></p>
   </section>`, { title: `${p.canonical_name} — Vakaviti`, description: `${p.canonical_name} with ${o.canonical_name} in Fiji. ${priceLabel(offer)}.`, ogImage: absoluteImage(p.image_url || heroImg.url), noindex: true }));
@@ -426,7 +434,7 @@ app.get('/operators', async c => {
   // Official-Source Transparency, fail-closed (Wave 3 correction): an AI-discovered row whose
   // official source is no longer safely resolvable is filtered out of this list entirely, the
   // same fail-closed rule enforced on its own profile page.
-  const cards = (rows.results || []).filter((o: any) => hasSafeOfficialSource(o)).map((o: any) => { const img = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${mediaBlock(img.url, img.alt, { seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
+  const cards = (rows.results || []).filter((o: any) => hasSafeOfficialSource(o)).map((o: any) => { const img = operatorMedia(o); const verified = o.verification_status === 'VAKAVITI_VERIFIED'; const pilotPartner = Number(o.pilot_partner_count) > 0; const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at; const trustLabel = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered' : 'Publicly listed'; return `<article class="card"><a href="/operators/${esc(o.slug)}" style="text-decoration:none;color:inherit">${renderMedia(img, { variant: 'card', seed: o.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(o.canonical_name)}</h3><p class="muted" style="margin:0 0 6px">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p><p class="muted" style="margin:0">${o.product_count} experience${o.product_count === 1 ? '' : 's'}</p><span class="trust-tag${verified ? ' verified' : ''}">${trustLabel}</span></div></a></article>`; }).join('');
   return c.html(html(`<section class="section"><span class="badge">Fiji Operator Graph</span><h1>Fiji tourism operators, structured in one place.</h1><p class="muted">Publicly listed means we found public evidence the operator exists. It does not mean identity, licences, prices, availability or products have been verified by Vakaviti.</p></section><div class="grid">${cards || '<div class="card"><div class="card-body">No operators imported yet. Candidate collection is the next stage.</div></div>'}</div>`, { title: 'Fiji Tourism Operators — Vakaviti', noindex: true }));
 });
 
@@ -452,11 +460,11 @@ app.get('/operators/:slug', async c => {
   // or Vakaviti Verified operators, and never implies partnership, verification, or endorsement.
   const aiDiscovered = !verified && !pilotPartner && !!o.last_public_check_at;
   const status = verified ? '✓ Vakaviti Verified' : pilotPartner ? '✓ Vakaviti Pilot Partner' : aiDiscovered ? 'Vakaviti-discovered Fiji provider' : 'Publicly listed — information not yet verified by Vakaviti';
-  const list =(productRows.results || []).map((p: any) => { const img = resolveImage(p.image_url, PRODUCT_IMAGE_KEY[p.slug], `${p.canonical_name} — ${o.canonical_name}`); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${mediaBlock(img.url, img.alt, { aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
+  const list =(productRows.results || []).map((p: any) => { const img = productMedia({ ...p, operator_name: o.canonical_name }); const pverified = p.verification_status === 'VAKAVITI_VERIFIED'; return `<a href="/experiences/${esc(p.slug)}" style="text-decoration:none;color:inherit"><article class="card">${renderMedia(img, { variant: 'card', aspect: '4/3', seed: p.id })}<div class="card-body"><h3 style="margin:0 0 4px">${esc(p.canonical_name)}</h3><span class="trust-tag${pverified ? ' verified' : ''}">${pverified ? '✓ Verified' : 'Not yet verified'}</span></div></article></a>`; }).join('');
   const enquireHref = `/enquire/${esc(o.slug)}`;
-  const opHeroImg = resolveImage(o.image_url, OPERATOR_IMAGE_KEY[o.slug], o.canonical_name);
+  const opHeroImg = operatorMedia(o);
   return c.html(html(`<section class="section">
-    <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(opHeroImg.url, opHeroImg.alt, { aspect: '21/9', radius: '20px', seed: o.id, eager: true })}<span class="loc-badge">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</span></div>
+    <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${renderMedia(opHeroImg, { variant: 'hero', aspect: '21/9', radius: '20px', seed: o.id, eager: true })}${opHeroImg.allowLocationBadge ? locationBadge([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji') : ''}</div>
     <span class="badge${verified ? ' verified' : ''}">${status}</span>
     <h1>${esc(o.canonical_name)}</h1>
     <p class="muted">${esc([o.locality, o.region].filter(Boolean).join(', ') || 'Fiji')}</p>
@@ -628,19 +636,19 @@ app.post('/api/partner-interest', async c => {
 });
 
 app.get('/about', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.hero.url, SEMANTIC_IMAGES.hero.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">About</span><h1>What Vakaviti is — and isn't.</h1></section><div class="grid"><div class="card"><div class="card-body"><h3>What we are</h3><p class="muted">A directory that helps travellers find real Fiji tour, activity and ground transport operators, and connects them directly with those operators.</p></div></div><div class="card"><div class="card-body"><h3>What "publicly listed" means</h3><p class="muted">We found public evidence an operator exists. It does not mean we have verified identity, licences, prices or availability.</p></div></div><div class="card"><div class="card-body"><h3>What "Vakaviti Verified" means</h3><p class="muted">A human at Vakaviti has reviewed and confirmed the operator's identity and key facts. Verified status is never automatic and is never granted by AI alone.</p></div></div><div class="card"><div class="card-body"><h3>How enquiries work today</h3><p class="muted">During this preview, tapping "Ask Vakaviti on WhatsApp" opens a chat with Vakaviti, not the operator directly — we pass your enquiry on to the right local operator. The message always states which operator and experience you're asking about. Vakaviti does not currently process payments or confirm bookings — the operator handles your booking directly once connected.</p></div></div><div class="card"><div class="card-body"><h3>For operators</h3><p class="muted">Operators can join as a Founding Partner. See <a href="/partners">Become a Partner</a> for details.</p></div></div><div class="card"><div class="card-body"><h3>Questions?</h3><p class="muted">Reach us at <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p></div></div></div>`, { title: 'About Vakaviti', description: 'What Vakaviti is, what verification means, and how enquiries work.' })));
 
 app.get('/privacy', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/5', radius: '16px' })}</div>
+  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/5', radius: '16px' })}</div>
   <span class="badge">Preview</span><h1>Privacy</h1><p class="muted">This is a preview environment. A complete Privacy Policy will be published before public launch. In the meantime:</p></section><div class="grid"><div class="card"><div class="card-body"><p class="muted">Claim and Founding Partner forms collect the contact details you submit, used only to follow up with you.</p></div></div><div class="card"><div class="card-body"><p class="muted">Tapping a WhatsApp enquiry button records which listing and operator it relates to, and the time — not your personal details, which stay inside WhatsApp.</p></div></div><div class="card"><div class="card-body"><p class="muted">We do not sell your information.</p></div></div></div><p class="muted">Questions? Email <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p>`, { title: 'Privacy — Vakaviti', noindex: true })));
 
 app.get('/terms', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.yasawa_transfer.url, SEMANTIC_IMAGES.yasawa_transfer.alt, { aspect: '21/5', radius: '16px' })}</div>
+  <div style="border-radius:16px;overflow:hidden;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.yasawa_transfer.url, SEMANTIC_IMAGES.yasawa_transfer.alt, { aspect: '21/5', radius: '16px' })}</div>
   <span class="badge">Preview</span><h1>Terms</h1><p class="muted">This is a preview environment. Complete Terms of Service will be published before public launch. In the meantime:</p></section><div class="grid"><div class="card"><div class="card-body"><p class="muted">Vakaviti is a directory and enquiry channel. We do not currently process payments or confirm bookings — any booking is arranged directly between you and the operator.</p></div></div><div class="card"><div class="card-body"><p class="muted">"Publicly listed" is not the same as "verified." Check the badge on each listing before relying on any detail.</p></div></div><div class="card"><div class="card-body"><p class="muted">Operators are responsible for the accuracy of information they confirm, and for fulfilling any booking made with them.</p></div></div></div><p class="muted">Questions? Email <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a>.</p>`, { title: 'Terms — Vakaviti', noindex: true })));
 
 app.get('/contact', c => c.html(html(`<section class="section" style="padding-top:20px">
-  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${mediaBlock(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
+  <div class="hero-media" style="aspect-ratio:21/9;margin-bottom:20px">${plainImage(SEMANTIC_IMAGES.islands.url, SEMANTIC_IMAGES.islands.alt, { aspect: '21/9', radius: '20px', eager: true })}</div>
   <span class="badge">Support</span><h1>Contact Vakaviti</h1><p class="muted">For travellers: use "Ask Vakaviti on WhatsApp" on any listing for the fastest response — during this preview, enquiries go to the Vakaviti team first, who connect you with the right operator.</p><p>For everything else, including operators wanting to join: <a href="mailto:helpronline@gmail.com">helpronline@gmail.com</a></p><p><a class="btn secondary" href="/partners">Become a Founding Partner</a></p></section>`, { title: 'Contact — Vakaviti' })));
 
 app.post('/api/admin/ai/enrich-candidate', async c => {
