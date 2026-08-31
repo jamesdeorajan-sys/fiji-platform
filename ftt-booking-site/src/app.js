@@ -1045,7 +1045,7 @@ function confirmBooking() {
   const bulaName = document.getElementById('bulaName');
   if (bulaName) bulaName.textContent = firstName;
   const bulaRef = document.getElementById('bulaRef');
-  if (bulaRef) bulaRef.textContent = `Booking ref: ${ref}`;
+  if (bulaRef) bulaRef.textContent = `Request ref: ${ref}`;
   const bulaWaBtn = document.getElementById('bulaWaBtn');
   if (bulaWaBtn) bulaWaBtn.href = waUrl;
 
@@ -1474,41 +1474,13 @@ function buildToursGrid() {
   }).join('');
 }
 
-// ─── REVIEWS DATA ────────────────────────────────────────────────────────────
-const REVIEWS_DATA = [
-  { stars:5, text:'"Driver was waiting in arrivals with our name. Shell lei, cold water, and a supermarket stop on the way. Couldn\'t have been easier arriving with two kids after a 10-hour flight from Sydney."', name:'Sarah M.', location:'Sydney, AU', source:'Google', color:'#0066cc' },
-  { stars:5, text:'"Junior Ali drove us from the airport to Coral Coast — 90 minutes and the whole time he was sharing stories about the villages we passed. Spotless vehicle, on time, genuinely friendly."', name:'Mark T.', location:'Auckland, NZ', source:'TripAdvisor', color:'#00b386' },
-  { stars:5, text:'"Booked online from Melbourne — easy process. Driver met us at arrivals with a sign, helped with all bags, waited patiently while we stopped at the ATM. Will use again on every Fiji trip."', name:'James & Kel', location:'Melbourne, AU', source:'Google', color:'#7c3aed' },
-  { stars:5, text:'"Transferred 8 of us from Nadi to Port Denarau in a large clean Toyota van. Kids seats provided without asking. Excellent communication, arrived on time, competitive pricing. Highly recommend."', name:'The Williamson Family', location:'Brisbane, AU', source:'Google', color:'#b45309' },
-  { stars:5, text:'"Used for both airport pickup and the Sigatoka Sand Dunes day tour. The guide was knowledgeable about the archaeology — genuinely one of the highlights of our Fiji trip."', name:'Claire H.', location:'London, UK', source:'TripAdvisor', color:'#dc2626' },
-  { stars:5, text:'"Booked a return transfer Nadi to Pacific Harbour for our shark dive trip. Driver was 15 minutes early both ways. Even texted to confirm the morning of. Absolutely faultless."', name:'Ryan & Sophie', location:'Wellington, NZ', source:'Google', color:'#059669' },
-];
-
-function buildReviews() {
-  const grid = document.getElementById('reviewsGrid');
-  if (!grid) return;
-  grid.innerHTML = REVIEWS_DATA.map(r => `
-    <div class="review-card">
-      <div class="review-stars">${'★'.repeat(r.stars)}</div>
-      <div class="review-text">${r.text}</div>
-      <div class="review-author">
-        <div class="review-avatar" style="background:${r.color}">${r.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
-        <div>
-          <div class="review-name">${r.name}</div>
-          <div class="review-location">${r.location}</div>
-          <div class="review-source">${r.source} review · Verified</div>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
 // ─── FAQ DATA ────────────────────────────────────────────────────────────────
 const FAQ_DATA = [
   { q:'Is there Uber in Fiji?', a:'No — Uber does not operate in Fiji. Your reliable options are pre-booked private transfer services (like ours), shared shuttles, or licensed metered taxis. Pre-booking is strongly recommended to avoid negotiating fares after a long flight.' },
   { q:'How long is the drive from Nadi Airport to the Coral Coast?', a:"Journey times depend on your resort: Shangri-La Yanuca ~55 min (72 km), Gecko's / Bedarra ~80 min (82 km), Outrigger Fiji ~95 min (98 km), The Warwick / Naviti ~98 min (100 km). A private transfer is recommended." },
   { q:'How much does a Nadi Airport to Denarau transfer cost?', a:'Private sedan (1–3 pax): FJ$49 per vehicle. Private minivan (4–7 pax): FJ$69. Minibus (8–12 pax): FJ$99. Denarau is approximately 12 km from the airport — 18–20 minutes.' },
   { q:'How is pricing calculated?', a:'Distance-based pricing in FJD with no surge fees. Short trips (Nadi/Denarau): from FJ$19 sedan, FJ$49 minivan. Mid-range (Natadola, Sigatoka): from FJ$99 sedan. Long-haul (Coral Coast, Pacific Harbour, Suva): from FJ$129 sedan. A 20% night surcharge applies for pickups between 10 pm and 6 am. Return bookings are discounted vs two one-ways.' },
-  { q:'What if my flight is delayed?', a:'We monitor all incoming flights in real time. If your flight is delayed your driver adjusts automatically — no extra charge. Just provide your flight number at booking.' },
+  { q:'What if my flight is delayed?', a:'Provide your flight number at booking — our team checks it against the actual arrival time and coordinates your driver\'s pickup accordingly, at no extra charge for genuine delays.' },
   { q:'Can I stop at a supermarket or ATM on the way?', a:'Yes — all private transfers include one complimentary stop at a supermarket, ATM, bottle shop or pharmacy en route. Mention it in special requests when booking.' },
   { q:'Do you provide baby or child seats?', a:'Yes, on request for a small charge of FJ$8. Specify your children\'s ages in special requests so we can fit the right seat before your arrival.' },
   { q:'How do I find my driver at Nadi Airport?', a:'Your driver waits in the international arrivals hall with a sign showing your name. If you can\'t find them, call or WhatsApp the number on your confirmation immediately.' },
@@ -1691,7 +1663,6 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 document.addEventListener('DOMContentLoaded', () => {
   buildRoutesTable();
   buildToursGrid();
-  buildReviews();
   buildFAQ();
 
   // Convert pickup & destination selects into searchable typeahead dropdowns
