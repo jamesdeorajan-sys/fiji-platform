@@ -966,26 +966,23 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <h2 class="bula-title">Thank you for booking with us, <span id="bulaName">friend</span>!</h2>
+        <h2 class="bula-title">Thanks, <span id="bulaName">friend</span> — your booking is in!</h2>
         <div class="bula-ref" id="bulaRef"></div>
 
-        <p class="bula-lead">
-          Your booking details are saved, but <strong>nothing has been sent to our team yet</strong>.
-          Tap the button below now — we can't process your booking until you do.
+        <!-- CEO P0 fix (Issue #34): the booking is server-confirmed (a real
+             row exists and our team has already been alerted, independent
+             of anything below) BEFORE this card is ever shown - see
+             confirmBooking()/submitMarketplaceBooking() in app.js. WhatsApp
+             is a genuinely optional extra channel now, never a requirement
+             the booking's existence depends on. -->
+        <p class="bula-lead" id="bulaLeadText">
+          ✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we'll confirm your driver directly.
         </p>
 
-        <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn" onclick="markWhatsAppTapped()">
+        <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-          Send booking via WhatsApp — required →
+          Chat with Fiji Dash about this booking
         </a>
-
-        <!-- Real requirement, not a nicety: the bookings row exists in the
-             DB at this point regardless (status='pending'), but no human
-             sees it until this WhatsApp message actually sends - from the
-             guest's side, correctly, nothing happens without this tap. -->
-        <div class="bula-required-notice" id="bulaRequiredNotice">
-          ⚠️ <strong>Required:</strong> your booking is not sent to our team until you tap the button above.
-        </div>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
         <div class="bula-modify">
@@ -1033,6 +1030,33 @@
           Vinaka vakalevu — see you in paradise! 🌺<br>
           <em>The Fiji Dash team</em>
         </p>
+      </div>
+    </div>
+
+    <!-- BOOKING FAILURE / RECOVERY CARD — CEO P0 fix (Issue #34): shown
+         INSTEAD of bulaSuccess when the marketplace POST /bookings call
+         fails or times out. Never shows a false success - confirmBooking()
+         in app.js only shows bulaSuccess after the server actually
+         confirms. An escalation is fired automatically the moment this
+         card is shown (see app.js), independent of whether the guest does
+         anything from here - so ops sees a failed handoff even if the
+         guest closes the tab without retrying or messaging. -->
+    <div class="bula-success bula-failure" id="bulaFailure" style="display:none">
+      <div class="bula-success-inner">
+        <div class="bula-eyebrow">We hit a snag</div>
+        <h2 class="bula-title">We couldn't confirm your booking automatically</h2>
+        <p class="bula-lead">
+          Your details are saved and our team has already been alerted to check on this.
+          Please try again, or message us directly on WhatsApp and we'll get you booked right away.
+        </p>
+        <div class="bula-actions">
+          <button class="btn-primary btn-confirm" id="bulaRetryBtn" onclick="retryMarketplaceBooking()">Try again</button>
+          <a id="bulaFailureWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
+            Message us on WhatsApp instead
+          </a>
+        </div>
+        <p class="bula-ref" id="bulaFailureRef"></p>
       </div>
     </div>
 

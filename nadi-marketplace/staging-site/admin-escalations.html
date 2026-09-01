@@ -3,15 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fiji Dash — Destinations Admin</title>
+<title>Fiji Dash — Escalations</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
-  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; }
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
   * { box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
-  .wrap { max-width: 900px; margin: 0 auto; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
   h1 { font-size: 22px; margin-bottom: 4px; }
-  h2 { font-size: 16px; margin: 28px 0 12px; }
   .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
   #gate { max-width: 360px; margin: 80px auto; text-align: center; }
   #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
@@ -22,33 +21,30 @@
   #gateMsg.err { color: var(--red); }
   .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
   #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
-  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-  .toolbar button { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--ocean); }
 
-  .add-form { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end; }
-  .add-form label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
-  .add-form input, .add-form select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
-  .add-form button { background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-  .add-form button:disabled { opacity: 0.5; cursor: not-allowed; }
-  #addMsg { grid-column: 1 / -1; font-size: 13px; padding: 6px 10px; border-radius: 6px; display: none; }
-  #addMsg.ok { display: block; background: #e5f5ea; color: #1a5c34; }
-  #addMsg.err { display: block; background: #fdeaea; color: #8a1f1f; }
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar label { font-size: 13px; color: #666; }
+  .toolbar select, .toolbar button, .toolbar input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar input { min-width: 220px; }
+  .toolbar button { cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .zone-group { margin-bottom: 20px; }
-  .zone-title { font-weight: 700; font-size: 15px; color: var(--ocean); margin-bottom: 8px; }
-  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
-  th { background: #f2ece0; font-weight: 600; color: #666; }
-  tr:last-child td { border-bottom: none; }
-  tr.inactive { opacity: 0.5; }
-  .type-badge { display: inline-block; background: #eef4f7; color: var(--ocean); border-radius: 10px; padding: 2px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
-  .row-actions { display: flex; gap: 6px; }
-  .btn-sm { border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
-  .btn-deactivate { background: var(--red); color: #fff; }
-  .btn-activate { background: var(--green); color: #fff; }
-  .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
-  .empty { color: #888; font-size: 14px; padding: 30px 0; text-align: center; }
-  select.zone-edit { padding: 4px 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; }
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .queue { display: flex; flex-direction: column; gap: 10px; }
+  .esc-card { background: #fffdf8; border: 1px solid var(--line); border-left: 4px solid var(--amber); border-radius: 8px; padding: 14px 16px; }
+  .esc-card.resolved { border-left-color: var(--green); opacity: 0.75; }
+  .esc-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .esc-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; font-size: 12px; color: var(--ocean); }
+  .esc-time { color: #999; font-size: 12px; white-space: nowrap; }
+  .esc-context { font-size: 13px; color: #333; margin-bottom: 8px; line-height: 1.4; }
+  .esc-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #888; }
+  .source-badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; background: #e6f0ff; color: var(--ocean); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .esc-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
+  .resolve-btn { background: var(--green); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .resolve-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .resolved-tag { font-size: 12px; color: var(--green); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -72,35 +68,22 @@
 </div>
 
 <div class="wrap" id="main" style="display:none;">
-  <div class="toolbar"><button id="logoutBtn" type="button">Log out</button></div>
-  <h1>Destinations</h1>
+  <h1>Escalations</h1>
   <p class="sub" id="subline">Loading…</p>
 
-  <h2>Add a new destination</h2>
-  <div class="add-form">
-    <div>
-      <label for="newName">Name</label>
-      <input type="text" id="newName" placeholder="e.g. Novotel Nadi">
-    </div>
-    <div>
-      <label for="newType">Type</label>
-      <select id="newType">
-        <option value="hotel">Hotel</option>
-        <option value="airport">Airport</option>
-        <option value="port">Port</option>
-        <option value="town">Town</option>
-        <option value="custom">Custom</option>
-      </select>
-    </div>
-    <div>
-      <label for="newZone">Zone</label>
-      <select id="newZone"><option value="">Loading zones…</option></select>
-    </div>
-    <button id="addBtn">Add destination</button>
-    <div id="addMsg"></div>
+  <div class="toolbar">
+    <label for="resolvedFilter">Show</label>
+    <select id="resolvedFilter">
+      <option value="0">Open</option>
+      <option value="1">Resolved</option>
+    </select>
+    <input type="text" id="searchInput" placeholder="Search guest name, phone, or context…">
+    <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn" type="button">Log out</button>
   </div>
 
-  <div id="list" style="margin-top:24px;"></div>
+  <div class="err-banner" id="errBanner"></div>
+  <div id="list"></div>
 </div>
 
 <script>
@@ -127,11 +110,10 @@
 
   async function tryLoad() {
     if (!ADMIN_TOKEN) return false;
-    const ok = await loadDestinations();
+    const ok = await loadEscalations();
     if (ok) {
       document.getElementById('gate').style.display = 'none';
       document.getElementById('main').style.display = 'block';
-      loadZonesIntoSelect();
       return true;
     }
     return false;
@@ -237,135 +219,113 @@
     document.getElementById('main').style.display = 'none';
   });
 
-  async function loadZonesIntoSelect() {
-    const sel = document.getElementById('newZone');
-    try {
-      const res = await fetch(API_URL + '/zones');
-      const data = await res.json();
-      sel.innerHTML = (data.zones || []).map(z => `<option value="${escHtml(z.name)}">${escHtml(z.name)}</option>`).join('');
-    } catch {
-      sel.innerHTML = '<option value="">Could not load zones</option>';
-    }
-  }
+  document.getElementById('resolvedFilter').addEventListener('change', loadEscalations);
+  document.getElementById('refreshBtn').addEventListener('click', loadEscalations);
 
-  let allDestinations = [];
-
-  async function loadDestinations() {
-    try {
-      const res = await fetch(API_URL + '/admin/destinations', { headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN } });
-      if (!res.ok) return false;
-      const data = await res.json();
-      allDestinations = data.destinations || [];
-      renderList();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function renderList() {
-    const activeCount = allDestinations.filter(d => d.active).length;
-    document.getElementById('subline').textContent =
-      allDestinations.length + ' destination' + (allDestinations.length === 1 ? '' : 's') +
-      ' (' + activeCount + ' active)';
-
-    const listEl = document.getElementById('list');
-    if (allDestinations.length === 0) {
-      listEl.innerHTML = '<div class="empty">No destinations yet.</div>';
-      return;
-    }
-
-    const byZone = new Map();
-    for (const d of allDestinations) {
-      if (!byZone.has(d.zone)) byZone.set(d.zone, []);
-      byZone.get(d.zone).push(d);
-    }
-
-    listEl.innerHTML = [...byZone.entries()].map(([zone, dests]) => `
-      <div class="zone-group">
-        <div class="zone-title">${escHtml(zone)}</div>
-        <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Order</th><th></th></tr></thead>
-          <tbody>
-            ${dests.map(d => `
-              <tr class="${d.active ? '' : 'inactive'}" data-id="${d.id}">
-                <td>${escHtml(d.name)}</td>
-                <td><span class="type-badge">${escHtml(d.type)}</span></td>
-                <td>${d.display_order == null ? '—' : d.display_order}</td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn-sm ${d.active ? 'btn-deactivate' : 'btn-activate'}" onclick="toggleActive(${d.id}, ${!d.active}, this)">
-                      ${d.active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `).join('');
-  }
-
-  document.getElementById('addBtn').addEventListener('click', async () => {
-    const name = document.getElementById('newName').value.trim();
-    const type = document.getElementById('newType').value;
-    const zone = document.getElementById('newZone').value;
-    const msgEl = document.getElementById('addMsg');
-    const btn = document.getElementById('addBtn');
-
-    if (!name || !zone) {
-      msgEl.className = 'err'; msgEl.textContent = 'Name and zone are required.'; msgEl.style.display = 'block';
-      return;
-    }
-
-    btn.disabled = true;
-    try {
-      const res = await fetch(API_URL + '/admin/destinations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
-        body: JSON.stringify({ name, type, zone }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        msgEl.className = 'ok'; msgEl.textContent = 'Added "' + name + '".'; msgEl.style.display = 'block';
-        document.getElementById('newName').value = '';
-        await loadDestinations();
-      } else {
-        msgEl.className = 'err'; msgEl.textContent = (data.errors || [data.error] || ['Failed to add.']).join(', '); msgEl.style.display = 'block';
-      }
-    } catch {
-      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
-    } finally {
-      btn.disabled = false;
-    }
+  let searchDebounceTimer = null;
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadEscalations, 400);
   });
 
-  async function toggleActive(id, makeActive, btnEl) {
+  async function loadEscalations() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const resolved = document.getElementById('resolvedFilter').value;
+      const search = document.getElementById('searchInput').value.trim();
+      const params = new URLSearchParams({ resolved });
+      if (search) params.set('search', search);
+      const res = await fetch(API_URL + '/admin/escalations?' + params.toString(), {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load escalations (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderEscalations(data.escalations || []);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function triggerTypeLabel(type) {
+    return String(type || '').replace(/_/g, ' ');
+  }
+
+  function renderEscalations(escalations) {
+    const isResolvedView = document.getElementById('resolvedFilter').value === '1';
+    document.getElementById('subline').textContent = escalations.length + ' ' +
+      (isResolvedView ? 'resolved' : 'open') + ' escalation' + (escalations.length === 1 ? '' : 's');
+
+    const listEl = document.getElementById('list');
+    if (escalations.length === 0) {
+      listEl.innerHTML = '<div class="empty">No ' + (isResolvedView ? 'resolved' : 'open') + ' escalations.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '<div class="queue">' + escalations.map(e => `
+      <div class="esc-card ${e.resolved ? 'resolved' : ''}" id="esc-card-${e.id}">
+        <div class="esc-top">
+          <span class="esc-type">${escHtml(triggerTypeLabel(e.trigger_type))}</span>
+          <span class="esc-time">${escHtml(e.created_at)}</span>
+        </div>
+        <div class="esc-context">${escHtml(e.context || '—')}</div>
+        <div class="esc-meta">
+          <span><span class="source-badge">${escHtml(e.source)}</span></span>
+          ${e.booking_id ? `<span>Booking #${e.booking_id}${e.pickup_zone ? ': ' + escHtml(e.pickup_zone) + ' → ' + escHtml(e.destination_zone) : ''}${e.booking_guest_name ? ' (' + escHtml(e.booking_guest_name) + ')' : ''}</span>` : ''}
+          ${e.driver_id ? `<span>Driver: ${escHtml(e.driver_name || ('#' + e.driver_id))}</span>` : ''}
+        </div>
+        <div class="esc-bottom">
+          ${e.resolved
+            ? '<span class="resolved-tag">✓ Resolved</span>'
+            : `<button class="resolve-btn" data-escalation-id="${e.id}" onclick="resolveEscalation(${e.id}, this)">Resolve</button>`}
+        </div>
+      </div>
+    `).join('') + '</div>';
+  }
+
+  // Milestone 31 - the one action the queue was missing: closing an
+  // escalation out. Fades the card in place rather than re-fetching the
+  // whole list, since the open-queue view (the default) would otherwise
+  // need the resolved card to disappear, and the resolved-history view
+  // would need it to appear - simplest correct behavior for both is just
+  // reflecting the new state on the card itself.
+  async function resolveEscalation(id, btnEl) {
     btnEl.disabled = true;
     try {
-      let res;
-      if (makeActive) {
-        res = await fetch(`${API_URL}/admin/destinations/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
-          body: JSON.stringify({ active: true }),
-        });
-      } else {
-        res = await fetch(`${API_URL}/admin/destinations/${id}/deactivate`, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
-        });
-      }
-      if (res.ok) {
-        await loadDestinations();
-      } else {
+      const res = await fetch(API_URL + '/admin/escalations/' + id + '/resolve', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
         btnEl.disabled = false;
-        alert('Could not update destination.');
+        alert(data.error || 'Could not resolve this escalation.');
+        return;
       }
-    } catch {
+      const card = document.getElementById('esc-card-' + id);
+      if (card) {
+        card.classList.add('resolved');
+        const bottom = card.querySelector('.esc-bottom');
+        if (bottom) bottom.innerHTML = '<span class="resolved-tag">✓ Resolved</span>';
+      }
+    } catch (e) {
       btnEl.disabled = false;
-      alert('Connection error.');
+      alert('Connection error - could not resolve this escalation.');
     }
   }
 

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Bookings</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
+  #gateMsg.ok { color: var(--green); }
+  #gateMsg.err { color: var(--red); }
+  .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
+  #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
+  #logoutBtn { margin-left: auto; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar label { font-size: 13px; color: #666; }
+  .toolbar select, .toolbar button, .toolbar input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar input { min-width: 220px; }
+  .toolbar button { cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f2ece0; font-weight: 600; color: #666; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .route { font-weight: 600; }
+  .meta { color: #888; font-size: 12px; margin-top: 2px; }
+  .price { font-weight: 700; white-space: nowrap; }
+  .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .status-pending { background: #fdf3e0; color: var(--amber); }
+  .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
+  .status-completed { background: #e5f5ea; color: var(--green); }
+  .status-cancelled { background: #fdeaea; color: var(--red); }
+  .stale-badge { display: inline-block; margin-left: 6px; border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #fdeaea; color: var(--red); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .expand-btn { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--ocean); }
+  .cancel-btn { background: none; border: 1px solid var(--red); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--red); }
+  .cancel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .events-row td { background: #f7f2e8; padding: 0; }
+  .events-wrap { padding: 12px 16px; }
+  .events-wrap .loading, .events-wrap .empty-events { color: #888; font-size: 12px; padding: 6px 0; }
+  .event-list { list-style: none; margin: 0; padding: 0; }
+  .event-item { display: flex; gap: 10px; padding: 6px 0; font-size: 12px; border-bottom: 1px dashed var(--line); }
+  .event-item:last-child { border-bottom: none; }
+  .event-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ocean); min-width: 90px; }
+  .event-detail { flex: 1; color: #444; }
+  .event-time { color: #999; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
+  <div id="gateMsg"></div>
+  <button id="showPhoneLoginBtn" type="button" class="link-btn">Or send a login link via WhatsApp instead</button>
+  <div id="phoneLoginWrap" style="display:none;">
+    <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+    <button id="loginBtn">Send login link</button>
+  </div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
+  </div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Bookings</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <div class="toolbar">
+    <label for="statusFilter">Status</label>
+    <select id="statusFilter">
+      <option value="">All</option>
+      <option value="pending">Pending</option>
+      <option value="accepted">Accepted</option>
+      <option value="en_route">En route</option>
+      <option value="completed">Completed</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <input type="text" id="searchInput" placeholder="Search guest name or phone…">
+    <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn" type="button">Log out</button>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      ADMIN_TOKEN = tokenFromLink;
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    await tryLoad();
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadBookings();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  // Milestone 24 - PIN login, the default/primary path now: no WhatsApp
+  // dependency, works the moment a PIN is set (via admin-dashboard.html).
+  // POST /admin/login-pin returns the token directly in the response
+  // (unlike the magic link, there's no WhatsApp round-trip to wait on).
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!pin) return;
+    document.getElementById('pinLoginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        ADMIN_TOKEN = data.token;
+        sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+        document.getElementById('pinInput').value = '';
+        await tryLoad();
+      } else {
+        msgEl.className = 'err';
+        msgEl.textContent = data.error || 'Something went wrong.';
+        msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('pinLoginBtn').disabled = false;
+    }
+  });
+
+  // Milestone 23 - phone-number magic-link login, kept as a secondary
+  // option (collapsed by default) alongside the PIN above. POST
+  // /admin/login is intentionally generic either way (same
+  // privacy-by-default posture as driver login) - a real login link
+  // only actually arrives via WhatsApp for the one authorized number.
+  document.getElementById('showPhoneLoginBtn').addEventListener('click', () => {
+    document.getElementById('phoneLoginWrap').style.display = 'block';
+    document.getElementById('showPhoneLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  });
+
+  // Real gap found live: the static env.ADMIN_TOKEN break-glass path
+  // (requireAdmin() has always accepted it, unchanged since Milestone 23)
+  // had no UI left to use it through at all - the raw-token input was
+  // removed when the magic link replaced it, and never restored. James
+  // was locked out of setting his first PIN, since neither the PIN field
+  // (correctly empty/unset) nor the WhatsApp link (template not yet
+  // submitted) could get him in. This restores a third, collapsed option
+  // using the token he already has - no backend change needed, since
+  // requireAdmin() already accepts it.
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => {
+    document.getElementById('tokenLoginWrap').style.display = 'block';
+    document.getElementById('showTokenLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const token = document.getElementById('tokenInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!token) return;
+    document.getElementById('tokenLoginBtn').disabled = true;
+    ADMIN_TOKEN = token;
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      ADMIN_TOKEN = '';
+      msgEl.className = 'err';
+      msgEl.textContent = 'Invalid token or connection error.';
+      msgEl.style.display = 'block';
+    }
+    document.getElementById('tokenLoginBtn').disabled = false;
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('nadi_admin_token');
+    ADMIN_TOKEN = '';
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+  });
+
+  document.getElementById('statusFilter').addEventListener('change', loadBookings);
+  document.getElementById('refreshBtn').addEventListener('click', loadBookings);
+
+  // Milestone 31 - debounced so typing a guest's name doesn't fire a
+  // request per keystroke, same 400ms-class delay used elsewhere in this
+  // codebase for similar free-text-triggered lookups.
+  let searchDebounceTimer = null;
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadBookings, 400);
+  });
+
+  async function loadBookings() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const status = document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : '';
+      const search = document.getElementById('searchInput') ? document.getElementById('searchInput').value.trim() : '';
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      if (search) params.set('search', search);
+      const qs = params.toString() ? '?' + params.toString() : '';
+      const res = await fetch(API_URL + '/admin/bookings' + qs, {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load bookings (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderBookings(data.bookings || []);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function formatMoney(amount, currency) {
+    if (amount == null) return '—';
+    return currency + ' ' + Number(amount).toFixed(2);
+  }
+
+  function renderBookings(bookings) {
+    const subline = document.getElementById('subline');
+    subline.textContent = bookings.length + ' booking' + (bookings.length === 1 ? '' : 's') +
+      ' (most recent 200 max, filtered by status/search above)';
+
+    const listEl = document.getElementById('list');
+    if (bookings.length === 0) {
+      listEl.innerHTML = '<div class="empty">No bookings match this filter.</div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Driver</th>
+            <th>Pickup</th>
+            <th>Created</th>
+            <th>Events</th>
+            <th>Cancel</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bookings.map(b => `
+            <tr id="booking-row-${b.id}">
+              <td>#${b.id}${b.client_booking_ref ? `<div class="meta" title="Client booking ref (idempotency key)">${escHtml(b.client_booking_ref)}</div>` : ''}</td>
+              <td>${escHtml(b.guest_name)}<div class="meta">${escHtml(b.guest_phone || '—')}</div>${b.guest_email ? `<div class="meta">${escHtml(b.guest_email)}</div>` : ''}${b.notes ? `<div class="meta" title="${escHtml(b.notes)}">📝 ${escHtml(b.notes.length > 60 ? b.notes.slice(0, 60) + '…' : b.notes)}</div>` : ''}</td>
+              <td class="route">${escHtml(b.pickup_zone)} → ${escHtml(b.destination_zone)}<div class="meta">${b.distance_km != null ? Number(b.distance_km).toFixed(1) + ' km' : '—'}</div></td>
+              <td>${escHtml(b.vehicle_type)}</td>
+              <td class="price">${formatMoney(b.quoted_amount, b.quoted_currency)}<div class="meta">${escHtml(b.payment_method || '—')}</div></td>
+              <td><span class="status-badge status-${escHtml(b.status)}" id="status-badge-${b.id}">${escHtml(b.status)}</span>${b.is_stale ? '<span class="stale-badge">Stale</span>' : ''}</td>
+              <td>${escHtml(b.driver_name || '—')}</td>
+              <td>${b.pickup_date ? escHtml(b.pickup_date) + (b.pickup_time ? ' ' + escHtml(b.pickup_time) : '') : '—'}${b.flight_number ? `<div class="meta">✈ ${escHtml(b.flight_number)}</div>` : ''}</td>
+              <td class="meta">${escHtml(b.created_at)}</td>
+              <td><button class="expand-btn" data-booking-id="${b.id}" onclick="toggleEvents(${b.id}, this)">▸ View</button></td>
+              <td>${['completed', 'cancelled'].includes(b.status) ? '—' : `<button class="cancel-btn" data-booking-id="${b.id}" onclick="cancelBooking(${b.id}, this)">Cancel</button>`}</td>
+            </tr>
+            <tr class="events-row" id="events-row-${b.id}" style="display:none">
+              <td colspan="11"><div class="events-wrap" id="events-wrap-${b.id}"></div></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // Point 4 of the ask: expand a row to show its event history, rather
+  // than a whole new page. Lazy-loaded on first expand, cached in
+  // memory afterward - collapsing and re-expanding the same row never
+  // re-fetches.
+  const eventsCache = {};
+
+  function eventTypeLabel(type) {
+    return String(type || '').replace(/_/g, ' ');
+  }
+
+  function describeEvent(e) {
+    const parts = [];
+    if (e.previous_status && e.new_status) parts.push(`${e.previous_status} → ${e.new_status}`);
+    else if (e.new_status) parts.push(`→ ${e.new_status}`);
+    if (e.actor) parts.push('by ' + e.actor);
+    if (e.metadata) {
+      try {
+        const meta = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata;
+        const bits = Object.entries(meta).map(([k, v]) => `${k}: ${v}`);
+        if (bits.length) parts.push(bits.join(', '));
+      } catch (err) { /* metadata already parsed or malformed - skip silently, not worth erroring the whole row over */ }
+    }
+    return parts.join(' — ');
+  }
+
+  function renderEvents(bookingId, events) {
+    const wrap = document.getElementById('events-wrap-' + bookingId);
+    if (!wrap) return;
+    if (events.length === 0) {
+      wrap.innerHTML = '<div class="empty-events">No events recorded for this booking.</div>';
+      return;
+    }
+    wrap.innerHTML = '<ul class="event-list">' + events.map(e => `
+      <li class="event-item">
+        <span class="event-type">${escHtml(eventTypeLabel(e.event_type))}</span>
+        <span class="event-detail">${escHtml(describeEvent(e))}</span>
+        <span class="event-time">${escHtml(e.created_at)}</span>
+      </li>
+    `).join('') + '</ul>';
+  }
+
+  async function toggleEvents(bookingId, btnEl) {
+    const row = document.getElementById('events-row-' + bookingId);
+    const isOpen = row.style.display !== 'none';
+    if (isOpen) {
+      row.style.display = 'none';
+      btnEl.textContent = '▸ View';
+      return;
+    }
+    row.style.display = 'table-row';
+    btnEl.textContent = '▾ Hide';
+
+    if (eventsCache[bookingId]) {
+      renderEvents(bookingId, eventsCache[bookingId]);
+      return;
+    }
+    const wrap = document.getElementById('events-wrap-' + bookingId);
+    wrap.innerHTML = '<div class="loading">Loading events…</div>';
+    try {
+      const res = await fetch(API_URL + '/admin/bookings/' + bookingId + '/events', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        wrap.innerHTML = '<div class="empty-events">Could not load events (status ' + res.status + ').</div>';
+        return;
+      }
+      const data = await res.json();
+      eventsCache[bookingId] = data.events || [];
+      renderEvents(bookingId, eventsCache[bookingId]);
+    } catch (e) {
+      wrap.innerHTML = '<div class="empty-events">Connection error loading events.</div>';
+    }
+  }
+
+  // Milestone 31 - Tier 3 combined-review gap: no admin action existed to
+  // call off a booking short of a direct D1 UPDATE. confirm() since this
+  // is destructive-ish (not reversible through this UI) - matches the
+  // weight of the action without building a whole modal for it. Updates
+  // the row in place (status badge + removes the Cancel button) rather
+  // than a full reload, same pattern as resolveEscalation() on the
+  // escalations page.
+  async function cancelBooking(bookingId, btnEl) {
+    if (!confirm('Cancel booking #' + bookingId + '? This cannot be undone from this page.')) return;
+    btnEl.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/bookings/' + bookingId + '/cancel', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        btnEl.disabled = false;
+        alert(data.error || 'Could not cancel this booking.');
+        return;
+      }
+      const badge = document.getElementById('status-badge-' + bookingId);
+      if (badge) {
+        badge.textContent = 'cancelled';
+        badge.className = 'status-badge status-cancelled';
+      }
+      btnEl.outerHTML = '—';
+    } catch (e) {
+      btnEl.disabled = false;
+      alert('Connection error - could not cancel this booking.');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
