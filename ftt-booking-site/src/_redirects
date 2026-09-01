@@ -3,10 +3,14 @@
 
 # CEO P0 Trust Containment (2026-09): InterContinental Fiji Golf Resort & Spa is a single
 # real property at Natadola Bay — there is no "InterContinental Denarau". The old page
-# invented a nonexistent Denarau location, distance and fares for the same hotel. 301
-# (not 200) so search engines transfer ranking signal to the corrected, authoritative page
-# rather than treating this as a soft rewrite.
-/transfer/intercontinental-fiji-golf-resort   /transfer/intercontinental-fiji-natadola   301
+# invented a nonexistent Denarau location, distance and fares for the same hotel. The
+# source file itself has been deleted (revision 2) - these rules are what actually make
+# the old URL resolve at all now. 301 (not 200) so search engines transfer ranking signal
+# to the corrected, authoritative page rather than treating this as a soft rewrite. Both
+# trailing-slash and non-trailing-slash variants listed explicitly - Cloudflare Pages
+# _redirects matches are exact-path, not slash-normalized.
+/transfer/intercontinental-fiji-golf-resort    /transfer/intercontinental-fiji-natadola   301
+/transfer/intercontinental-fiji-golf-resort/   /transfer/intercontinental-fiji-natadola   301
 
 /transfers          /index.html         200
 /tours              /index.html         200

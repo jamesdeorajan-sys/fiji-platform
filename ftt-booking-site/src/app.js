@@ -2,6 +2,18 @@
    FIJI TOUR TRANSFERS — app.js
    ═══════════════════════════════════════════════════════════════════════════ */
 
+// ─── CEO P0 TRUST CONTAINMENT (2026-09) — FARE VISIBILITY FLAG ───────────────
+// Every fare on this site is unapproved pending a reconciled fare ledger. Set
+// this to true ONLY after James approves that ledger - it is the single
+// switch that brings computed prices back. Until then, formatPrice() (the one
+// function every price display in this file routes through) returns a fixed
+// "human quote required" placeholder instead of a number, so no customer-
+// visible fare, discount or surcharge is shown anywhere - the booking flow
+// itself (route/vehicle/passenger/tour selection, WhatsApp request) is
+// unchanged; only the price OUTPUT is suppressed.
+const FARES_APPROVED = false;
+const FARE_PLACEHOLDER = 'Human quote required';
+
 // ─── PRICING CONSTANTS — FJD, TIERED TO MATCH FIJI MARKET ────────────────────
 // Pricing in this file is HYBRID:
 //
@@ -69,6 +81,7 @@ function getDisplayCurrency() {
 //   formatPrice(129)  // USD    → "US$58"
 // Rounded to nearest whole unit — fractional cents look noisy in display.
 function formatPrice(fjd) {
+  if (!FARES_APPROVED) return FARE_PLACEHOLDER;
   const code = getDisplayCurrency();
   const rate = FX_RATES[code];
   if (!rate || code === 'FJD') return `FJ$${fjd}`;
@@ -410,22 +423,31 @@ function updatePricing() {
   if (document.getElementById('pricingRoute'))
     document.getElementById('pricingRoute').textContent = `${fromName} → ${toName}${suffix}`;
   if (document.getElementById('pricingMeta'))
-    document.getElementById('pricingMeta').textContent =
-      `${km.toFixed(1)} km · approx. ${formatDuration(min)}`
-      + (isNightPickup() ? ' · Night surcharge applied' : '')
-      + (isEstimate ? ' · Estimate — driver may confirm exact fare' : '');
+    document.getElementById('pricingMeta').textContent = FARES_APPROVED
+      ? `${km.toFixed(1)} km · approx. ${formatDuration(min)}`
+        + (isNightPickup() ? ' · Night surcharge applied' : '')
+        + (isEstimate ? ' · Estimate — driver may confirm exact fare' : '')
+      : `${km.toFixed(1)} km · approx. ${formatDuration(min)} · fare confirmed by our team before booking`;
 
-  // Swap the discount banner copy when a tour is in the booking — the
-  // 10% loyalty discount only applies to transfer-only bookings.
+  // CEO P0 Trust Containment (2026-09): the discount banner asserts a specific,
+  // unapproved commercial term (10% loyalty discount + threshold), so it's
+  // hidden entirely while FARES_APPROVED is false rather than shown with a
+  // placeholder - "some unspecified discount applies" is not a truthful
+  // statement to make either.
   const banner = document.getElementById('discountBanner');
   if (banner) {
-    const txt = banner.querySelector('.discount-banner-text');
-    if (bookingHasTour()) {
-      if (txt) txt.textContent = '10% loyalty discount applies to transfer-only bookings — your tour already includes its own listed discount';
-      banner.classList.add('discount-banner--tour');
+    if (!FARES_APPROVED) {
+      banner.style.display = 'none';
     } else {
-      if (txt) txt.textContent = `10% off automatically applied to bookings over ${formatPrice(DISCOUNT_THRESHOLD)}`;
-      banner.classList.remove('discount-banner--tour');
+      banner.style.display = '';
+      const txt = banner.querySelector('.discount-banner-text');
+      if (bookingHasTour()) {
+        if (txt) txt.textContent = '10% loyalty discount applies to transfer-only bookings — your tour already includes its own listed discount';
+        banner.classList.add('discount-banner--tour');
+      } else {
+        if (txt) txt.textContent = `10% off automatically applied to bookings over ${formatPrice(DISCOUNT_THRESHOLD)}`;
+        banner.classList.remove('discount-banner--tour');
+      }
     }
   }
 
@@ -517,13 +539,16 @@ function buildVehicleCards() {
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
-    // Show discounted price if the per-vehicle price alone qualifies
+    // Show discounted price if the per-vehicle price alone qualifies. When
+    // fares aren't approved (CEO P0 Trust Containment, 2026-09), formatPrice()
+    // always returns the same placeholder, so the old/new price comparison
+    // is skipped entirely rather than showing two identical strings.
     const t = calculateTotal(v.key);
-    const priceBlock = t.qualifies
+    const priceBlock = (FARES_APPROVED && t.qualifies)
       ? `<div class="vehicle-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}</div>
          <div class="vehicle-price-sub">10% off applied</div>`
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
-         <div class="vehicle-price-sub">per vehicle</div>`;
+         <div class="vehicle-price-sub">${FARES_APPROVED ? 'per vehicle' : 'confirmed before booking'}</div>`;
     return `
       <div class="${cls.join(' ')}" ${onclick}>
         ${badge}
@@ -561,7 +586,7 @@ function buildVehicleDetailCards() {
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
     const t = calculateTotal(v.key);
-    const priceBlock = t.qualifies
+    const priceBlock = (FARES_APPROVED && t.qualifies)
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
       : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
     return `
@@ -756,8 +781,8 @@ function goToStep(n) {
 // selectTour() BEFORE showTourBanner() ran, then immediately wiped by the
 // dedupe call inside it. Net result: tour visible in banner UI but invisible
 // to calculateTotal(), so transfer-only price showed at confirmation.
-// Caught when a real customer (James Derajan, NAN→Natadola horse riding)
-// hit confirmation showing FJ$184 transfer-only with no tour line.
+// Caught via a live booking that hit confirmation showing transfer-only
+// pricing with no tour line despite a tour being selected in the UI.
 function removeTourBannerDOM() {
   document.getElementById('tourBanner')?.remove();
 }
@@ -780,7 +805,7 @@ function showTourBanner(t) {
       </div>
     </div>
     <div class="tour-banner-right">
-      <div class="tour-banner-price">FJ$${t.price}<span>/person</span></div>
+      <div class="tour-banner-price">${FARES_APPROVED ? `FJ$${t.price}<span>/person</span>` : FARE_PLACEHOLDER}</div>
       <button class="tour-banner-clear" onclick="removeTourBanner()">✕ Clear</button>
     </div>`;
   const step1 = document.getElementById('step1');
@@ -865,11 +890,13 @@ function buildConfirmation() {
   if (!card) return;
 
   let totalRows = '';
-  // Three cases:
-  //  (a) Tour booking — show transfer line + tour line + total. No discount.
-  //  (b) Transfer-only with discount qualified (subtotal > FJ$50).
-  //  (c) Transfer-only, no discount (under threshold).
-  if (t.hasTour) {
+  // CEO P0 Trust Containment (2026-09): this block bypassed formatPrice()'s
+  // FARES_APPROVED gate via raw `FJ$${...}` interpolation, so it needs its
+  // own explicit check. While fares aren't approved, show one neutral row
+  // instead of a computed subtotal/discount/total breakdown.
+  if (!FARES_APPROVED) {
+    totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">${FARE_PLACEHOLDER}</span></div>`;
+  } else if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     totalRows = `
       <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${t.transferSubtotal}</span></div>
@@ -916,9 +943,9 @@ function buildWhatsAppURL(ref) {
   const dateStr = date ? new Date(date+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'long',year:'numeric'}) : 'Not set';
   const extras = [];
   if (document.getElementById('extra-lei')?.checked)  extras.push('Shell lei welcome');
-  if (document.getElementById('extra-seat')?.checked) extras.push('Child/baby seat (+FJ$8)');
-  if (document.getElementById('extra-stop')?.checked) extras.push('Supermarket stop');
-  if (document.getElementById('extra-surf')?.checked) extras.push('Surfboard/oversized (+FJ$24)');
+  if (document.getElementById('extra-seat')?.checked) extras.push(FARES_APPROVED ? 'Child/baby seat (+FJ$8)' : 'Child/baby seat requested (fee to be confirmed)');
+  if (document.getElementById('extra-stop')?.checked) extras.push('Supermarket stop requested');
+  if (document.getElementById('extra-surf')?.checked) extras.push(FARES_APPROVED ? 'Surfboard/oversized (+FJ$24)' : 'Surfboard/oversized declared (fee to be confirmed)');
 
   const fromName = stripEmoji(state.pickup?.name) || '—';
   const toName   = stripEmoji(state.destination?.hotel) || '—';
@@ -928,8 +955,15 @@ function buildWhatsAppURL(ref) {
   //  (a) Tour booking — show transfer + tour line + total. No discount applies.
   //  (b) Transfer-only with discount qualified.
   //  (c) Transfer-only, no discount.
+  // CEO P0 Trust Containment (2026-09): raw FJ$ interpolation here bypassed
+  // formatPrice()'s FARES_APPROVED gate, so it needs its own explicit check.
   let priceLines;
-  if (t.hasTour) {
+  if (!FARES_APPROVED) {
+    priceLines = [
+      `=====================================`,
+      `*${FARE_PLACEHOLDER.toUpperCase()}*`,
+    ];
+  } else if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     priceLines = [
       `Transfer:    FJ$${t.transferSubtotal}`,
@@ -958,18 +992,18 @@ function buildWhatsAppURL(ref) {
   const tourSection = t.hasTour
     ? [
         ``,
-        `*TOUR BOOKED*`,
+        `*TOUR REQUESTED*`,
         `-------------------------------------`,
         `Tour:       ${state.selectedTour.name}`,
         `Duration:   ${state.selectedTour.duration}`,
-        `Per person: FJ$${t.tourPerPax} (min ${state.selectedTour.minPax} pax)`,
+        FARES_APPROVED ? `Per person: FJ$${t.tourPerPax} (min ${state.selectedTour.minPax} pax)` : `Min pax:    ${state.selectedTour.minPax}`,
       ]
     : [];
 
   const msg = [
-    `*NEW BOOKING REQUEST*`,
+    `*NEW TRANSFER REQUEST*`,
     `Fiji Tour Transfers`,
-    `Booking ref: *${ref}*`,
+    `Request ref: *${ref}*`,
     `=====================================`,``,
     `*PASSENGER DETAILS*`,
     `-------------------------------------`,
@@ -1017,8 +1051,8 @@ function confirmBooking() {
   if (pickupVal === 'NAN' && !flightVal && !state.flightPromptDismissed) {
     const proceed = confirm(
       'No flight number entered.\n\n'
-      + 'We monitor incoming flights so the driver adjusts pickup time '
-      + 'automatically if you\'re delayed. Without it, your driver may '
+      + 'With a flight number, our team can coordinate your driver\'s pickup '
+      + 'against your actual arrival time. Without it, your driver may '
       + 'arrive before you clear customs.\n\n'
       + 'Continue anyway?'
     );
@@ -1053,7 +1087,7 @@ function confirmBooking() {
   // doesn't have to retype it. Driver coordinator gets a clear request.
   const bulaModifyLink = document.getElementById('bulaModifyLink');
   if (bulaModifyLink) {
-    const modifyText = `Hi Fiji Tour Transfers, I'd like to modify booking ${ref}. The change I need is:`;
+    const modifyText = `Hi Fiji Tour Transfers, I'd like to modify request ${ref}. The change I need is:`;
     bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
   }
 
@@ -1108,7 +1142,7 @@ const ROUTES_DATA = [
   { destValue:"LAUTOKA_CRUISE",         dest:"Lautoka Cruise Terminal",             area:"Lautoka",         km:30,  time:"40 min",      s:89,  v:119, m:149 },
   // Momi / Natadola
   { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:79  },
-  { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:38,  time:"48 min",      s:99,  v:149, m:179 },
+  { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:45,  time:"1 hr",        s:99,  v:149, m:179 },
   { destValue:"ROBINSON_CRUSOE",        dest:"Robinson Crusoe Island (Likuri)",     area:"Natadola",        km:50,  time:"58 min",      s:99,  v:149, m:179 },
   // Sigatoka
   { destValue:"SIGATOKA_SAND_DUNES",    dest:"Sigatoka Town / Sand Dunes",          area:"Sigatoka",        km:60,  time:"1 hr 6 min",  s:129, v:159, m:199 },
@@ -1139,7 +1173,7 @@ function buildRoutesTable() {
   const tbody = document.getElementById('routesTableBody');
   if (!tbody) return;
   function priceCell(price) {
-    if (price > DISCOUNT_THRESHOLD) {
+    if (FARES_APPROVED && price > DISCOUNT_THRESHOLD) {
       const discounted = price - Math.round(price * DISCOUNT_RATE);
       return `<span class="price-old">${formatPrice(price)}</span><strong>${formatPrice(discounted)}</strong>`;
     }
@@ -1438,10 +1472,13 @@ function buildToursGrid() {
   const grid = document.getElementById('toursGrid');
   if (!grid) return;
   grid.innerHTML = TOURS_DATA.map((t, i) => {
-    const discountBadge = t.discount
+    // CEO P0 Trust Containment (2026-09): tour prices/discounts are unapproved
+    // fares - suppressed here the same way formatPrice() suppresses transfer
+    // fares, until the fare ledger is approved.
+    const discountBadge = (FARES_APPROVED && t.discount)
       ? `<div class="tour-discount-badge">${t.discount}</div>`
       : '';
-    const oldPrice = t.oldPrice
+    const oldPrice = (FARES_APPROVED && t.oldPrice)
       ? `<span class="tour-price-old">FJ$${t.oldPrice}</span>`
       : '';
     return `
@@ -1462,8 +1499,8 @@ function buildToursGrid() {
           <div class="tour-meta-item">📍 ${t.route}</div>
         </div>
         <div class="tour-price-row">
-          ${oldPrice}<div class="tour-price">FJ$${t.price}</div>
-          <div class="tour-price-label">per person from</div>
+          ${oldPrice}<div class="tour-price">${FARES_APPROVED ? `FJ$${t.price}` : FARE_PLACEHOLDER}</div>
+          <div class="tour-price-label">${FARES_APPROVED ? 'per person from' : ''}</div>
         </div>
         <div class="tour-cta-row">
           <button class="tour-cta" onclick="selectTour(${i})">Book this tour →</button>
@@ -1478,14 +1515,14 @@ function buildToursGrid() {
 const FAQ_DATA = [
   { q:'Is there Uber in Fiji?', a:'No — Uber does not operate in Fiji. Your reliable options are pre-booked private transfer services (like ours), shared shuttles, or licensed metered taxis. Pre-booking is strongly recommended to avoid negotiating fares after a long flight.' },
   { q:'How long is the drive from Nadi Airport to the Coral Coast?', a:"Journey times depend on your resort: Shangri-La Yanuca ~55 min (72 km), Gecko's / Bedarra ~80 min (82 km), Outrigger Fiji ~95 min (98 km), The Warwick / Naviti ~98 min (100 km). A private transfer is recommended." },
-  { q:'How much does a Nadi Airport to Denarau transfer cost?', a:'Private sedan (1–3 pax): FJ$49 per vehicle. Private minivan (4–7 pax): FJ$69. Minibus (8–12 pax): FJ$99. Denarau is approximately 12 km from the airport — 18–20 minutes.' },
-  { q:'How is pricing calculated?', a:'Distance-based pricing in FJD with no surge fees. Short trips (Nadi/Denarau): from FJ$19 sedan, FJ$49 minivan. Mid-range (Natadola, Sigatoka): from FJ$99 sedan. Long-haul (Coral Coast, Pacific Harbour, Suva): from FJ$129 sedan. A 20% night surcharge applies for pickups between 10 pm and 6 am. Return bookings are discounted vs two one-ways.' },
-  { q:'What if my flight is delayed?', a:'Provide your flight number at booking — our team checks it against the actual arrival time and coordinates your driver\'s pickup accordingly, at no extra charge for genuine delays.' },
-  { q:'Can I stop at a supermarket or ATM on the way?', a:'Yes — all private transfers include one complimentary stop at a supermarket, ATM, bottle shop or pharmacy en route. Mention it in special requests when booking.' },
-  { q:'Do you provide baby or child seats?', a:'Yes, on request for a small charge of FJ$8. Specify your children\'s ages in special requests so we can fit the right seat before your arrival.' },
+  { q:'How much does a Nadi Airport to Denarau transfer cost?', a:'Human quote required. Message us your travel date, party size and vehicle preference on WhatsApp and our team will confirm your exact fare before you book. Denarau is approximately 12 km from the airport — 18–20 minutes.' },
+  { q:'How is pricing calculated?', a:'Fares are distance-based, but every fare is human quote required until our team confirms it with you on WhatsApp — no price is finalised automatically.' },
+  { q:'What if my flight is delayed?', a:'Provide your flight number at booking — our team checks it against the actual arrival time and coordinates your driver\'s pickup accordingly.' },
+  { q:'Can I stop at a supermarket or ATM on the way?', a:'Requests for a stop at a supermarket, ATM, bottle shop or pharmacy en route can be accommodated — mention it in special requests when booking and our team will confirm.' },
+  { q:'Do you provide baby or child seats?', a:'Available on request — specify your children\'s ages in special requests and our team will confirm availability and any fee before your arrival.' },
   { q:'How do I find my driver at Nadi Airport?', a:'Your driver waits in the international arrivals hall with a sign showing your name. If you can\'t find them, call or WhatsApp the number on your confirmation immediately.' },
-  { q:'Do you offer return transfers?', a:'Yes — book return at the time of booking for a small discount. Your return pickup can be from your resort back to Nadi Airport or anywhere else on Viti Levu.' },
-  { q:'Can I change my pickup time after booking?', a:'Yes — pickup time, date, and stops can all be modified free of charge up to 2 hours before your scheduled pickup. Just WhatsApp us with your booking reference. No fees, no questions.' },
+  { q:'Do you offer return transfers?', a:'Yes — request a return at the time of booking and our team will confirm pricing. Your return pickup can be from your resort back to Nadi Airport or anywhere else on Viti Levu.' },
+  { q:'Can I change my pickup time after booking?', a:'Pickup time, date, and stops can be modified up to 2 hours before your scheduled pickup, subject to availability. WhatsApp us with your request reference.' },
   { q:'How far in advance should I book?', a:'We recommend 24–48 hours in advance, especially June–October and Christmas/New Year. For same-day bookings contact us via WhatsApp.' },
 ];
 
