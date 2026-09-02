@@ -67,11 +67,11 @@
 
     "QuoteResponse": {
       "type": "object",
-      "required": ["quoteId", "retailFareFjd", "pricingRuleUsed", "expiresAt"],
+      "required": ["quoteId", "retailFare", "pricingRuleUsed", "expiresAt"],
       "properties": {
         "quoteId": { "type": "string" },
-        "retailFareFjd": { "type": "number" },
-        "operatorPayoutFjd": { "type": ["number", "null"], "description": "Never sent to the guest-facing client. Present only on the internal/server-side copy of this contract." },
+        "retailFare": { "$ref": "#/$defs/RetailFare", "description": "Guest-facing. Only finalRetailFareFjd (and its inputs' ruleIds, for audit) are ever exposed — never operatorPayoutFjd." },
+        "operatorPayoutFjd": { "type": ["number", "null"], "description": "Never sent to the guest-facing client. Present only on the internal/server-side copy of this contract — see OperatorPayout, which is the canonical shape for this once fulfilment/marketplace allocation exists." },
         "pricingRuleUsed": { "enum": ["fixed_retail_known_route", "dynamic_authoritative_custom_route", "marketplace_payout_offer", "flexible_negotiated_fare"] },
         "distanceKm": { "type": ["number", "null"] },
         "journeyMinutes": { "type": ["number", "null"] },
@@ -113,14 +113,25 @@
 
     "BookingSource": {
       "type": "object",
-      "description": "Adopted from bookfijitransfers.com's existing attribution object — the most complete of the three storefronts' current models. Storefronts 1/2 currently send none of this; v1 treats every field as optional so nothing breaks, but a real cutover should start populating it.",
+      "description": "Revised per Issue #38 Step 3 (CEO direction, 2026-09-02). canonicalSource is the required, closed-vocabulary field every future booking must carry; the bookfijitransfers.com-derived attribution fields are kept as an optional nested detail object since they're already the richest model observed and still useful, but they are no longer the primary field. storefrontId stays a free-standing sibling (not folded into canonicalSource) because 'which brand's URL was this booking placed through' and 'which acquisition channel drove it' are different questions — nadi_airport_transfers the canonicalSource and nadiairporttransfers the storefrontId will usually co-occur but are not the same axis (e.g. a partner-referred booking placed through the FijiDash UI has storefrontId=fijidash, canonicalSource=partner).",
+      "required": ["canonicalSource"],
       "properties": {
-        "storefrontId": { "enum": ["nadiairporttransfers", "fijidash", "bookfijitransfers"] },
-        "source": { "type": "string", "default": "direct" },
-        "medium": { "type": "string", "default": "none" },
-        "campaign": { "type": "string", "default": "" },
-        "landingPath": { "type": "string", "default": "/" },
-        "referrer": { "type": "string", "default": "" }
+        "canonicalSource": {
+          "enum": ["nadi_airport_transfers", "fijidash", "book_fiji_transfers", "come_to_fiji", "partner", "agent", "direct_api", "unknown"],
+          "description": "Required, closed vocabulary. 'unknown' is a first-class, permanent value — see the migration note in the mapping/backfill plan: historical rows with no reliable signal are set to unknown and MUST NOT be guessed into a specific value later."
+        },
+        "storefrontId": { "enum": ["nadiairporttransfers", "fijidash", "bookfijitransfers", null] },
+        "campaign": { "type": ["string", "null"] },
+        "referral": { "type": ["string", "null"], "description": "Referral code/partner id where known, e.g. a travel-agent or affiliate identifier. Null, not empty string, when not known — an empty string would be indistinguishable from 'confirmed no referral'." },
+        "attributionDetail": {
+          "type": ["object", "null"],
+          "description": "Optional richer detail, adopted verbatim from bookfijitransfers.com's existing model where a storefront can supply it. Never required.",
+          "properties": {
+            "medium": { "type": "string" },
+            "landingPath": { "type": "string" },
+            "referrer": { "type": "string" }
+          }
+        }
       }
     },
 
@@ -177,12 +188,32 @@
 
     "RetailFare": {
       "type": "object",
-      "required": ["retailFareFjd", "currency", "pricingRuleUsed"],
+      "description": "Revised per Issue #38 Step 4 (CEO commercial model, 2026-09-02): finalRetailFareFjd is NEVER an independently-set number again — it is always referenceFareFjd plus/minus explicit, versioned, approved rule ids. A storefront price that differs from the reference fare for a reason not captured in channelModifier/promotionDiscount is, by this contract, unexplained variance and out of policy — not a modeling choice this schema is meant to accommodate silently.",
+      "required": ["referenceFareFjd", "finalRetailFareFjd", "currency", "pricingRuleUsed"],
       "properties": {
-        "retailFareFjd": { "type": "number" },
+        "referenceFareFjd": { "type": "number", "description": "The authoritative base/reference value for this route + vehicle, before any channel or promotion adjustment. For storefronts 1/2 today this equals the live /reference-fare response, unmodified (see fare-authority adapter)." },
+        "channelModifier": {
+          "type": "object",
+          "description": "An explicit, versioned, approved adjustment for the storefront/product channel. Absent or {ruleId:null, amountFjd:0} means no modifier applies — that is a real, loggable state, not a default to be silently assumed. Never a free-text excuse; always a ruleId that traces to an approval record.",
+          "properties": {
+            "ruleId": { "type": ["string", "null"] },
+            "amountFjd": { "type": "number", "default": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "promotionDiscount": {
+          "type": "object",
+          "description": "Same discipline as channelModifier, for discounts/promotions specifically (e.g. the observed bookfijitransfers.com Port Denarau launch special). A promotion with no ruleId is unexplained variance, not a legitimate promotion, under this policy.",
+          "properties": {
+            "ruleId": { "type": ["string", "null"] },
+            "amountFjd": { "type": "number", "default": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "finalRetailFareFjd": { "type": "number", "description": "referenceFareFjd + channelModifier.amountFjd - promotionDiscount.amountFjd. Computed, never independently entered." },
         "currency": { "const": "FJD" },
         "pricingRuleUsed": { "enum": ["fixed_retail_known_route", "dynamic_authoritative_custom_route", "marketplace_payout_offer", "flexible_negotiated_fare"] },
-        "discountApplied": { "type": ["string", "null"] }
+        "varianceStatus": { "enum": ["in_policy", "unexplained_variance_flagged"], "description": "in_policy iff finalRetailFareFjd reconciles exactly to referenceFareFjd + channelModifier - promotionDiscount with both carrying a real ruleId (or being genuinely zero). Any other observed relationship between a storefront's live price and the reference fare is unexplained_variance_flagged by definition — see the Sonaisali and Fare Authority Step 5/7 findings in REPORT.md for real examples of this state today." }
       }
     },
 
