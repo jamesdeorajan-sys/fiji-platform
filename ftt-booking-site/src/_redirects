@@ -1,6 +1,22 @@
 # Cloudflare Pages — _redirects
 # SEO-friendly URL redirects
 
+# CEO P0 Trust Containment (2026-09): InterContinental Fiji Golf Resort & Spa is
+# a single real property at Natadola Bay — there is no "InterContinental
+# Denarau". The old page invented a nonexistent Denarau location, distance and
+# fare for the same hotel. The source file has been deleted — these rules are
+# what make the old URL resolve at all now. 301 (not 200) so search engines
+# transfer ranking signal to the corrected, authoritative page rather than
+# treating this as a soft rewrite. All three historical forms listed
+# explicitly, INCLUDING the .html variant: Cloudflare Pages' automatic
+# .html-stripping redirect only fires for files that still exist on disk, so
+# without an explicit rule here the deleted page's .html URL falls through to
+# the default index.html SPA-fallback (200, wrong content) instead of
+# redirecting — confirmed by direct testing, not assumed.
+/transfer/intercontinental-fiji-golf-resort         /transfer/intercontinental-fiji-natadola   301
+/transfer/intercontinental-fiji-golf-resort/        /transfer/intercontinental-fiji-natadola   301
+/transfer/intercontinental-fiji-golf-resort.html    /transfer/intercontinental-fiji-natadola   301
+
 /transfers          /index.html         200
 /tours              /index.html         200
 /book               /index.html         200
