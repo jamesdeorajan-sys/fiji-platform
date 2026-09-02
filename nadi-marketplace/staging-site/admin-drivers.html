@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nadi Marketplace — Driver Approval Queue</title>
+<title>Fiji Dash — Driver Approval Queue</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
   :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; }
@@ -15,7 +15,14 @@
   #gate { max-width: 360px; margin: 80px auto; text-align: center; }
   #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
   #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
-  #gateErr { color: #c83e3e; font-size: 13px; margin-top: 8px; display: none; }
+  #gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
+  #gateMsg.ok { color: #2e8b57; }
+  #gateMsg.err { color: #c83e3e; }
+  .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
+  #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .toolbar button { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--ocean); }
   .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
   .card-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
   .name { font-weight: 700; font-size: 17px; }
@@ -26,29 +33,59 @@
   .doc-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .doc-thumb img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #eee; }
   .doc-thumb span { font-size: 11px; color: #888; }
-  .actions { margin-top: 14px; display: flex; gap: 10px; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
   .btn { border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
   .btn-approve { background: #2e8b57; color: #fff; }
   .btn-reject { background: #c83e3e; color: #fff; }
+  .btn-suspend { background: #c83e3e; color: #fff; }
+  .btn-reactivate { background: #2e8b57; color: #fff; }
+  .btn-edit-zones { background: none; border: 1px solid var(--line); color: var(--ocean); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
   .status-msg { font-size: 13px; margin-top: 8px; padding: 6px 10px; border-radius: 6px; display: none; }
   .status-msg.ok { display: block; background: #e5f5ea; color: #1a5c34; }
   .status-msg.err { display: block; background: #fdeaea; color: #8a1f1f; }
+  .status-tag { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .status-tag.verified { background: #e5f5ea; color: #1a5c34; }
+  .status-tag.suspended { background: #fdeaea; color: #8a1f1f; }
+  .status-tag.rejected { background: #eee; color: #666; }
+  .toolbar { justify-content: space-between; }
+  .toolbar select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .zone-edit-row { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .zone-edit-row input { flex: 1; min-width: 200px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 </style>
 </head>
 <body>
 
 <div id="gate">
   <h1>Admin login</h1>
-  <p class="sub">Enter the admin token to view the driver approval queue.</p>
-  <input type="password" id="tokenInput" placeholder="Admin token">
-  <button id="gateBtn">Enter</button>
-  <div id="gateErr">Invalid token or connection error.</div>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
+  <div id="gateMsg"></div>
+  <button id="showPhoneLoginBtn" type="button" class="link-btn">Or send a login link via WhatsApp instead</button>
+  <div id="phoneLoginWrap" style="display:none;">
+    <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+    <button id="loginBtn">Send login link</button>
+  </div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
+  </div>
 </div>
 
 <div class="wrap" id="main" style="display:none;">
-  <h1>Driver Approval Queue</h1>
+  <div class="toolbar" style="display:flex;">
+    <select id="statusFilter">
+      <option value="pending">Pending</option>
+      <option value="verified">Verified</option>
+      <option value="suspended">Suspended</option>
+      <option value="rejected">Rejected</option>
+    </select>
+    <button id="logoutBtn" type="button">Log out</button>
+  </div>
+  <h1>Drivers</h1>
   <p class="sub" id="subline">Loading...</p>
   <div id="list"></div>
 </div>
@@ -56,6 +93,20 @@
 <script>
   const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
   let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      ADMIN_TOKEN = tokenFromLink;
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    await tryLoad();
+  }
 
   async function tryLoad() {
     if (!ADMIN_TOKEN) return false;
@@ -68,37 +119,137 @@
     return false;
   }
 
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    ADMIN_TOKEN = document.getElementById('tokenInput').value.trim();
+  // Milestone 24 - PIN login, the default/primary path now: no WhatsApp
+  // dependency, works the moment a PIN is set (via admin-dashboard.html).
+  // POST /admin/login-pin returns the token directly in the response
+  // (unlike the magic link, there's no WhatsApp round-trip to wait on).
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!pin) return;
+    document.getElementById('pinLoginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        ADMIN_TOKEN = data.token;
+        sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+        document.getElementById('pinInput').value = '';
+        await tryLoad();
+      } else {
+        msgEl.className = 'err';
+        msgEl.textContent = data.error || 'Something went wrong.';
+        msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('pinLoginBtn').disabled = false;
+    }
+  });
+
+  // Milestone 23 - phone-number magic-link login, kept as a secondary
+  // option (collapsed by default) alongside the PIN above. POST
+  // /admin/login is intentionally generic either way (same
+  // privacy-by-default posture as driver login) - a real login link
+  // only actually arrives via WhatsApp for the one authorized number.
+  document.getElementById('showPhoneLoginBtn').addEventListener('click', () => {
+    document.getElementById('phoneLoginWrap').style.display = 'block';
+    document.getElementById('showPhoneLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  });
+
+  // Real gap found live: the static env.ADMIN_TOKEN break-glass path
+  // (requireAdmin() has always accepted it, unchanged since Milestone 23)
+  // had no UI left to use it through at all - the raw-token input was
+  // removed when the magic link replaced it, and never restored. James
+  // was locked out of setting his first PIN, since neither the PIN field
+  // (correctly empty/unset) nor the WhatsApp link (template not yet
+  // submitted) could get him in. This restores a third, collapsed option
+  // using the token he already has - no backend change needed, since
+  // requireAdmin() already accepts it.
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => {
+    document.getElementById('tokenLoginWrap').style.display = 'block';
+    document.getElementById('showTokenLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const token = document.getElementById('tokenInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!token) return;
+    document.getElementById('tokenLoginBtn').disabled = true;
+    ADMIN_TOKEN = token;
     const ok = await tryLoad();
     if (ok) {
       sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
     } else {
-      document.getElementById('gateErr').style.display = 'block';
+      ADMIN_TOKEN = '';
+      msgEl.className = 'err';
+      msgEl.textContent = 'Invalid token or connection error.';
+      msgEl.style.display = 'block';
     }
+    document.getElementById('tokenLoginBtn').disabled = false;
   });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('nadi_admin_token');
+    ADMIN_TOKEN = '';
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+  });
+
+  document.getElementById('statusFilter').addEventListener('change', loadDrivers);
 
   async function loadDrivers() {
     try {
-      const res = await fetch(API_URL + '/admin/drivers?status=pending', {
+      const status = document.getElementById('statusFilter').value;
+      const res = await fetch(API_URL + '/admin/drivers?status=' + encodeURIComponent(status), {
         headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
       });
       if (!res.ok) return false;
       const data = await res.json();
-      renderDrivers(data.drivers || []);
+      renderDrivers(data.drivers || [], status);
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  function renderDrivers(drivers) {
+  // Milestone 31 - Tier 3 combined-review gap: this page only ever showed
+  // the pending-approval queue, with no way to see or manage verified/
+  // suspended/rejected drivers at all. Same list view, now driven by the
+  // status filter above - actions shown per card depend on which status
+  // is currently selected, since "approve/reject" only make sense for
+  // pending and "suspend/edit zones" only for verified, etc.
+  function renderDrivers(drivers, status) {
     const list = document.getElementById('list');
     const subline = document.getElementById('subline');
-    subline.textContent = drivers.length + ' pending application' + (drivers.length === 1 ? '' : 's');
+    const label = status.charAt(0).toUpperCase() + status.slice(1);
+    subline.textContent = drivers.length + ' ' + label.toLowerCase() + ' driver' + (drivers.length === 1 ? '' : 's');
 
     if (drivers.length === 0) {
-      list.innerHTML = '<div class="empty">No pending driver applications.</div>';
+      list.innerHTML = '<div class="empty">No ' + label.toLowerCase() + ' drivers.</div>';
       return;
     }
 
@@ -106,12 +257,12 @@
       <div class="card" data-id="${d.id}">
         <div class="card-top">
           <div>
-            <div class="name">${escHtml(d.name)}</div>
+            <div class="name">${escHtml(d.name)} ${status !== 'pending' ? `<span class="status-tag ${escHtml(status)}">${escHtml(status)}</span>` : ''}</div>
             <div class="meta">${escHtml(d.phone)} · ${escHtml(d.vehicle.type || 'unknown vehicle')} · plate ${escHtml(d.vehicle.plate || '-')}</div>
             <div class="meta">Applied ${escHtml(d.created_at)}</div>
           </div>
         </div>
-        <div class="zones">
+        <div class="zones" id="zones-${d.id}">
           ${d.zones.map(z => '<span class="zone-chip">' + escHtml(z) + '</span>').join('')}
         </div>
         <div class="docs">
@@ -120,12 +271,73 @@
           ${docThumb(d.docs.insurance_photo, 'Insurance')}
         </div>
         <div class="actions">
-          <button class="btn btn-approve" onclick="doAction(${d.id}, 'approve', this)">Approve</button>
-          <button class="btn btn-reject" onclick="doAction(${d.id}, 'reject', this)">Reject</button>
+          ${status === 'pending' ? `
+            <button class="btn btn-approve" onclick="doAction(${d.id}, 'approve', this)">Approve</button>
+            <button class="btn btn-reject" onclick="doAction(${d.id}, 'reject', this)">Reject</button>
+          ` : ''}
+          ${status === 'verified' ? `
+            <button class="btn btn-suspend" onclick="doAction(${d.id}, 'suspend', this)">Suspend</button>
+            <button class="btn btn-edit-zones" onclick="toggleZoneEdit(${d.id})">Edit zones</button>
+          ` : ''}
+          ${status === 'suspended' ? `
+            <button class="btn btn-reactivate" onclick="doAction(${d.id}, 'reactivate', this)">Reactivate</button>
+          ` : ''}
         </div>
+        ${status === 'verified' ? `
+          <div class="zone-edit-row" id="zone-edit-${d.id}" style="display:none;">
+            <input type="text" id="zone-input-${d.id}" value="${escHtml(d.zones.join(', '))}" placeholder="Comma-separated zone names">
+            <button class="btn btn-approve" onclick="saveZones(${d.id}, this)">Save</button>
+            <button class="btn btn-edit-zones" onclick="toggleZoneEdit(${d.id})">Cancel</button>
+          </div>
+        ` : ''}
         <div class="status-msg" id="status-${d.id}"></div>
       </div>
     `).join('');
+  }
+
+  function toggleZoneEdit(id) {
+    const row = document.getElementById('zone-edit-' + id);
+    if (row) row.style.display = row.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  async function saveZones(id, btnEl) {
+    const card = btnEl.closest('.card');
+    const statusEl = card.querySelector('.status-msg');
+    const input = document.getElementById('zone-input-' + id);
+    const zones = input.value.split(',').map(z => z.trim()).filter(Boolean);
+    if (zones.length === 0) {
+      statusEl.className = 'status-msg err';
+      statusEl.textContent = 'At least one zone is required.';
+      statusEl.style.display = 'block';
+      return;
+    }
+    btnEl.disabled = true;
+    try {
+      const res = await fetch(`${API_URL}/admin/drivers/${id}/zones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+        body: JSON.stringify({ zones }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        const zonesEl = document.getElementById('zones-' + id);
+        if (zonesEl) zonesEl.innerHTML = data.zones.map(z => '<span class="zone-chip">' + escHtml(z) + '</span>').join('');
+        toggleZoneEdit(id);
+        statusEl.className = 'status-msg ok';
+        statusEl.textContent = 'Zones updated.';
+        statusEl.style.display = 'block';
+      } else {
+        statusEl.className = 'status-msg err';
+        statusEl.textContent = data.error || 'Could not update zones.';
+        statusEl.style.display = 'block';
+      }
+    } catch (e) {
+      statusEl.className = 'status-msg err';
+      statusEl.textContent = 'Connection error.';
+      statusEl.style.display = 'block';
+    } finally {
+      btnEl.disabled = false;
+    }
   }
 
   function docThumb(url, label) {
@@ -153,7 +365,8 @@
 
       if (res.ok && data.ok) {
         statusEl.className = 'status-msg ok';
-        let msg = action === 'approve' ? 'Approved.' : 'Rejected.';
+        const actionLabels = { approve: 'Approved.', reject: 'Rejected.', suspend: 'Suspended.', reactivate: 'Reactivated.' };
+        let msg = actionLabels[action] || 'Done.';
         if (action === 'approve' && data.whatsapp) {
           if (data.whatsapp.attempted && data.whatsapp.ok) {
             msg += ' WhatsApp magic link sent.';
@@ -182,11 +395,13 @@
 
   function refreshSubline() {
     const remaining = document.querySelectorAll('.card').length;
-    document.getElementById('subline').textContent = remaining + ' pending application' + (remaining === 1 ? '' : 's');
-    if (remaining === 0) document.getElementById('list').innerHTML = '<div class="empty">No pending driver applications.</div>';
+    const status = document.getElementById('statusFilter').value;
+    const label = status.charAt(0).toUpperCase() + status.slice(1);
+    document.getElementById('subline').textContent = remaining + ' ' + label.toLowerCase() + ' driver' + (remaining === 1 ? '' : 's');
+    if (remaining === 0) document.getElementById('list').innerHTML = '<div class="empty">No ' + label.toLowerCase() + ' drivers.</div>';
   }
 
-  tryLoad();
+  init();
 </script>
 </body>
 </html>

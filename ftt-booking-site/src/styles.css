@@ -670,17 +670,6 @@ textarea.field-input{resize:vertical;min-height:80px}
 }
 @media(prefers-reduced-motion:reduce){.bula-wa-btn{animation:none}}
 
-/* Real requirement notice - deliberately NOT the same green as success/
-   WhatsApp elsewhere on this screen, so it reads as "pay attention," not
-   as more reassurance. Switches to a quieter acknowledged state once the
-   button is actually tapped (markWhatsAppTapped() in app.js). */
-.bula-required-notice{
-  font-size:13px;font-weight:600;color:#92400e;background:#fffbeb;
-  border:1.5px solid #fbbf24;border-radius:var(--radius-sm);
-  padding:10px 16px;margin:2px auto 20px;max-width:460px;line-height:1.5}
-.bula-required-notice.acknowledged{
-  color:#065f46;background:#ecfdf5;border-color:#6ee7b7;font-weight:500}
-
 /* A2: free booking modification reassurance under the primary CTA */
 .bula-modify{margin:14px 0 4px;font-size:13px;color:#475569;line-height:1.5}
 .bula-modify p{margin:0}
@@ -730,8 +719,8 @@ textarea.field-input{resize:vertical;min-height:80px}
 
 .bula-actions{
   display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
-.bula-actions .btn-whatsapp,.bula-actions .btn-secondary{
-  font-size:14px;padding:12px 20px}
+.bula-actions .btn-whatsapp,.bula-actions .btn-secondary,.bula-actions .btn-confirm{
+  font-size:14px;padding:12px 20px;margin-top:0}
 
 .bula-foot{
   font-size:14px;color:#64748b;line-height:1.7;margin:8px 0 0 0;
@@ -748,7 +737,7 @@ textarea.field-input{resize:vertical;min-height:80px}
   .bula-promise{padding:18px 16px}
   .bula-promise h3{font-size:17px}
   .bula-actions{flex-direction:column}
-  .bula-actions .btn-whatsapp,.bula-actions .btn-secondary{width:100%}
+  .bula-actions .btn-whatsapp,.bula-actions .btn-secondary,.bula-actions .btn-confirm{width:100%}
 }
 
 /* ─── TOUR CARD V2 (real images + discount badges) ───────────────────────── */

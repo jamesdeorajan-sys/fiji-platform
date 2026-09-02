@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Dashboard</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
+  #gateMsg.ok { color: var(--green); }
+  #gateMsg.err { color: var(--red); }
+  .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
+  #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .pin-panel { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 20px; display: none; }
+  .pin-panel input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; margin-right: 8px; width: 160px; }
+  .pin-panel button { background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .pin-panel .msg { font-size: 13px; margin-top: 8px; display: none; }
+  .pin-panel .msg.ok { color: var(--green); }
+  .pin-panel .msg.err { color: var(--red); }
+
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .card .n { font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .card .n.warn { color: var(--amber); }
+  .card .n.alert { color: var(--red); }
+  .card .l { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
+
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .status-breakdown { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .status-chip { background: #fffdf8; border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; font-size: 13px; }
+  .status-chip b { margin-left: 4px; }
+
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f2ece0; font-weight: 600; color: #666; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .route { font-weight: 600; }
+  .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .status-pending, .status-open { background: #fdf3e0; color: var(--amber); }
+  .status-accepted, .status-en_route { background: #e6f0ff; color: var(--ocean); }
+  .status-completed { background: #e5f5ea; color: var(--green); }
+  .status-cancelled, .status-expired, .status-declined { background: #fdeaea; color: var(--red); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+  .stale-badge { display: inline-block; margin-left: 6px; border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #fdeaea; color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
+  <div id="gateMsg"></div>
+  <button id="showPhoneLoginBtn" type="button" class="link-btn">Or send a login link via WhatsApp instead</button>
+  <div id="phoneLoginWrap" style="display:none;">
+    <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+    <button id="loginBtn">Send login link</button>
+  </div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
+  </div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Dashboard</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <div class="toolbar">
+    <button id="refreshBtn">Refresh</button>
+    <button id="setPinBtn" type="button">Set/change PIN</button>
+    <button id="logoutBtn" type="button">Log out</button>
+  </div>
+
+  <div class="pin-panel" id="setPinPanel">
+    <input type="password" id="newPinInput" placeholder="New PIN (6-12 digits)" inputmode="numeric" maxlength="12">
+    <input type="password" id="newPinConfirm" placeholder="Confirm PIN" inputmode="numeric" maxlength="12">
+    <button id="savePinBtn" type="button">Save PIN</button>
+    <div class="msg" id="setPinMsg"></div>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2>Bookings by status</h2>
+  <div class="status-breakdown" id="statusBreakdown"></div>
+
+  <h2>Negotiations by status</h2>
+  <div class="status-breakdown" id="negotiationBreakdown"></div>
+
+  <h2>Open negotiation requests</h2>
+  <div id="openNegotiations"></div>
+
+  <h2>Drivers offline mid-job</h2>
+  <div id="offlineMidJob"></div>
+
+  <h2>Upcoming transfers</h2>
+  <div id="upcoming"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      ADMIN_TOKEN = tokenFromLink;
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    await tryLoad();
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadStats();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  // Milestone 24 - PIN login, the default/primary path now: no WhatsApp
+  // dependency, works the moment a PIN is set. POST /admin/login-pin
+  // returns the token directly in the response (unlike the magic link,
+  // there's no WhatsApp round-trip to wait on) - store it and load
+  // straight away.
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!pin) return;
+    document.getElementById('pinLoginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        ADMIN_TOKEN = data.token;
+        sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+        document.getElementById('pinInput').value = '';
+        await tryLoad();
+      } else {
+        msgEl.className = 'err';
+        msgEl.textContent = data.error || 'Something went wrong.';
+        msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('pinLoginBtn').disabled = false;
+    }
+  });
+
+  // Milestone 23 - phone-number magic-link login, kept as a secondary
+  // option (collapsed by default) alongside the PIN above - useful if
+  // James doesn't have his PIN handy but does have his phone. POST
+  // /admin/login is intentionally generic either way (same
+  // privacy-by-default posture as driver login) - a real login link
+  // only actually arrives via WhatsApp for the one authorized number.
+  document.getElementById('showPhoneLoginBtn').addEventListener('click', () => {
+    document.getElementById('phoneLoginWrap').style.display = 'block';
+    document.getElementById('showPhoneLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  });
+
+  // Real gap found live: the static env.ADMIN_TOKEN break-glass path
+  // (requireAdmin() has always accepted it, unchanged since Milestone 23)
+  // had no UI left to use it through at all - the raw-token input was
+  // removed when the magic link replaced it, and never restored. James
+  // was locked out of setting his first PIN, since neither the PIN field
+  // (correctly empty/unset) nor the WhatsApp link (template not yet
+  // submitted) could get him in. This restores a third, collapsed option
+  // using the token he already has - no backend change needed, since
+  // requireAdmin() already accepts it.
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => {
+    document.getElementById('tokenLoginWrap').style.display = 'block';
+    document.getElementById('showTokenLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const token = document.getElementById('tokenInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!token) return;
+    document.getElementById('tokenLoginBtn').disabled = true;
+    ADMIN_TOKEN = token;
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      ADMIN_TOKEN = '';
+      msgEl.className = 'err';
+      msgEl.textContent = 'Invalid token or connection error.';
+      msgEl.style.display = 'block';
+    }
+    document.getElementById('tokenLoginBtn').disabled = false;
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('nadi_admin_token');
+    ADMIN_TOKEN = '';
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+  });
+
+  // Milestone 24 - set/change the PIN itself. Gated server-side by the
+  // existing requireAdmin() on POST /admin/set-pin (this page is
+  // already past that gate to be showing #main at all) - only reachable
+  // once logged in via any of the three methods.
+  document.getElementById('setPinBtn').addEventListener('click', () => {
+    const panel = document.getElementById('setPinPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.getElementById('savePinBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('newPinInput').value.trim();
+    const confirmPin = document.getElementById('newPinConfirm').value.trim();
+    const msgEl = document.getElementById('setPinMsg');
+    msgEl.style.display = 'none';
+    if (pin !== confirmPin) {
+      msgEl.className = 'msg err'; msgEl.textContent = 'PINs do not match.'; msgEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('savePinBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/set-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      msgEl.className = 'msg ' + (data.ok ? 'ok' : 'err');
+      msgEl.textContent = data.ok ? 'PIN updated.' : (data.error || 'Could not update PIN.');
+      msgEl.style.display = 'block';
+      if (data.ok) {
+        document.getElementById('newPinInput').value = '';
+        document.getElementById('newPinConfirm').value = '';
+      }
+    } catch {
+      msgEl.className = 'msg err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('savePinBtn').disabled = false;
+    }
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', loadStats);
+
+  async function loadStats() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/dashboard-stats', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load dashboard (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderStats(data);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function renderStats(data) {
+    document.getElementById('subline').textContent = 'Last updated ' + new Date().toLocaleTimeString();
+
+    document.getElementById('cards').innerHTML = `
+      <div class="card"><div class="n">${data.bookings_today}</div><div class="l">Bookings today</div></div>
+      <div class="card"><div class="n ${data.unassigned_bookings > 0 ? 'warn' : ''}">${data.unassigned_bookings}</div><div class="l">Unassigned bookings</div></div>
+      <div class="card"><div class="n ${data.stale_unassigned_bookings > 0 ? 'alert' : ''}">${data.stale_unassigned_bookings}</div><div class="l">Stale unassigned (${data.booking_stale_after_minutes}+ min)</div></div>
+      <div class="card"><div class="n ${data.active_escalations > 0 ? 'alert' : ''}">${data.active_escalations}</div><div class="l">Active escalations</div></div>
+      <div class="card"><div class="n ${data.drivers_offline_mid_job > 0 ? 'alert' : ''}">${data.drivers_offline_mid_job}</div><div class="l">Drivers offline mid-job</div></div>
+      <div class="card"><div class="n">${data.upcoming_transfers.length}</div><div class="l">Upcoming transfers</div></div>
+    `;
+
+    const statuses = Object.entries(data.bookings_by_status || {});
+    const statusEl = document.getElementById('statusBreakdown');
+    statusEl.innerHTML = statuses.length === 0
+      ? '<div class="empty">No bookings yet.</div>'
+      : statuses.map(([status, count]) => `
+          <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
+        `).join('');
+
+    // Milestone 29 - negotiation_requests already auto-expires in the
+    // background (Milestone 25); this is the first time admin can see
+    // any of that activity at all, even as just a status breakdown.
+    const negotiations = Object.entries(data.negotiations_by_status || {});
+    const negotiationEl = document.getElementById('negotiationBreakdown');
+    negotiationEl.innerHTML = negotiations.length === 0
+      ? '<div class="empty">No negotiation requests yet.</div>'
+      : negotiations.map(([status, count]) => `
+          <div class="status-chip"><span class="status-badge status-${escHtml(status)}">${escHtml(status)}</span><b>${count}</b></div>
+        `).join('');
+
+    renderOfflineMidJob(data.offline_mid_job || []);
+    renderUpcoming(data.upcoming_transfers || []);
+    loadOpenNegotiations();
+  }
+
+  async function loadOpenNegotiations() {
+    const el = document.getElementById('openNegotiations');
+    try {
+      const res = await fetch(API_URL + '/admin/negotiations?status=open', {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) { el.innerHTML = '<div class="empty">Could not load negotiations.</div>'; return; }
+      const data = await res.json();
+      renderOpenNegotiations(data.negotiations || []);
+    } catch {
+      el.innerHTML = '<div class="empty">Connection error loading negotiations.</div>';
+    }
+  }
+
+  function renderOpenNegotiations(rows) {
+    const el = document.getElementById('openNegotiations');
+    if (rows.length === 0) {
+      el.innerHTML = '<div class="empty">No open negotiation requests.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Proposed</th>
+            <th>Reference fare</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="openNegotiationsBody">
+          ${rows.map(r => `
+            <tr data-id="${r.id}">
+              <td>${escHtml(r.guest_name)}<div class="meta">${escHtml(r.guest_phone || '—')}</div></td>
+              <td class="route">${escHtml(r.pickup_zone)} → ${escHtml(r.destination_zone)}</td>
+              <td>${escHtml(r.vehicle_type)}</td>
+              <td>${formatPriceFjd(r.guest_proposed_amount_fjd)}</td>
+              <td>${formatPriceFjd(r.reference_fare_fjd)}</td>
+              <td><button type="button" onclick="declineNegotiationRequest(${r.id})">Decline</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function formatPriceFjd(n) {
+    return n == null ? '—' : 'FJ$' + Number(n).toFixed(2);
+  }
+
+  // Real gap this fills: previously the only way to act on a negotiation
+  // was accept-offer (needs a driver's counter-offer to already exist)
+  // or manual-assign (needs a driver + agreed price picked). This is the
+  // one genuinely new "no" action - resolves instantly for the guest
+  // instead of waiting for negotiation_expiry_minutes to elapse.
+  async function declineNegotiationRequest(id) {
+    if (!confirm('Decline this negotiation request? The guest will be shown the standard fare instead.')) return;
+    try {
+      const res = await fetch(API_URL + '/negotiate/' + id + '/decline', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || 'Could not decline this request.');
+        return;
+      }
+      loadOpenNegotiations();
+    } catch {
+      alert('Connection error declining this request.');
+    }
+  }
+
+  // Milestone 30 - real gap the combined review found: a driver going
+  // offline (POST /driver/online) is never blocked while they still have
+  // a booking 'accepted' or 'en_route' - deliberately not blocked
+  // server-side either (a driver may have a real reason, like a dead
+  // phone or an emergency), so this is the surfacing half of the fix: a
+  // human needs to see it and call the driver or the guest. Driver phone
+  // is a tel: link since that's the actual next action here.
+  function renderOfflineMidJob(rows) {
+    const el = document.getElementById('offlineMidJob');
+    if (rows.length === 0) {
+      el.innerHTML = '<div class="empty">No drivers currently offline with an active job.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Booking</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Status</th>
+            <th>Driver</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>#${r.id}</td>
+              <td>${escHtml(r.guest_name)}<div class="meta">${escHtml(r.guest_phone || '—')}</div></td>
+              <td class="route">${escHtml(r.pickup_zone)} → ${escHtml(r.destination_zone)}</td>
+              <td><span class="status-badge status-${escHtml(r.status)}">${escHtml(r.status)}</span></td>
+              <td>${escHtml(r.driver_name)}<div class="meta"><a href="tel:${escHtml(r.driver_phone || '')}">${escHtml(r.driver_phone || '—')}</a></div></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderUpcoming(transfers) {
+    const el = document.getElementById('upcoming');
+    if (transfers.length === 0) {
+      el.innerHTML = '<div class="empty">No upcoming transfers with a scheduled pickup date.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Pickup</th>
+            <th>ID</th>
+            <th>Guest</th>
+            <th>Route</th>
+            <th>Vehicle</th>
+            <th>Status</th>
+            <th>Driver</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transfers.map(t => `
+            <tr>
+              <td>${escHtml(t.pickup_date)}${t.pickup_time ? ' ' + escHtml(t.pickup_time) : ''}</td>
+              <td>#${t.id}</td>
+              <td>${escHtml(t.guest_name)}</td>
+              <td class="route">${escHtml(t.pickup_zone)} → ${escHtml(t.destination_zone)}</td>
+              <td>${escHtml(t.vehicle_type)}</td>
+              <td><span class="status-badge status-${escHtml(t.status)}">${escHtml(t.status)}</span></td>
+              <td>${escHtml(t.driver_name || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  init();
+</script>
+</body>
+</html>

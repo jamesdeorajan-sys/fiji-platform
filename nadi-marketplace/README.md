@@ -1170,6 +1170,606 @@ re-verified `0`.
 endpoints implicated in guest widget integration were covered); Bot Fight Mode deliberately
 deferred as a judgment call, not a blocker; admin pages still have no Zero Trust/Access layer.
 
+## Milestone 17 — itinerary fields + a real zone-coordinate data fix
+
+Two real, verified fixes from a live bug report (return-trip booking to
+Robinson Crusoe Island reached WhatsApp with no return-leg detail at all,
+and the Flexible Fare toggle was missing on the Confirm step for that same
+booking).
+
+**Itinerary fields** — `bookings` previously stored zero itinerary detail
+(date/time/notes) for either leg of a trip. Added 6 nullable columns
+(`pickup_date`, `pickup_time`, `notes`, `return_date`, `return_time`,
+`return_pickup_location`) via `createBookingRecord()`, the shared insert
+path for all three booking-creation callers — only the public
+`POST /bookings` endpoint (what the guest widget calls) populates them.
+Migration run against the live DB (`migrations/milestone17-itinerary-fields.sql`,
+6/6 queries succeeded, all 5 existing rows confirmed still null on every
+new column). Verified end-to-end with a real `POST /bookings` call through
+the live public API, confirmed via direct D1 `SELECT`, malformed-date
+input confirmed rejected. Test row deleted after verification, count
+re-confirmed back at baseline.
+
+**Flexible Fare toggle investigation** — traced the reported "missing for
+return trips" regression and found it was **not** trip-type-related at
+all: reproduced the identical failure with the same route (Nadi Airport →
+Robinson Crusoe Island, minivan) set to one-way. The real cause was a bad
+zone centroid — `zones.Natadola` was stored at `(-18.2264, 177.3792)`, a
+point Google's Routes API can't resolve a DRIVE route to when queried
+zone-to-zone (used only by `computeRealReferenceFare`, the Flexible Fare
+negotiation floor) — even though real free-text addresses in the same area
+resolved fine via the separate `/quote` geocoding path used for the
+guest's actual booking price. Confirmed by testing every other zone with
+populated coordinates (Denarau, Lautoka, Suva, Momi Bay, Nadi, Nausori,
+Pacific Harbour, Rakiraki, Sigatoka, Sonaisali, Vuda Point, Wailoaloa) —
+all succeeded; only Natadola failed. `Mamanuca Islands`/`Yasawa Islands`
+are correctly null (boat-only, no road route).
+
+Fix (James's sign-off, since this is a live data correction, not an
+additive migration): updated Natadola's coordinate to `(-18.101017,
+177.319168)` — the real point Google resolved for "Natadola Beach, Fiji,"
+already proven routable via a completed `/quote` call before this fix was
+applied. Verified via direct D1 `SELECT` post-update, a real
+`/reference-fare` call for both sedan and minivan (previously failing,
+now `200 ok` with real fares), the `zone_distance_cache` row populated
+with a real, sane distance (54.718 km), and a full live-browser replay of
+the exact reported scenario (Nadi Airport → Robinson Crusoe Island,
+minivan, return trip) confirming the Flexible Fare toggle now renders
+with a real "Propose from FJ$125" floor. Test escalation and geocode-cache
+rows created during investigation were deleted afterward.
+
+## Milestone 18 — server-authoritative pricing (in progress, plan approved)
+
+Following the Milestone 17 return-multiplier bug, James asked for a written
+scope-and-risk assessment before committing days to fixing the underlying
+pattern (price computed/displayed in more than one place, drifting
+silently). Full plan covering Recommendations 1–4 (server-authoritative
+`POST /bookings`, named/testable pricing steps, an automated regression
+suite, and a runtime sanity guardrail) was written, reviewed, and approved
+before any implementation started.
+
+**Step 1 (done)**: `nadi-marketplace/worker/pricing.test.js` — a
+regression + scenario suite written against TODAY's already-correct
+behavior, before the refactor, so it's a real safety net rather than
+retrofitted proof. Deliberately side-effect-free (every test either only
+reads, or exercises a below-floor `/negotiate` rejection that never
+reaches an `INSERT`) — safe to run repeatedly with no cleanup step. 10
+tests: the 6 scenarios from the original review (one-way short/long,
+return short/long, negotiated Flexible Fare, custom address) plus 4
+explicit historical-bug regressions (the return-multiplier bug fixed in
+Milestone 17, twice — the core `1.85x` invariant and the "trip_type must
+change the number" check — plus the static-$25-floor bug and the
+Total-vs-Standard-Fare drift bug, both regression-guarded at the API
+level). All 10 passing against the live API; one test's expected value
+was itself wrong on first run (a one-way number mislabeled as "return" in
+the plan) - caught immediately by the suite, exactly the failure mode
+it's meant to catch. Run via `node --test nadi-marketplace/worker/pricing.test.js`.
+
+**Steps 2+3 (done)**: `nadi-marketplace/worker/pricing.mjs` — the 7 named
+pricing steps (`resolveDistanceKm`, `computeBaseFare`,
+`applyZoneMultiplier`, `applyTripTypeMultiplier`, `applyNightSurcharge`,
+`applyLoyaltyDiscount`, `computeFinalTotal`) plus `computeBoatFare` and
+the Recommendation 4 guardrail (`assertSanePricing`, defined and tested
+now, not wired into the real request path until Step 4). `.mjs`
+extension deliberately, not `.js` — makes it an unambiguous ES module by
+extension alone with no `package.json` needed anywhere in the repo,
+keeping the "zero new dependencies" decision from the approved plan
+intact. `worker.js`'s `computeFareFjd()`, `computeRealReferenceFare()`,
+and `handleBoatQuote()` now call these named functions instead of each
+carrying its own inline copy of the formula — a pure structural refactor,
+confirmed zero behavior change by deploying it and re-running the full
+Step-1 integration suite against the live API afterward (all 10 still
+passing). 24 new unit tests in `pricing-steps.test.mjs` covering each
+step's normal/boundary/bad-input cases, including one that directly
+reproduces the exact Milestone 17 failure mode (a return total that
+collapsed to ~1x the one-way fare) and confirms `assertSanePricing`
+would have caught it. Full local suite: 28 unit + 10 integration = 38
+tests, all passing, zero database side effects (confirmed via direct D1
+query before and after).
+
+**Step 4 (done)**: `POST /bookings` is now server-authoritative for the
+class of booking that matters most — `createBookingRecord()`'s new
+`computeAuthoritativePrice()` fully replaces `quoted_amount` for a fixed
+zone-pair transfer (with exactly-verified extras), sanity-bounds it for
+custom-address and boat bookings (both real, named v1.1 gaps: neither an
+address's exact geocoded distance nor a boat's passenger split reaches
+this endpoint yet), and verifies only the transfer+extras portion for a
+tour booking (the tour cost itself has no server-side pricing data,
+out of scope until v2). `admin_test_booking` and `negotiation_accept_offer`
+explicitly marked `verificationMode: 'trusted'` — unaffected, by design.
+
+Two real, second-order gaps caught by James's pre-Step-4 review before any
+code was written (not discovered as bugs afterward): extras (child seat
++FJ$8, surfboard +FJ$24) are fixed constants, not open-ended like tours,
+so they're exactly verified via a new `applyExtras()` step rather than
+folded into the tour's soft bound; and custom-address bookings can't be
+fully re-derived without the raw address text, which never reaches this
+endpoint today, so they get the same sanity-bound treatment as tours
+rather than a false claim of full authority.
+
+A third real bug was caught by live testing itself, after code was
+written: `applyLoyaltyDiscount()` initially rounded the discount to the
+nearest cent, but the client's `calculateTotal()` rounds it to the
+nearest whole dollar — using cent precision meant the authoritative
+replacement price didn't actually match what the guest was shown and
+agreed to. Fixed in the same pass, locked in with a unit test using the
+exact real numbers that exposed it.
+
+Verified extensively against the live API post-deploy: fixed-route
+booking with a tampered price correctly replaced with the real
+discounted fare; fixed-route with both extras selected correctly
+computed exactly (reproduced 3x for stability, after one isolated,
+non-reproducing anomaly traced to normal deploy-propagation timing, not
+a code defect); a tour booking with a valid remainder kept as sent; a
+tour booking with a negative remainder still created (not yet blocked —
+that's Recommendation 4, the next step); custom-address bookings within
+and outside the sanity band both kept as sent, never replaced. All 11
+test bookings and the temporary rate-limit bump used to run them cleanly
+were reverted, baseline re-confirmed. Full suite: **43/43 passing
+against the live deployment** (33 unit + 10 integration).
+
+**Step 5 (done) — Milestone 18 complete.** `assertSanePricing()` is now
+wired into the live request path, two ways, both routing a failure to the
+existing `createEscalation()` WhatsApp-alert path rather than silently
+creating a bad-priced booking:
+
+1. **Return-ratio check** (the fixed zone-pair full-replace path): a
+   second `computeAuthoritativePrice()` call with `tripType` forced to
+   `'one-way'` gives an apples-to-apples comparison (same extras on both
+   sides), then the ratio is checked against `[1.5x, 2.2x]`. This is the
+   actual last line of defense the Milestone 17 return-multiplier bug
+   needed — if that exact bug class ever reappears, this catches it
+   before a guest is quoted or a driver dispatched a collapsed price.
+2. **Tour-remainder check**: previously only logged a warning and still
+   created the booking anyway — now actually blocks it.
+
+Deliberately **not** added to the automated `pricing.test.js` suite that
+runs before every deploy — triggering the guardrail fires a real
+escalation and WhatsApp alert, so an automated test exercising it would
+page the team on every routine pre-deploy check. The pure logic stays
+covered by `assertSanePricing`'s own unit tests; the live wiring was
+verified manually instead:
+
+- Underpriced tour ($50 vs a $69.08 verified transfer): correctly
+  blocked, `bookings` count unchanged, `escalations` went 10 → 11 with a
+  real, correctly-detailed record.
+- Valid tour remainder ($119.08, same route): still succeeds normally.
+- Normal return-trip booking: still succeeds at the correct $114.80 —
+  the new guardrail doesn't false-positive on a legitimate booking.
+- `escalations` re-confirmed unchanged (not 12) after the two successful
+  bookings — no false-positive alerts.
+- All test data deleted afterward, baseline fully re-confirmed (6
+  bookings, 10 escalations). Full 43-test suite re-run against the new
+  deployment, zero regression.
+
+This closes all four recommendations from James's original
+pricing-safety review — the static-$25-floor bug, the Total-vs-Standard-
+Fare drift bug, and the return-multiplier bug (all three already fixed
+in Milestone 17) now share one named, tested, server-authoritative
+pricing pipeline with a real runtime guardrail behind it, rather than
+depending on a human noticing the next wrong number.
+
+**Post-Milestone-18 fix — fixed-route full-replace was overriding real
+published prices.** Found via live testing while James was checking an
+unrelated `applyExtras()` question (that question's own answer: extras
+are correct, $8/$24 flat, verified directly against deployed code — the
+non-additive deltas he saw were the loyalty discount's own well-understood
+whole-dollar-rounded behavior, not a bug). Root cause:
+`computeAuthoritativePrice()` always used the `pricing_rules` FORMULA,
+but a real guest's quoted price for a known route comes from a separate,
+curated PUBLISHED price table the server has no representation of at
+all (e.g. FJ$49 published vs FJ$47.87 formula for Nadi Airport ->
+Denarau, sedan) — full-replace was silently overriding a real guest's
+real, agreed price with a different number. Fixed zone-pair bookings
+now use a sanity band (0.8x-1.3x, tighter than custom-address's
+0.7x-3x) instead of full replace: within the band the client's real
+number is kept; outside it, still falls back to the safe server number
+(so this doesn't reopen the tampering gap Step 4 closed - it just
+widens the untouched zone around a real published price). Named v1.1
+follow-up to fully close: port the published price table server-side.
+Verified live (real published price kept, genuinely tampered price
+still replaced, the exact extras scenario that surfaced this now
+matches the client exactly), test data cleaned up, baseline
+re-confirmed, zero regression on the existing 43-test suite.
+
+## Admin bookings list (`admin-bookings.html` + `GET /admin/bookings`)
+
+Real gap James found and checked directly: no admin panel or API to
+list/view bookings at all — `admin-drivers.html` only manages driver
+applications, `destinations-admin.html` only manages zones, and the only
+existing `/admin/bookings` endpoint was `POST manual-assign`, no `GET`
+list. He had no way to see his own bookings without asking us to query
+D1 directly — which is exactly what happened moments earlier the same
+session, needing to urgently identify two real bookings in his driver's
+job feed before he accepted either (both confirmed real, not test data —
+distinguishable by their real pickup date/time and a phone number that
+doesn't match any test-data pattern used this build).
+
+`handleAdminListBookings()`: same `requireAdmin()` gate every other
+`/admin/*` endpoint uses, bounded (`limit` 1–200, default 50 — a
+dashboard view, not an export tool), optional `?status=` filter, newest
+first, includes a `driver_name` join. `admin-bookings.html`: same
+token-gate + table pattern as `destinations-admin.html`, same Pages
+project (git-connected auto-deploy). Read-only for now, matching the
+ask. Verified live: `GET /admin/bookings` correctly returns 401 for both
+a missing and an invalid token; the actual "log in and see real data"
+step is James's own to do — that credential was never available to
+verify with directly, by design.
+
+## Milestone 19 — `booking_events` audit trail
+
+James's own follow-up to the admin bookings list above, scoped down
+from a broader "add a bookings table + a multi-channel event dispatcher"
+ask, with the corrections explained in his own words: `bookings` already
+exists live with real data (real guests, wallet transactions,
+escalations, vehicles all foreign-keyed to it) — this is additive, a new
+table alongside it, not a replacement; and a pluggable multi-channel
+dispatcher is more abstraction than the platform needs today, since
+WhatsApp is the only real notification channel that exists — deferred
+until there's a real second channel to plug into it. Plain JS
+throughout, matching `worker.js`/`pricing.mjs` — no TypeScript
+introduced for just this piece.
+
+**Schema** (`migrations/milestone19-booking-events.sql`, mirrored into
+`schema.sql`): `booking_events(id, booking_id FK, event_type,
+previous_status, new_status, actor, metadata JSON, created_at)` + an
+index on `booking_id`. `event_type` deliberately has no CHECK
+constraint (unlike `escalations.trigger_type`) — this is an audit log,
+not a strict state machine.
+
+**Logging** (`logBookingEvent()`, new helper): swallows its own errors,
+since a logging failure must never break a real transition. Wired at
+every real status-transition point already in the code — booking
+creation (`createBookingRecord()`, covering guest-create, negotiation
+accept-offer, and admin manual-assign's new-booking path, each passing
+an explicit `actor`; plus `handleAdminTestBooking()`'s own raw insert),
+driver accept and admin manual-assign's existing-booking path (both log
+`accepted`), the driver status-update endpoint (`en_route`/`completed`),
+and `createEscalation()` (logs `escalated` whenever a real `bookingId`
+is attached). `cancelled` is a supported-but-unused `event_type` value —
+named honestly rather than faked, since no cancellation flow exists
+anywhere in this codebase yet.
+
+**Notification**: `completed` now alerts `admin_alert_phone` via the
+exact existing `sendHealthAlertWhatsApp()`/`getAdminAlertPhones()`
+pattern the booking-creation alert already uses — no new abstraction
+layer, per the scoped-down ask. `cancelled` isn't wired, same reasoning
+as above.
+
+**Admin view**: `admin-bookings.html` gains an "Events" column — expand
+a row to lazy-load its chronological event history via the new `GET
+/admin/bookings/:id/events` (same `requireAdmin()` gate), cached in
+memory per booking so re-expanding never re-fetches. Not a new page.
+
+Verified: migration applied to the live D1 database, `booking_events`
+table + index confirmed via direct `PRAGMA` query. Zero regression on
+the existing 43-test suite after deploy. Real end-to-end test via the
+public `POST /bookings` path: a `created` row appeared with the correct
+`event_type`/`new_status`/`actor`, confirmed via direct D1 `SELECT`; the
+new events endpoint correctly 401s without a valid token. Test booking
+and its event row deleted afterward, baseline re-confirmed (11
+bookings, 0 `booking_events`). `admin-bookings.html`'s expand/collapse UI
+verified in a real browser against the live API — real 401 error path,
+mock rendering of all three real event shapes (created/accepted/
+escalated), collapse — zero console errors.
+
+Not live-tested (no admin/driver credentials available, by design, same
+limitation already flagged for `admin-bookings.html` itself):
+`handleDriverAcceptBooking`, `handleAdminManualAssign`, and
+`handleDriverBookingStatus`'s logging calls are code-reviewed and
+syntax-checked but call the same already-proven `logBookingEvent()`
+helper with different literal arguments — James's own use of the driver
+app / admin panel will be the real first exercise of those paths.
+
+## Milestones 20-21 — operational dashboard + escalation staff queue
+
+Items 2 and 3 of the follow-up build order, shipped together (both
+read-only GET admin endpoints, no interdependency).
+
+`GET /admin/dashboard-stats` + `admin-dashboard.html`: bookings today
+(`date(created_at) = today`), bookings by status, unassigned bookings,
+active escalations, and upcoming transfers by `pickup_date`/
+`pickup_time` — all computed from existing tables, nothing new stored.
+"Unassigned" deliberately reuses the exact definition
+`handleDriverJobs` already uses for the live driver feed (`status =
+'pending' AND assigned_driver_id IS NULL`), so this number always
+agrees with what drivers are actually seeing rather than being a
+second, potentially-drifting definition of the same concept.
+
+`GET /admin/escalations` + `admin-escalations.html`: read-only staff
+queue for the real, live `escalations` table (Milestone 10) — until now
+the only way to see an open escalation was the WhatsApp alert at the
+moment it fired, or a direct D1 query. Defaults to the open queue
+(`resolved = 0`); `?resolved=1` looks back at history. Joins bookings
+and drivers for real context. `escalations` has no priority column in
+the live schema — reflected honestly by not returning one, rather than
+fabricating a value. Assignment-to-staff-member is scoped out per the
+ask's own "fast-follow, not required in this first pass."
+
+Verified: both endpoints deployed, confirmed 401 without a valid token
+and with a deliberately wrong one, against the live API. Zero
+regression on the 43-test suite. Both pages verified in a real browser:
+real 401 error path against the live API, then full UI rendering
+confirmed via direct render-function calls with representative mock
+data — zero console errors. The actual "log in and see real data" step
+is James's own to do, same as every other admin page — the real
+`ADMIN_TOKEN` was never available to verify with directly, by design.
+
+## Milestone 22 — guest-notification trigger on driver assignment
+
+Item 4 of the follow-up build order. Built and wired now, expected to
+stay dormant/unused in production until two separate real-world
+conditions are both met: the `vakaviti_guest_driver_assigned` template
+is submitted and approved in WhatsApp Manager (not yet done, as of this
+commit — same starting state `vakaviti_fuel_index_alert` and
+`vakaviti_ops_health_alert` were in before James submitted them), and
+`WHATSAPP_PHONE_ID` points at a real production number rather than the
+current test number. That's expected, not a bug, per the ask.
+
+`sendGuestDriverAssignedWhatsApp(env, booking, driverName)`: a booking-
+shaped wrapper around the existing `sendWhatsAppTemplate()` helper — the
+same pattern `sendBookingBroadcastWhatsApp` already uses one function
+above it in the file. No new dispatcher/abstraction layer. Body params:
+guest name, driver name, vehicle type, route (`pickup_zone ->
+destination_zone`), and pickup date/time (falls back to "time to be
+confirmed" when neither `pickup_date` nor `pickup_time` was captured on
+the booking). If `booking.guest_phone` is empty or invalid,
+`sendWhatsAppTemplate`'s own existing guard already no-ops it safely —
+no new validation needed here.
+
+Called at every real point in `worker.js` where a booking transitions to
+having a real assigned driver: `handleDriverAcceptBooking` (driver's own
+accept), `handleAdminManualAssign`'s both paths (taking over an existing
+booking, and a WhatsApp-arranged booking created pre-assigned), and
+`handleNegotiationAcceptOffer` (which additionally fetches the assigned
+driver's name fresh, since `negotiation_offers` only stores `driver_id`
+— the other three call sites already have the name on hand from an
+earlier query in the same request).
+
+Verified: syntax-checked, deployed, zero regression on the 43-test suite
+(re-run against the live deployment). Not live-triggered end-to-end — no
+admin/driver credentials available to actually accept a booking or
+manually assign a driver, the same standing limitation as every other
+admin/driver-gated path this build. Since `WHATSAPP_TOKEN`/
+`WHATSAPP_PHONE_ID` are already configured (pointing at the test
+number), a real accept/assign happening in production from this point
+forward will genuinely attempt a Graph API call using this new template
+— expected to fail (template not yet submitted), same harmless,
+already-established state `FUEL_INDEX_ALERT_TEMPLATE` and
+`HEALTH_ALERT_TEMPLATE` sat in before their own submission, not a new
+risk this introduces.
+
+## Milestone 23 — admin phone-number magic-link login
+
+Replaces the raw `ADMIN_TOKEN` paste on all 5 admin pages
+(`admin-bookings.html`, `admin-dashboard.html`, `admin-escalations.html`,
+`admin-drivers.html`, `destinations-admin.html` — all five used the
+identical raw-token gate pattern, sharing one `sessionStorage` key) with
+the exact same phone-in/WhatsApp-link/token-out flow already built and
+proven for driver login. James stops manually generating and pasting a
+token via the Cloudflare dashboard — he requests a link to his own
+WhatsApp instead.
+
+Restricted to exactly one phone number, `+61413335007`, hardcoded as
+`ADMIN_LOGIN_PHONE` — not a `platform_setting` or DB-stored value, since
+an admin-editable setting can't be the thing gating who is allowed to
+become an admin in the first place.
+
+Additive: new `admin_login_tokens` table (mirrors `driver_login_tokens`
+minus a `driver_id` FK — there's no admins table), added to
+`BACKUP_TABLES` for the same reason `driver_login_tokens` already is.
+`requireAdmin()` is now async and checks two valid credentials, not a
+replacement of one: the existing static `env.ADMIN_TOKEN` (unchanged,
+still the break-glass path) OR a valid, unexpired `admin_login_tokens`
+row. All 21 call sites updated to await it — mechanical and
+behavior-preserving, confirmed via the 43-test suite and a live 401
+check against an already-existing admin endpoint post-deploy.
+
+`sendAdminLoginWhatsApp()` mirrors `sendDriverReturnWhatsApp`'s exact
+body+button shape. `vakaviti_admin_login` is not yet submitted to Meta
+— the token is issued either way, so a login link can still be shared
+manually if needed before the template is approved.
+
+Every admin page's gate replaced with the same phone-input +
+magic-link-consumption pattern `driver-app.html` already uses (`?token=`
+query param → `sessionStorage` → stripped from the URL), plus a new "Log
+out" button (a real gap this change itself creates — previously there
+was no login/logout concept, just re-pasting a token). `sessionStorage`
+deliberately kept, not switched to `driver-app.html`'s `localStorage` —
+admin access is higher-privilege than driver access.
+
+**Verified live end-to-end**: `POST /admin/login` with `+61413335007`
+returned `ok:true` and issued exactly one row in `admin_login_tokens`
+(confirmed via direct D1 `SELECT`); the same request with a different
+number returned the identical generic response but created zero rows —
+the real security boundary, not just the HTTP response. The real issued
+token was then used as a Bearer credential against `GET
+/admin/dashboard-stats` and returned real live data (200); a
+one-character-different token on the same endpoint correctly 401'd.
+Browser-verified against the real live API on `admin-dashboard.html`:
+gate renders, a wrong-number request shows the generic message with no
+console errors, and navigating with a real `?token=` from a fresh
+request logged in for real (live dashboard data rendered, URL stripped,
+Log out correctly cleared the session). `admin-drivers.html`
+spot-checked for the toolbar/logout placement on a page that had no
+pre-existing toolbar. All test tokens deleted afterward, baseline
+re-confirmed (0 rows). Zero regression on the 43-test suite.
+
+**Real, honest finding surfaced during this verification, not fixed
+here** (out of scope for this change): the real WhatsApp send attempt to
+`+61413335007` failed with Meta error 131030 "Recipient phone number not
+in allowed list" — the current `WHATSAPP_PHONE_ID` is a Meta test
+number, which only delivers to phone numbers explicitly added to its
+allowed recipient list, a separate gate from template approval. The
+login flow itself is unaffected (the token is issued and usable
+regardless of WhatsApp delivery success) — but real WhatsApp delivery of
+the admin login link needs either that allowlist updated or the real
+production WhatsApp number in place, the same production-readiness gap
+already flagged for Milestone 22's guest-notification trigger.
+
+## Milestone 24 — admin PIN login
+
+A third option alongside the static `ADMIN_TOKEN` and the Milestone 23
+magic link, per James's own reasoning: there is exactly one admin, and
+the magic-link flow (built for the many-drivers case) adds real
+friction — template approval, WhatsApp delivery, allow-list membership —
+for a single-user problem that doesn't need any of it. Neither existing
+path is removed; the PIN is now the default/primary option on every
+admin gate, with the magic link demoted to a collapsed "or send a login
+link via WhatsApp instead" secondary.
+
+No new table — a PIN system for exactly one admin is three scalar
+values, held in `platform_settings` (`admin_pin_hash`,
+`admin_pin_failed_attempts`, `admin_pin_locked_until`), same pattern as
+`admin_alert_phone` and every existing rate-limit setting.
+
+**Hashing**: PBKDF2 (Web Crypto, built into the Workers runtime, zero
+new dependency), 100,000 iterations, a random 16-byte salt per PIN,
+stored as one self-describing string
+`pbkdf2$<iterations>$<saltHex>$<hashHex>`. A 6-digit PIN has only a
+million possible values — far too small for an unsalted single-round
+hash — same category of care as any password. The assistant building
+this never saw or chose James's real PIN.
+
+**Rate limiting**: global (not per-IP) lockout after 5 failed attempts,
+15 minutes — one admin, one PIN, so a global throttle is simpler and
+more protective than per-IP tracking. Setting a new PIN clears any
+existing lockout/attempt count.
+
+**Real bug caught and fixed before shipping**: comparing a JS
+`toISOString()` value (`"...T...Z"`) against SQLite's `datetime('now')`
+(`"YYYY-MM-DD HH:MM:SS"`) with a plain `>` is a byte-wise **string**
+comparison, not a real time comparison — `'T'` always beats `' '` in
+ASCII regardless of the actual time that follows, confirmed live via a
+direct D1 query while building this. Fixed by wrapping both sides in
+`julianday()`. This exact pattern already exists in `driver_login_tokens`'
+and `admin_login_tokens`' own expiry checks (`requireDriver`/
+`requireAdmin`) — flagged, not fixed here (out of scope for this
+change; fails toward "stays logged in longer than intended," not toward
+breaking a real login, so nothing is currently broken by it) — a named
+follow-up.
+
+**Two endpoints**: `POST /admin/set-pin` (gated by the existing
+`requireAdmin()`) and `POST /admin/login-pin` (public — this *is* the
+auth step; issues a token via the exact same `admin_login_tokens`
+insert `handleAdminLogin` already uses, skipping WhatsApp entirely).
+`admin-dashboard.html` gains a "Set/change PIN" panel in its toolbar.
+
+**Verified live end-to-end**, using a legitimate admin session obtained
+the same way Milestone 23's own verification did (never the real
+`ADMIN_TOKEN`): `set-pin` accepted a valid PIN and correctly rejected a
+too-short one, a non-numeric one, and an unauthenticated request;
+`login-pin` with the correct PIN issued a real token confirmed to grant
+real admin access; 5 wrong-PIN attempts correctly locked out for 15
+minutes with `attempts_remaining` counting down correctly; the lockout
+correctly blocked even the *correct* PIN while active (the real proof
+the fixed `julianday()` comparison works); setting a new PIN cleared the
+lockout immediately. Browser-verified on `admin-dashboard.html`: PIN
+gate renders as primary, the WhatsApp-link toggle works, a real PIN
+login through the actual UI logged in with zero console errors, the
+mismatch guard blocked non-matching PINs, and Log out cleared the
+session. All test tokens deleted and `admin_pin_hash` reset back to
+empty (unconfigured) afterward, per instruction — James sets his own
+real PIN from a clean, empty state. Zero regression on the 43-test
+suite.
+
+## Milestone 24 follow-up — restored the admin-token login option
+
+Real blocker James hit directly: `admin-dashboard.html`'s login screen
+only offered a PIN field (correctly rejecting since none was set yet)
+and the WhatsApp-link fallback (still hitting the unsubmitted
+`vakaviti_admin_login` template) — there was no visible way to log in
+with the static `ADMIN_TOKEN` he already has, so he couldn't reach the
+Set/change PIN panel to set his first PIN at all.
+
+Confirmed directly via a real browser load of the live deployed page
+*before* touching anything: the raw-token input was fully removed, not
+hidden — Milestone 23 replaced it with the phone-number magic-link
+gate, and Milestone 24 only added the PIN option on top of that. The
+static-token path itself was never actually removed from the backend
+(`requireAdmin()` has accepted it unchanged this whole time) — only the
+UI to use it disappeared. Zero `worker.js` changes needed; pure
+frontend fix, applied identically to all 5 admin pages.
+
+Adds a third, collapsed "Or log in with an admin token" option
+alongside PIN (primary) and the WhatsApp link (secondary) — reveals a
+password-type token input + Enter button, submits by setting
+`ADMIN_TOKEN` and calling the page's own existing `tryLoad()` (the same
+function the magic-link `?token=` flow already uses to validate by
+actually attempting to load real data).
+
+Verified live against the real deployed page
+(`driver.fijidash.com/admin-dashboard.html`): confirmed the gap first
+(no token option anywhere), then after the fix — the option is visible,
+a deliberately wrong token correctly shows "Invalid token or connection
+error," and a real valid session token (obtained the same
+never-touch-the-real-secret way as every other verification this
+build) logged in successfully with live dashboard data and zero console
+errors, proving the exact code path a real static token would also
+take. All test tokens deleted afterward, baseline re-confirmed (only
+James's own real token remains); `admin_pin_hash` confirmed still
+unconfigured/untouched.
+
+## Milestone 25 — Tier 1 fixes from the combined pre-launch review
+
+Two independent reviews (this build's own comprehensive audit, and
+James's own parallel review) produced a combined, tiered fix list.
+This covers Tier 1 — the items flagged as real stranger-facing risk,
+required before any real strangers touch the build.
+
+**`GET /negotiate/:id` PII leak + rate limit** — the most serious
+finding of either review. `handleNegotiationStatus` returned the full
+`negotiation_requests` row (`SELECT *`) to any unauthenticated caller
+for a sequential, guessable ID, with zero rate limiting — guest name,
+phone, and IP for every negotiation ever created, scrapable by simply
+incrementing the ID. Fixed by trimming the response to only
+`{id, status, created_at, reference_fare_fjd}` (confirmed via `app.js`
+that nothing else is ever consumed) and adding
+`checkNegotiationStatusRateLimit()` + a new `negotiation_status_lookups`
+table (300/10min, mirroring the existing `reference_fare_lookups`
+pattern). Same pass also fixed `handleDriverNegotiationRequests` (the
+driver-facing list), which never applied the same lazy-expiry check
+`handleNegotiationStatus` already had — a stale `open` request only
+ever flipped to `expired` if the *original guest* was still polling
+their own status; a driver could see and respond to a request from a
+guest who'd given up hours ago. Fixed with a new
+`expireStaleNegotiationRequests()` bulk sweep.
+
+**Test data cleanup** — `negotiation_requests` was 100% test data (all
+5 rows, one literally named "Live Test Negotiate," the rest James's own
+real phone numbers from a single manual testing session), 4 of 5 still
+`open`. `escalations` was 10 of 11 duplicate "Nanuya Lailai Island"
+geocode-failure rows (several with identical same-second timestamps —
+clearly repeated manual testing, not organic retries) plus one more
+(`#11`) with the same source IP as the confirmed-test negotiation rows,
+same day — treated as test data too on that evidence. All deleted;
+`admin/dashboard-stats` confirmed `active_escalations` correctly
+dropped to 0.
+
+Fabricated review statistics and the guest-site double-submit guard are
+documented in `ftt-booking-site`'s own history (`guest-widget-integration-preview`
+branch) — both are guest-site changes, not backend.
+
+**Real, unresolved blocker found while shipping the double-submit fix**:
+the guest site's custom domain (`book.fijidash.com`) appears to have a
+Cloudflare edge cache on `.js`/`.css` assets that doesn't match the
+Pages project's own `_headers` file (`max-age=3600`) — the live
+response showed `max-age=14400` (4 hours) with `cf-cache-status: HIT`,
+and the query-string cache-busting convention used throughout this
+build (`?v=...`) does not reliably bypass it. Confirmed via the
+deployment's own immutable preview URL (which always showed the correct,
+fresh content) vs. the custom domain (which kept serving stale `.js`
+content well after a confirmed-successful Production deploy). This
+looks like a zone-level Cloudflare Cache Rule outside what `wrangler`
+or the Pages project's own `_headers` can control — needs either a
+manual cache purge (Cloudflare dashboard, Caching → Configuration) or
+an API token with cache-purge permission, neither of which this session
+has access to. Real implication: **any future `.js`/`.css`-only change
+to the guest site may not take effect on the real domain for up to 4
+hours after deploy**, even though the deploy itself succeeds
+correctly — verify against the deployment's own unique `*.pages.dev`
+URL first if a fix needs to be confirmed live quickly.
+
 ## Branch
 
 `nadi-marketplace-phase1-staging` — not merged to `main`. Awaiting James's review.

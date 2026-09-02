@@ -172,12 +172,6 @@ const state = {
   // toggle rather than shown as an equal-weight card. Reset to false each
   // time renderFareTiers() runs (i.e. every fresh entry to step 4).
   showFlexibleFare: false,
-  // True once the guest has actually tapped "Send booking via WhatsApp" on
-  // the Bula success card. Gates the beforeunload leave-warning below -
-  // the DB row exists regardless, but no human sees the booking until this
-  // tap fires the real WhatsApp message, so from the guest's side this is
-  // the step that matters. Reset to false each time the success card shows.
-  bulaWaTapped: false,
   // Double-submit guard for confirmBooking() - set true on entry and
   // deliberately NOT reset after a successful run (a real booking widget
   // only gets to submit once; see confirmBooking()'s own comment for why
@@ -1674,7 +1668,7 @@ function buildWhatsAppURL(ref) {
 }
 
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
-function confirmBooking() {
+async function confirmBooking() {
   // Real gap found by an independent pre-launch review: zero double-submit
   // protection existed here. Two click events dispatched close together
   // (a fast double-click, or the classic mobile double-tap event-firing
@@ -1685,10 +1679,15 @@ function confirmBooking() {
   // checked first, before anything else runs (so it also covers a
   // double-click landing on the flight-number confirm() dialog itself) -
   // reset on the one early-return path below so a guest who declines
-  // that dialog can still submit normally afterward, and reset again at
-  // the end for the same reason (belt and suspenders - nothing today
-  // re-shows the booking widget after success, but this doesn't rely on
-  // that staying true).
+  // that dialog can still submit normally afterward. CEO P0 fix (Issue
+  // #34): this guard now ALSO covers the async gap between click and the
+  // server actually responding (previously fully synchronous, so the
+  // event loop itself serialised concurrent clicks - now that
+  // submitMarketplaceBooking() is awaited, a second click during that
+  // await window needs this flag, not just event-loop ordering, to be
+  // rejected). Reset in every exit path below EXCEPT after a confirmed
+  // success, matching the original "the widget's job is done" rule -
+  // reset on failure specifically so "Try again" can resubmit.
   if (state.confirmBookingInFlight) return;
   state.confirmBookingInFlight = true;
   const confirmBtn = document.querySelector('.btn-confirm');
@@ -1703,8 +1702,8 @@ function confirmBooking() {
   if (pickupVal === 'NAN' && !flightVal && !state.flightPromptDismissed) {
     const proceed = confirm(
       'No flight number entered.\n\n'
-      + 'We monitor incoming flights so the driver adjusts pickup time '
-      + 'automatically if you\'re delayed. Without it, your driver may '
+      + 'With a flight number, our team can coordinate your driver\'s pickup '
+      + 'against your actual arrival time. Without it, your driver may '
       + 'arrive before you clear customs.\n\n'
       + 'Continue anyway?'
     );
@@ -1720,75 +1719,179 @@ function confirmBooking() {
     state.flightPromptDismissed = true;
   }
 
-  // Generate the booking reference
+  // Generate the booking reference. CEO P0 fix (Issue #34): this is now
+  // also the client_booking_ref idempotency key sent to POST /bookings -
+  // stable across retries of the SAME booking attempt (stashed on state so
+  // retryMarketplaceBooking() reuses it rather than minting a new one,
+  // which would defeat idempotency by making every retry look like a
+  // brand-new booking).
   const ref = 'FD-' + Date.now().toString(36).toUpperCase().slice(-6);
+  state.currentBookingRef = ref;
 
-  // Pre-build the WhatsApp URL with the full booking details
-  const waUrl = buildWhatsAppURL(ref);
+  // MILESTONE 11/12: real driver-marketplace booking is the actual point
+  // of this integration - real guest bookings reaching real online
+  // drivers, not just a WhatsApp message. Scoped to exactly the two
+  // airport-anchored cases /quote can reliably resolve: pickup === 'NAN'
+  // (arriving guest, Milestone 11) or pickup === 'CUSTOM_PICKUP' &&
+  // destination === 'NAN' (departing guest, Milestone 12). Every other
+  // combination is out of scope (unchanged from before this fix - the
+  // server has no zone data to validate those against).
+  const destValForSync = document.getElementById('destination')?.value;
+  const isSupportedRoute = pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN');
 
-  // Pull customer first name for personalised greeting
-  const firstName = document.getElementById('firstName')?.value.trim().split(/\s+/)[0] || 'friend';
-
-  // Populate the Bula success card
-  const bulaName = document.getElementById('bulaName');
-  if (bulaName) bulaName.textContent = firstName;
-  const bulaRef = document.getElementById('bulaRef');
-  if (bulaRef) bulaRef.textContent = `Booking ref: ${ref}`;
-  const bulaWaBtn = document.getElementById('bulaWaBtn');
-  if (bulaWaBtn) bulaWaBtn.href = waUrl;
-
-  // A2: pre-fill the modification link with the booking ref so the customer
-  // doesn't have to retype it. Driver coordinator gets a clear request.
-  const bulaModifyLink = document.getElementById('bulaModifyLink');
-  if (bulaModifyLink) {
-    const modifyText = `Hi Fiji Dash, I'd like to modify booking ${ref}. The change I need is:`;
-    bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
+  if (!isSupportedRoute) {
+    // No marketplace booking is possible for this route - WhatsApp really
+    // is the only mechanism that reaches a human, so this framing stays
+    // (unlike the supported-route path below, saying "booking received"
+    // here would be false - no server row exists yet).
+    showBulaUnsupportedRoute(ref);
+    // Widget's job is done either way once a card is shown - matches the
+    // original "stays true for the rest of its lifecycle" rule.
+    return;
   }
 
-  // Hide the entire booking widget, show the Bula success card
+  const result = await submitMarketplaceBooking(ref);
+
+  if (result.ok) {
+    showBulaSuccess(ref, result.bookingId);
+    // Deliberately NOT reset - a confirmed booking means this widget's
+    // job is done, matching the original double-submit guard's intent.
+  } else {
+    showBulaFailure(ref, result.error);
+    // Reset so "Try again" (retryMarketplaceBooking) can actually resubmit -
+    // the one case besides the flight-prompt decline where no booking was
+    // actually created and the guest needs a real second attempt.
+    state.confirmBookingInFlight = false;
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+}
+
+// Pulls the guest's first name for the personalised card greeting - shared
+// by all three post-submit card states below.
+function bulaFirstName() {
+  return document.getElementById('firstName')?.value.trim().split(/\s+/)[0] || 'friend';
+}
+
+function hideBookingWidget() {
   const widget = document.getElementById('bookingWidget');
   if (widget) widget.style.display = 'none';
+  document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// CEO P0 fix (Issue #34) - the honest success state: only ever called AFTER
+// the server has actually confirmed the booking (result.ok from
+// submitMarketplaceBooking). WhatsApp is now a genuinely optional extra
+// channel, not a requirement the booking's existence depends on.
+function showBulaSuccess(ref, bookingId) {
+  const failureCard = document.getElementById('bulaFailure');
+  if (failureCard) failureCard.style.display = 'none';
+  hideBookingWidget();
+
+  const bulaName = document.getElementById('bulaName');
+  if (bulaName) bulaName.textContent = bulaFirstName();
+  const bulaRef = document.getElementById('bulaRef');
+  if (bulaRef) bulaRef.textContent = bookingId ? `Booking #${bookingId} · Ref: ${ref}` : `Request ref: ${ref}`;
+  const bulaLeadText = document.getElementById('bulaLeadText');
+  if (bulaLeadText) {
+    bulaLeadText.innerHTML = '✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we\'ll confirm your driver directly.';
+  }
+
+  const waUrl = buildWhatsAppURL(ref);
+  const bulaWaBtn = document.getElementById('bulaWaBtn');
+  if (bulaWaBtn) {
+    bulaWaBtn.href = waUrl;
+    bulaWaBtn.textContent = '';
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Chat with Fiji Dash about this booking');
+  }
+  setBulaModifyLink(ref);
+
   const bula = document.getElementById('bulaSuccess');
   if (bula) bula.style.display = 'block';
-
-  // Fresh entry to the success card - the WhatsApp tap is required again
-  state.bulaWaTapped = false;
-  const requiredNotice = document.getElementById('bulaRequiredNotice');
-  if (requiredNotice) {
-    requiredNotice.textContent = '⚠️ Required: your booking is not sent to our team until you tap the button above.';
-    requiredNotice.classList.remove('acknowledged');
-  }
-
-  // Scroll to the top of the booking section so the success card is centered
-  document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
-
-  // MILESTONE 11/12: also create a real driver-marketplace booking - the
-  // actual point of this integration is real guest bookings reaching real
-  // online drivers, not just replicating the existing WhatsApp message.
-  // Scoped to exactly the two airport-anchored cases /quote can reliably
-  // resolve: pickup === 'NAN' (arriving guest, Milestone 11) or pickup ===
-  // 'CUSTOM_PICKUP' && destination === 'NAN' (departing guest, Milestone
-  // 12). Every other combination is out of scope (see the section note
-  // above). Fire-and-forget: never blocks or alters what the guest sees
-  // above, and a failure here is never surfaced to them - the WhatsApp
-  // confirmation already sent is their real, working confirmation regardless.
-  const destValForSync = document.getElementById('destination')?.value;
-  if (pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN')) {
-    submitMarketplaceBooking(ref).catch(() => {});
-  }
-
-  // Deliberately NOT reset here. confirmBooking() is fully synchronous -
-  // two click events queued close together (the exact double-click/
-  // double-tap case this guard exists for) are still processed one at a
-  // time by the browser's event loop, so if this ran to completion and
-  // reset the flag, a second already-queued click would sail straight
-  // through and create a second real booking, reproducing the original
-  // bug. Once a real submission has gone through, this booking widget's
-  // job is done - the flag stays true for the rest of its lifecycle. The
-  // ONE legitimate "let them try again" path (the flight-number prompt
-  // decline, above) resets it explicitly because no booking was actually
-  // created there.
 }
+
+// Route not eligible for the marketplace sync (see isSupportedRoute above) -
+// WhatsApp genuinely is the only path to a human here, so this stays framed
+// as needed, just without the old alarming "⚠️ Required" styling/wording.
+function showBulaUnsupportedRoute(ref) {
+  hideBookingWidget();
+
+  const bulaName = document.getElementById('bulaName');
+  if (bulaName) bulaName.textContent = bulaFirstName();
+  const bulaRef = document.getElementById('bulaRef');
+  if (bulaRef) bulaRef.textContent = `Request ref: ${ref}`;
+  const bulaLeadText = document.getElementById('bulaLeadText');
+  if (bulaLeadText) {
+    bulaLeadText.innerHTML = 'This route needs one quick step to reach our team: tap below to send your booking details on WhatsApp and we\'ll confirm your driver.';
+  }
+
+  const waUrl = buildWhatsAppURL(ref);
+  const bulaWaBtn = document.getElementById('bulaWaBtn');
+  if (bulaWaBtn) {
+    bulaWaBtn.href = waUrl;
+    bulaWaBtn.textContent = '';
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send booking via WhatsApp');
+  }
+  setBulaModifyLink(ref);
+
+  const bula = document.getElementById('bulaSuccess');
+  if (bula) bula.style.display = 'block';
+}
+
+// CEO P0 fix (Issue #34) - the honest failure state: never shown instead of
+// a false success. submitMarketplaceBooking() has already fired an
+// escalation (reportBookingSyncFailure) by the time this runs, independent
+// of whether the guest retries or messages WhatsApp from here.
+function showBulaFailure(ref, errorDetail) {
+  const successCard = document.getElementById('bulaSuccess');
+  if (successCard) successCard.style.display = 'none';
+  hideBookingWidget();
+
+  const waUrl = buildWhatsAppURL(ref);
+  const failWaBtn = document.getElementById('bulaFailureWaBtn');
+  if (failWaBtn) failWaBtn.href = waUrl;
+  const failRef = document.getElementById('bulaFailureRef');
+  if (failRef) failRef.textContent = `Reference: ${ref}`;
+
+  const failure = document.getElementById('bulaFailure');
+  if (failure) failure.style.display = 'block';
+}
+
+// "Try again" on the failure card - reuses the SAME client_booking_ref
+// (state.currentBookingRef), so a retry that actually reaches the server
+// this time is idempotent with any earlier attempt that may have secretly
+// succeeded (e.g. the response was lost after the server had already
+// committed) rather than creating a second real booking.
+async function retryMarketplaceBooking() {
+  if (state.confirmBookingInFlight) return;
+  state.confirmBookingInFlight = true;
+  const retryBtn = document.getElementById('bulaRetryBtn');
+  if (retryBtn) retryBtn.disabled = true;
+
+  const ref = state.currentBookingRef;
+  if (!ref) { state.confirmBookingInFlight = false; if (retryBtn) retryBtn.disabled = false; return; }
+
+  const result = await submitMarketplaceBooking(ref);
+  if (retryBtn) retryBtn.disabled = false;
+
+  if (result.ok) {
+    showBulaSuccess(ref, result.bookingId);
+  } else {
+    state.confirmBookingInFlight = false;
+    showBulaFailure(ref, result.error);
+  }
+}
+
+// A2: pre-fill the modification link with the booking ref so the customer
+// doesn't have to retype it. Driver coordinator gets a clear request.
+function setBulaModifyLink(ref) {
+  const bulaModifyLink = document.getElementById('bulaModifyLink');
+  if (bulaModifyLink) {
+    const modifyText = `Hi Fiji Dash, I'd like to modify request ${ref}. The change I need is:`;
+    bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
+  }
+}
+
+const BULA_WA_ICON_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>';
 
 // Resolves the destination_zone for THIS specific confirm - computed fresh
 // here rather than trusted from state, since state.destZoneName means two
@@ -1832,12 +1935,18 @@ function resolveConfirmedPickupZone() {
   return null;
 }
 
+// CEO P0 fix (Issue #34) - returns a structured { ok, bookingId, idempotent,
+// error } instead of silently swallowing success/failure, so confirmBooking()
+// can decide which card to show rather than always assuming success. Every
+// return path below is intentional; there is no implicit-undefined exit.
 async function submitMarketplaceBooking(ref) {
   const pickupZone = resolveConfirmedPickupZone();
   const destinationZone = resolveConfirmedDestinationZone();
   const firstName = document.getElementById('firstName')?.value.trim() || '';
   const lastName  = document.getElementById('lastName')?.value.trim() || '';
   const phone     = document.getElementById('phone')?.value.trim() || '';
+  const email     = document.getElementById('email')?.value.trim() || '';
+  const flightNum = document.getElementById('flightNum')?.value.trim() || '';
 
   // MILESTONE 13: a sourced boat destination bypasses calculateTotal()'s
   // vehicle-tier/discount math entirely - the real bundled fare (land leg
@@ -1858,10 +1967,17 @@ async function submitMarketplaceBooking(ref) {
   const commissionBaseFjd = isBoatBooking ? bq.land_leg_fare_fjd : undefined;
 
   if (!pickupZone || !destinationZone || !state.selectedVehicle || !quotedAmount) {
-    // Not enough real, verified data to create a correct booking - skip
-    // rather than send a guess. The guest's WhatsApp confirmation is
-    // unaffected either way.
-    return;
+    // Not enough real, verified data to create a correct booking - never
+    // send a guess. CEO P0 fix (Issue #34): this used to silently `return`
+    // (implicit undefined), which the old fire-and-forget caller never
+    // inspected - now a real failure result, so confirmBooking() shows the
+    // honest recovery card instead of a false success. Still worth an ops
+    // alert: a supported-route booking that reaches confirmBooking() with
+    // unresolved zone/vehicle/price data is a real gap somewhere upstream,
+    // not routine.
+    const incompleteDetail = { reason: 'incomplete-client-data', pickupZone, destinationZone, vehicleType: state.selectedVehicle, quotedAmount };
+    await reportBookingSyncFailure(ref, incompleteDetail, incompleteDetail);
+    return { ok: false, error: 'missing-required-data' };
   }
 
   // Itinerary fields - informational only (never affect price/commission),
@@ -1886,6 +2002,14 @@ async function submitMarketplaceBooking(ref) {
   const payload = {
     guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
     guest_phone: phone,
+    guest_email: email || null,
+    flight_number: flightNum || null,
+    // CEO P0 fix (Issue #34) - the idempotency key. Sent on every attempt
+    // (first submit AND every retry) for this same booking, so the backend
+    // can detect a resubmission and return the existing row rather than
+    // creating a duplicate (see nadi-marketplace/worker/worker.js
+    // createBookingRecord()'s client_booking_ref handling).
+    client_booking_ref: ref,
     pickup_zone: pickupZone,
     destination_zone: destinationZone,
     vehicle_type: vehicleType,
@@ -1917,16 +2041,30 @@ async function submitMarketplaceBooking(ref) {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.ok) await reportBookingSyncFailure(ref, payload, data);
+    if (!res.ok || !data?.ok) {
+      // CEO P0 fix (Issue #34) - this branch also covers the "network
+      // timeout after server commit" case from the test list: if the
+      // fetch itself times out AFTER the server already inserted the row,
+      // this same catch block below runs, and the guest's retry (same
+      // client_booking_ref) hits the idempotency path server-side and
+      // gets the ALREADY-CREATED booking back as a success - never a
+      // second row, regardless of which side the timeout happened on.
+      await reportBookingSyncFailure(ref, payload, data);
+      return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
+    }
+    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
   } catch (err) {
     await reportBookingSyncFailure(ref, payload, { error: err.message });
+    return { ok: false, error: err.message };
   }
 }
 
 // Never lets a failed marketplace-booking sync go unnoticed - fires a real
 // escalation so a human sees it, the same fallback pattern the backend
-// itself already uses for its own failure modes. Never shown to the guest;
-// their WhatsApp confirmation is the real, working path regardless.
+// itself already uses for its own failure modes. CEO P0 fix (Issue #34):
+// this now fires BEFORE the guest has necessarily done anything else - it
+// is not conditional on them tapping WhatsApp or retrying, so ops finds
+// out about a failed handoff even if the guest just closes the tab.
 async function reportBookingSyncFailure(ref, payload, errorDetail) {
   try {
     await fetch(`${NADI_API_BASE}/escalate`, {
@@ -2329,31 +2467,16 @@ function showNegotiationSuccess(_referenceFare, agreedAmount) {
   document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Called from the "Send booking via WhatsApp" button's onclick, right as the
-// wa.me link opens in a new tab. Marks the required step done so the
-// beforeunload warning below doesn't fire once the guest has actually sent it.
-function markWhatsAppTapped() {
-  state.bulaWaTapped = true;
-  const notice = document.getElementById('bulaRequiredNotice');
-  if (notice) {
-    notice.textContent = '✅ Sent — thanks! Our team will confirm on WhatsApp shortly.';
-    notice.classList.add('acknowledged');
-  }
-}
-
-// Real requirement, not a nicety: if the guest tries to leave (close tab,
-// navigate away, hit back) while the Bula success card is showing and they
-// have NOT tapped the WhatsApp button, warn them - the booking row exists in
-// the DB either way, but no human on our end sees it until that WhatsApp
-// message actually sends.
-window.addEventListener('beforeunload', function(e) {
-  const bula = document.getElementById('bulaSuccess');
-  if (bula && bula.style.display !== 'none' && !state.bulaWaTapped) {
-    e.preventDefault();
-    e.returnValue = '';
-    return '';
-  }
-});
+// CEO P0 fix (Issue #34): both markWhatsAppTapped() and the beforeunload
+// warning below this comment used to exist ONLY because the booking wasn't
+// actually sent to our team until the guest tapped WhatsApp - the exact
+// false-dependency this fix removes. confirmBooking() now awaits the real
+// server booking transaction BEFORE bulaSuccess is ever shown, so there is
+// nothing left for a "did you tap WhatsApp yet" nag to protect: the booking
+// already exists and ops has already been alerted, tap or no tap. Removed
+// rather than left as dead code so nothing can silently start blocking
+// navigation again if bulaWaTapped is ever reintroduced for an unrelated
+// reason.
 
 // Reset the booking flow without a full page reload — closes the Bula card
 // and reopens the booking widget, fresh state.

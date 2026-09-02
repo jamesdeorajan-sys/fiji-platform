@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Financials</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px 80px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gate button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; }
+  #gateMsg.ok { color: var(--green); }
+  #gateMsg.err { color: var(--red); }
+  .link-btn { background: none !important; border: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; padding: 0 !important; margin-top: 14px !important; cursor: pointer; }
+  #phoneLoginWrap, #tokenLoginWrap { margin-top: 14px; text-align: left; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar label { font-size: 13px; color: #666; }
+  .toolbar input, .toolbar button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar button { cursor: pointer; font-weight: 600; }
+  .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .card { background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .card .n { font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .card .l { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
+
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: #fffdf8; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f2ece0; font-weight: 600; color: #666; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.num.neg { color: var(--red); }
+  .empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
+  <div id="gateMsg"></div>
+  <button id="showPhoneLoginBtn" type="button" class="link-btn">Or send a login link via WhatsApp instead</button>
+  <div id="phoneLoginWrap" style="display:none;">
+    <input type="tel" id="phoneInput" placeholder="Phone number" autocomplete="tel">
+    <button id="loginBtn">Send login link</button>
+  </div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
+  </div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <h1>Financials</h1>
+  <p class="sub" id="subline">Loading…</p>
+
+  <div class="toolbar">
+    <label for="fromInput">From</label>
+    <input type="date" id="fromInput">
+    <label for="toInput">To</label>
+    <input type="date" id="toInput">
+    <button id="applyBtn">Apply</button>
+    <button id="clearBtn" type="button">All time</button>
+    <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn" type="button">Log out</button>
+  </div>
+
+  <div class="err-banner" id="errBanner"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2>By driver</h2>
+  <div id="byDriver"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function fmt(n) {
+    return 'FJD ' + Number(n || 0).toFixed(2);
+  }
+
+  function urlParam(name) {
+    return new URL(window.location.href).searchParams.get(name);
+  }
+
+  async function init() {
+    const tokenFromLink = urlParam('token');
+    if (tokenFromLink) {
+      ADMIN_TOKEN = tokenFromLink;
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+      history.replaceState({}, '', window.location.pathname);
+    }
+    await tryLoad();
+  }
+
+  async function tryLoad() {
+    if (!ADMIN_TOKEN) return false;
+    const ok = await loadFinancials();
+    if (ok) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      return true;
+    }
+    return false;
+  }
+
+  // Milestone 24 - PIN login, the default/primary path now: no WhatsApp
+  // dependency, works the moment a PIN is set. POST /admin/login-pin
+  // returns the token directly in the response - store it and load
+  // straight away.
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!pin) return;
+    document.getElementById('pinLoginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login-pin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        ADMIN_TOKEN = data.token;
+        sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+        document.getElementById('pinInput').value = '';
+        await tryLoad();
+      } else {
+        msgEl.className = 'err';
+        msgEl.textContent = data.error || 'Something went wrong.';
+        msgEl.style.display = 'block';
+      }
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('pinLoginBtn').disabled = false;
+    }
+  });
+
+  document.getElementById('showPhoneLoginBtn').addEventListener('click', () => {
+    document.getElementById('phoneLoginWrap').style.display = 'block';
+    document.getElementById('showPhoneLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('phoneInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!phone) return;
+    document.getElementById('loginBtn').disabled = true;
+    try {
+      const res = await fetch(API_URL + '/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      msgEl.className = data.ok ? 'ok' : 'err';
+      msgEl.textContent = data.message || data.error || 'Something went wrong.';
+      msgEl.style.display = 'block';
+    } catch {
+      msgEl.className = 'err'; msgEl.textContent = 'Connection error.'; msgEl.style.display = 'block';
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  });
+
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => {
+    document.getElementById('tokenLoginWrap').style.display = 'block';
+    document.getElementById('showTokenLoginBtn').style.display = 'none';
+  });
+
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const token = document.getElementById('tokenInput').value.trim();
+    const msgEl = document.getElementById('gateMsg');
+    if (!token) return;
+    document.getElementById('tokenLoginBtn').disabled = true;
+    ADMIN_TOKEN = token;
+    const ok = await tryLoad();
+    if (ok) {
+      sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN);
+    } else {
+      ADMIN_TOKEN = '';
+      msgEl.className = 'err';
+      msgEl.textContent = 'Invalid token or connection error.';
+      msgEl.style.display = 'block';
+    }
+    document.getElementById('tokenLoginBtn').disabled = false;
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    sessionStorage.removeItem('nadi_admin_token');
+    ADMIN_TOKEN = '';
+    document.getElementById('gate').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+  });
+
+  document.getElementById('applyBtn').addEventListener('click', loadFinancials);
+  document.getElementById('refreshBtn').addEventListener('click', loadFinancials);
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    document.getElementById('fromInput').value = '';
+    document.getElementById('toInput').value = '';
+    loadFinancials();
+  });
+
+  async function loadFinancials() {
+    const errBanner = document.getElementById('errBanner');
+    errBanner.style.display = 'none';
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    try {
+      const from = document.getElementById('fromInput') ? document.getElementById('fromInput').value : '';
+      const to = document.getElementById('toInput') ? document.getElementById('toInput').value : '';
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const qs = params.toString() ? '?' + params.toString() : '';
+      const res = await fetch(API_URL + '/admin/financials' + qs, {
+        headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN },
+      });
+      if (!res.ok) {
+        if (document.getElementById('main').style.display !== 'none') {
+          errBanner.textContent = 'Could not load financials (status ' + res.status + ').';
+          errBanner.style.display = 'block';
+        }
+        return false;
+      }
+      const data = await res.json();
+      renderFinancials(data);
+      return true;
+    } catch (e) {
+      if (document.getElementById('main').style.display !== 'none') {
+        errBanner.textContent = 'Connection error.';
+        errBanner.style.display = 'block';
+      }
+      return false;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  function renderFinancials(data) {
+    const periodLabel = (data.period.from || data.period.to)
+      ? (data.period.from || 'the start') + ' → ' + (data.period.to || 'now')
+      : 'all time';
+    document.getElementById('subline').textContent = 'Showing ' + periodLabel + ' — last updated ' + new Date().toLocaleTimeString();
+
+    document.getElementById('cards').innerHTML = `
+      <div class="card"><div class="n">${fmt(data.total_driver_earnings_fjd)}</div><div class="l">Total driver earnings (cash kept)</div></div>
+      <div class="card"><div class="n">${fmt(data.total_commission_owed_fjd)}</div><div class="l">Total commission owed to platform</div></div>
+      <div class="card"><div class="n">${data.by_driver.length}</div><div class="l">Drivers with activity/balance</div></div>
+    `;
+
+    renderByDriver(data.by_driver || []);
+  }
+
+  function renderByDriver(rows) {
+    const el = document.getElementById('byDriver');
+    if (rows.length === 0) {
+      el.innerHTML = '<div class="empty">No driver activity in this period.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Driver</th>
+            <th class="num">Completed trips</th>
+            <th class="num">Earnings (cash kept)</th>
+            <th class="num">Commission owed</th>
+            <th class="num">Current wallet balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(d => `
+            <tr>
+              <td>${escHtml(d.driver_name || ('#' + d.driver_id))}</td>
+              <td class="num">${d.completed_bookings}</td>
+              <td class="num">${fmt(d.driver_earnings_fjd)}</td>
+              <td class="num">${fmt(d.commission_owed_fjd)}</td>
+              <td class="num ${d.current_wallet_balance_fjd < 0 ? 'neg' : ''}">${fmt(d.current_wallet_balance_fjd)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drive for Nadi Airport Transfers</title>
+<title>Drive for Fiji Dash</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
   :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; }
@@ -25,11 +25,14 @@
   #result.ok { display: block; background: #e5f5ea; border: 1px solid #8fce9f; }
   #result.err { display: block; background: #fdeaea; border: 1px solid #e8a0a0; }
   .errlist { margin: 6px 0 0; padding-left: 18px; }
+  .btn-whatsapp { display: none; align-items: center; justify-content: center; gap: 8px; background: #25d366; color: #fff; text-decoration: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 600; margin-top: 14px; transition: background 0.15s; }
+  .btn-whatsapp.show { display: flex; }
+  .btn-whatsapp:hover { background: #1da851; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Drive for Nadi Airport Transfers</h1>
+  <h1>Drive for Fiji Dash</h1>
   <p class="sub">Fill in your details below. Our team reviews every application before approval — you'll get a WhatsApp message once you're verified.</p>
 
   <form id="joinForm">
@@ -89,6 +92,10 @@
   </form>
 
   <div id="result"></div>
+  <a id="waBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
+    Send application via WhatsApp →
+  </a>
 </div>
 
 <script>
@@ -114,11 +121,37 @@
   const form = document.getElementById('joinForm');
   const resultEl = document.getElementById('result');
   const submitBtn = document.getElementById('submitBtn');
+  const waBtn = document.getElementById('waBtn');
+
+  // Notification/handoff only - the backend submission above (POST /drivers)
+  // is the real source of truth (drivers/vehicles rows, real uploaded
+  // photos). This just alerts James/Ben on WhatsApp that an application is
+  // waiting in admin-drivers.html, sent from the APPLICANT's own device -
+  // sidesteps the WhatsApp Cloud API sandbox number's allowed-recipient-list
+  // problem entirely, same pattern as the guest booking site's confirm flow
+  // (ftt-booking-site/src/app.js buildWhatsAppURL/confirmBooking).
+  function buildDriverWhatsAppURL() {
+    const vehicleLabel = { sedan: 'Sedan', minivan: 'Minivan', minibus: 'Minibus' }[document.getElementById('vehicle_type').value] || document.getElementById('vehicle_type').value;
+    const zones = Array.from(document.getElementById('zones').selectedOptions).map(o => o.value);
+    const msg = [
+      `*NEW DRIVER APPLICATION*`,
+      `Fiji Dash`,
+      `=====================================`, ``,
+      `Name:    ${document.getElementById('name').value.trim()}`,
+      `Phone:   ${document.getElementById('phone').value.trim()}`,
+      `Vehicle: ${vehicleLabel}`,
+      `Plate:   ${document.getElementById('plate').value.trim()}`,
+      `Zones:   ${zones.join(', ')}`, ``,
+      `Documents already uploaded - please review in admin-drivers.html.`,
+    ].join('\n');
+    return `https://wa.me/61478886145?text=${encodeURIComponent(msg)}`;
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     resultEl.className = '';
     resultEl.style.display = 'none';
+    waBtn.classList.remove('show');
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
 
@@ -129,8 +162,12 @@
       const data = await res.json();
 
       if (res.ok && data.ok) {
+        // Built before form.reset() clears the fields it reads from.
+        waBtn.href = buildDriverWhatsAppURL();
+        waBtn.classList.add('show');
+
         resultEl.className = 'ok';
-        resultEl.innerHTML = '<strong>Application submitted!</strong> We\'ll review your documents and send a WhatsApp message once approved.';
+        resultEl.innerHTML = '<strong>Application submitted!</strong> We\'ll review your documents and send a WhatsApp message once approved. Tap the button below to also notify us directly on WhatsApp.';
         form.reset();
       } else {
         resultEl.className = 'err';

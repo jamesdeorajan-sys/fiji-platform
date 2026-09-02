@@ -298,7 +298,12 @@ CREATE TABLE geocoded_addresses (
   has_ferry_leg INTEGER NOT NULL DEFAULT 0,
   nearest_zone_id INTEGER REFERENCES zones(id),
   outcome TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  -- Milestone 12: which real trip this cached geocode represents.
+  -- 'from_airport' (arriving guest) or 'to_airport' (departing guest).
+  -- Folded into query_normalized itself so the same address text never
+  -- collides between the two directions.
+  direction TEXT NOT NULL DEFAULT 'from_airport'
 );
 
 CREATE TABLE quote_requests_log (
@@ -315,8 +320,13 @@ INSERT INTO platform_settings (key, value) VALUES ('quote_rate_limit_max_per_day
 CREATE TABLE escalations (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL CHECK (source IN ('guest', 'driver')),
+  -- 'boat_pricing_pending' added by milestone14b-escalation-trigger-type-fix.sql -
+  -- worker.js's ESCALATION_TRIGGER_TYPES was updated for Milestone 14 but this
+  -- CHECK constraint, a separate independent enforcement point, was missed
+  -- initially - real live-test caught it (SQLITE_CONSTRAINT_CHECK on every
+  -- pending boat quote) before it reached a real guest.
   trigger_type TEXT NOT NULL CHECK (trigger_type IN (
-    'geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other'
+    'geocode_failed', 'needs_manual_confirmation', 'wallet_dispute', 'app_issue', 'other', 'boat_pricing_pending'
   )),
   context TEXT,
   booking_id INTEGER REFERENCES bookings(id),
@@ -327,3 +337,246 @@ CREATE TABLE escalations (
 );
 
 INSERT INTO platform_settings (key, value) VALUES ('escalation_rate_limit_max_per_day', '10');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 13 additions — fixed-fare boat-transfer product for
+-- Mamanuca/Yasawa island resorts, distinct pricing path from the
+-- road/km/Google-Routes model. See migrations/milestone13-boat-transfer-
+-- product.sql for the migration actually run against the live database.
+-- ═══════════════════════════════════════════════════════════════
+
+-- transfer_type separates the pricing path cleanly: 'road' (existing
+-- zone/km/Google-Routes model, untouched) vs 'boat' (fixed fare read
+-- directly off these columns, never geocoded, never billed against the
+-- Routes API). Real fares are not published as a static price list by any
+-- operator (confirmed against 5 official pages) - they're captured by
+-- live-querying the operator's own booking engine per property, same
+-- discipline as fuel_index: a real, dated, operator-set figure expected
+-- to need periodic review, not a permanent constant.
+ALTER TABLE destinations ADD COLUMN transfer_type TEXT NOT NULL DEFAULT 'road';
+ALTER TABLE destinations ADD COLUMN boat_adult_fare_fjd REAL;
+ALTER TABLE destinations ADD COLUMN boat_child_fare_fjd REAL;
+-- Fiji Tour Transfers bundles and collects the full boat-operator fare (a
+-- real resale arrangement), not just the land leg. boat_land_leg_fare_fjd
+-- is the portion actually earned by an FTT driver - kept separate so a
+-- future commission pass can exclude the boat operator's pass-through
+-- portion rather than paying/charging driver commission on money that was
+-- never the driver's to begin with.
+ALTER TABLE destinations ADD COLUMN boat_land_leg_fare_fjd REAL;
+ALTER TABLE destinations ADD COLUMN boat_operator_name TEXT;
+ALTER TABLE destinations ADD COLUMN boat_fare_sourced_at TEXT;
+ALTER TABLE destinations ADD COLUMN boat_fare_source_note TEXT;
+
+-- Same reasoning as above, applied to actual booking rows: null preserves
+-- existing behaviour for every current (road) booking untouched; set only
+-- for boat bookings so commission accrual has the correct base to use
+-- once that logic is wired (not this milestone - accrueCommission() still
+-- reads settlement_amount_fjd only).
+ALTER TABLE bookings ADD COLUMN commission_base_fjd REAL;
+
+INSERT INTO zones (name) VALUES ('Mamanuca Islands');
+INSERT INTO zones (name) VALUES ('Yasawa Islands');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 14 additions — pricing_status for boat destinations, so a
+-- resort can be added as a real, guest-findable destination the moment
+-- its identity/zone is known, before its fare is sourced. See
+-- migrations/milestone14-boat-pricing-status.sql for the migration
+-- actually run against the live database.
+-- ═══════════════════════════════════════════════════════════════
+
+-- NULL = not a boat destination (every existing road row). 'sourced' =
+-- boat_adult_fare_fjd etc. are real and usable. 'pending' = a real,
+-- identified boat destination with no fare yet - /quote routes these into
+-- the Milestone 10 escalation/WhatsApp flow instead of computing a price.
+ALTER TABLE destinations ADD COLUMN pricing_status TEXT;
+
+INSERT INTO zones (name) VALUES ('Beqa Lagoon');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 15 additions — guest price negotiation, in-house drivers only.
+-- See migrations/milestone15-negotiation.sql for the migration actually
+-- run against the live database, including the full rationale for two new
+-- tables rather than a bookings.status value.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE negotiation_requests (
+  id INTEGER PRIMARY KEY,
+  guest_name TEXT,
+  guest_phone TEXT NOT NULL,
+  pickup_zone TEXT NOT NULL,
+  destination_zone TEXT NOT NULL,
+  distance_km REAL,
+  vehicle_type TEXT NOT NULL,
+  passengers INTEGER,
+  pickup_datetime TEXT,
+  reference_fare_fjd REAL NOT NULL,
+  guest_proposed_amount_fjd REAL NOT NULL,
+  -- 'declined' added by milestone33-negotiation-decline.sql - admin's own
+  -- active decline action, distinct from the passive 'expired' timeout.
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'expired', 'cancelled', 'declined')),
+  booking_id INTEGER REFERENCES bookings(id),
+  source_ip TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE negotiation_offers (
+  id INTEGER PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES negotiation_requests(id),
+  driver_id INTEGER NOT NULL REFERENCES drivers(id),
+  offer_type TEXT NOT NULL CHECK (offer_type IN ('accept', 'counter')),
+  offer_amount_fjd REAL NOT NULL,
+  guest_decision TEXT NOT NULL DEFAULT 'pending' CHECK (guest_decision IN ('pending', 'accepted', 'declined')),
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(request_id, driver_id)
+);
+
+-- Value updated to 5 by milestone33-negotiation-decline.sql - this is the
+-- fallback for admin not responding in time, not the guest's expected real
+-- wait (a human replies on WhatsApp almost immediately in practice).
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_expiry_minutes', '5');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_max_per_day', '5');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_rate_limit_window_minutes', '10');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 16 additions — server-side reference fare for the Flexible
+-- Fare feature (never trust reference_fare_fjd from the client - see
+-- migrations/milestone16-reference-fare-cache.sql for the full rationale).
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE zone_distance_cache (
+  id INTEGER PRIMARY KEY,
+  zone_a TEXT NOT NULL,
+  zone_b TEXT NOT NULL,
+  distance_km REAL NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(zone_a, zone_b)
+);
+
+CREATE TABLE reference_fare_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_max_per_day', '60');
+INSERT INTO platform_settings (key, value) VALUES ('reference_fare_rate_limit_window_minutes', '10');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 17 additions — itinerary fields. Bookings previously stored
+-- zero itinerary detail for either leg of a trip (only pricing/zone/
+-- vehicle/settlement data). Added after a real return-trip booking
+-- reached dispatch with no return date, time, or pickup location
+-- captured anywhere. See migrations/milestone17-itinerary-fields.sql for
+-- the migration actually run against the live database. All nullable —
+-- existing rows and the other two createBookingRecord() callers (admin
+-- test booking, negotiation accept-offer) are unaffected.
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE bookings ADD COLUMN pickup_date TEXT;
+ALTER TABLE bookings ADD COLUMN pickup_time TEXT;
+ALTER TABLE bookings ADD COLUMN notes TEXT;
+ALTER TABLE bookings ADD COLUMN return_date TEXT;
+ALTER TABLE bookings ADD COLUMN return_time TEXT;
+ALTER TABLE bookings ADD COLUMN return_pickup_location TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 19 additions — booking_events audit trail. Additive only,
+-- the bookings table itself is unchanged. See
+-- migrations/milestone19-booking-events.sql for the migration actually
+-- run against the live database, including the full rationale for why
+-- event_type has no CHECK constraint and why 'cancelled' is a
+-- supported-but-currently-unused value.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE booking_events (
+  id INTEGER PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id),
+  event_type TEXT NOT NULL,
+  previous_status TEXT,
+  new_status TEXT,
+  actor TEXT,
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 23 additions — admin phone-number magic-link login.
+-- Mirrors driver_login_tokens (Milestone 2) exactly, minus a foreign
+-- key to an "admins" table - there isn't one. See
+-- migrations/milestone23-admin-login.sql for the migration actually run
+-- against the live database, including the full rationale for why the
+-- one authorized phone number is hardcoded in worker.js rather than
+-- stored anywhere editable.
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE admin_login_tokens (
+  id INTEGER PRIMARY KEY,
+  token TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_booking_events_booking_id ON booking_events(booking_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 24 additions — admin PIN login, alongside the magic-link
+-- flow above. No new table - a PIN system for exactly one admin is
+-- three scalar values, which platform_settings already exists to hold.
+-- See migrations/milestone24-admin-pin.sql for the migration actually
+-- run against the live database, including the full rationale for the
+-- self-describing hash format and the global (not per-IP) lockout.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_hash', '');
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_failed_attempts', '0');
+INSERT INTO platform_settings (key, value) VALUES ('admin_pin_locked_until', '');
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 25 additions — rate limit for GET /negotiate/:id. See
+-- migrations/milestone25-negotiation-status-rate-limit.sql for the
+-- migration actually run against the live database, including the
+-- full rationale (a real, independently-found PII leak: this endpoint
+-- returned full guest PII to any unauthenticated caller for a
+-- sequential, guessable ID, with no rate limiting at all).
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_status_rate_limit_max', '300');
+INSERT INTO platform_settings (key, value) VALUES ('negotiation_status_rate_limit_window_minutes', '10');
+
+CREATE TABLE negotiation_status_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 28 additions — rate limit for POST /drivers. See
+-- migrations/milestone28-driver-submit-rate-limit.sql for the migration
+-- actually run against the live database. POST /negotiate/:id/accept-offer
+-- was fixed in the same milestone but needed no new table/settings — it
+-- reuses the existing checkGuestBookingRateLimit() / guest_booking_rate_limit_*
+-- settings already defined above (Milestone 13), since it writes to the
+-- same `bookings` table via the same source_ip column.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('driver_submit_rate_limit_max', '5');
+INSERT INTO platform_settings (key, value) VALUES ('driver_submit_rate_limit_window_minutes', '60');
+
+CREATE TABLE driver_submit_lookups (
+  id INTEGER PRIMARY KEY,
+  source_ip TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Milestone 29 additions — staleness surfacing for unaccepted bookings,
+-- and admin visibility into negotiation_requests (which already had
+-- lazy auto-expiry since Milestone 25, but zero admin-facing view). See
+-- migrations/milestone29-booking-staleness-and-negotiation-admin-view.sql
+-- for the migration actually run against the live database. No new
+-- tables needed for the negotiation-visibility half - GET
+-- /admin/negotiations reads the existing negotiation_requests table.
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO platform_settings (key, value) VALUES ('booking_stale_after_minutes', '30');
