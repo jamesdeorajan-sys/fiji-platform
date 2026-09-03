@@ -2519,7 +2519,7 @@ const ROUTES_DATA = [
   { destValue:"LAUTOKA_CRUISE",         dest:"Lautoka Cruise Terminal",             area:"Lautoka",         km:30,  time:"40 min",      s:89,  v:119, m:149 },
   // Momi / Natadola
   { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:79  },
-  { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:38,  time:"48 min",      s:99,  v:149, m:179 },
+  { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:45,  time:"1 hr",        s:99,  v:149, m:179 },
   { destValue:"ROBINSON_CRUSOE",        dest:"Robinson Crusoe Island (Likuri)",     area:"Natadola",        km:50,  time:"58 min",      s:99,  v:149, m:179 },
   // Sigatoka
   { destValue:"SIGATOKA_SAND_DUNES",    dest:"Sigatoka Town / Sand Dunes",          area:"Sigatoka",        km:60,  time:"1 hr 6 min",  s:129, v:159, m:199 },
