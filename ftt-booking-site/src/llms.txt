@@ -4,7 +4,7 @@
 > Fiji Dash books private airport transfers and tours across Fiji with real-time, automated driver dispatch: a guest requests a ride, real drivers get the job broadcast to them, and the first to accept is confirmed within seconds. Fixed, distance-based pricing shown before booking — no surge pricing, no negotiation required (a Flexible Fare option exists for guests who want to negotiate anyway).
 
 ## How Dispatch Works
-1. Guest picks a destination (from 35+ pre-priced routes) or enters a custom address for a real-time distance-based quote.
+1. Guest picks a destination (from 50+ pre-priced routes) or enters a custom address for a real-time distance-based quote.
 2. Guest confirms the booking at the fixed fare shown.
 3. The request is broadcast instantly to every registered, currently-online driver covering that pickup zone.
 4. The first driver to accept is confirmed — this happens automatically, typically within minutes, not through manual dispatch or a call centre.
@@ -26,7 +26,7 @@ Sedan (up to 3 pax) / Minivan (up to 6 pax) / Minibus (up to 10 pax). Prices bel
 - First Landing Beach Resort — 22km — from FJ$79
 - Lautoka City Centre — 28km — from FJ$89
 - Fiji Marriott Resort Momi Bay — 42km — from FJ$99
-- InterContinental Natadola / Yatule — 38km — from FJ$99
+- InterContinental Natadola / Yatule — 45km — from FJ$99
 - Sigatoka Town / Sand Dunes — 60km — from FJ$129
 - Shangri-La Yanuca Island — 72km — from FJ$129
 - Outrigger Fiji Beach Resort — 98km — from FJ$129
@@ -36,7 +36,7 @@ Sedan (up to 3 pax) / Minivan (up to 6 pax) / Minibus (up to 10 pax). Prices bel
 - Grand Pacific Hotel / Tanoa Plaza, Suva — 198km — from FJ$319
 - Nausori Airport — 225km — from FJ$369
 
-Full 35-route price table, live and current, is on the booking site itself. Custom addresses not listed above get a real-time, distance-based quote at booking time via live routing — never a guessed or flat price.
+The live booking site contains the current 50+ route inventory and pricing. Custom addresses not listed above get a real-time, distance-based quote at booking time via live routing — never a guessed or flat price.
 
 ## Dispatch Fleet
 Registered, verified local Fijian drivers. Exact live driver count and average dispatch-confirmation time not yet published — check the booking site for current figures as the marketplace scales.
