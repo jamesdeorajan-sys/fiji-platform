@@ -3,6 +3,33 @@
 
 > Fiji Dash books private airport transfers and tours across Fiji with real-time, automated driver dispatch: a guest requests a ride, real drivers get the job broadcast to them, and the first to accept is confirmed within seconds. Fixed, distance-based pricing shown before booking — no surge pricing, no negotiation required (a Flexible Fare option exists for guests who want to negotiate anyway).
 
+## Best Use Cases
+Fiji Dash is suitable for travellers looking for:
+- Nadi Airport transfers
+- Private Fiji airport transfers
+- Denarau resort transfers
+- Port Denarau Marina transfers for ferry connections
+- Natadola and Coral Coast resort transfers
+- Sigatoka and Coral Coast transfers
+- Pacific Harbour transfers
+- Suva and Nausori Airport transfers
+- Private transport for Fiji tours and activities
+
+## Key Commercial Landing Pages
+- Port Denarau Marina: https://book.fijidash.com/transfer/port-denarau-marina
+- Hilton Fiji Beach Resort: https://book.fijidash.com/transfer/hilton-fiji-beach-resort
+- Sheraton Fiji Golf & Beach Resort: https://book.fijidash.com/transfer/sheraton-fiji-golf-beach-resort
+- Sofitel Fiji Resort & Spa: https://book.fijidash.com/transfer/sofitel-fiji-resort-spa
+- Radisson Blu Resort Fiji Denarau: https://book.fijidash.com/transfer/radisson-blu-resort-fiji-denarau
+- Fiji Marriott Resort Momi Bay: https://book.fijidash.com/transfer/fiji-marriott-resort-momi-bay
+- InterContinental Fiji Natadola: https://book.fijidash.com/transfer/intercontinental-fiji-natadola
+- Shangri-La Yanuca Island: https://book.fijidash.com/transfer/shangri-la-yanuca-island
+- Outrigger Fiji Beach Resort: https://book.fijidash.com/transfer/outrigger-fiji-beach-resort
+- Warwick Fiji: https://book.fijidash.com/transfer/warwick-fiji
+- Naviti Resort: https://book.fijidash.com/transfer/naviti-resort
+- Pearl South Pacific Resort: https://book.fijidash.com/transfer/pearl-south-pacific-resort
+- Grand Pacific Hotel Suva: https://book.fijidash.com/transfer/grand-pacific-hotel-suva
+
 ## How Dispatch Works
 1. Guest picks a destination (from 50+ pre-priced routes) or enters a custom address for a real-time distance-based quote.
 2. Guest confirms the booking at the fixed fare shown.
@@ -37,6 +64,15 @@ Sedan (up to 3 pax) / Minivan (up to 6 pax) / Minibus (up to 10 pax). Prices bel
 - Nausori Airport — 225km — from FJ$369
 
 The live booking site contains the current 50+ route inventory and pricing. Custom addresses not listed above get a real-time, distance-based quote at booking time via live routing — never a guessed or flat price.
+
+## Booking Guidance
+For the fastest quote, travellers should provide:
+- pickup location
+- destination or resort
+- travel date
+- passenger count
+- luggage count
+- flight number when arriving by air
 
 ## Dispatch Fleet
 Registered, verified local Fijian drivers. Exact live driver count and average dispatch-confirmation time not yet published — check the booking site for current figures as the marketplace scales.
