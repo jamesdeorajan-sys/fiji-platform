@@ -519,6 +519,130 @@ function computePrices(pickupVal, destVal, km) {
 
 const NADI_API_BASE = 'https://api.nadiairporttransfers.com';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MILESTONE 35 — revenue attribution capture (PREVIEW ONLY, not live). See
+// ftt-booking-site/ATTRIBUTION-SPEC.md for the full contract. This is
+// metadata capture only: it never changes booking UX, pricing, dispatch, or
+// the WhatsApp handoff, and every function here is written to fail silently
+// (no thrown error can ever reach a caller) so a booking always succeeds
+// even if storage is unavailable (private browsing, disabled localStorage,
+// corrupt stored JSON, etc).
+//
+// Only these 5 query-string keys are ever read for attribution. This is the
+// actual PII defence on the client side: an attacker-controlled URL can put
+// anything in the query string, but nothing outside this allowlist is ever
+// looked at, let alone stored. The server independently re-enforces this by
+// only reading these same field names off the request body (see worker.js
+// handleGuestBookingCreate) and re-sanitising/length-capping/PII-pattern-
+// rejecting every value again itself - the client is never trusted alone.
+// ═══════════════════════════════════════════════════════════════════════════
+const ATTRIBUTION_STORAGE_KEY = 'fd_attribution_v1';
+const ATTRIBUTION_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+
+function readAttributionStore() {
+  try {
+    const raw = localStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null; // corrupt/expired JSON, storage disabled, etc - safe fallback
+  }
+}
+
+function writeAttributionStore(store) {
+  try {
+    localStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(store));
+  } catch {
+    // Private browsing, storage quota, storage disabled - attribution is
+    // best-effort only and must never surface an error to the guest.
+  }
+}
+
+// Called once on every page load. Landing path is location.pathname only -
+// deliberately never location.search, so an unexpected/PII-like query
+// parameter can never end up stored just by being on the URL.
+function captureAttribution() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const hasUtm = ATTRIBUTION_UTM_KEYS.some((k) => params.get(k));
+    let referrerHost = '';
+    try {
+      referrerHost = document.referrer ? new URL(document.referrer).hostname : '';
+    } catch {
+      referrerHost = '';
+    }
+    const isExternalReferrer = !!referrerHost && referrerHost !== window.location.hostname;
+
+    const touch = {
+      source: params.get('utm_source') || null,
+      medium: params.get('utm_medium') || null,
+      campaign: params.get('utm_campaign') || null,
+      content: params.get('utm_content') || null,
+      term: params.get('utm_term') || null,
+      referrer: referrerHost || null,
+      landingPath: window.location.pathname || null,
+    };
+
+    const store = readAttributionStore() || {};
+
+    // First touch is written exactly once, ever, for this browser. Plain
+    // internal navigation between pages of this same site never overwrites
+    // it (there is nothing here that ever re-runs this branch once
+    // firstSeenAt exists).
+    if (!store.firstSeenAt) {
+      store.first = touch;
+      store.firstSeenAt = new Date().toISOString();
+    }
+
+    // Last touch only updates on a genuine external/campaign landing (a
+    // UTM-tagged link or a different site's referrer) - plain in-site
+    // navigation (no UTM, same-host or empty referrer) leaves whatever is
+    // already stored untouched, matching ATTRIBUTION-SPEC.md's "a later
+    // external/campaign touch updates last touch only" rule. The very
+    // first-ever landing always qualifies (there's nothing to preserve yet).
+    if (!store.last || hasUtm || isExternalReferrer) {
+      store.last = touch;
+    }
+
+    writeAttributionStore(store);
+  } catch {
+    // Attribution capture must never throw - a booking must always be
+    // possible even if this entire function silently does nothing.
+  }
+}
+
+// Returns the flat set of raw first/last-touch fields to attach to a
+// booking payload. Always returns a complete, all-null-safe object -
+// never throws, never returns undefined/partial data for a caller to
+// have to guard against separately.
+function getAttributionForPayload() {
+  const empty = {
+    first_source: null, first_medium: null, first_campaign: null, first_content: null,
+    first_term: null, first_referrer: null, first_landing_path: null, first_seen_at: null,
+    last_source: null, last_medium: null, last_campaign: null, last_content: null,
+    last_term: null, last_referrer: null, last_landing_path: null,
+  };
+  try {
+    const store = readAttributionStore();
+    if (!store) return empty;
+    const first = store.first || {};
+    const last = store.last || first;
+    return {
+      first_source: first.source ?? null, first_medium: first.medium ?? null,
+      first_campaign: first.campaign ?? null, first_content: first.content ?? null,
+      first_term: first.term ?? null, first_referrer: first.referrer ?? null,
+      first_landing_path: first.landingPath ?? null, first_seen_at: store.firstSeenAt ?? null,
+      last_source: last.source ?? null, last_medium: last.medium ?? null,
+      last_campaign: last.campaign ?? null, last_content: last.content ?? null,
+      last_term: last.term ?? null, last_referrer: last.referrer ?? null,
+      last_landing_path: last.landingPath ?? null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 // Real marketplace zone names (nadi-marketplace-db's zones table) - lets a
 // FIXED destination's own data-area text resolve to a POST /bookings
 // destination_zone for free (no API call) when it's an exact match, which
@@ -2032,6 +2156,11 @@ async function submitMarketplaceBooking(ref) {
       return_pickup_location: document.getElementById('returnPickupLocation')?.value.trim() || null,
     } : {}),
     ...(commissionBaseFjd !== undefined ? { commission_base_fjd: commissionBaseFjd } : {}),
+    // Milestone 35 (revenue attribution, PREVIEW ONLY) - always present,
+    // always safe: getAttributionForPayload() never throws and returns an
+    // all-null object if nothing was ever captured, so this line can never
+    // be the reason a booking submission fails.
+    ...getAttributionForPayload(),
   };
 
   try {
@@ -3209,6 +3338,12 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Milestone 35 (revenue attribution, PREVIEW ONLY) - captureAttribution()
+  // is internally try/catch-guarded end to end and never throws, but this
+  // call is wrapped too as defence in depth: attribution metadata capture
+  // must never be able to stop the rest of page init from running.
+  try { captureAttribution(); } catch { /* never blocks page init */ }
+
   buildRoutesTable();
   buildToursGrid();
   buildReviews();

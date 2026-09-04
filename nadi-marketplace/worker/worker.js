@@ -2611,6 +2611,61 @@ function normalisedItineraryString(v, maxLen) {
   return s === '' ? null : s;
 }
 
+// Milestone 35 (revenue attribution, PREVIEW ONLY) - metadata only. Never
+// participates in fare calculation, dispatch eligibility, idempotency,
+// booking confirmation, or customer-facing truth (see
+// nadi-marketplace/migrations/milestone35-revenue-attribution.sql and
+// ftt-booking-site/ATTRIBUTION-SPEC.md for the full contract).
+//
+// sanitisedAttributionField is deliberately stricter than
+// normalisedItineraryString: attribution values come from a URL query
+// string an attacker fully controls, so beyond length-capping this also
+// rejects anything that looks like it could be PII (an email address, or a
+// long digit run that could be a phone number) rather than persisting it.
+// Returning null on a suspicious value (never throwing) is what makes this
+// safe to call unconditionally - a caller never needs its own try/catch
+// around a single field.
+const ATTRIBUTION_PII_PATTERNS = [
+  /@/, // email address
+  /\d{6,}/, // phone-number-like digit run
+];
+function sanitisedAttributionField(v, maxLen) {
+  const s = normalisedItineraryString(v, maxLen);
+  if (s === null) return null;
+  if (ATTRIBUTION_PII_PATTERNS.some((re) => re.test(s))) return null;
+  return s;
+}
+
+// The only reporting buckets revenue dashboards recognise. Anything that
+// doesn't match a specific rule below normalises to 'other' (retained,
+// never dropped) rather than being force-fit into an incorrect bucket.
+const ATTRIBUTION_SOURCE_BUCKETS = [
+  'google', 'meta', 'chatgpt_ai', 'cometofiji', 'vakaviti_lagi',
+  'whatsapp_referral', 'bookfijitransfers_promo', 'direct', 'other',
+];
+
+// Computed server-side, ALWAYS from the raw last-touch fields already
+// sanitised above - a client-supplied bucket value is never read or
+// trusted anywhere in this file (see ATTRIBUTION-SPEC.md's "Server must
+// not trust a client-supplied normalised bucket" requirement). Matching
+// is intentionally on raw source/medium/referrer-hostname substrings
+// rather than an exact-value allowlist, so a real campaign link that
+// varies medium/content still lands in the right bucket.
+function normaliseAttributionSource({ source, medium, referrer }) {
+  const s = (source || '').toLowerCase();
+  const m = (medium || '').toLowerCase();
+  const r = (referrer || '').toLowerCase();
+  if (!s && !r) return 'direct';
+  if (s === 'google' || m === 'cpc' && r.includes('google') || r.includes('google.')) return 'google';
+  if (['meta', 'facebook', 'instagram'].includes(s) || r.includes('facebook.com') || r.includes('instagram.com')) return 'meta';
+  if (s === 'chatgpt' || r === 'chatgpt.com' || r.endsWith('.chatgpt.com') || r.endsWith('openai.com')) return 'chatgpt_ai';
+  if (s === 'cometofiji' || r.includes('cometofiji.com')) return 'cometofiji';
+  if (s === 'vakaviti' || r.includes('vakaviti.ai')) return 'vakaviti_lagi';
+  if (s === 'whatsapp') return 'whatsapp_referral';
+  if (s === 'bookfijitransfers') return 'bookfijitransfers_promo';
+  return 'other';
+}
+
 async function checkGuestBookingRateLimit(env, ip) {
   const max = Number(await getSetting(env, 'guest_booking_rate_limit_max', '5'));
   const windowMinutes = Number(await getSetting(env, 'guest_booking_rate_limit_window_minutes', '10'));
@@ -2665,6 +2720,17 @@ async function createBookingRecord(env, {
   // and aren't in scope for this fix. guestEmail/flightNumber are the two
   // ops-required contact fields Issue #34 requirement 9 found missing.
   clientBookingRef = null, guestEmail = null, flightNumber = null,
+  // Milestone 35 (revenue attribution, PREVIEW ONLY) - raw first/last-touch
+  // fields as captured by the guest widget (see app.js's captureAttribution/
+  // getAttributionForPayload). null for the two other callers (admin test
+  // booking, negotiation accept-offer), same precedent as clientBookingRef
+  // above. Deliberately no attributionSource parameter here - the bucket is
+  // always computed below from the raw last-touch fields, never accepted
+  // from a caller (see normaliseAttributionSource's own comment).
+  firstSource = null, firstMedium = null, firstCampaign = null, firstContent = null,
+  firstTerm = null, firstReferrer = null, firstLandingPath = null, firstSeenAt = null,
+  lastSource = null, lastMedium = null, lastCampaign = null, lastContent = null,
+  lastTerm = null, lastReferrer = null, lastLandingPath = null,
   // Milestone 18 (Recommendation 1) - see computeAuthoritativePrice's own
   // header comment for the full scope/tier reasoning. verificationMode
   // defaults to 'trusted' (today's existing behavior, unchanged) so the
@@ -2724,6 +2790,56 @@ async function createBookingRecord(env, {
     if (existing) {
       return { ok: true, bookingId: existing.id, booking: existing, pricingNote: null, idempotent: true };
     }
+  }
+
+  // Milestone 35 (revenue attribution, PREVIEW ONLY) - computed after the
+  // idempotency pre-check above, deliberately: a retry that already has a
+  // real row returned early above without touching attribution at all, so
+  // a retry carrying different (e.g. refreshed) last-touch metadata can
+  // never mutate the original booking's stored attribution - the row's
+  // first real write is its only write. Wrapped in its own try/catch, with
+  // every field defaulting to null on any failure, because this whole
+  // block computes reporting metadata only: nothing here may ever throw
+  // and turn an otherwise-valid booking into a failure (guardrail from
+  // ATTRIBUTION-SPEC.md - "attribution failure must never block a booking").
+  let attribution = {
+    firstSource: null, firstMedium: null, firstCampaign: null, firstContent: null,
+    firstTerm: null, firstReferrer: null, firstLandingPath: null, firstSeenAt: null,
+    lastSource: null, lastMedium: null, lastCampaign: null, lastContent: null,
+    lastTerm: null, lastReferrer: null, lastLandingPath: null, attributionSource: null,
+  };
+  try {
+    attribution = {
+      firstSource: sanitisedAttributionField(firstSource, 40),
+      firstMedium: sanitisedAttributionField(firstMedium, 40),
+      firstCampaign: sanitisedAttributionField(firstCampaign, 100),
+      firstContent: sanitisedAttributionField(firstContent, 100),
+      firstTerm: sanitisedAttributionField(firstTerm, 100),
+      firstReferrer: sanitisedAttributionField(firstReferrer, 200),
+      firstLandingPath: sanitisedAttributionField(firstLandingPath, 200),
+      // Milestone 35 - a timestamp is exempt from the PII digit-run check
+      // (an ISO-8601 stamp is nothing but digits) but still length-capped.
+      firstSeenAt: normalisedItineraryString(firstSeenAt, 40),
+      lastSource: sanitisedAttributionField(lastSource, 40),
+      lastMedium: sanitisedAttributionField(lastMedium, 40),
+      lastCampaign: sanitisedAttributionField(lastCampaign, 100),
+      lastContent: sanitisedAttributionField(lastContent, 100),
+      lastTerm: sanitisedAttributionField(lastTerm, 100),
+      lastReferrer: sanitisedAttributionField(lastReferrer, 200),
+      lastLandingPath: sanitisedAttributionField(lastLandingPath, 200),
+      attributionSource: null, // set below, from the sanitised fields above
+    };
+    attribution.attributionSource = normaliseAttributionSource({
+      source: attribution.lastSource, medium: attribution.lastMedium, referrer: attribution.lastReferrer,
+    });
+  } catch (err) {
+    console.warn(`[attribution] failed to process attribution metadata, storing as null: ${err.message}`);
+    attribution = {
+      firstSource: null, firstMedium: null, firstCampaign: null, firstContent: null,
+      firstTerm: null, firstReferrer: null, firstLandingPath: null, firstSeenAt: null,
+      lastSource: null, lastMedium: null, lastCampaign: null, lastContent: null,
+      lastTerm: null, lastReferrer: null, lastLandingPath: null, attributionSource: null,
+    };
   }
 
   // Milestone 18 (Recommendation 1) - the actual trust-boundary flip.
@@ -2905,14 +3021,21 @@ async function createBookingRecord(env, {
          quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
          payment_method, status, source_ip, commission_base_fjd, assigned_driver_id,
          pickup_date, pickup_time, notes, return_date, return_time, return_pickup_location,
-         client_booking_ref, guest_email, flight_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         client_booking_ref, guest_email, flight_number,
+         first_source, first_medium, first_campaign, first_content, first_term, first_referrer, first_landing_path, first_seen_at,
+         last_source, last_medium, last_campaign, last_content, last_term, last_referrer, last_landing_path, attribution_source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
       quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied,
       paymentMethod, status, sourceIp, commissionBaseFjd, assignedDriverId,
       pickupDate, pickupTime, notes, returnDate, returnTime, returnPickupLocation,
-      clientBookingRef, guestEmail, flightNumber
+      clientBookingRef, guestEmail, flightNumber,
+      attribution.firstSource, attribution.firstMedium, attribution.firstCampaign, attribution.firstContent,
+      attribution.firstTerm, attribution.firstReferrer, attribution.firstLandingPath, attribution.firstSeenAt,
+      attribution.lastSource, attribution.lastMedium, attribution.lastCampaign, attribution.lastContent,
+      attribution.lastTerm, attribution.lastReferrer, attribution.lastLandingPath, attribution.attributionSource
     ).run();
   } catch (err) {
     // Milestone 34 - the race-safe half of idempotency: two genuinely
@@ -2985,6 +3108,21 @@ async function handleGuestBookingCreate(request, env) {
     clientBookingRef: normalisedItineraryString(body.client_booking_ref, 64),
     guestEmail: normalisedItineraryString(body.guest_email, 200),
     flightNumber: normalisedItineraryString(body.flight_number, 20),
+    // Milestone 35 (revenue attribution, PREVIEW ONLY) - this is the ONLY
+    // place any of these 15 keys are ever read off the request body. Any
+    // other key the client sends (or an attacker adds) is never looked at
+    // for attribution, by construction - that's the actual PII defence,
+    // not a filter applied after the fact. sanitisedAttributionField inside
+    // createBookingRecord() does the length-cap/PII-pattern rejection;
+    // this call site only decides WHICH keys are even eligible to reach it.
+    firstSource: body.first_source, firstMedium: body.first_medium,
+    firstCampaign: body.first_campaign, firstContent: body.first_content,
+    firstTerm: body.first_term, firstReferrer: body.first_referrer,
+    firstLandingPath: body.first_landing_path, firstSeenAt: body.first_seen_at,
+    lastSource: body.last_source, lastMedium: body.last_medium,
+    lastCampaign: body.last_campaign, lastContent: body.last_content,
+    lastTerm: body.last_term, lastReferrer: body.last_referrer,
+    lastLandingPath: body.last_landing_path,
     // Milestone 18 (Recommendation 1) - the only caller that opts into
     // server-authoritative pricing. tripType/hasChildSeat/hasSurfboard/
     // hasTour/isCustomAddress are new fields the guest widget now sends
