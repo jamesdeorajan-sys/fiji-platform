@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "description": "Deterministic mapping from each storefront's existing vehicle identifier to the canonical VehicleClass.vehicleClassId. No entry was guessed; unmapped/ambiguous values are listed under unmapped.",
+  "mappings": {
+    "nadiairporttransfers": {
+      "sedan": "sedan",
+      "minivan": "minivan",
+      "minibus": "minibus",
+      "boat": "boat"
+    },
+    "fijidash": {
+      "sedan": "sedan",
+      "minivan": "minivan",
+      "minibus": "minibus",
+      "boat": "boat"
+    },
+    "bookfijitransfers": {
+      "sedan": "sedan",
+      "minivan": "minivan",
+      "minibus": "minibus"
+    }
+  },
+  "unmapped": [
+    {
+      "storefront": "bookfijitransfers",
+      "value": "vehicleId (booking payload)",
+      "reason": "UNKNOWN/REVIEW REQUIRED — the /api/quotes response only exposes fares keyed by the three literal strings sedan/minivan/minibus. The /api/bookings payload separately expects a vehicleId field. Whether vehicleId is one of those same three strings or an opaque id (e.g. a UUID or numeric key from an unseen vehicles table) was NOT confirmed — no booking was created during this read-only pass. Do not assume vehicleId === vehicleClassId until confirmed."
+    },
+    {
+      "storefront": "none observed",
+      "value": "suv_people_mover",
+      "reason": "Canonical VehicleClass includes suv_people_mover per Issue #38's Phase 4 test-corpus requirement, but no storefront currently exposes a distinct SUV/people-mover class — all three treat the middle tier as 'minivan'. Reserved in the contract for a future real class, not mapped from anything today."
+    },
+    {
+      "storefront": "all three",
+      "value": "boat (booking-creation eligibility on bookfijitransfers.com)",
+      "reason": "bookfijitransfers.com's quote response never includes a boat fare for any tested route. UNKNOWN whether this is because boat is entirely unsupported there, or simply not offered on the destinations tested. Do not assume unsupported without checking every destinationId's quote response."
+    }
+  ]
+}

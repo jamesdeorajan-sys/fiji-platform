@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vakaviti.ai/schemas/transfer-contracts/v1",
+  "title": "Vakaviti Transfer Core — canonical contracts, v1",
+  "description": "Versioned shared contracts for the Vakaviti Transfer Core (Issue #37/#38). v1 is additive-only over each storefront's current shape — nothing here requires a storefront to change its live API today. Each storefront maps its existing values INTO these shapes at the Fare Authority boundary; it does not need to natively speak them yet.",
+  "$defs": {
+
+    "Place": {
+      "type": "object",
+      "description": "A canonical, deduplicated location. Storefronts 1/2's per-hotel granularity and storefront 3's corridor granularity both resolve to Place rows; a Place may represent one hotel OR a named corridor grouping several, distinguished by placeKind.",
+      "required": ["placeId", "placeKind", "displayName", "canonicalRouteAnchor"],
+      "properties": {
+        "placeId": { "type": "string", "pattern": "^plc_[a-z0-9-]+$", "description": "Canonical Vakaviti place id, e.g. plc_hilton-denarau." },
+        "placeKind": { "enum": ["airport", "hotel", "corridor", "port", "custom_address", "island_resort"] },
+        "displayName": { "type": "string" },
+        "lat": { "type": ["number", "null"] },
+        "lng": { "type": ["number", "null"] },
+        "canonicalRouteAnchor": { "type": "string", "description": "Which zone/corridor this place resolves to for pricing purposes (Vakaviti Route Authority key), e.g. 'Denarau'." },
+        "memberOf": { "type": ["string", "null"], "description": "For placeKind=hotel, the corridor Place this hotel rolls up into, if any (storefront-3-style grouping)." }
+      }
+    },
+
+    "Route": {
+      "type": "object",
+      "description": "An origin/destination pair at the pricing-resolution level (not per-hotel). Today every live route observed across all three storefronts is Nadi-Airport-anchored; the schema does not hardcode that assumption.",
+      "required": ["routeId", "originPlaceId", "destinationPlaceId"],
+      "properties": {
+        "routeId": { "type": "string", "pattern": "^rte_[a-z0-9-]+$" },
+        "originPlaceId": { "type": "string" },
+        "destinationPlaceId": { "type": "string" },
+        "distanceKm": { "type": ["number", "null"] },
+        "journeyMinutes": { "type": ["number", "null"] },
+        "distanceSource": { "enum": ["google_distance_matrix", "fixed_table", "unknown"] }
+      }
+    },
+
+    "VehicleClass": {
+      "type": "object",
+      "description": "Canonical vehicle class. storefronts 1/2 and storefront 3 currently share the same three label strings by coincidence, not by contract — this schema makes that an explicit, versioned mapping instead of an assumption.",
+      "required": ["vehicleClassId", "canonicalLabel", "maxPassengers", "maxLuggage"],
+      "properties": {
+        "vehicleClassId": { "enum": ["sedan", "suv_people_mover", "minivan", "minibus", "boat", "other"] },
+        "canonicalLabel": { "type": "string" },
+        "maxPassengers": { "type": "integer" },
+        "maxLuggage": { "type": "integer" },
+        "isMarketplaceOnly": { "type": "boolean", "description": "True for classes only fulfilled via marketplace supply (e.g. boat today)." }
+      }
+    },
+
+    "QuoteRequest": {
+      "type": "object",
+      "required": ["originPlaceId", "destinationPlaceId", "vehicleClassId", "tripType", "passengers"],
+      "properties": {
+        "originPlaceId": { "type": "string" },
+        "destinationPlaceId": { "type": "string" },
+        "vehicleClassId": { "type": "string" },
+        "tripType": { "enum": ["one_way", "return"] },
+        "pickupDate": { "type": "string", "format": "date" },
+        "pickupTime": { "type": "string" },
+        "returnDate": { "type": ["string", "null"], "format": "date" },
+        "returnTime": { "type": ["string", "null"] },
+        "passengers": { "type": "integer", "minimum": 1 },
+        "luggage": { "type": "integer", "minimum": 0 },
+        "storefrontId": { "type": "string", "description": "See BookingSource — which storefront is asking." }
+      }
+    },
+
+    "QuoteResponse": {
+      "type": "object",
+      "required": ["quoteId", "retailFare", "pricingRuleUsed", "expiresAt"],
+      "properties": {
+        "quoteId": { "type": "string" },
+        "retailFare": { "$ref": "#/$defs/RetailFare", "description": "Guest-facing. Only finalRetailFareFjd (and its inputs' ruleIds, for audit) are ever exposed — never operatorPayoutFjd." },
+        "operatorPayoutFjd": { "type": ["number", "null"], "description": "Never sent to the guest-facing client. Present only on the internal/server-side copy of this contract — see OperatorPayout, which is the canonical shape for this once fulfilment/marketplace allocation exists." },
+        "pricingRuleUsed": { "enum": ["fixed_retail_known_route", "dynamic_authoritative_custom_route", "marketplace_payout_offer", "flexible_negotiated_fare"] },
+        "distanceKm": { "type": ["number", "null"] },
+        "journeyMinutes": { "type": ["number", "null"] },
+        "pricingVersionId": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "currency": { "const": "FJD" }
+      }
+    },
+
+    "BookingCreate": {
+      "type": "object",
+      "required": ["clientBookingRef", "route", "vehicleClassId", "traveller", "storefrontId"],
+      "properties": {
+        "clientBookingRef": { "type": "string", "description": "Storefront's own idempotency key / display ref (FD-XXXXXX today, or a UUID) — preserved verbatim, never replaced." },
+        "quoteId": { "type": ["string", "null"] },
+        "route": { "$ref": "#/$defs/Route" },
+        "vehicleClassId": { "type": "string" },
+        "tripType": { "enum": ["one_way", "return"] },
+        "returnTrip": { "$ref": "#/$defs/ReturnTrip" },
+        "traveller": { "$ref": "#/$defs/Traveller" },
+        "flight": { "$ref": "#/$defs/Flight" },
+        "specialRequests": { "type": ["string", "null"] },
+        "storefrontId": { "type": "string" },
+        "source": { "$ref": "#/$defs/BookingSource" }
+      }
+    },
+
+    "BookingResponse": {
+      "type": "object",
+      "required": ["vakavitiBookingId", "storefrontReference", "status", "idempotent"],
+      "properties": {
+        "vakavitiBookingId": { "type": "string", "pattern": "^VK-[A-Z0-9]{8}$", "description": "New canonical cross-storefront id. Never replaces the storefront's own reference; always issued alongside it." },
+        "storefrontReference": { "$ref": "#/$defs/StorefrontReference" },
+        "status": { "enum": ["pending", "confirmed", "assigned", "completed", "cancelled"] },
+        "idempotent": { "type": "boolean" },
+        "retailFareFjd": { "type": "number" }
+      }
+    },
+
+    "BookingSource": {
+      "type": "object",
+      "description": "Revised per Issue #38 Step 3 (CEO direction, 2026-09-02). canonicalSource is the required, closed-vocabulary field every future booking must carry; the bookfijitransfers.com-derived attribution fields are kept as an optional nested detail object since they're already the richest model observed and still useful, but they are no longer the primary field. storefrontId stays a free-standing sibling (not folded into canonicalSource) because 'which brand's URL was this booking placed through' and 'which acquisition channel drove it' are different questions — nadi_airport_transfers the canonicalSource and nadiairporttransfers the storefrontId will usually co-occur but are not the same axis (e.g. a partner-referred booking placed through the FijiDash UI has storefrontId=fijidash, canonicalSource=partner).",
+      "required": ["canonicalSource"],
+      "properties": {
+        "canonicalSource": {
+          "enum": ["nadi_airport_transfers", "fijidash", "book_fiji_transfers", "come_to_fiji", "partner", "agent", "direct_api", "unknown"],
+          "description": "Required, closed vocabulary. 'unknown' is a first-class, permanent value — see the migration note in the mapping/backfill plan: historical rows with no reliable signal are set to unknown and MUST NOT be guessed into a specific value later."
+        },
+        "storefrontId": { "enum": ["nadiairporttransfers", "fijidash", "bookfijitransfers", null] },
+        "campaign": { "type": ["string", "null"] },
+        "referral": { "type": ["string", "null"], "description": "Referral code/partner id where known, e.g. a travel-agent or affiliate identifier. Null, not empty string, when not known — an empty string would be indistinguishable from 'confirmed no referral'." },
+        "attributionDetail": {
+          "type": ["object", "null"],
+          "description": "Optional richer detail, adopted verbatim from bookfijitransfers.com's existing model where a storefront can supply it. Never required.",
+          "properties": {
+            "medium": { "type": "string" },
+            "landingPath": { "type": "string" },
+            "referrer": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "Traveller": {
+      "type": "object",
+      "required": ["fullName", "phone"],
+      "properties": {
+        "fullName": { "type": "string", "description": "Canonical single field. Storefront 3's firstName/lastName split is concatenated on ingest; split is preserved in rawSource if needed." },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": ["string", "null"] },
+        "email": { "type": ["string", "null"], "format": "email" }
+      }
+    },
+
+    "Flight": {
+      "type": "object",
+      "properties": {
+        "flightNumber": { "type": ["string", "null"] },
+        "airline": { "type": ["string", "null"], "description": "Not captured by any storefront today — placeholder for future flight-status integration (Issue #37 agent layer)." },
+        "scheduledTime": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+
+    "ReturnTrip": {
+      "type": "object",
+      "description": "v1 keeps the existing single-record model (matches all three storefronts today) rather than forcing a MultiLegJourney split. MultiLegJourney is reserved for Issue #37 Stage F (multimodal/through-journey) and is intentionally NOT required yet.",
+      "properties": {
+        "returnDate": { "type": ["string", "null"], "format": "date" },
+        "returnTime": { "type": ["string", "null"] },
+        "returnPickupLocation": { "type": ["string", "null"] },
+        "returnDiscountModel": { "enum": ["none", "flat_percent_second_leg", "round_trip_multiplier"], "description": "Storefronts 1/2 use a 1.85x return multiplier; storefront 3 uses a flat 5% discount on the second leg. These are NOT equivalent — do not assume a shared return price without recomputing per-storefront." }
+      }
+    },
+
+    "MultiLegJourney": {
+      "type": "object",
+      "description": "Reserved for Issue #37 Stage F. Not populated by any storefront today.",
+      "properties": {
+        "legs": { "type": "array", "items": { "$ref": "#/$defs/Route" } }
+      }
+    },
+
+    "OperatorPayout": {
+      "type": "object",
+      "description": "Deliberately separate from RetailFare per Issue #37's core commercial rule. Never exposed to a guest-facing response.",
+      "required": ["operatorId", "payoutFjd", "vakavitiBookingId"],
+      "properties": {
+        "operatorId": { "type": "string" },
+        "payoutFjd": { "type": "number" },
+        "vakavitiBookingId": { "type": "string" },
+        "marginFjd": { "type": ["number", "null"], "description": "retailFareFjd - payoutFjd, computed at settlement, not stored on the guest-facing booking record." }
+      }
+    },
+
+    "RetailFare": {
+      "type": "object",
+      "description": "Revised per Issue #38 Step 4 (CEO commercial model, 2026-09-02): finalRetailFareFjd is NEVER an independently-set number again — it is always referenceFareFjd plus/minus explicit, versioned, approved rule ids. A storefront price that differs from the reference fare for a reason not captured in channelModifier/promotionDiscount is, by this contract, unexplained variance and out of policy — not a modeling choice this schema is meant to accommodate silently.",
+      "required": ["referenceFareFjd", "finalRetailFareFjd", "currency", "pricingRuleUsed"],
+      "properties": {
+        "referenceFareFjd": { "type": "number", "description": "The authoritative base/reference value for this route + vehicle, before any channel or promotion adjustment. For storefronts 1/2 today this equals the live /reference-fare response, unmodified (see fare-authority adapter)." },
+        "channelModifier": {
+          "type": "object",
+          "description": "An explicit, versioned, approved adjustment for the storefront/product channel. Absent or {ruleId:null, amountFjd:0} means no modifier applies — that is a real, loggable state, not a default to be silently assumed. Never a free-text excuse; always a ruleId that traces to an approval record.",
+          "properties": {
+            "ruleId": { "type": ["string", "null"] },
+            "amountFjd": { "type": "number", "default": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "promotionDiscount": {
+          "type": "object",
+          "description": "Same discipline as channelModifier, for discounts/promotions specifically (e.g. the observed bookfijitransfers.com Port Denarau launch special). A promotion with no ruleId is unexplained variance, not a legitimate promotion, under this policy.",
+          "properties": {
+            "ruleId": { "type": ["string", "null"] },
+            "amountFjd": { "type": "number", "default": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "finalRetailFareFjd": { "type": "number", "description": "referenceFareFjd + channelModifier.amountFjd - promotionDiscount.amountFjd. Computed, never independently entered." },
+        "currency": { "const": "FJD" },
+        "pricingRuleUsed": { "enum": ["fixed_retail_known_route", "dynamic_authoritative_custom_route", "marketplace_payout_offer", "flexible_negotiated_fare"] },
+        "varianceStatus": { "enum": ["in_policy", "unexplained_variance_flagged"], "description": "in_policy iff finalRetailFareFjd reconciles exactly to referenceFareFjd + channelModifier - promotionDiscount with both carrying a real ruleId (or being genuinely zero). Any other observed relationship between a storefront's live price and the reference fare is unexplained_variance_flagged by definition — see the Sonaisali and Fare Authority Step 5/7 findings in REPORT.md for real examples of this state today." }
+      }
+    },
+
+    "StorefrontReference": {
+      "type": "object",
+      "description": "The storefront's own public-facing reference, preserved verbatim forever. This is the field staff and guests actually use day to day; VK-... is additive, not a replacement.",
+      "required": ["storefrontId", "reference"],
+      "properties": {
+        "storefrontId": { "enum": ["nadiairporttransfers", "fijidash", "bookfijitransfers"] },
+        "reference": { "type": "string", "description": "e.g. 'FD-JJW597' (storefronts 1/2) or storefront 3's own (unconfirmed) format." },
+        "referenceFormat": { "type": "string", "description": "Human-readable description of the format, e.g. 'FD- + 6 uppercase alphanumeric'." }
+      }
+    }
+  }
+}
