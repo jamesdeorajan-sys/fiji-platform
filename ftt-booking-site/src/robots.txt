@@ -4,6 +4,13 @@
 User-agent: *
 Allow: /
 
+# OpenAI search and ad crawlers
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: OAI-AdsBot
+Allow: /
+
 # AI Crawlers — explicitly welcomed
 User-agent: GPTBot
 Allow: /
