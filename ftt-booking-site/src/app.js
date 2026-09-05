@@ -835,6 +835,25 @@ const ALLOWED_RESORT_NAMES = new Set([
   'The Westin Denarau Island Resort & Spa',
 ]);
 
+// AA01 durability fix (2026-09-06) - the visible "Staying at: ..." notes
+// line is editable, so a guest who deletes it before submitting must not
+// take the exact resort with it. state.resortNameOverride was already
+// checked against ALLOWED_RESORT_NAMES the moment it was set (see the
+// resort= URL param handler below), so re-reading it here trusts no new
+// input - it just re-derives the same system-generated line from that
+// already-validated route context at the moment the real booking payload
+// is built, exactly once. The textarea itself is never rewritten; this
+// only affects what gets sent to POST /bookings.
+function resolveDurableNotes(rawNotesValue) {
+  const trimmed = (rawNotesValue || '').trim();
+  if (!state.resortNameOverride || !ALLOWED_RESORT_NAMES.has(state.resortNameOverride)) {
+    return trimmed || null;
+  }
+  const stayingLine = `Staying at: ${state.resortNameOverride}`;
+  if (trimmed.includes(stayingLine)) return trimmed;
+  return trimmed ? `${stayingLine}\n${trimmed}` : stayingLine;
+}
+
 // ─── RELIABLY SET A <SELECT> BY OPTION VALUE ─────────────────────────────────
 function setSelectByValue(selectId, targetValue) {
   const sel = document.getElementById(selectId);
@@ -2173,7 +2192,7 @@ async function submitMarketplaceBooking(ref) {
     payment_method: 'cash', // no payment is collected on this site today - guest pays the driver directly
     pickup_date: document.getElementById('travelDate')?.value || null,
     pickup_time: document.getElementById('travelTime')?.value || null,
-    notes: document.getElementById('notes')?.value.trim() || null,
+    notes: resolveDurableNotes(document.getElementById('notes')?.value),
     trip_type: state.tripType === 'return' ? 'return' : 'one-way',
     has_child_seat: !!document.getElementById('extra-seat')?.checked,
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
