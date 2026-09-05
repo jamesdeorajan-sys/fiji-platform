@@ -164,6 +164,11 @@ function stripEmoji(str) {
 // ─── APP STATE ────────────────────────────────────────────────────────────────
 const state = {
   pickup: null, destination: null,
+  // AA01 (2026-09-06) - see ALLOWED_RESORT_NAMES's own comment below. Set once by
+  // the URL param handler if a validated ?resort= is present; re-applied inside
+  // updatePricing() every time it runs so it survives re-renders. Never changes
+  // destValue/destination_zone/fare - display only.
+  resortNameOverride: null,
   distanceKm: 0, durationMin: 0,
   tripType: 'one-way', passengers: 2, luggage: 2,
   selectedVehicle: null, extrasTotal: 0,
@@ -815,6 +820,21 @@ async function resolveDestinationZoneAsync(destName) {
   }, 400);
 }
 
+// AA01 (2026-09-06) - exact, existing public resort names (copied verbatim from
+// each route page's own <h1>/hero-accent text, not invented) for the 3 hotels
+// that share a grouped destination option with no way to distinguish them on
+// their own (see ROUTES_DATA's "Choose the most representative hotel for
+// grouped rows" comment). Deliberately a closed allowlist, not a general
+// free-form URL-to-notes path - only these exact strings are ever accepted;
+// anything else silently falls back to today's existing behaviour. Hilton and
+// Sofitel are the group representatives already, so they're intentionally not
+// in this list - their current behaviour needs no override.
+const ALLOWED_RESORT_NAMES = new Set([
+  'Sheraton Fiji Golf & Beach Resort',
+  'Radisson Blu Resort Fiji Denarau Island',
+  'The Westin Denarau Island Resort & Spa',
+]);
+
 // ─── RELIABLY SET A <SELECT> BY OPTION VALUE ─────────────────────────────────
 function setSelectByValue(selectId, targetValue) {
   const sel = document.getElementById(selectId);
@@ -1039,6 +1059,15 @@ function updatePricing() {
   state.durationMin = min;
   state.pickup      = p;
   state.destination = d;
+  // AA01 (2026-09-06) - re-applied on every render (not just once at load) so
+  // it survives re-renders triggered elsewhere. Only takes effect while a
+  // grouped Denarau destination is actually selected; destValue/destination_zone/
+  // fare are never touched - this only overwrites the display-facing `.hotel`
+  // text resolveLocation() already exposes. See ALLOWED_RESORT_NAMES's comment.
+  const destValForOverride = document.getElementById('destination')?.value;
+  if (state.resortNameOverride && (destValForOverride === 'HILTON_DENARAU' || destValForOverride === 'SOFITEL_DENARAU')) {
+    state.destination.hotel = state.resortNameOverride;
+  }
   syncReturnLocationDefault();
 
   // MILESTONE 11/12: fire the async real-zone lookup for FIXED destinations
@@ -3378,6 +3407,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const pickupParam = params.get('pickup');
     const destParam = params.get('dest');
+
+    // AA01 (2026-09-06) - HILTON_DENARAU and SOFITEL_DENARAU each represent
+    // multiple real hotels behind one shared option/label (see ROUTES_DATA's
+    // own comment). Sheraton, Westin and Radisson Blu route pages link here
+    // with the correct *grouped* dest= value (never invented per-hotel
+    // codes - group fare/zone logic is untouched) plus this exact-spelling
+    // resort= param so the guest still sees and sends their real hotel name.
+    // Explicit allowlist, not a general free-form URL-to-notes path: an
+    // unrecognised value is silently ignored and behaviour is identical to
+    // today. Set BEFORE onDestinationChange() below so the very first
+    // updatePricing() render already has it.
+    const resortParam = params.get('resort');
+    if (resortParam && ALLOWED_RESORT_NAMES.has(resortParam)) {
+      state.resortNameOverride = resortParam;
+      const notesEl = document.getElementById('notes');
+      const stayingAtLine = `Staying at: ${resortParam}`;
+      if (notesEl && !notesEl.value.includes(stayingAtLine)) {
+        notesEl.value = notesEl.value.trim() ? `${stayingAtLine}\n\n${notesEl.value}` : stayingAtLine;
+      }
+    }
+
     if (pickupParam && setSelectByValue('pickup', pickupParam)) {
       onPickupChange();
     }
