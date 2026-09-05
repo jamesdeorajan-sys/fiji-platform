@@ -438,6 +438,12 @@ const ALLOWED_ORIGINS = [
   'https://vakaviti-sofitel.pages.dev',
   'https://fijitourtransfers.com',
   'https://www.fijitourtransfers.com',
+  // Issue 03 (2026-09-05) - confirmed real widget.vakaviti.ai/widget.js embed on both the
+  // apex and www hosts (neither redirects to the other; both serve 200 directly), and a
+  // genuine, already-configured /config record for site_id op_cometofiji_001 - this was a
+  // real user missing from the allowlist, not a speculative addition.
+  'https://cometofiji.com',
+  'https://www.cometofiji.com',
   'https://tourfijitours.com',
   'https://www.tourfijitours.com',
   'https://natadolabayhorseriding.com',
