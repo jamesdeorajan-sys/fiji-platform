@@ -1976,10 +1976,7 @@ function showBulaSuccess(ref, bookingId) {
     bulaLeadText.innerHTML = '<strong>Booking received.</strong> Our Fiji team has your reservation and will confirm your driver and final pickup details directly.';
   }
 
-  // CEO UX revision (2026-09-07) - rewritten now that Issue #53 canary #2
-  // proved the detailed admin notification actually delivers server-side:
-  // this copy is deliberately written to frame WhatsApp as continuing a
-  // conversation, never as submitting or resending the reservation.
+  // CEO UX hotfix (2026-09-07, requirement 2) - strong directive CTA copy.
   // Explicitly (re-)set here, not just left to index.html's static
   // default: showBulaUnsupportedRoute() hides this same pair of elements
   // (its flow has no server-side booking yet, so this framing would be
@@ -1988,7 +1985,7 @@ function showBulaSuccess(ref, bookingId) {
   // state.
   const bulaWaContext = document.getElementById('bulaWaContext');
   if (bulaWaContext) {
-    bulaWaContext.innerHTML = '<strong>Want to continue with our Fiji team now?</strong><br>Open WhatsApp for the fastest human confirmation, questions, changes or special requests.';
+    bulaWaContext.textContent = 'Tap below to send your reservation details to our Fiji team and open your direct human conversation.';
     bulaWaContext.style.display = '';
   }
 
@@ -1997,12 +1994,12 @@ function showBulaSuccess(ref, bookingId) {
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Continue with our Fiji team on WhatsApp');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send your reservation details on WhatsApp');
   }
 
   const bulaWaReassurance = document.getElementById('bulaWaReassurance');
   if (bulaWaReassurance) {
-    bulaWaReassurance.textContent = 'Your booking is already saved — you do not need WhatsApp to submit it again.';
+    bulaWaReassurance.textContent = 'Your booking is already saved — WhatsApp gives you the fastest human confirmation, questions and changes.';
     bulaWaReassurance.style.display = '';
   }
 

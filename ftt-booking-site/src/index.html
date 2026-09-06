@@ -20,7 +20,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260810d-paxfix">
+<!-- CEO hotfix (2026-09-07) - real root cause of booking #66's headline
+     mismatch: this file's ?v= wasn't bumped across any of the three prior
+     UX-copy commits, despite app.js/styles.css content changing each time.
+     Cache-Control on both is "public, max-age=14400, must-revalidate" (4h)
+     - a browser that cached the OLD app.js under this exact URL (even from
+     before this UX work existed) keeps serving it for up to 4 hours,
+     never re-checking the server. An old app.js has no bulaTitleSupported/
+     bulaTitleUnsupported toggle logic at all, so it never touches those
+     elements - leaving them at THIS file's static default (currently
+     bulaTitleUnsupported visible), even though the real booking succeeds
+     normally server-side (backend is unaffected by frontend cache state).
+     MUST bump this value on every future deploy that changes styles.css. -->
+<link rel="stylesheet" href="styles.css?v=20260907a-cta-hotfix">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -959,17 +971,19 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <!-- CEO UX revision (2026-09-07, final gate) - two alternate
-             headline texts, toggled by display. Neither is personalised
-             any more (the unsupported-route text no longer needs the
-             guest's name, now that "Thanks, {name} - your booking is in!"
-             is gone - that phrasing falsely implied a server booking
-             exists, which it doesn't for this flow), so this no longer
-             needs the .textContent-only guest-name span the original
-             version had. -->
+        <!-- CEO UX hotfix (2026-09-07) - two alternate headline texts,
+             toggled by display. BOTH default to hidden (booking #66's real
+             root cause: a stale-cached pre-UX app.js left this element at
+             its static default with bulaTitleUnsupported visible next to a
+             genuinely successful booking - see the styles.css?v=/app.js?v=
+             comments above). Showing neither by default, relying entirely
+             on showBulaSuccess()/showBulaUnsupportedRoute() to reveal the
+             correct one, means the worst case if some future stale-JS
+             scenario slips through is a blank headline, never a
+             contradictory claim next to a real booking reference. -->
         <h2 class="bula-title">
           <span id="bulaTitleSupported" style="display:none">Your booking request is safely saved</span>
-          <span id="bulaTitleUnsupported">One more step to send your request</span>
+          <span id="bulaTitleUnsupported" style="display:none">One more step to send your request</span>
         </h2>
         <div class="bula-ref" id="bulaRef"></div>
 
@@ -983,27 +997,30 @@
           ✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we'll confirm your driver directly.
         </p>
 
-        <!-- CEO UX directive (2026-09-07, revised same day) - a dedicated,
-             separate paragraph for the WhatsApp handoff, deliberately not
-             merged into bulaLeadText above: that paragraph already carries
-             the booking's own success confirmation, and this one exists
-             only to explain WHY tapping the button below is worth doing.
-             Never implies WhatsApp is required - Issue #53 canary #2
-             proved the detailed admin notification already delivers
-             server-side, so this copy is written to never suggest the
-             guest is submitting or resending anything through WhatsApp.
+        <!-- CEO UX hotfix (2026-09-07) - a dedicated, separate paragraph for
+             the WhatsApp handoff, deliberately not merged into bulaLeadText
+             above: that paragraph already carries the booking's own success
+             confirmation, and this one exists only to explain WHY tapping
+             the button below is worth doing. Never implies WhatsApp is
+             required - the detailed admin notification (Issue #53) already
+             delivers server-side, so this copy never suggests the guest is
+             submitting or resending anything through WhatsApp.
              Cleared/hidden by showBulaUnsupportedRoute() in app.js, since
              that flow has no server-side booking yet and this text (and
-             the headline above) would be false there. -->
+             the headline above) would be false there. Kept in sync with
+             app.js's own JS-set copy (not just a placeholder) - see the
+             app.js?v=/styles.css?v= comments near the top of this file for
+             why a stale cache can leave THIS static text visible instead
+             of app.js's version (booking #66's root cause). -->
         <p class="bula-wa-context" id="bulaWaContext">
-          Your booking is already saved and our Fiji team has been notified. Tap below to send the full reservation details to our team and open your WhatsApp conversation for faster human confirmation.
+          Tap below to send your reservation details to our Fiji team and open your direct human conversation.
         </p>
 
         <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-          Send full reservation details on WhatsApp
+          Send your reservation details on WhatsApp
         </a>
-        <p class="bula-wa-reassurance" id="bulaWaReassurance">Recommended for faster confirmation, questions and special requests.</p>
+        <p class="bula-wa-reassurance" id="bulaWaReassurance">Your booking is already saved — WhatsApp gives you the fastest human confirmation, questions and changes.</p>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
         <div class="bula-modify">
@@ -1384,7 +1401,11 @@
   </div>
 </div>
 
-<script src="app.js?v=20260810b-herophoto"></script>
+<!-- CEO hotfix (2026-09-07) - MUST bump this ?v= on every deploy that
+     changes app.js. See styles.css's own comment above (near the <head>)
+     for the full explanation - this exact staleness caused booking #66's
+     headline mismatch. -->
+<script src="app.js?v=20260907a-cta-hotfix"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>
