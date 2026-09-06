@@ -959,7 +959,18 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <h2 class="bula-title">Thanks, <span id="bulaName">friend</span> — your booking is in!</h2>
+        <!-- CEO UX revision (2026-09-07) - two alternate headline texts,
+             toggled by display rather than rebuilt via innerHTML string
+             interpolation. bulaName is guest-typed input; it must only
+             ever be written via .textContent (see app.js) - a template
+             string rebuilding this h2's innerHTML around that value would
+             reintroduce exactly the injection risk this codebase has
+             deliberately avoided elsewhere (see AA01's ALLOWED_RESORT_NAMES
+             allowlist, the notes field's .value-only handling, etc.). -->
+        <h2 class="bula-title">
+          <span id="bulaTitleSupported" style="display:none">Your booking request is safely saved</span>
+          <span id="bulaTitleUnsupported">Thanks, <span id="bulaName">friend</span> — your booking is in!</span>
+        </h2>
         <div class="bula-ref" id="bulaRef"></div>
 
         <!-- CEO P0 fix (Issue #34): the booking is server-confirmed (a real
@@ -972,15 +983,18 @@
           ✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we'll confirm your driver directly.
         </p>
 
-        <!-- CEO UX directive (2026-09-07) - a dedicated, separate paragraph
-             for the WhatsApp handoff, deliberately not merged into
-             bulaLeadText above: that paragraph already carries the
-             booking's own success confirmation, and this one exists only
-             to explain WHY tapping the button below is worth doing. Never
-             implies WhatsApp is required - "already saved" here restates
-             what bulaLeadText already said. Cleared/hidden by
-             showBulaUnsupportedRoute() in app.js, since that flow has no
-             server-side booking yet and this text would be false there. -->
+        <!-- CEO UX directive (2026-09-07, revised same day) - a dedicated,
+             separate paragraph for the WhatsApp handoff, deliberately not
+             merged into bulaLeadText above: that paragraph already carries
+             the booking's own success confirmation, and this one exists
+             only to explain WHY tapping the button below is worth doing.
+             Never implies WhatsApp is required - Issue #53 canary #2
+             proved the detailed admin notification already delivers
+             server-side, so this copy is written to never suggest the
+             guest is submitting or resending anything through WhatsApp.
+             Cleared/hidden by showBulaUnsupportedRoute() in app.js, since
+             that flow has no server-side booking yet and this text (and
+             the headline above) would be false there. -->
         <p class="bula-wa-context" id="bulaWaContext">
           Your booking is already saved and our Fiji team has been notified. Tap below to send the full reservation details to our team and open your WhatsApp conversation for faster human confirmation.
         </p>

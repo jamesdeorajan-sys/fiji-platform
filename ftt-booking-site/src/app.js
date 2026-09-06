@@ -1959,24 +1959,36 @@ function showBulaSuccess(ref, bookingId) {
   if (failureCard) failureCard.style.display = 'none';
   hideBookingWidget();
 
-  const bulaName = document.getElementById('bulaName');
-  if (bulaName) bulaName.textContent = bulaFirstName();
+  // CEO UX revision (2026-09-07) - swap which of the two headline spans is
+  // visible rather than rewriting the h2's innerHTML (see index.html's own
+  // comment on why: bulaName is guest-typed input and must only ever be
+  // written via .textContent). This screen's headline is fixed, uninvolved
+  // text - no personalisation - so no .textContent write is needed for it.
+  const bulaTitleSupported = document.getElementById('bulaTitleSupported');
+  if (bulaTitleSupported) bulaTitleSupported.style.display = '';
+  const bulaTitleUnsupported = document.getElementById('bulaTitleUnsupported');
+  if (bulaTitleUnsupported) bulaTitleUnsupported.style.display = 'none';
+
   const bulaRef = document.getElementById('bulaRef');
   if (bulaRef) bulaRef.textContent = bookingId ? `Booking #${bookingId} · Ref: ${ref}` : `Request ref: ${ref}`;
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
-    bulaLeadText.innerHTML = '✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we\'ll confirm your driver directly.';
+    bulaLeadText.innerHTML = '<strong>Booking received.</strong> Our Fiji team has your reservation and will confirm your driver and final pickup details directly.';
   }
 
-  // CEO UX directive (2026-09-07) - explicitly (re-)shown here, not just
-  // left to index.html's static default: showBulaUnsupportedRoute() hides
-  // this same pair of elements (its flow has no server-side booking yet,
-  // so "already saved" would be false there), so a guest who could somehow
-  // reach both states in one session always gets the version that matches
-  // their actual booking state.
+  // CEO UX revision (2026-09-07) - rewritten now that Issue #53 canary #2
+  // proved the detailed admin notification actually delivers server-side:
+  // this copy is deliberately written to frame WhatsApp as continuing a
+  // conversation, never as submitting or resending the reservation.
+  // Explicitly (re-)set here, not just left to index.html's static
+  // default: showBulaUnsupportedRoute() hides this same pair of elements
+  // (its flow has no server-side booking yet, so this framing would be
+  // false there), so a guest who could somehow reach both states in one
+  // session always gets the version that matches their actual booking
+  // state.
   const bulaWaContext = document.getElementById('bulaWaContext');
   if (bulaWaContext) {
-    bulaWaContext.textContent = 'Your booking is already saved and our Fiji team has been notified. Tap below to send the full reservation details to our team and open your WhatsApp conversation for faster human confirmation.';
+    bulaWaContext.innerHTML = '<strong>Want to continue with our Fiji team now?</strong><br>Open WhatsApp for the fastest human confirmation, questions, changes or special requests.';
     bulaWaContext.style.display = '';
   }
 
@@ -1985,11 +1997,14 @@ function showBulaSuccess(ref, bookingId) {
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send full reservation details on WhatsApp');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Continue with our Fiji team on WhatsApp');
   }
 
   const bulaWaReassurance = document.getElementById('bulaWaReassurance');
-  if (bulaWaReassurance) bulaWaReassurance.style.display = '';
+  if (bulaWaReassurance) {
+    bulaWaReassurance.textContent = 'Your booking is already saved — you do not need WhatsApp to submit it again.';
+    bulaWaReassurance.style.display = '';
+  }
 
   setBulaModifyLink(ref);
 
@@ -2003,6 +2018,16 @@ function showBulaSuccess(ref, bookingId) {
 function showBulaUnsupportedRoute(ref) {
   hideBookingWidget();
 
+  // CEO UX revision (2026-09-07) - defensively reset to the "unsupported"
+  // headline in case a prior call in this session left the other one
+  // showing (same guard pattern as the context/reassurance hide below).
+  // bulaName stays .textContent-only - see showBulaSuccess()'s own comment
+  // on why that must never change to an innerHTML rebuild.
+  const bulaTitleSupported = document.getElementById('bulaTitleSupported');
+  if (bulaTitleSupported) bulaTitleSupported.style.display = 'none';
+  const bulaTitleUnsupported = document.getElementById('bulaTitleUnsupported');
+  if (bulaTitleUnsupported) bulaTitleUnsupported.style.display = '';
+
   const bulaName = document.getElementById('bulaName');
   if (bulaName) bulaName.textContent = bulaFirstName();
   const bulaRef = document.getElementById('bulaRef');
@@ -2012,12 +2037,13 @@ function showBulaUnsupportedRoute(ref) {
     bulaLeadText.innerHTML = 'This route needs one quick step to reach our team: tap below to send your booking details on WhatsApp and we\'ll confirm your driver.';
   }
 
-  // CEO UX directive (2026-09-07) - the new "already saved" context/
-  // reassurance pair added for showBulaSuccess() is specifically NOT true
-  // here: this flow has no server-side booking yet (see this function's
-  // own header comment - WhatsApp is genuinely the only path to a human
-  // for an unsupported route), so hide both rather than let index.html's
-  // static default text leak a false claim into this different state.
+  // CEO UX directive (2026-09-07, revised same day) - the "already saved"
+  // headline/context/reassurance added for showBulaSuccess() are
+  // specifically NOT true here: this flow has no server-side booking yet
+  // (see this function's own header comment - WhatsApp is genuinely the
+  // only path to a human for an unsupported route), so hide both rather
+  // than let index.html's static default text leak a false claim into
+  // this different state.
   const bulaWaContext = document.getElementById('bulaWaContext');
   if (bulaWaContext) bulaWaContext.style.display = 'none';
   const bulaWaReassurance = document.getElementById('bulaWaReassurance');
@@ -2028,7 +2054,7 @@ function showBulaUnsupportedRoute(ref) {
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send booking via WhatsApp');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send booking request on WhatsApp');
   }
   setBulaModifyLink(ref);
 
