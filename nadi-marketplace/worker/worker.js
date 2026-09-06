@@ -3089,25 +3089,50 @@ async function createBookingRecord(env, {
 // reporting - see this fix's own report for the small follow-up that would
 // be needed to actually close that gap (client payload change + schema
 // migration, out of scope for this P0 restoration).
+//
+// Issue #53 canary #1 (2026-09-06) found the real constraint driving the
+// format below: Meta rejected the first, newline-separated version with
+// "(#132018) ... Param text cannot have new-line/tab characters or more
+// than 4 consecutive spaces" - a template-parameter rule with no signal in
+// this codebase or Meta's own docs page for template creation, only
+// discoverable by an actual send. Fixed by collapsing to one line, pipe-
+// delimited, with every field passed through sanitiseWhatsAppParamText()
+// first - including guest-authored `notes`, the one field here that isn't
+// server-generated and could otherwise reintroduce the exact character
+// classes Meta rejects.
+function sanitiseWhatsAppParamText(text, maxLen) {
+  if (!text) return '';
+  let s = String(text)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  if (maxLen && s.length > maxLen) s = s.slice(0, Math.max(0, maxLen - 1)).trimEnd() + '…';
+  return s;
+}
+
 function buildFullBookingAdminSummary(booking) {
   const b = booking;
-  const lines = [
+  const parts = [
     'NEW BOOKING',
-    `Booking #${b.id}${b.client_booking_ref ? ` (ref ${b.client_booking_ref})` : ''}`,
-    `${b.guest_name || 'Guest'} - ${b.guest_phone || 'no phone on file'}`,
+    `#${b.id}`,
+    b.client_booking_ref ? `Ref ${b.client_booking_ref}` : null,
+    `Guest: ${sanitiseWhatsAppParamText(b.guest_name || 'Guest', 60)}`,
+    `Phone: ${b.guest_phone || 'n/a'}`,
     `${b.pickup_zone} -> ${b.destination_zone}`,
     `Pickup: ${b.pickup_date || 'date not set'} ${b.pickup_time || ''}`.trim(),
-  ];
-  if (b.flight_number) lines.push(`Flight: ${b.flight_number}`);
-  lines.push(`Vehicle: ${b.vehicle_type}`);
-  if (b.return_date || b.return_time || b.return_pickup_location) {
-    lines.push(`Return: ${b.return_date || 'date not set'} ${b.return_time || ''}`.trim());
-    if (b.return_pickup_location) lines.push(`Return pickup: ${b.return_pickup_location}`);
-  }
-  if (b.notes) lines.push(`Notes: ${b.notes}`);
-  lines.push(`Total: ${b.quoted_currency} ${b.quoted_amount}`);
-  lines.push('Open the admin dashboard for full details.');
-  return lines.join('\n');
+    b.flight_number ? `Flight: ${b.flight_number}` : null,
+    `Vehicle: ${b.vehicle_type}`,
+    (b.return_date || b.return_time) ? `Return: ${b.return_date || 'date not set'} ${b.return_time || ''}`.trim() : null,
+    b.return_pickup_location ? `Return pickup: ${sanitiseWhatsAppParamText(b.return_pickup_location, 60)}` : null,
+    b.notes ? `Notes: ${sanitiseWhatsAppParamText(b.notes, 120)}` : null,
+    `Total: ${b.quoted_currency} ${b.quoted_amount}`,
+    'Open admin dashboard for full details',
+  ].filter(Boolean);
+  // Final pass over the assembled line, not just each field - a defence-
+  // in-depth safety net against any whitespace the join() itself could
+  // introduce, and the single place enforcing the overall length cap
+  // (comfortably under Meta's ~1024-char per-parameter limit).
+  return sanitiseWhatsAppParamText(parts.join(' | '), 1000);
 }
 
 // Issue #53 - non-blocking observability for the automatic admin
@@ -3249,7 +3274,14 @@ async function handleGuestBookingCreate(request, env) {
   for (const alertPhone of notifiedPhones) {
     const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
     if (sendResult.attempted && sendResult.ok) {
-      await recordAdminNotificationOutcome(env, b.id, 'sent', { status: sendResult.status, response: sendResult.response });
+      // Issue #53 canary #2 - pull the WAMID out into its own field rather
+      // than leaving it buried in the raw response text, so "did Meta
+      // actually accept this" is a direct field read, not a JSON-parse of
+      // a debug string. Never throws on an unexpected response shape -
+      // wamid just stays null, response is kept either way as the fallback.
+      let wamid = null;
+      try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
+      await recordAdminNotificationOutcome(env, b.id, 'sent', { status: sendResult.status, wamid, response: sendResult.response });
     } else {
       await recordAdminNotificationOutcome(env, b.id, 'failed', {
         reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
