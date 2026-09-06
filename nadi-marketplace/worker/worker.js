@@ -3069,6 +3069,64 @@ async function createBookingRecord(env, {
   return { ok: true, bookingId, booking, pricingNote, idempotent: false };
 }
 
+// Issue #53 (CEO P0, 2026-09-07) - the bookingSummary alert further down
+// (Milestone 19-era, kept unchanged) proved too shallow for ops to actually
+// run a job from: James received "New booking #58..." but none of the
+// itinerary detail that lives only behind the guest's own OPTIONAL
+// WhatsApp chat button (Issue #34/PR #35 made that action optional, not
+// this fix's concern - see handleGuestBookingCreate's own comment below).
+// This composes a second, richer message reusing the SAME already-approved
+// vakaviti_ops_health_alert template's alert_summary parameter - that
+// parameter is free text (already proven to carry an arbitrary string, not
+// a fixed enum), so no new Meta template submission is needed to ship this.
+//
+// Deliberately omits passenger count and luggage count: POST /bookings has
+// never received either field from the guest widget (see app.js's
+// submitMarketplaceBooking - passengers/luggage live only in the browser's
+// state object, used solely for the guest's own WhatsApp message text and
+// pricing math, never sent to this endpoint) and the bookings table has no
+// column for either. Inventing a value here would be guessing, not
+// reporting - see this fix's own report for the small follow-up that would
+// be needed to actually close that gap (client payload change + schema
+// migration, out of scope for this P0 restoration).
+function buildFullBookingAdminSummary(booking) {
+  const b = booking;
+  const lines = [
+    'NEW BOOKING',
+    `Booking #${b.id}${b.client_booking_ref ? ` (ref ${b.client_booking_ref})` : ''}`,
+    `${b.guest_name || 'Guest'} - ${b.guest_phone || 'no phone on file'}`,
+    `${b.pickup_zone} -> ${b.destination_zone}`,
+    `Pickup: ${b.pickup_date || 'date not set'} ${b.pickup_time || ''}`.trim(),
+  ];
+  if (b.flight_number) lines.push(`Flight: ${b.flight_number}`);
+  lines.push(`Vehicle: ${b.vehicle_type}`);
+  if (b.return_date || b.return_time || b.return_pickup_location) {
+    lines.push(`Return: ${b.return_date || 'date not set'} ${b.return_time || ''}`.trim());
+    if (b.return_pickup_location) lines.push(`Return pickup: ${b.return_pickup_location}`);
+  }
+  if (b.notes) lines.push(`Notes: ${b.notes}`);
+  lines.push(`Total: ${b.quoted_currency} ${b.quoted_amount}`);
+  lines.push('Open the admin dashboard for full details.');
+  return lines.join('\n');
+}
+
+// Issue #53 - non-blocking observability for the automatic admin
+// notification above: booking success must never depend on this, so every
+// call site awaits it but never lets its outcome affect the guest-facing
+// response (same discipline logBookingEvent() itself already applies -
+// it swallows its own DB-write failures rather than throwing). Records
+// enough to answer "did ops actually get pinged for this booking, and if
+// not, why" without ever writing guest PII beyond what booking_id already
+// links back to - just the channel, outcome, and Meta's own response/error.
+async function recordAdminNotificationOutcome(env, bookingId, outcome, detail) {
+  await logBookingEvent(env, {
+    bookingId,
+    eventType: `admin_notification_${outcome}`, // 'sent' | 'failed' | 'skipped_idempotent'
+    actor: 'system',
+    metadata: { channel: 'whatsapp', ...detail },
+  });
+}
+
 async function handleGuestBookingCreate(request, env) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
@@ -3147,6 +3205,11 @@ async function handleGuestBookingCreate(request, env) {
   // re-alerts ops for a booking they've already seen - the opposite of
   // what idempotency is for. 200, not 201: nothing new was created.
   if (result.idempotent) {
+    // Issue #53 - positive confirmation that the replay correctly sent
+    // ZERO additional admin notifications, not just silence. Fire-and-
+    // forget same as every other call below: never lets a logging failure
+    // affect the (already-decided) response to this replay.
+    await recordAdminNotificationOutcome(env, result.bookingId, 'skipped_idempotent', { reason: 'replay of existing client_booking_ref' });
     return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
   }
 
@@ -3159,11 +3222,40 @@ async function handleGuestBookingCreate(request, env) {
   // independent-of-guest-WhatsApp notification Issue #34 requirement 10
   // asks for - it already existed before this fix (Milestone 19-era code),
   // fires unconditionally on every real booking creation, and does not
-  // depend on the driver broadcast having found anyone online.
+  // depend on the driver broadcast having found anyone online. Left
+  // completely unchanged by Issue #53 below (CEO instruction: preserve the
+  // existing short alert unless duplication becomes operationally harmful).
   const b = result.booking;
   const bookingSummary = `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`;
   for (const alertPhone of await getAdminAlertPhones(env)) {
     await sendHealthAlertWhatsApp(env, alertPhone, bookingSummary, sqliteNow());
+  }
+
+  // Issue #53 (CEO P0) - the actual restoration: a SECOND, richer automatic
+  // admin notification carrying the itinerary detail ops needs to run the
+  // job, so James no longer has to depend on the guest tapping their own
+  // optional WhatsApp chat button. Only reachable past the `if
+  // (result.idempotent) return` above, so a replay can never double-send
+  // this either - same guarantee as the short alert and driver broadcast
+  // just above. A WhatsApp failure here is recorded (below) but never
+  // turns this already-persisted, already-broadcast booking into a
+  // guest-facing failure - the guest's success response is unaffected
+  // either way.
+  const fullSummary = buildFullBookingAdminSummary(b);
+  const notifiedPhones = await getAdminAlertPhones(env);
+  if (notifiedPhones.length === 0) {
+    await recordAdminNotificationOutcome(env, b.id, 'failed', { reason: 'platform_settings.admin_alert_phone is not set.' });
+  }
+  for (const alertPhone of notifiedPhones) {
+    const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
+    if (sendResult.attempted && sendResult.ok) {
+      await recordAdminNotificationOutcome(env, b.id, 'sent', { status: sendResult.status, response: sendResult.response });
+    } else {
+      await recordAdminNotificationOutcome(env, b.id, 'failed', {
+        reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
+        status: sendResult.status, response: sendResult.response,
+      });
+    }
   }
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
