@@ -2018,23 +2018,26 @@ function showBulaSuccess(ref, bookingId) {
 function showBulaUnsupportedRoute(ref) {
   hideBookingWidget();
 
-  // CEO UX revision (2026-09-07) - defensively reset to the "unsupported"
-  // headline in case a prior call in this session left the other one
-  // showing (same guard pattern as the context/reassurance hide below).
-  // bulaName stays .textContent-only - see showBulaSuccess()'s own comment
-  // on why that must never change to an innerHTML rebuild.
+  // CEO UX revision (2026-09-07, final gate) - defensively reset to the
+  // "unsupported" headline in case a prior call in this session left the
+  // other one showing (same guard pattern as the context/reassurance hide
+  // below). No guest-name interpolation any more - see index.html's own
+  // comment on why that span was removed from this headline.
   const bulaTitleSupported = document.getElementById('bulaTitleSupported');
   if (bulaTitleSupported) bulaTitleSupported.style.display = 'none';
   const bulaTitleUnsupported = document.getElementById('bulaTitleUnsupported');
   if (bulaTitleUnsupported) bulaTitleUnsupported.style.display = '';
 
-  const bulaName = document.getElementById('bulaName');
-  if (bulaName) bulaName.textContent = bulaFirstName();
   const bulaRef = document.getElementById('bulaRef');
   if (bulaRef) bulaRef.textContent = `Request ref: ${ref}`;
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
-    bulaLeadText.innerHTML = 'This route needs one quick step to reach our team: tap below to send your booking details on WhatsApp and we\'ll confirm your driver.';
+    // CEO final UX gate (2026-09-07) - no "booking is in"/"booking
+    // received"/"safely saved"/"team has your reservation" wording here,
+    // or any other server-persistence claim: no booking row exists yet
+    // for this flow (see this function's own header comment) - WhatsApp
+    // is genuinely how the request reaches a human, not an optional extra.
+    bulaLeadText.innerHTML = 'This route needs human review. Send your booking request on WhatsApp and our Fiji team will confirm the next steps.';
   }
 
   // CEO UX directive (2026-09-07, revised same day) - the "already saved"

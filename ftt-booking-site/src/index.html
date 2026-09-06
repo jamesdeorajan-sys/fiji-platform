@@ -959,17 +959,17 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <!-- CEO UX revision (2026-09-07) - two alternate headline texts,
-             toggled by display rather than rebuilt via innerHTML string
-             interpolation. bulaName is guest-typed input; it must only
-             ever be written via .textContent (see app.js) - a template
-             string rebuilding this h2's innerHTML around that value would
-             reintroduce exactly the injection risk this codebase has
-             deliberately avoided elsewhere (see AA01's ALLOWED_RESORT_NAMES
-             allowlist, the notes field's .value-only handling, etc.). -->
+        <!-- CEO UX revision (2026-09-07, final gate) - two alternate
+             headline texts, toggled by display. Neither is personalised
+             any more (the unsupported-route text no longer needs the
+             guest's name, now that "Thanks, {name} - your booking is in!"
+             is gone - that phrasing falsely implied a server booking
+             exists, which it doesn't for this flow), so this no longer
+             needs the .textContent-only guest-name span the original
+             version had. -->
         <h2 class="bula-title">
           <span id="bulaTitleSupported" style="display:none">Your booking request is safely saved</span>
-          <span id="bulaTitleUnsupported">Thanks, <span id="bulaName">friend</span> — your booking is in!</span>
+          <span id="bulaTitleUnsupported">One more step to send your request</span>
         </h2>
         <div class="bula-ref" id="bulaRef"></div>
 
