@@ -657,12 +657,24 @@ textarea.field-input{resize:vertical;min-height:80px}
   font-size:16px;line-height:1.6;color:#334155;margin:0 auto 24px;max-width:540px}
 .bula-lead strong{color:#0f172a}
 
+/* CEO UX directive (2026-09-07) - WhatsApp-handoff context paragraph,
+   sits between the success message and the button; slightly smaller/muted
+   than .bula-lead so the visual hierarchy still reads "booking confirmed"
+   first, "here's why to also do this" second. */
+.bula-wa-context{
+  font-size:14.5px;line-height:1.55;color:#475569;margin:0 auto 14px;max-width:520px}
+
 .bula-wa-btn{
   display:inline-flex;align-items:center;gap:10px;
   font-size:18px;font-weight:700;padding:19px 32px;
   box-shadow:0 12px 28px rgba(37,211,102,.32);
   margin-bottom:8px;
   animation:bulaWaPulse 1.8s ease-in-out infinite}
+
+/* CEO UX directive (2026-09-07) - small reassurance caption directly under
+   the button, same scale/weight as .bula-modify's existing microcopy. */
+.bula-wa-reassurance{
+  margin:2px 0 14px;font-size:13px;color:#64748b;line-height:1.5}
 .bula-wa-btn:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(37,211,102,.4);animation-play-state:paused}
 @keyframes bulaWaPulse{
   0%,100%{box-shadow:0 12px 28px rgba(37,211,102,.32)}

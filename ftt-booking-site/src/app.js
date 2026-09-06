@@ -1968,13 +1968,29 @@ function showBulaSuccess(ref, bookingId) {
     bulaLeadText.innerHTML = '✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we\'ll confirm your driver directly.';
   }
 
+  // CEO UX directive (2026-09-07) - explicitly (re-)shown here, not just
+  // left to index.html's static default: showBulaUnsupportedRoute() hides
+  // this same pair of elements (its flow has no server-side booking yet,
+  // so "already saved" would be false there), so a guest who could somehow
+  // reach both states in one session always gets the version that matches
+  // their actual booking state.
+  const bulaWaContext = document.getElementById('bulaWaContext');
+  if (bulaWaContext) {
+    bulaWaContext.textContent = 'Your booking is already saved and our Fiji team has been notified. Tap below to send the full reservation details to our team and open your WhatsApp conversation for faster human confirmation.';
+    bulaWaContext.style.display = '';
+  }
+
   const waUrl = buildWhatsAppURL(ref);
   const bulaWaBtn = document.getElementById('bulaWaBtn');
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Chat with Fiji Dash about this booking');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send full reservation details on WhatsApp');
   }
+
+  const bulaWaReassurance = document.getElementById('bulaWaReassurance');
+  if (bulaWaReassurance) bulaWaReassurance.style.display = '';
+
   setBulaModifyLink(ref);
 
   const bula = document.getElementById('bulaSuccess');
@@ -1995,6 +2011,17 @@ function showBulaUnsupportedRoute(ref) {
   if (bulaLeadText) {
     bulaLeadText.innerHTML = 'This route needs one quick step to reach our team: tap below to send your booking details on WhatsApp and we\'ll confirm your driver.';
   }
+
+  // CEO UX directive (2026-09-07) - the new "already saved" context/
+  // reassurance pair added for showBulaSuccess() is specifically NOT true
+  // here: this flow has no server-side booking yet (see this function's
+  // own header comment - WhatsApp is genuinely the only path to a human
+  // for an unsupported route), so hide both rather than let index.html's
+  // static default text leak a false claim into this different state.
+  const bulaWaContext = document.getElementById('bulaWaContext');
+  if (bulaWaContext) bulaWaContext.style.display = 'none';
+  const bulaWaReassurance = document.getElementById('bulaWaReassurance');
+  if (bulaWaReassurance) bulaWaReassurance.style.display = 'none';
 
   const waUrl = buildWhatsAppURL(ref);
   const bulaWaBtn = document.getElementById('bulaWaBtn');
