@@ -1,0 +1,783 @@
+/* ─── RESET & BASE ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.6;color:#0f1923;background:#f8f7f4;overflow-x:hidden}
+img{max-width:100%;display:block}
+a{text-decoration:none;color:inherit}
+
+/* ─── CSS VARIABLES ─────────────────────────────────────────────────────── */
+:root{
+  --ocean:#0066cc;
+  --ocean-dark:#004d99;
+  --ocean-light:#e6f0ff;
+  --teal:#00b386;
+  --teal-dark:#008f6a;
+  --teal-light:#e6f9f4;
+  --sand:#f5f0e8;
+  --sand-dark:#e8e0d0;
+  --dark:#0f1923;
+  --dark-2:#1a2735;
+  --dark-3:#243447;
+  --mid:#5a6b7a;
+  --light:#8fa3b1;
+  --white:#ffffff;
+  --border:#d4dce4;
+  --border-light:#eaeff4;
+  --success:#00a86b;
+  --warning:#e8820c;
+  --radius-sm:8px;
+  --radius-md:12px;
+  --radius-lg:16px;
+  --radius-xl:24px;
+  --shadow-sm:0 1px 4px rgba(15,25,35,0.08);
+  --shadow-md:0 4px 20px rgba(15,25,35,0.1);
+  --shadow-lg:0 12px 48px rgba(15,25,35,0.14);
+  --transition:all 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ─── TYPOGRAPHY ─────────────────────────────────────────────────────────── */
+h1,h2,h3,h4{font-family:'Sora',sans-serif;line-height:1.2;color:var(--dark)}
+h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:700}
+h2{font-size:clamp(1.5rem,3vw,2.25rem);font-weight:600}
+h3{font-size:1.2rem;font-weight:600}
+h4{font-size:1rem;font-weight:600}
+
+/* ─── LAYOUT ─────────────────────────────────────────────────────────────── */
+.container{max-width:1120px;margin:0 auto;padding:0 24px}
+.section-header{text-align:center;margin-bottom:3rem}
+.section-eyebrow{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);background:var(--teal-light);padding:4px 12px;border-radius:20px;margin-bottom:.75rem}
+.section-header h2{margin-bottom:.75rem}
+.section-header p{color:var(--mid);font-size:1.05rem;max-width:560px;margin:0 auto}
+
+/* ─── NAVIGATION ──────────────────────────────────────────────────────────── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border-light);transition:var(--transition)}
+.nav.scrolled{box-shadow:var(--shadow-sm)}
+.nav-inner{max-width:1120px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;gap:2rem}
+.logo{display:flex;align-items:center;gap:6px;font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem;color:var(--dark)}
+.logo-wave{color:var(--ocean);font-size:1.4rem;line-height:1}
+.nav-links{display:flex;gap:1.5rem;flex:1;margin-left:1rem}
+.nav-links a{font-size:14px;font-weight:500;color:var(--mid);transition:color .2s}
+.nav-links a:hover{color:var(--ocean)}
+.nav-right{display:flex;align-items:center;gap:1rem;margin-left:auto}
+.nav-phone{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--dark)}
+.nav-phone svg{color:var(--teal)}
+.btn-nav{background:var(--ocean);color:#fff;padding:8px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;transition:var(--transition)}
+.btn-nav:hover{background:var(--ocean-dark);transform:translateY(-1px)}
+.hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
+.hamburger span{display:block;width:22px;height:2px;background:var(--dark);border-radius:2px;transition:var(--transition)}
+.mobile-menu{display:none;flex-direction:column;gap:0;border-top:1px solid var(--border-light);background:#fff}
+.mobile-menu a{padding:14px 24px;font-size:15px;font-weight:500;color:var(--dark);border-bottom:1px solid var(--border-light)}
+.mobile-menu.open{display:flex}
+
+/* ─── HERO ────────────────────────────────────────────────────────────────── */
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;padding:100px 24px 60px;overflow:hidden;background:var(--dark)}
+.hero-bg{position:absolute;inset:0;z-index:0}
+.hero-orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:0.35}
+.orb1{width:600px;height:600px;background:radial-gradient(circle,#0066cc,transparent);top:-100px;right:-100px}
+.orb2{width:400px;height:400px;background:radial-gradient(circle,#00b386,transparent);bottom:-100px;left:10%}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:40px 40px}
+.hero-content{position:relative;z-index:1;max-width:700px;margin:0 auto;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.85);font-size:13px;padding:6px 14px;border-radius:20px;margin-bottom:1.5rem}
+.badge-dot{width:8px;height:8px;background:#00b386;border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.hero-h1{color:#fff;margin-bottom:1rem;font-size:clamp(2.2rem,6vw,4rem)}
+.hero-accent{background:linear-gradient(135deg,#4da6ff,#00d4a0);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:rgba(255,255,255,.7);font-size:1.1rem;margin-bottom:2rem;max-width:540px;margin-left:auto;margin-right:auto}
+.hero-trust{display:flex;align-items:center;justify-content:center;gap:1.5rem;margin-bottom:2rem;flex-wrap:wrap}
+.trust-item{text-align:center}
+.trust-link{text-decoration:none;color:inherit;display:block;transition:opacity .2s}
+.trust-link:hover{opacity:.8}
+.trust-stars{color:#fbbf24;font-size:14px;letter-spacing:2px}
+.trust-num{font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:700;color:#fff}
+.trust-label{font-size:11px;color:rgba(255,255,255,.5);margin-top:2px}
+.trust-div{width:1px;height:36px;background:rgba(255,255,255,.15)}
+.btn-hero{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--ocean),var(--teal));color:#fff;padding:14px 28px;border-radius:var(--radius-md);font-family:'Sora',sans-serif;font-weight:600;font-size:1rem;transition:var(--transition);border:none;cursor:pointer}
+.btn-hero:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,102,204,0.4)}
+
+/* ─── BOOKING SECTION ──────────────────────────────────────────────────── */
+.booking-section{padding:80px 0;background:var(--white)}
+.booking-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow-lg);overflow:hidden;max-width:900px;margin:0 auto}
+/* A5: trust bar above the booking widget */
+.booking-trust-bar{max-width:900px;margin:0 auto 18px;padding:12px 20px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;display:flex;flex-wrap:wrap;gap:18px 28px;justify-content:center;font-size:13px;color:#065f46;font-weight:500;line-height:1.4}
+.btb-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btb-tick{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#10b981;color:#fff;border-radius:50%;font-size:11px;font-weight:700;flex-shrink:0}
+@media (max-width:640px){.booking-trust-bar{gap:8px 18px;font-size:12px;padding:10px 14px}.btb-item{flex:1 1 calc(50% - 18px)}}
+.booking-header{background:var(--dark);color:#fff;padding:28px 36px}
+.booking-header h2{color:#fff;font-size:1.5rem;margin-bottom:4px}
+.booking-header p{color:rgba(255,255,255,.6);font-size:14px}
+.steps{display:flex;align-items:center;padding:20px 36px;border-bottom:1px solid var(--border-light);gap:0}
+.step{display:flex;align-items:center;gap:8px;opacity:.45;transition:var(--transition)}
+.step.active{opacity:1}
+.step.done{opacity:1}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--border);color:var(--mid);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;transition:var(--transition)}
+.step.active .step-num{background:var(--ocean);color:#fff}
+.step.done .step-num{background:var(--teal);color:#fff}
+.step-label{font-size:13px;font-weight:600;color:var(--mid);white-space:nowrap}
+.step.active .step-label{color:var(--dark)}
+.step-line{flex:1;height:1px;background:var(--border-light);margin:0 8px}
+.booking-step{padding:28px 36px}
+.field-row{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin-bottom:20px}
+.field-group{display:flex;flex-direction:column;gap:6px}
+.field-label{font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:5px}
+.field-label svg{color:var(--ocean)}
+.select-wrap{position:relative}
+.select-wrap::after{content:"▼";position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mid);pointer-events:none}
+select.field-input,.select-wrap select{width:100%;appearance:none;-webkit-appearance:none;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 36px 10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--dark);cursor:pointer;transition:var(--transition)}
+select.field-input:focus,.select-wrap select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+.field-input{background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--dark);transition:var(--transition);width:100%}
+.field-input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+textarea.field-input{resize:vertical;min-height:80px}
+/* A1: friendly flight-monitoring hint shown when pickup is Nadi Airport */
+.flight-hint{margin-top:6px;font-size:12px;line-height:1.4;color:#0c4a6e;background:#f0f9ff;border-left:3px solid #0ea5e9;border-radius:4px;padding:8px 10px;font-weight:500}
+.swap-btn{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--border);background:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition);color:var(--mid)}
+.swap-btn:hover{border-color:var(--ocean);color:var(--ocean);transform:rotate(180deg)}
+.trip-type-row{margin-bottom:20px}
+.trip-toggle{display:flex;gap:8px;margin-top:8px}
+.trip-btn{padding:8px 20px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--mid);cursor:pointer;transition:var(--transition)}
+.trip-btn.active{background:var(--ocean);border-color:var(--ocean);color:#fff}
+.pax-counter{display:flex;align-items:center;gap:10px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;width:fit-content}
+.pax-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;font-size:16px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
+.pax-btn:hover{background:var(--ocean);color:#fff;border-color:var(--ocean)}
+.pax-num{font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem;min-width:24px;text-align:center}
+.pax-label{font-size:13px;color:var(--mid)}
+
+/* ─── PRICING PANEL ──────────────────────────────────────────────────────── */
+.pricing-panel{background:var(--sand);border:1px solid var(--sand-dark);border-radius:var(--radius-lg);padding:20px;margin:20px 0;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.pricing-header{margin-bottom:16px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.pricing-header-left{flex:1 1 auto;min-width:0}
+.pricing-route{font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem;color:var(--dark)}
+.pricing-meta{font-size:13px;color:var(--mid);margin-top:3px}
+/* A4: currency toggle in pricing header */
+.currency-toggle{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+.currency-label{font-size:11px;color:var(--cloud);font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.currency-select{background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--dark);cursor:pointer;min-width:130px}
+.currency-select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 2px rgba(0,102,204,.1)}
+@media (max-width:560px){.currency-toggle{align-items:flex-start;width:100%}.currency-select{width:100%}}
+.vehicle-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+/* Tour-bundle summary: shows when both a tour and a vehicle are in the booking,
+   so the customer sees the combined transfer + tour total in the pricing panel. */
+.tour-bundle-summary{margin-top:14px;padding:14px 16px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;font-size:14px;color:#0f172a}
+.tbs-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:6px 0}
+.tbs-row + .tbs-row{border-top:1px dashed rgba(13,148,136,.25)}
+.tbs-label{flex:1;line-height:1.4}
+.tbs-sub{font-size:12px;color:#475569;font-weight:400}
+.tbs-value{font-family:'Sora',sans-serif;font-weight:700;color:#0f172a;white-space:nowrap}
+.tbs-total{margin-top:4px;padding-top:10px;border-top:2px solid #0d9488 !important}
+.tbs-total .tbs-label,.tbs-total .tbs-value{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:#0d9488}
+.vehicle-card{background:var(--white);border:2px solid var(--border);border-radius:var(--radius-md);padding:16px;cursor:pointer;transition:var(--transition);text-align:center}
+.vehicle-card:hover,.vehicle-card.selected{border-color:var(--ocean);background:var(--ocean-light)}
+.vehicle-card.selected{box-shadow:0 0 0 3px rgba(0,102,204,.15)}
+.vehicle-icon{font-size:28px;margin-bottom:8px}
+.vehicle-name{font-family:'Sora',sans-serif;font-weight:700;font-size:.9rem;color:var(--dark);margin-bottom:2px}
+.vehicle-cap{font-size:11px;color:var(--mid);margin-bottom:8px}
+.vehicle-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.3rem;color:var(--ocean)}
+.vehicle-price-sub{font-size:11px;color:var(--mid)}
+.empty-state{text-align:center;padding:32px;color:var(--light);display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty-state p{font-size:14px}
+.step-actions{display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--border-light)}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:var(--ocean);color:#fff;border:none;padding:12px 24px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-weight:600;font-size:15px;cursor:pointer;transition:var(--transition)}
+.btn-primary:hover:not(:disabled){background:var(--ocean-dark);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn-secondary{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--mid);border:1.5px solid var(--border);padding:12px 20px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-weight:500;font-size:14px;cursor:pointer;transition:var(--transition)}
+.btn-secondary:hover{border-color:var(--dark);color:var(--dark)}
+
+/* ─── STEP 2: VEHICLE DETAILS ──────────────────────────────────────────── */
+.step-title{font-size:1.2rem;margin-bottom:20px;color:var(--dark)}
+.vehicle-detail-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+.vehicle-detail-card{border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;cursor:pointer;transition:var(--transition)}
+.vehicle-detail-card:hover,.vehicle-detail-card.selected{border-color:var(--ocean)}
+.vehicle-detail-card.selected{background:var(--ocean-light)}
+.vd-icon{font-size:36px;margin-bottom:12px}
+.vd-name{font-family:'Sora',sans-serif;font-weight:700;font-size:1rem;margin-bottom:4px}
+.vd-cap{font-size:12px;color:var(--mid);margin-bottom:10px}
+.vd-features{display:flex;flex-direction:column;gap:3px;margin-bottom:12px}
+.vd-feature{font-size:12px;color:var(--mid);display:flex;align-items:center;gap:5px}
+.vd-feature::before{content:"✓";color:var(--teal);font-weight:700}
+.vd-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.4rem;color:var(--ocean)}
+.extras-section{border-top:1px solid var(--border-light);padding-top:20px}
+.extras-title{font-size:14px;font-weight:600;color:var(--dark);margin-bottom:12px}
+.extras-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.extra-item{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;cursor:pointer;transition:var(--transition)}
+.extra-item:hover{border-color:var(--ocean)}
+.extra-item input[type=checkbox]{width:16px;height:16px;accent-color:var(--ocean);cursor:pointer}
+.extra-content{flex:1}
+.extra-name{font-size:13px;font-weight:500;color:var(--dark)}
+.extra-price{font-size:12px;color:var(--teal);font-weight:600}
+
+/* ─── STEP 3: FORM ────────────────────────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* ─── STEP 4: CONFIRM ──────────────────────────────────────────────────── */
+.confirmation-card{background:var(--sand);border:1px solid var(--sand-dark);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px}
+.confirm-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--sand-dark)}
+.confirm-row:last-child{border-bottom:none;padding-top:12px;margin-top:4px}
+.confirm-row.total{font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem}
+.confirm-label{font-size:13px;color:var(--mid)}
+.confirm-value{font-size:14px;font-weight:500;color:var(--dark)}
+.confirm-value.price{color:var(--ocean);font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:700}
+.payment-info{display:flex;gap:12px;align-items:flex-start;background:var(--teal-light);border:1px solid rgba(0,179,134,.2);border-radius:var(--radius-sm);padding:14px;font-size:13px;color:var(--dark)}
+.payment-icon{font-size:20px;line-height:1}
+.btn-confirm{background:var(--teal);font-size:1rem;padding:14px 28px}
+.btn-confirm:hover{background:var(--teal-dark)}
+
+/* ─── SUCCESS ─────────────────────────────────────────────────────────────── */
+.success-screen{text-align:center;padding:20px 0}
+.success-icon{width:72px;height:72px;background:var(--teal-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--teal)}
+.success-screen h3{font-size:1.5rem;margin-bottom:8px}
+.success-sub{color:var(--mid);margin-bottom:20px}
+.success-ref{font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:700;color:var(--ocean);background:var(--ocean-light);padding:10px 20px;border-radius:var(--radius-sm);display:inline-block;margin-bottom:24px}
+.success-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-whatsapp{display:inline-flex;align-items:center;gap:8px;background:#25d366;color:#fff;padding:12px 22px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
+.btn-whatsapp:hover{background:#1da851}
+.btn-whatsapp-primary{padding:15px 28px;font-size:16px;border-radius:var(--radius-md);box-shadow:0 4px 20px rgba(37,211,102,0.35)}
+.btn-whatsapp-primary:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(37,211,102,0.45)}
+.success-note{font-size:12px;color:var(--mid);margin-top:16px;max-width:380px;margin-left:auto;margin-right:auto;line-height:1.6}
+
+/* ─── HOW IT WORKS ────────────────────────────────────────────────────────── */
+.how-section{padding:80px 0;background:var(--sand)}
+.how-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.how-card{text-align:center;padding:28px 20px;background:var(--white);border-radius:var(--radius-lg);border:1px solid var(--border-light);transition:var(--transition)}
+.how-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.how-num{font-family:'Sora',sans-serif;font-size:2rem;font-weight:700;color:var(--border);margin-bottom:8px;line-height:1}
+.how-icon{width:52px;height:52px;background:var(--ocean-light);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--ocean)}
+.how-card h3{margin-bottom:8px}
+.how-card p{font-size:14px;color:var(--mid);line-height:1.6}
+
+/* ─── ROUTES TABLE ────────────────────────────────────────────────────────── */
+.routes-section{padding:80px 0;background:var(--white)}
+.routes-table-wrap{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.routes-table{width:100%;border-collapse:collapse;font-size:13px}
+.routes-table th{background:var(--dark);color:rgba(255,255,255,.7);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:12px 16px;text-align:left;white-space:nowrap}
+.routes-table th:first-child{border-radius:var(--radius-lg) 0 0 0}
+.routes-table th:last-child{border-radius:0 var(--radius-lg) 0 0}
+.routes-table td{padding:11px 16px;border-bottom:1px solid var(--border-light);color:var(--dark);vertical-align:middle}
+.routes-table tr:last-child td{border-bottom:none}
+.routes-table tr:hover td{background:var(--sand)}
+.routes-table .area-badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--ocean-light);color:var(--ocean)}
+.routes-table .btn-book{font-size:12px;font-weight:600;color:var(--ocean);border:1px solid var(--ocean);padding:5px 14px;border-radius:20px;white-space:nowrap;cursor:pointer;transition:var(--transition);background:transparent}
+.routes-table .btn-book:hover{background:var(--ocean);color:#fff}
+
+/* ─── TOURS ───────────────────────────────────────────────────────────────── */
+.tours-section{padding:80px 0;background:var(--sand)}
+.tours-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.tour-card{background:var(--white);border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border-light);transition:var(--transition)}
+.tour-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.tour-thumb{height:160px;display:flex;align-items:center;justify-content:center;font-size:4rem;position:relative}
+.tour-body{padding:18px 20px}
+.tour-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.tour-name{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;margin-bottom:6px}
+.tour-desc{font-size:13px;color:var(--mid);line-height:1.5;margin-bottom:12px}
+.tour-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.tour-meta-item{font-size:11px;color:var(--mid);display:flex;align-items:center;gap:4px}
+.tour-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.2rem;color:var(--ocean)}
+.tour-price-label{font-size:11px;color:var(--mid)}
+.tour-cta{display:block;text-align:center;background:var(--ocean);color:#fff;padding:10px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;margin-top:10px;transition:var(--transition);border:none;cursor:pointer;width:100%;font-family:'DM Sans',sans-serif}
+.tour-cta:hover{background:var(--ocean-dark)}
+
+/* ─── COMPARE ─────────────────────────────────────────────────────────────── */
+.compare-section{padding:80px 0;background:var(--white)}
+.compare-table-scroll{overflow-x:auto;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.compare-table{width:100%;border-collapse:collapse;font-size:13px}
+.compare-table th{padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:center;white-space:nowrap;background:var(--sand);color:var(--mid)}
+.compare-table th:first-child{text-align:left}
+.compare-table .featured-col{background:var(--ocean-light)!important;color:var(--ocean-dark)!important}
+.compare-table td{padding:11px 18px;border-bottom:1px solid var(--border-light);text-align:center;color:var(--mid);font-size:13px}
+.compare-table td:first-child{text-align:left;font-weight:500;color:var(--dark)}
+.compare-table tr:last-child td{border-bottom:none}
+.compare-table tr:hover td{background:var(--sand)}
+.compare-table .chk{color:var(--success);font-weight:600}
+.compare-table .cross{color:var(--border)}
+
+/* ─── REVIEWS ─────────────────────────────────────────────────────────────── */
+.reviews-section{padding:80px 0;background:var(--dark)}
+.reviews-section .section-header h2{color:#fff}
+.reviews-section .section-eyebrow{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
+.reviews-section .section-header p{color:rgba(255,255,255,.5)}
+.reviews-overall{display:flex;align-items:center;gap:12px;justify-content:center;margin-top:12px}
+.reviews-stars{color:#fbbf24;font-size:20px;letter-spacing:2px}
+.reviews-score{font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:700;color:#fff}
+.reviews-count{font-size:13px;color:rgba(255,255,255,.5)}
+.reviews-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.review-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius-lg);padding:20px;transition:var(--transition)}
+.review-card:hover{background:rgba(255,255,255,.08)}
+.review-stars{color:#fbbf24;font-size:12px;margin-bottom:8px}
+.review-text{font-size:13px;color:rgba(255,255,255,.75);line-height:1.6;margin-bottom:12px;font-style:italic}
+.review-author{display:flex;align-items:center;gap:10px}
+.review-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:12px;color:#fff}
+.review-name{font-weight:600;font-size:13px;color:#fff}
+.review-location{font-size:11px;color:rgba(255,255,255,.4)}
+.review-source{font-size:10px;color:rgba(255,255,255,.3);margin-top:4px}
+
+/* ─── FAQ ─────────────────────────────────────────────────────────────────── */
+.faq-section{padding:80px 0;background:var(--sand)}
+.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.faq-item{background:var(--white);border:1px solid var(--border-light);border-radius:var(--radius-md);overflow:hidden}
+.faq-q{padding:16px 20px;font-weight:600;font-size:15px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--dark);transition:var(--transition)}
+.faq-q:hover{background:var(--ocean-light);color:var(--ocean)}
+.faq-q.open{color:var(--ocean);background:var(--ocean-light)}
+.faq-arrow{font-size:12px;transition:transform .2s;color:var(--mid)}
+.faq-q.open .faq-arrow{transform:rotate(180deg)}
+.faq-a{padding:0 20px;font-size:14px;color:var(--mid);line-height:1.7;max-height:0;overflow:hidden;transition:max-height .3s ease, padding .3s ease}
+.faq-a.open{max-height:300px;padding:12px 20px 16px}
+
+/* ─── CTA BAND ───────────────────────────────────────────────────────────── */
+.cta-band{padding:60px 0;background:linear-gradient(135deg,var(--dark),var(--dark-2))}
+.cta-band-inner{display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap}
+.cta-band-text h2{color:#fff;margin-bottom:6px}
+.cta-band-text p{color:rgba(255,255,255,.6);font-size:1rem}
+.cta-band-actions{display:flex;gap:12px;flex-wrap:wrap}
+.btn-whatsapp-lg{display:inline-flex;align-items:center;gap:8px;background:#25d366;color:#fff;padding:13px 22px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
+.btn-whatsapp-lg:hover{background:#1da851;transform:translateY(-1px)}
+
+/* ─── FOOTER ──────────────────────────────────────────────────────────────── */
+.footer{background:#0a1018;color:rgba(255,255,255,.6);padding:60px 0 0}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px;padding-bottom:48px;border-bottom:1px solid rgba(255,255,255,.08)}
+.footer-logo{display:flex;align-items:center;gap:6px;font-family:'Sora',sans-serif;font-weight:700;font-size:1.1rem;color:#fff;margin-bottom:14px}
+.footer-brand p{font-size:13px;line-height:1.7;margin-bottom:14px}
+.footer-contact{display:flex;flex-direction:column;gap:6px}
+.footer-contact a{font-size:13px;color:var(--ocean);transition:color .2s}
+.footer-contact a:hover{color:#fff}
+.footer-col h4{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:14px}
+.footer-col a{display:block;font-size:13px;color:rgba(255,255,255,.55);padding:3px 0;transition:color .2s}
+.footer-col a:hover{color:#fff}
+.footer-bottom{padding:20px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.footer-bottom p{font-size:12px}
+.footer-schema{display:flex;gap:8px;flex-wrap:wrap}
+.footer-schema span{font-size:10px;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4)}
+
+/* ─── TOUR BANNER (in booking form) ──────────────────────────────────────── */
+.tour-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#0f2744,#0a1e35);border:1px solid rgba(0,102,204,.35);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:20px;animation:bannerSlide .35s cubic-bezier(0.4,0,0.2,1)}
+@keyframes bannerSlide{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.tour-banner-left{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+.tour-banner-emoji{font-size:2rem;line-height:1;flex-shrink:0}
+.tour-banner-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:2px}
+.tour-banner-name{font-family:'Sora',sans-serif;font-weight:700;font-size:.95rem;color:#fff;margin-bottom:5px;line-height:1.2}
+.tour-banner-meta{display:flex;gap:12px;flex-wrap:wrap}
+.tour-banner-meta span{font-size:11px;color:rgba(255,255,255,.55)}
+.tour-banner-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+.tour-banner-price{font-family:'Sora',sans-serif;font-weight:700;font-size:1.3rem;color:#fff;line-height:1}
+.tour-banner-price span{font-size:11px;font-weight:400;color:rgba(255,255,255,.45);margin-left:2px}
+.tour-banner-clear{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.55);font-size:11px;padding:4px 10px;border-radius:20px;cursor:pointer;transition:var(--transition);font-family:'DM Sans',sans-serif}
+.tour-banner-clear:hover{background:rgba(220,38,38,.2);border-color:rgba(220,38,38,.4);color:#fca5a5}
+@media(max-width:600px){
+  .tour-banner{flex-direction:column;align-items:flex-start}
+  .tour-banner-right{flex-direction:row;align-items:center;width:100%}
+  .tour-banner-price{flex:1}
+}
+
+/* ─── STICKY BAR ──────────────────────────────────────────────────────────── */
+.sticky-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--dark);border-top:1px solid rgba(255,255,255,.1);padding:12px 20px}
+.sticky-bar-inner{display:flex;justify-content:space-between;align-items:center}
+.sticky-bar-inner span{color:rgba(255,255,255,.7);font-size:14px}
+.btn-sticky{background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
+
+/* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
+@media(max-width:900px){
+  .nav-links,.nav-phone{display:none}
+  .hamburger{display:flex}
+  .field-row{grid-template-columns:1fr;gap:14px}
+  .field-swap{display:flex;justify-content:center}
+  .vehicle-cards,.vehicle-detail-cards{grid-template-columns:1fr}
+  .how-grid{grid-template-columns:repeat(2,1fr)}
+  .tours-grid{grid-template-columns:repeat(2,1fr)}
+  .reviews-grid{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr 1fr}
+  .cta-band-inner{flex-direction:column;text-align:center}
+  .sticky-bar{display:block}
+  .form-grid{grid-template-columns:1fr}
+  .extras-grid{grid-template-columns:1fr}
+  .steps{padding:16px 20px;gap:4px}
+  .step-label{display:none}
+  .booking-step{padding:20px}
+  .booking-header{padding:20px}
+}
+@media(max-width:600px){
+  .hero{padding:90px 20px 48px}
+  .hero-trust{gap:.75rem}
+  .trust-div{display:none}
+  .how-grid{grid-template-columns:1fr}
+  .tours-grid{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+  .vehicle-cards{grid-template-columns:1fr}
+  .reviews-grid{grid-template-columns:1fr}
+}
+
+/* ─── CUSTOM LOCATION PANEL ─────────────────────────────────────────────── */
+.custom-loc-panel{
+  background:linear-gradient(135deg,#fff9f0 0%,#fef3e2 100%);
+  border:2px dashed #f59e0b;border-radius:var(--radius);
+  padding:16px;margin:0 0 16px 0;animation:slideDown .25s ease}
+.custom-loc-head{margin-bottom:12px}
+.custom-loc-head strong{display:block;font-size:14px;color:#92400e;margin-bottom:2px}
+.custom-loc-head span{font-size:12px;color:#78350f;line-height:1.4}
+@keyframes slideDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@media (max-width:680px){
+  .custom-loc-panel .field-row{flex-direction:column;gap:10px}
+  .custom-loc-panel .field-group{flex:1 !important}
+}
+
+/* ─── VEHICLE CARD CAPACITY STATES ──────────────────────────────────────── */
+.vehicle-card,.vehicle-detail-card{position:relative}
+.vehicle-card.disabled,.vehicle-detail-card.disabled{
+  opacity:.45;cursor:not-allowed;
+  filter:grayscale(.7);
+  border-color:#e5e7eb !important;background:#fafafa !important}
+.vehicle-card.disabled:hover,.vehicle-detail-card.disabled:hover{
+  transform:none;box-shadow:none}
+.vehicle-card.recommended:not(.selected),.vehicle-detail-card.recommended:not(.selected){
+  border-color:#10b981;
+  box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+.vehicle-badge{
+  position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+  font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  padding:4px 12px;border-radius:99px;white-space:nowrap;z-index:2}
+.vehicle-badge.rec{background:#10b981;color:#fff}
+.vehicle-badge.warn{background:#f59e0b;color:#fff}
+.vehicle-cap-sub{display:inline-block;font-size:11px;color:#94a3b8;margin-top:2px}
+
+/* ─── BOOKING CARD FLASH HIGHLIGHT (when route is auto-filled) ─────────── */
+.booking-card.flash-highlight{
+  animation:flashPulse 1.5s ease}
+@keyframes flashPulse{
+  0%   {box-shadow:0 0 0 0 rgba(16,185,129,0)}
+  20%  {box-shadow:0 0 0 8px rgba(16,185,129,.25)}
+  100% {box-shadow:0 0 0 0 rgba(16,185,129,0)}
+}
+
+/* ─── DISCOUNT UI ───────────────────────────────────────────────────────── */
+/* Strikethrough old price (used in routes table & vehicle cards) */
+.price-old{
+  display:inline-block;color:#94a3b8;text-decoration:line-through;
+  font-size:.82em;margin-right:6px;font-weight:500}
+
+/* Promo banner above routes table */
+.promo-banner{
+  background:linear-gradient(135deg,#10b981 0%,#059669 100%);
+  color:#fff;padding:14px 20px;border-radius:var(--radius);
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin:0 0 24px 0;
+  box-shadow:0 4px 14px rgba(16,185,129,.25)}
+.promo-banner .promo-icon{
+  font-size:22px;background:rgba(255,255,255,.2);
+  width:36px;height:36px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;flex-shrink:0}
+.promo-banner strong{font-size:16px;letter-spacing:.01em}
+.promo-banner .promo-sub{font-size:13px;opacity:.92;margin-left:auto}
+@media (max-width:680px){
+  .promo-banner .promo-sub{margin-left:0;width:100%;flex-basis:100%}
+}
+
+/* Inline discount banner inside booking widget */
+.discount-banner{
+  display:flex;align-items:center;gap:10px;
+  background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;
+  padding:10px 14px;border-radius:var(--radius-sm);
+  font-size:13px;font-weight:600;margin:12px 0 0 0}
+.discount-banner-icon{
+  background:#10b981;color:#fff;width:24px;height:24px;
+  border-radius:50%;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;font-size:13px}
+/* When a tour is in the booking, the banner becomes informational rather
+   than promotional — the loyalty discount does not apply (tour-listed
+   discounts already cover it). */
+.discount-banner.discount-banner--tour{
+  background:#f1f5f9;border-color:#cbd5e1;color:#334155;font-weight:500}
+.discount-banner.discount-banner--tour .discount-banner-icon{
+  background:#64748b}
+
+/* Vehicle detail card saving line */
+.vd-price-saving{
+  font-size:12px;color:#059669;font-weight:600;
+  margin-top:4px;letter-spacing:.01em}
+
+/* Confirmation card discount row */
+.confirm-row.discount{color:#059669;font-weight:600}
+.confirm-row.discount .confirm-value{color:#059669}
+
+/* ─── BULA SUCCESS CARD ─────────────────────────────────────────────────── */
+.bula-success{
+  background:linear-gradient(135deg,#fff 0%,#fffbf5 50%,#fef7ed 100%);
+  border-radius:24px;padding:40px 32px;
+  box-shadow:0 24px 60px rgba(15,23,42,.12), 0 4px 12px rgba(15,23,42,.04);
+  border:1px solid rgba(245,158,11,.18);
+  position:relative;overflow:hidden;
+  animation:bulaFadeIn .55s cubic-bezier(.2,.8,.2,1)}
+
+.bula-success::before{
+  content:"";position:absolute;top:-80px;left:50%;transform:translateX(-50%);
+  width:600px;height:200px;
+  background:radial-gradient(circle, rgba(245,158,11,.16) 0%, transparent 65%);
+  pointer-events:none}
+
+.bula-success-inner{position:relative;max-width:680px;margin:0 auto;text-align:center}
+
+@keyframes bulaFadeIn{
+  from { opacity:0; transform:translateY(20px) scale(.97) }
+  to   { opacity:1; transform:translateY(0)    scale(1)   }
+}
+
+/* Floral burst */
+.bula-burst{position:relative;width:90px;height:90px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center}
+.bula-flower{font-size:64px;line-height:1;animation:bulaSpin 1.2s cubic-bezier(.2,.8,.2,1);position:relative;z-index:2;filter:drop-shadow(0 4px 12px rgba(244,63,94,.25))}
+.bula-rays{
+  position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle, rgba(244,63,94,.18) 0%, transparent 70%);
+  animation:bulaPulse 2s ease-in-out infinite}
+@keyframes bulaSpin{
+  0%   { transform:scale(0) rotate(-180deg) }
+  60%  { transform:scale(1.15) rotate(10deg) }
+  100% { transform:scale(1) rotate(0) }
+}
+@keyframes bulaPulse{
+  0%,100% { transform:scale(1);   opacity:.6 }
+  50%     { transform:scale(1.18); opacity:.9 }
+}
+
+.bula-eyebrow{
+  display:inline-block;font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+  color:#dc2626;background:#fef2f2;padding:6px 14px;border-radius:99px;
+  margin-bottom:14px;border:1px solid #fecaca}
+
+.bula-title{
+  font-family:'DM Sans',sans-serif;font-size:32px;font-weight:700;line-height:1.18;
+  color:#0f172a;margin:0 0 12px 0;letter-spacing:-.01em}
+.bula-title span{color:#dc2626}
+
+.bula-ref{
+  font-family:'DM Sans',monospace;font-size:13px;font-weight:600;color:#475569;
+  background:#f1f5f9;padding:6px 14px;border-radius:8px;display:inline-block;
+  letter-spacing:.04em;margin-bottom:18px}
+
+.bula-lead{
+  font-size:16px;line-height:1.6;color:#334155;margin:0 auto 24px;max-width:540px}
+.bula-lead strong{color:#0f172a}
+
+.bula-wa-btn{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:16px;padding:16px 28px;
+  box-shadow:0 12px 28px rgba(37,211,102,.32);
+  margin-bottom:8px}
+.bula-wa-btn:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(37,211,102,.4)}
+
+/* A2: free booking modification reassurance under the primary CTA */
+.bula-modify{margin:14px 0 4px;font-size:13px;color:#475569;line-height:1.5}
+.bula-modify p{margin:0}
+.bula-modify a{color:#0066cc;font-weight:600;text-decoration:underline}
+.bula-modify a:hover{color:#004999}
+
+.bula-divider{
+  position:relative;text-align:center;margin:32px 0 24px;
+  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;
+  letter-spacing:.18em;text-transform:uppercase;color:#92400e}
+.bula-divider::before,.bula-divider::after{
+  content:"";position:absolute;top:50%;width:32%;height:1px;
+  background:linear-gradient(90deg,transparent,#fbbf24,transparent)}
+.bula-divider::before{left:0}.bula-divider::after{right:0}
+.bula-divider span{
+  background:linear-gradient(180deg,#fffbf5 50%,#fef7ed 100%);
+  padding:0 14px;position:relative;z-index:1}
+
+/* On-island promise block */
+.bula-promise{
+  background:#fff;border:1px solid #fde68a;
+  border-radius:16px;padding:24px 22px;
+  text-align:left;margin:0 auto 24px;
+  box-shadow:0 2px 8px rgba(15,23,42,.04)}
+.bula-promise h3{
+  font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;
+  color:#0f172a;margin:0 0 10px 0;letter-spacing:-.005em}
+.bula-promise > p{font-size:14.5px;line-height:1.6;color:#475569;margin:0 0 16px 0}
+.bula-promise > p strong{color:#0f172a}
+
+.bula-services{
+  list-style:none;padding:0;margin:0 0 16px 0;
+  display:grid;grid-template-columns:1fr 1fr;gap:8px 18px}
+.bula-services li{
+  display:flex;align-items:center;gap:10px;
+  font-size:13.5px;color:#1f2937;line-height:1.4;padding:6px 0}
+.bula-services li span{
+  font-size:18px;width:30px;height:30px;background:#fef3c7;
+  border-radius:8px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0}
+
+.bula-cta-line{
+  font-size:14.5px;color:#92400e;line-height:1.55;
+  background:#fffbeb;padding:12px 14px;border-radius:10px;
+  border-left:3px solid #f59e0b;margin:0}
+.bula-cta-line strong{color:#78350f}
+
+.bula-actions{
+  display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.bula-actions .btn-whatsapp,.bula-actions .btn-secondary{
+  font-size:14px;padding:12px 20px}
+
+.bula-foot{
+  font-size:14px;color:#64748b;line-height:1.7;margin:8px 0 0 0;
+  border-top:1px solid #e2e8f0;padding-top:18px}
+.bula-foot em{color:#94a3b8;font-style:normal}
+
+/* Mobile */
+@media (max-width:680px){
+  .bula-success{padding:28px 18px}
+  .bula-title{font-size:24px}
+  .bula-flower{font-size:48px}
+  .bula-burst{width:72px;height:72px}
+  .bula-services{grid-template-columns:1fr;gap:4px}
+  .bula-promise{padding:18px 16px}
+  .bula-promise h3{font-size:17px}
+  .bula-actions{flex-direction:column}
+  .bula-actions .btn-whatsapp,.bula-actions .btn-secondary{width:100%}
+}
+
+/* ─── TOUR CARD V2 (real images + discount badges) ───────────────────────── */
+.tour-thumb-wrap{
+  position:relative;width:100%;height:200px;
+  overflow:hidden;border-radius:var(--radius) var(--radius) 0 0;
+  background:#f1f5f9}
+.tour-thumb-img{
+  width:100%;height:100%;object-fit:cover;
+  transition:transform .5s ease}
+.tour-card:hover .tour-thumb-img{transform:scale(1.05)}
+.tour-thumb-fallback{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center}
+
+.tour-discount-badge{
+  position:absolute;top:12px;right:12px;
+  background:#dc2626;color:#fff;
+  padding:6px 12px;border-radius:99px;
+  font-size:12px;font-weight:700;letter-spacing:.04em;
+  box-shadow:0 4px 12px rgba(220,38,38,.4);
+  z-index:2}
+
+.tour-label{
+  display:inline-block;padding:3px 10px;border-radius:99px;
+  font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  margin-bottom:8px}
+
+.tour-price-row{
+  display:flex;align-items:baseline;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tour-price-old{
+  color:#94a3b8;text-decoration:line-through;font-size:14px;font-weight:500}
+.tour-price-label{font-size:12px;color:#64748b}
+
+.tour-cta-row{display:flex;gap:8px;align-items:stretch}
+.tour-cta{flex:1}
+.tour-link{
+  flex:0 0 auto;width:42px;
+  display:flex;align-items:center;justify-content:center;
+  background:#f1f5f9;color:#475569;border-radius:var(--radius-sm);
+  font-size:18px;font-weight:600;text-decoration:none;
+  transition:var(--transition);border:1px solid #e2e8f0}
+.tour-link:hover{
+  background:var(--ocean);color:#fff;border-color:var(--ocean);
+  transform:translateY(-1px)}
+
+/* ─── TYPEAHEAD SEARCHABLE DROPDOWN ─────────────────────────────────────── */
+.typeahead-hidden-select{
+  position:absolute !important;width:1px !important;height:1px !important;
+  padding:0 !important;margin:-1px !important;overflow:hidden !important;
+  clip:rect(0,0,0,0) !important;border:0 !important}
+
+.typeahead-wrap{position:relative;width:100%}
+
+.typeahead-trigger{
+  width:100%;padding:11px 14px;
+  background:#fff;border:1.5px solid #e2e8f0;
+  border-radius:var(--radius-sm);
+  font-family:'DM Sans',sans-serif;font-size:15px;color:#0f172a;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  cursor:pointer;text-align:left;
+  transition:var(--transition)}
+.typeahead-trigger:hover{border-color:#94a3b8}
+.typeahead-trigger:focus{
+  outline:none;border-color:var(--ocean);
+  box-shadow:0 0 0 3px rgba(0,102,204,.12)}
+.typeahead-trigger[aria-expanded="true"]{
+  border-color:var(--ocean);
+  box-shadow:0 0 0 3px rgba(0,102,204,.12)}
+
+.typeahead-trigger-text{
+  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.typeahead-trigger-text.placeholder{color:#94a3b8}
+.typeahead-chevron{color:#64748b;font-size:11px;flex-shrink:0}
+
+.typeahead-panel{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
+  background:#fff;border:1px solid #e2e8f0;border-radius:var(--radius-sm);
+  box-shadow:0 12px 40px rgba(15,23,42,.18);
+  max-height:380px;display:flex;flex-direction:column;
+  animation:taOpen .15s ease-out}
+.typeahead-panel[hidden]{display:none}
+@keyframes taOpen{
+  from { opacity:0; transform:translateY(-4px) }
+  to   { opacity:1; transform:translateY(0)    }
+}
+
+.typeahead-search-row{
+  display:flex;gap:6px;padding:10px;
+  border-bottom:1px solid #f1f5f9;
+  background:#fafafa;
+  border-radius:var(--radius-sm) var(--radius-sm) 0 0}
+.typeahead-search{
+  flex:1;padding:9px 12px;
+  border:1.5px solid #e2e8f0;border-radius:var(--radius-sm);
+  font-family:'DM Sans',sans-serif;font-size:14px;
+  background:#fff;
+  outline:none;transition:var(--transition)}
+.typeahead-search:focus{
+  border-color:var(--ocean);
+  box-shadow:0 0 0 3px rgba(0,102,204,.12)}
+.typeahead-close{
+  width:36px;background:#fff;border:1.5px solid #e2e8f0;
+  border-radius:var(--radius-sm);cursor:pointer;
+  color:#64748b;font-size:14px;
+  transition:var(--transition)}
+.typeahead-close:hover{
+  background:#f1f5f9;color:#0f172a;border-color:#cbd5e1}
+
+.typeahead-list{
+  flex:1;overflow-y:auto;padding:6px 0;
+  -webkit-overflow-scrolling:touch}
+
+.ta-group-label{
+  font-family:'DM Sans',sans-serif;
+  padding:10px 14px 6px;
+  font-size:11px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:#64748b;
+  background:#fafafa;
+  position:sticky;top:0;z-index:1}
+
+.ta-opt{
+  padding:9px 14px;cursor:pointer;
+  font-size:14px;color:#0f172a;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  transition:background .12s ease}
+.ta-opt:hover{background:#eff6ff;color:var(--ocean)}
+.ta-opt-sentinel{
+  font-weight:600;color:#92400e;background:#fffbeb}
+.ta-opt-sentinel:hover{background:#fef3c7;color:#78350f}
+
+.ta-opt-area{
+  font-size:11px;color:#94a3b8;font-weight:500;
+  flex-shrink:0;letter-spacing:.02em}
+
+.ta-empty{
+  padding:20px 14px;text-align:center;
+  color:#64748b;font-size:13px;line-height:1.5}
+
+/* Mobile */
+@media (max-width:680px){
+  .typeahead-panel{max-height:60vh}
+  .ta-opt{padding:11px 14px}
+  .ta-opt-area{display:block;width:100%;margin-top:2px}
+  .ta-opt{flex-direction:column;align-items:flex-start;gap:2px}
+}
+
+/* Tours CTA row — link to live site */
+.tours-cta-row{
+  text-align:center;margin-top:32px}
+.tours-cta-row .btn-secondary{
+  display:inline-block;font-size:14px;padding:12px 24px}
