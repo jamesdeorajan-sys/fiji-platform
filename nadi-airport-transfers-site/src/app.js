@@ -1056,9 +1056,48 @@ function resolveFixedDestinationZone(destOpt) {
 // Mirrors book.fijidash.com/app.js's submitMarketplaceBooking() shape
 // (same field names, same endpoint, same idempotency contract via
 // client_booking_ref) but only the fields this site's own form actually
-// collects - no return-trip fields, no boat/negotiation/attribution
-// concepts exist in this build, so none are invented or sent as null
-// filler beyond what the Worker already treats as optional.
+// collects - no boat/negotiation/attribution concepts exist in this build,
+// so none are invented or sent as null filler beyond what the Worker
+// already treats as optional.
+//
+// CEO P0 Round 2 data-completeness fix: this used to hardcode
+// trip_type: 'one-way' even when the guest had picked "Return trip" via
+// setTripType() - state.tripType was simply never read. Fixed to send the
+// real value. The fare itself was never wrong (calculateTotal()'s
+// vehiclePrice already bakes in the return multiplier via state.prices,
+// computed by computePrices()/updatePricing() - see calculateTotal's own
+// comment) - only the label sent alongside it was.
+//
+// This build's UI has a one-way/return TOGGLE (affects fare only) but no
+// separate return-date/return-time/return-pickup-location picker - nothing
+// like FijiDash's updateReturnFieldsVisibility() exists here. The bookings
+// schema has columns for all three (confirmed against createBookingRecord()
+// server-side) but there is no real guest-entered value to put in them, and
+// CEO instruction is explicit: do not invent new customer fields or invent
+// data. They're left null, honestly, and a return booking instead gets a
+// plain-text flag in notes so ops knows a return leg still needs a time
+// from the guest - see buildOperationalNotes() below.
+//
+// destination_zone stays a Worker-recognised zone name (Natadola, Denarau,
+// etc) - required as-is for server-side price verification / zone
+// matching, must not be swapped for a specific hotel name. The specific
+// resort/hotel label the guest actually picked (state.destination.hotel)
+// was previously dropped entirely once destZone was resolved; it's now
+// preserved in notes instead, alongside passenger/luggage counts neither
+// of which this schema has a dedicated column for.
+function buildOperationalNotes(destZone, rawNotes) {
+  const parts = [];
+  const hotelLabel = state.destination?.hotel || state.destination?.name || null;
+  if (hotelLabel) parts.push(`Destination: ${hotelLabel}`);
+  parts.push(state.tripType === 'return'
+    ? 'Trip: Return (return leg date/time not collected by this form - confirm directly with guest)'
+    : 'Trip: One-way');
+  parts.push(`Passengers: ${state.passengers}`);
+  parts.push(`Luggage: ${state.luggage}`);
+  if (rawNotes) parts.push(`Guest notes: ${rawNotes}`);
+  return parts.join(' | ');
+}
+
 async function submitNadiBooking(ref, destZone) {
   const pickupZone = 'Nadi Airport'; // only reachable when pickupVal === 'NAN', see caller
   const firstName = document.getElementById('firstName')?.value.trim() || '';
@@ -1072,6 +1111,8 @@ async function submitNadiBooking(ref, destZone) {
   if (!destZone || !state.selectedVehicle || !quotedAmount) {
     return { ok: false, error: 'missing-required-data' };
   }
+
+  const rawNotes = document.getElementById('notes')?.value.trim() || '';
 
   const payload = {
     guest_name: `${firstName} ${lastName}`.trim() || 'Guest',
@@ -1089,8 +1130,8 @@ async function submitNadiBooking(ref, destZone) {
     payment_method: 'cash',
     pickup_date: document.getElementById('travelDate')?.value || null,
     pickup_time: document.getElementById('travelTime')?.value || null,
-    notes: document.getElementById('notes')?.value.trim() || null,
-    trip_type: 'one-way', // this build's UI has no return-trip fields to read
+    notes: buildOperationalNotes(destZone, rawNotes),
+    trip_type: state.tripType === 'return' ? 'return' : 'one-way',
     has_child_seat: !!document.getElementById('extra-seat')?.checked,
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
     has_tour: false,
