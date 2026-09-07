@@ -617,7 +617,26 @@ function setTripType(type, btn) {
   state.tripType = type;
   document.querySelectorAll('.trip-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  updateReturnFieldsVisibility();
   if (state.distanceKm > 0) updatePricing();
+}
+
+// CEO P0 Round 3 - mirrors book.fijidash.com/app.js's updateReturnFieldsVisibility()
+// and syncReturnLocationDefault() verbatim. PREVIEW ONLY: wired into
+// submitNadiBooking() below so a return-trip payload carries real data
+// instead of the honest-but-empty "not collected" note Round 2 shipped -
+// not yet deployed to production per this round's directive.
+function updateReturnFieldsVisibility() {
+  const show = state.tripType === 'return';
+  const el = document.getElementById('returnTripFields');
+  if (el) el.style.display = show ? '' : 'none';
+  if (show) syncReturnLocationDefault();
+}
+function syncReturnLocationDefault() {
+  const el = document.getElementById('returnPickupLocation');
+  if (!el || el.dataset.dirty === 'true') return;
+  const d = state.destination;
+  el.value = d ? (d.hotel || d.name || '') : '';
 }
 
 // ─── PAX / LUGGAGE ────────────────────────────────────────────────────────────
@@ -1068,30 +1087,28 @@ function resolveFixedDestinationZone(destOpt) {
 // computed by computePrices()/updatePricing() - see calculateTotal's own
 // comment) - only the label sent alongside it was.
 //
-// This build's UI has a one-way/return TOGGLE (affects fare only) but no
-// separate return-date/return-time/return-pickup-location picker - nothing
-// like FijiDash's updateReturnFieldsVisibility() exists here. The bookings
-// schema has columns for all three (confirmed against createBookingRecord()
-// server-side) but there is no real guest-entered value to put in them, and
-// CEO instruction is explicit: do not invent new customer fields or invent
-// data. They're left null, honestly, and a return booking instead gets a
-// plain-text flag in notes so ops knows a return leg still needs a time
-// from the guest - see buildOperationalNotes() below.
+// CEO P0 Round 3: this build now has a real return-date/return-time/
+// return-pickup-location picker (#returnTripFields, mirrored verbatim from
+// book.fijidash.com/index.html + app.js's updateReturnFieldsVisibility()/
+// syncReturnLocationDefault()). Round 2 left return_date/return_time/
+// return_pickup_location null because no such fields existed yet and
+// nothing was there to honestly send - that gap is now closed, so a
+// return booking sends the guest's real return-leg values into the same
+// already-existing, already-Worker-accepted columns. The "not collected"
+// notes caveat is gone accordingly - notes now only carries what genuinely
+// has no dedicated column (destination label, passengers, luggage).
 //
 // destination_zone stays a Worker-recognised zone name (Natadola, Denarau,
 // etc) - required as-is for server-side price verification / zone
 // matching, must not be swapped for a specific hotel name. The specific
 // resort/hotel label the guest actually picked (state.destination.hotel)
-// was previously dropped entirely once destZone was resolved; it's now
-// preserved in notes instead, alongside passenger/luggage counts neither
-// of which this schema has a dedicated column for.
+// is preserved in notes instead, alongside passenger/luggage counts,
+// neither of which this schema has a dedicated column for.
 function buildOperationalNotes(destZone, rawNotes) {
   const parts = [];
   const hotelLabel = state.destination?.hotel || state.destination?.name || null;
   if (hotelLabel) parts.push(`Destination: ${hotelLabel}`);
-  parts.push(state.tripType === 'return'
-    ? 'Trip: Return (return leg date/time not collected by this form - confirm directly with guest)'
-    : 'Trip: One-way');
+  parts.push(state.tripType === 'return' ? 'Trip: Return' : 'Trip: One-way');
   parts.push(`Passengers: ${state.passengers}`);
   parts.push(`Luggage: ${state.luggage}`);
   if (rawNotes) parts.push(`Guest notes: ${rawNotes}`);
@@ -1132,6 +1149,9 @@ async function submitNadiBooking(ref, destZone) {
     pickup_time: document.getElementById('travelTime')?.value || null,
     notes: buildOperationalNotes(destZone, rawNotes),
     trip_type: state.tripType === 'return' ? 'return' : 'one-way',
+    return_date: state.tripType === 'return' ? (document.getElementById('returnDate')?.value || null) : null,
+    return_time: state.tripType === 'return' ? (document.getElementById('returnTime')?.value || null) : null,
+    return_pickup_location: state.tripType === 'return' ? (document.getElementById('returnPickupLocation')?.value.trim() || null) : null,
     has_child_seat: !!document.getElementById('extra-seat')?.checked,
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
     has_tour: false,
@@ -1401,6 +1421,7 @@ function bookRoute(idx) {
     const txt = btn.textContent.trim().toLowerCase();
     btn.classList.toggle('active', txt.includes('one'));
   });
+  updateReturnFieldsVisibility();
 
   // Make sure step 1 is visible (the pickup/dest fields live in step 1)
   showStep(1);
