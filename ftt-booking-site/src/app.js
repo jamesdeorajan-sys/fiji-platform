@@ -1959,6 +1959,17 @@ function showBulaSuccess(ref, bookingId) {
   if (failureCard) failureCard.style.display = 'none';
   hideBookingWidget();
 
+  // CEO P0 Round 4 (2026-09-09) - hideBookingWidget()'s own scrollIntoView
+  // targets #booking (the whole section, trust-bar included - shared by
+  // every card this function is used for, so left untouched). That leaves
+  // ~200px of trust-bar content above the card before a guest ever sees
+  // the headline, which was enough to push the CTA below the fold at
+  // 320px width in testing. This second, more specific scroll overrides
+  // it with the actual success card's own top, which is what "CTA visible
+  // immediately on landing" requires. Real browsers redirect an
+  // in-progress smooth scroll to a new target rather than jumping twice.
+  document.getElementById('bulaSuccess')?.scrollIntoView({ block: 'start' });
+
   // CEO UX revision (2026-09-07) - swap which of the two headline spans is
   // visible rather than rewriting the h2's innerHTML (see index.html's own
   // comment on why: bulaName is guest-typed input and must only ever be
