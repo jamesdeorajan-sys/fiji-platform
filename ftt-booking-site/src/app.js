@@ -1976,16 +1976,17 @@ function showBulaSuccess(ref, bookingId) {
     bulaLeadText.innerHTML = '<strong>Booking received.</strong> Our Fiji team has your reservation and will confirm your driver and final pickup details directly.';
   }
 
-  // CEO UX hotfix (2026-09-07, requirement 2) - strong directive CTA copy.
+  // CEO P0 Round 4 (2026-09-09) - "Final-Page WhatsApp Conversion RC".
   // Explicitly (re-)set here, not just left to index.html's static
   // default: showBulaUnsupportedRoute() hides this same pair of elements
   // (its flow has no server-side booking yet, so this framing would be
   // false there), so a guest who could somehow reach both states in one
   // session always gets the version that matches their actual booking
-  // state.
+  // state. Kept byte-identical to index.html's static default text, same
+  // discipline as before (booking #66's stale-cache root cause).
   const bulaWaContext = document.getElementById('bulaWaContext');
   if (bulaWaContext) {
-    bulaWaContext.textContent = 'Tap below to send your reservation details to our Fiji team and open your direct human conversation.';
+    bulaWaContext.textContent = 'Tap the green WhatsApp button now to connect with our local team and complete your pickup confirmation.';
     bulaWaContext.style.display = '';
   }
 
@@ -1994,12 +1995,12 @@ function showBulaSuccess(ref, bookingId) {
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send your reservation details on WhatsApp');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'CONTINUE TO WHATSAPP — CONFIRM MY PICKUP');
   }
 
   const bulaWaReassurance = document.getElementById('bulaWaReassurance');
   if (bulaWaReassurance) {
-    bulaWaReassurance.textContent = 'Your booking is already saved — WhatsApp gives you the fastest human confirmation, questions and changes.';
+    bulaWaReassurance.textContent = 'We already have your booking details. WhatsApp is where our Fiji team confirms your pickup and assists you directly.';
     bulaWaReassurance.style.display = '';
   }
 

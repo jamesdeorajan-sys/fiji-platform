@@ -671,6 +671,12 @@ textarea.field-input{resize:vertical;min-height:80px}
   margin-bottom:8px;
   animation:bulaWaPulse 1.8s ease-in-out infinite}
 
+/* CEO P0 Round 4 - dominant, full-width variant for the reordered
+   above-the-fold CTA. Stacks with .bula-wa-btn rather than replacing it. */
+.bula-wa-btn-dominant{
+  width:100%;box-sizing:border-box;justify-content:center;
+  text-align:center}
+
 /* CEO UX directive (2026-09-07) - small reassurance caption directly under
    the button, same scale/weight as .bula-modify's existing microcopy. */
 .bula-wa-reassurance{
