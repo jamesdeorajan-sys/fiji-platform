@@ -931,8 +931,8 @@ function resolveLocation(which) {
   };
 }
 
-function onPickupChange()      { togglePickupPanel();   updatePricing(); updateFlightHint(); }
-function onDestinationChange() { toggleDestPanel();     updatePricing(); }
+function onPickupChange()      { togglePickupPanel();   updatePricing(); updateFlightHint(); trackFunnelEvent?.('route_selected'); }
+function onDestinationChange() { toggleDestPanel();     updatePricing(); trackFunnelEvent?.('route_selected'); }
 
 // A1: Show the friendly flight-monitoring promise inline when the pickup is
 // Nadi Airport. Hide it for hotel-departure bookings where it doesn't apply.
@@ -1336,6 +1336,7 @@ function selectVehicle(key, el) {
   if (nb) nb.disabled = false;
   // Tour bundle summary depends on which vehicle is selected — refresh it
   if (state.selectedTour) updatePricing();
+  trackFunnelEvent?.('vehicle_selected');
 }
 function selectVehicleDetail(key, el) {
   const v = VEHICLES.find(x => x.key === key);
@@ -1519,6 +1520,7 @@ function goToStep(n) {
       alert(`This vehicle is too small: ${reasons.join(', ')}. Please pick a larger one.`);
       return;
     }
+    trackFunnelEvent?.('details_opened');
   }
   showStep(n);
   document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -1841,6 +1843,7 @@ function buildWhatsAppURL(ref) {
 
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
 async function confirmBooking() {
+  trackFunnelEvent?.('confirm_clicked');
   // Real gap found by an independent pre-launch review: zero double-submit
   // protection existed here. Two click events dispatched close together
   // (a fast double-click, or the classic mobile double-tap event-firing
@@ -2276,6 +2279,7 @@ async function submitMarketplaceBooking(ref) {
     ...getAttributionForPayload(),
   };
 
+  trackFunnelEvent?.('booking_post_started');
   try {
     const res = await fetch(`${NADI_API_BASE}/bookings`, {
       method: 'POST',
@@ -2292,11 +2296,14 @@ async function submitMarketplaceBooking(ref) {
       // gets the ALREADY-CREATED booking back as a success - never a
       // second row, regardless of which side the timeout happened on.
       await reportBookingSyncFailure(ref, payload, data);
+      trackFunnelEvent?.('booking_post_failed');
       return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
+    trackFunnelEvent?.('booking_post_succeeded');
     return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
   } catch (err) {
     await reportBookingSyncFailure(ref, payload, { error: err.message });
+    trackFunnelEvent?.('booking_post_failed');
     return { ok: false, error: err.message };
   }
 }
@@ -3456,6 +3463,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // call is wrapped too as defence in depth: attribution metadata capture
   // must never be able to stop the rest of page init from running.
   try { captureAttribution(); } catch { /* never blocks page init */ }
+  trackFunnelEvent?.('booking_page_view');
+
+  // CEO P0 Round 6, Track C - whatsapp_opened. Delegated listener (not an
+  // inline onclick in index.html) so this stays purely additive JS, zero
+  // markup change. target="_blank" means the click isn't blocked by
+  // sendBeacon running first - the new tab opens regardless of whether
+  // tracking succeeds.
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#bulaWaBtn')) trackFunnelEvent?.('whatsapp_opened');
+  });
 
   buildRoutesTable();
   buildToursGrid();
