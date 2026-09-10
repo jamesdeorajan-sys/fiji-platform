@@ -1,0 +1,8 @@
+name = "vakaviti-funnel-events-preview"
+main = "worker.js"
+compatibility_date = "2026-09-08"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vakaviti-funnel-events-preview"
+database_id = "47733821-9c36-43ef-8408-75102c652325"
