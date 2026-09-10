@@ -1801,7 +1801,7 @@ function buildWhatsAppURL(ref) {
 
   const msg = [
     `*NEW BOOKING REQUEST*`,
-    `Fiji Dash`,
+    `Fiji Tour Transfers`,
     `Booking ref: *${ref}*`,
     `=====================================`,``,
     `*PASSENGER DETAILS*`,
