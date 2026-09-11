@@ -1866,7 +1866,11 @@ async function confirmBooking() {
   if (state.confirmBookingInFlight) return;
   state.confirmBookingInFlight = true;
   const confirmBtn = document.querySelector('.btn-confirm');
-  if (confirmBtn) confirmBtn.disabled = true;
+  const confirmBtnOriginalText = confirmBtn?.textContent;
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Saving your booking…';
+  }
 
   // A1: Soft-required flight number for Nadi Airport arrivals.
   // We don't block submission, but if pickup is NAN and the customer left
@@ -1884,7 +1888,10 @@ async function confirmBooking() {
     );
     if (!proceed) {
       state.confirmBookingInFlight = false;
-      if (confirmBtn) confirmBtn.disabled = false;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnOriginalText;
+      }
       // Focus the field so they can fill it in
       document.getElementById('flightNum')?.focus();
       document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1900,7 +1907,40 @@ async function confirmBooking() {
   // retryMarketplaceBooking() reuses it rather than minting a new one,
   // which would defeat idempotency by making every retry look like a
   // brand-new booking).
-  const ref = 'FD-' + Date.now().toString(36).toUpperCase().slice(-6);
+  //
+  // CEO P0 fix (duplicate-booking RC) - the guard above (confirmBookingInFlight)
+  // only lives in this page load's JS memory, so it protects against rapid
+  // repeat clicks but not against a genuine page reload or fresh navigation
+  // moments after a first submit (found via two real production pairs, same
+  // guest phone, 4-6 seconds apart, two different refs - a reload/resubmit
+  // is the only mechanism consistent with that evidence). Fix: persist the
+  // ref in sessionStorage keyed to a fingerprint of the exact trip being
+  // booked. A reload for the SAME unchanged trip reuses the SAME ref, so
+  // server-side idempotency (untouched) naturally collapses it to the one
+  // existing booking instead of creating a second real row. A genuinely
+  // different trip (guest changed pickup/destination/date/time/vehicle)
+  // gets its own fresh ref, same as today - this is an exact match on the
+  // same deterministic fields the booking payload itself sends, not fuzzy
+  // guest/name/phone matching.
+  const attemptFingerprint = JSON.stringify([
+    document.getElementById('pickup')?.value,
+    document.getElementById('destination')?.value,
+    document.getElementById('travelDate')?.value,
+    document.getElementById('travelTime')?.value,
+    state.selectedVehicle,
+    state.tripType,
+  ]);
+  let ref;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem('vk_booking_attempt') || 'null');
+    if (stored && stored.fingerprint === attemptFingerprint && stored.ref) {
+      ref = stored.ref;
+    }
+  } catch { /* storage blocked or corrupt - fall through to a fresh ref, same as before this fix */ }
+  if (!ref) {
+    ref = 'FD-' + Date.now().toString(36).toUpperCase().slice(-6);
+    try { sessionStorage.setItem('vk_booking_attempt', JSON.stringify({ ref, fingerprint: attemptFingerprint })); } catch { /* private mode - fine, just not persisted across a reload */ }
+  }
   state.currentBookingRef = ref;
 
   // MILESTONE 11/12: real driver-marketplace booking is the actual point
