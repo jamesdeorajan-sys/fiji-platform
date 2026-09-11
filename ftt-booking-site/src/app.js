@@ -2820,6 +2820,13 @@ const ROUTES_DATA = [
   { destValue:"CRUSOES_RETREAT",        dest:"Crusoe's Retreat / Mango Bay",        area:"Coral Coast",     km:93,  time:"1 hr 32 min", s:129, v:159, m:199 },
   { destValue:"OUTRIGGER_FIJI",         dest:"Outrigger Fiji Beach Resort",         area:"Coral Coast",     km:98,  time:"1 hr 36 min", s:129, v:159, m:199 },
   { destValue:"THE_WARWICK",            dest:"The Warwick / The Naviti",            area:"Coral Coast",     km:100, time:"1 hr 38 min", s:149, v:189, m:239 },
+  // CEO Naviti Continuity RC (preview only): NAVITI_RESORT is a real, separately-selectable
+  // hotel in the live destination dropdown (data-hotel="The Naviti Resort Korolevu") that had
+  // no ROUTES_DATA row, so it silently fell back to formula/estimate pricing instead of the
+  // approved published tier. This row gives it its own published price, matching the
+  // already-approved Naviti tier and Warwick's neighbouring drive time. THE_WARWICK above is
+  // untouched.
+  { destValue:"NAVITI_RESORT",          dest:"The Naviti Resort",                   area:"Coral Coast",     km:100, time:"1 hr 38 min", s:149, v:189, m:239 },
   { destValue:"BEACHHOUSE_FIJI",        dest:"The Beachouse Fiji",                  area:"Coral Coast",     km:115, time:"1 hr 50 min", s:169, v:199, m:259 },
   // Pacific Harbour
   { destValue:"ARTS_VILLAGE",           dest:"Pacific Harbour Arts Village",        area:"Pacific Harbour", km:145, time:"2 hr 14 min", s:199, v:269, m:299 },
