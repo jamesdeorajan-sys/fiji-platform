@@ -30,4 +30,14 @@
 <changefreq>monthly</changefreq>
 <priority>0.8</priority>
 </url>
+<url>
+<loc>https://nadiairporttransfers.com/transfer/pearl-south-pacific-resort</loc>
+<changefreq>monthly</changefreq>
+<priority>0.8</priority>
+</url>
+<url>
+<loc>https://nadiairporttransfers.com/transfer/port-denarau-marina</loc>
+<changefreq>monthly</changefreq>
+<priority>0.8</priority>
+</url>
 </urlset>
