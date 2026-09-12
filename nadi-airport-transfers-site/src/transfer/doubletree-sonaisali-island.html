@@ -98,19 +98,18 @@
 .rp-mobile-assist{display:none}
 .rp-sticky-cta{display:none;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--white);border-top:1px solid var(--border-light);padding:10px 16px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.1);align-items:center;justify-content:space-between;gap:12px;transform:translateY(100%);transition:transform .25s ease;visibility:hidden}
 .rp-sticky-cta.rp-sticky-visible{transform:translateY(0);visibility:visible}
-.rp-sticky-fare{font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:var(--dark);line-height:1.25}
-.rp-sticky-fare span{display:block;font-size:11px;font-weight:500;color:var(--mid)}
-.rp-sticky-btn{background:linear-gradient(135deg,var(--ocean),var(--teal));color:#fff;padding:12px 18px;border-radius:var(--radius-md);font-family:'Sora',sans-serif;font-weight:700;font-size:13px;white-space:nowrap;flex-shrink:0}
+.rp-sticky-fare{font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:var(--dark);line-height:1.2}
+.rp-sticky-fare span{display:block;font-size:10.5px;font-weight:500;color:var(--mid)}
+.rp-sticky-btn{background:linear-gradient(135deg,var(--ocean),var(--teal));color:#fff;padding:10px 16px;border-radius:var(--radius-md);font-family:'Sora',sans-serif;font-weight:700;font-size:12.5px;white-space:nowrap;flex-shrink:0}
 @media(max-width:768px){
 .rp-info-grid{display:none}
-.rp-mobile-assist{display:block;background:var(--sand);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:18px}
-.rp-mobile-assist-title{font-family:'Sora',sans-serif;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);margin-bottom:10px}
-.rp-mobile-step{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light)}
-.rp-mobile-step:last-of-type{border-bottom:none}
-.rp-mobile-step-num{width:24px;height:24px;border-radius:50%;background:var(--ocean-dark);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
-.rp-mobile-step-body h4{font-size:14px;margin:0 0 2px}
-.rp-mobile-step-body p{font-size:13px;margin:0;color:var(--mid)}
-.rp-mobile-assist .rp-cta{width:100%;margin-top:14px;justify-content:center}
+.rp-mobile-heading{display:none}
+.rp-mobile-assist-section{padding-top:20px;padding-bottom:20px}
+.rp-mobile-assist{display:block;background:var(--sand);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:14px}
+.rp-mobile-assist-title{font-family:'Sora',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);margin-bottom:6px}
+.rp-mobile-line{display:flex;gap:6px;padding:5px 0;font-size:13.5px;line-height:1.35;color:var(--dark)}
+.rp-mobile-line b{font-weight:700;color:var(--ocean-dark);flex-shrink:0}
+.rp-mobile-assist .rp-cta{width:100%;margin-top:10px;padding:11px 20px;font-size:14px;justify-content:center}
 .rp-sticky-cta{display:flex}
 }
 </style>
@@ -201,9 +200,9 @@
   </div>
 </section>
 
-<section class="rp-section" style="background:var(--sand)">
+<section class="rp-section rp-mobile-assist-section" style="background:var(--sand)">
   <div class="rp-section-inner">
-    <h2>How airport pickup works</h2>
+    <h2 class="rp-mobile-heading">How airport pickup works</h2>
     <div class="rp-info-grid">
       <div class="rp-info-card"><h3>✈️ On arrival</h3><p>Your driver tracks your flight and waits in the arrivals area. No need to call ahead if you land early or late.</p></div>
       <div class="rp-info-card"><h3>🚗 Private, direct</h3><p>Your vehicle, your group only — straight to the Sonaisali jetty, where the resort's own boat shuttle continues your journey.</p></div>
@@ -213,18 +212,9 @@
 
     <div class="rp-mobile-assist">
       <div class="rp-mobile-assist-title">Your Transfer</div>
-      <div class="rp-mobile-step">
-        <div class="rp-mobile-step-num">1</div>
-        <div class="rp-mobile-step-body"><h4>Route</h4><p>Nadi Airport &rarr; DoubleTree Sonaisali Island</p></div>
-      </div>
-      <div class="rp-mobile-step">
-        <div class="rp-mobile-step-num">2</div>
-        <div class="rp-mobile-step-body"><h4>Vehicle</h4><p>Sedan &middot; Minivan &middot; Minibus</p></div>
-      </div>
-      <div class="rp-mobile-step">
-        <div class="rp-mobile-step-num">3</div>
-        <div class="rp-mobile-step-body"><h4>Confirmation</h4><p>No payment now. Our Fiji team confirms your pickup and driver.</p></div>
-      </div>
+      <div class="rp-mobile-line"><b>Route</b> Nadi Airport &rarr; DoubleTree Sonaisali Island</div>
+      <div class="rp-mobile-line"><b>Vehicle</b> Sedan &middot; Minivan &middot; Minibus</div>
+      <div class="rp-mobile-line"><b>Confirm</b> No payment now &mdash; our Fiji team confirms your pickup and driver.</div>
       <a href="https://book.fijidash.com/?pickup=NAN&dest=DOUBLETREE_SONAISALI&utm_source=organic&utm_medium=legacy_route_page&utm_campaign=nadi_legacy_rescue&utm_content=doubletree-sonaisali-island" class="rp-cta">CONTINUE TO BOOKING</a>
     </div>
   </div>
