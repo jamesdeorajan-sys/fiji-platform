@@ -94,6 +94,25 @@
 .rp-cta-band{background:var(--dark);color:#fff;padding:34px 24px;text-align:center}
 .rp-cta-band h2{color:#fff;margin-bottom:8px}
 .rp-cta-band p{color:rgba(255,255,255,.7);margin-bottom:18px}
+
+.rp-mobile-assist{display:none}
+.rp-sticky-cta{display:none;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--white);border-top:1px solid var(--border-light);padding:10px 16px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.1);align-items:center;justify-content:space-between;gap:12px;transform:translateY(100%);transition:transform .25s ease;visibility:hidden}
+.rp-sticky-cta.rp-sticky-visible{transform:translateY(0);visibility:visible}
+.rp-sticky-fare{font-family:'Sora',sans-serif;font-weight:700;font-size:15px;color:var(--dark);line-height:1.25}
+.rp-sticky-fare span{display:block;font-size:11px;font-weight:500;color:var(--mid)}
+.rp-sticky-btn{background:linear-gradient(135deg,var(--ocean),var(--teal));color:#fff;padding:12px 18px;border-radius:var(--radius-md);font-family:'Sora',sans-serif;font-weight:700;font-size:13px;white-space:nowrap;flex-shrink:0}
+@media(max-width:768px){
+.rp-info-grid{display:none}
+.rp-mobile-assist{display:block;background:var(--sand);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:18px}
+.rp-mobile-assist-title{font-family:'Sora',sans-serif;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);margin-bottom:10px}
+.rp-mobile-step{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-light)}
+.rp-mobile-step:last-of-type{border-bottom:none}
+.rp-mobile-step-num{width:24px;height:24px;border-radius:50%;background:var(--ocean-dark);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.rp-mobile-step-body h4{font-size:14px;margin:0 0 2px}
+.rp-mobile-step-body p{font-size:13px;margin:0;color:var(--mid)}
+.rp-mobile-assist .rp-cta{width:100%;margin-top:14px;justify-content:center}
+.rp-sticky-cta{display:flex}
+}
 </style>
 </head>
 <body>
@@ -191,6 +210,23 @@
       <div class="rp-info-card"><h3>💬 Human confirmation</h3><p>A real person on the Fiji team confirms your driver and pickup details directly with you.</p></div>
       <div class="rp-info-card"><h3>🔁 Return transfer available</h3><p>Book your Sonaisali jetty → Nadi Airport return leg the same way, at the same fixed rate structure.</p></div>
     </div>
+
+    <div class="rp-mobile-assist">
+      <div class="rp-mobile-assist-title">Your Transfer</div>
+      <div class="rp-mobile-step">
+        <div class="rp-mobile-step-num">1</div>
+        <div class="rp-mobile-step-body"><h4>Route</h4><p>Nadi Airport &rarr; DoubleTree Sonaisali Island</p></div>
+      </div>
+      <div class="rp-mobile-step">
+        <div class="rp-mobile-step-num">2</div>
+        <div class="rp-mobile-step-body"><h4>Vehicle</h4><p>Sedan &middot; Minivan &middot; Minibus</p></div>
+      </div>
+      <div class="rp-mobile-step">
+        <div class="rp-mobile-step-num">3</div>
+        <div class="rp-mobile-step-body"><h4>Confirmation</h4><p>No payment now. Our Fiji team confirms your pickup and driver.</p></div>
+      </div>
+      <a href="https://book.fijidash.com/?pickup=NAN&dest=DOUBLETREE_SONAISALI&utm_source=organic&utm_medium=legacy_route_page&utm_campaign=nadi_legacy_rescue&utm_content=doubletree-sonaisali-island" class="rp-cta">CONTINUE TO BOOKING</a>
+    </div>
   </div>
 </section>
 
@@ -226,6 +262,30 @@
     </div>
   </div>
 </footer>
+
+
+<div class="rp-sticky-cta" id="rpStickyBar">
+  <div class="rp-sticky-fare">FJ$69 per vehicle<span>One-way, whole vehicle</span></div>
+  <a href="https://book.fijidash.com/?pickup=NAN&dest=DOUBLETREE_SONAISALI&utm_source=organic&utm_medium=legacy_route_page&utm_campaign=nadi_legacy_rescue&utm_content=doubletree-sonaisali-island" class="rp-sticky-btn">GET INSTANT PRICE</a>
+</div>
+
+<script>
+(function(){
+  var hero = document.getElementById('primaryCta');
+  var bar = document.getElementById('rpStickyBar');
+  if(!hero || !bar) return;
+  var link = bar.querySelector('a');
+  function setVisible(v){
+    bar.classList.toggle('rp-sticky-visible', v);
+    if(link) link.tabIndex = v ? 0 : -1;
+  }
+  if (link) link.tabIndex = -1;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ setVisible(!e.isIntersecting); });
+  }, {threshold:0});
+  io.observe(hero);
+})();
+</script>
 
 </body>
 </html>
