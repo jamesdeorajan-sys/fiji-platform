@@ -1,12 +1,25 @@
 /* Issue #54 Stage 1 (SHADOW MODE) — PLACEHOLDER geography seed.
+ * DISABLED FOR REAL MATCHING — CEO instruction 2026-09-13.
  *
  * These zone-adjacency and distance figures are illustrative only, sized
  * for the synthetic fixtures in test/fixtures/. They are NOT verified Fiji
- * road distances or drive times and must not be read as operational fact.
- * Replace with ops-verified data before any Stage 2 rollout — until then,
- * every distance/time figure derived from this file is tagged `verified:
- * false` and the matcher/pricing layers must not surface it as a promised
- * number to a customer or in a revenue estimate without that flag.
+ * road distances, drive times, or corridor definitions and must not be
+ * read as operational fact. Do not enable real/live shadow ingestion
+ * until verified Fiji zones, route durations, and corridors replace this
+ * seed entirely.
+ *
+ * Scope of what this file is allowed to influence, by design:
+ *   - ZONE_ADJACENCY / corridorOf(): used ONLY to classify which TYPE of
+ *     match a candidate looks like (exact reverse / nearby / corridor) —
+ *     informational labeling, never a feasibility input.
+ *   - lookupDistance(): used ONLY for the non-binding "empty km
+ *     potentially avoided" hint, always surfaced with `verified: false`
+ *     and excluded from board revenue totals.
+ * This file NEVER determines whether a match is chronologically feasible
+ * — that comes only from a movement's own `estimated_duration_minutes` /
+ * `planned_dropoff_datetime` (see src/model.js#estimateSourceCompletionMs)
+ * or, absent those, an explicit HOLD_UNKNOWN_TIMING verdict. See
+ * src/matcher.js.
  */
 
 export const ZONE_ADJACENCY = Object.freeze({

@@ -4,7 +4,13 @@
  * nothing is invented when payout/floor is unknown — the function returns
  * a HOLD decision instead of a guessed number.
  */
-import { FARE_CLASS, RETURN_LOCK_MIN_DAYS_AHEAD, EXPERIENCE_CREDIT_VALUE_EACH, EXPERIENCE_CREDIT_MAX_COUNT } from './model.js';
+import {
+  FARE_CLASS,
+  RETURN_LOCK_MIN_DAYS_AHEAD,
+  EXPERIENCE_CREDIT_VALUE_EACH,
+  EXPERIENCE_CREDIT_MAX_COUNT,
+  DEFAULT_MIN_TOUR_SPEND_PER_CREDIT,
+} from './model.js';
 
 export const PRICE_DECISION = Object.freeze({
   OK: 'OK',
@@ -64,41 +70,55 @@ export function isReturnLockEligible({ outboundMovement, returnMovement, nowIso 
 }
 
 /**
- * AU$50 Fiji Experience Credit eligibility.
- * `minSpendThreshold` is the CEO-configurable minimum-spend / margin rule
- * called out in issue #54 — it is not yet policy-approved. While it is
- * null/undefined, eligibility always resolves false with reason
- * POLICY_UNCONFIGURED, and nothing is ever auto-issued (`issued` stays 0
- * regardless of this function's output — see migrations/0004).
+ * AU$50 Fiji Experience Credit — EARN side.
+ *
+ * CEO policy fix 2026-09-13: earning is decided purely by RETURN_LOCK
+ * eligibility (both legs booked, first travel >= 7 days ahead) — there is
+ * NO transfer-spend threshold on the earn side. Earning 2x AU$25 credits
+ * is a property of the return-lock booking itself, independent of
+ * whether/how those credits ever get redeemed.
  */
-export function experienceCreditEligibility({
-  outboundMovement,
-  returnMovement,
-  nowIso,
-  minSpendThreshold = null,
-  eligibleFttBookingCount = 0,
-}) {
+export function earnExperienceCreditEligibility({ outboundMovement, returnMovement, nowIso }) {
   const returnLock = isReturnLockEligible({ outboundMovement, returnMovement, nowIso });
   if (!returnLock.eligible) {
-    return { eligible: false, creditCount: 0, reason: returnLock.reason };
-  }
-  if (minSpendThreshold == null) {
-    return { eligible: false, creditCount: 0, reason: 'POLICY_UNCONFIGURED' };
-  }
-  const combinedSpend = (outboundMovement.customer_price ?? 0) + (returnMovement.customer_price ?? 0);
-  if (combinedSpend < minSpendThreshold) {
-    return { eligible: false, creditCount: 0, reason: 'BELOW_MIN_SPEND_THRESHOLD' };
-  }
-  const creditCount = Math.min(EXPERIENCE_CREDIT_MAX_COUNT, eligibleFttBookingCount);
-  if (creditCount === 0) {
-    return { eligible: false, creditCount: 0, reason: 'NO_ELIGIBLE_FTT_BOOKING' };
+    return { earned: false, creditsEarned: 0, reason: returnLock.reason };
   }
   return {
-    eligible: true,
-    creditCount,
+    earned: true,
+    creditsEarned: EXPERIENCE_CREDIT_MAX_COUNT,
     creditValueEach: EXPERIENCE_CREDIT_VALUE_EACH,
-    reason: 'ELIGIBLE',
+    reason: 'RETURN_LOCK_EARNED',
   };
+}
+
+/**
+ * AU$50 Fiji Experience Credit — REDEEM side.
+ *
+ * CEO policy fix 2026-09-13: each AU$25 credit redeems against ONE
+ * separate, eligible FijiTourTransfers TOUR booking — never against the
+ * combined transfer customer_price that earned the credit in the first
+ * place. `tourBooking.tourSpend` is that tour product's own price.
+ * Default minimum is AU$100/credit (`DEFAULT_MIN_TOUR_SPEND_PER_CREDIT`),
+ * overridable per product via `tourBooking.productMinSpendOverride`.
+ *
+ * No live issuance/redemption exists yet in Stage 1 — this function is a
+ * pure eligibility check for CEO/ops review, not a redemption action.
+ */
+export function redeemExperienceCredit({ tourBooking, minSpendThreshold = DEFAULT_MIN_TOUR_SPEND_PER_CREDIT }) {
+  if (!tourBooking) {
+    return { redeemable: false, reason: 'NO_TOUR_BOOKING' };
+  }
+  const threshold = tourBooking.productMinSpendOverride ?? minSpendThreshold;
+  if (threshold == null) {
+    return { redeemable: false, reason: 'POLICY_UNCONFIGURED' };
+  }
+  if (tourBooking.tourSpend == null) {
+    return { redeemable: false, reason: 'TOUR_SPEND_UNKNOWN' };
+  }
+  if (tourBooking.tourSpend < threshold) {
+    return { redeemable: false, reason: 'BELOW_MIN_TOUR_SPEND', appliedThreshold: threshold };
+  }
+  return { redeemable: true, reason: 'ELIGIBLE', appliedThreshold: threshold };
 }
 
 /**

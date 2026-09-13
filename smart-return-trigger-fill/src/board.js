@@ -2,11 +2,11 @@
  * Read-only aggregation. No writes, no auto-publication, no send calls.
  */
 import { computeMatchCandidates } from './matcher.js';
-import { isReturnLockEligible, experienceCreditEligibility } from './pricing.js';
+import { isReturnLockEligible, earnExperienceCreditEligibility } from './pricing.js';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOString(), minSpendThreshold = null } = {}) {
+export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOString() } = {}) {
   const windowEndIso = new Date(new Date(nowIso).getTime() + SEVEN_DAYS_MS).toISOString();
   const movements = store.listMovements({ fromIso: nowIso, toIso: windowEndIso }).filter((m) => m.booking_status !== 'CANCELLED');
 
@@ -32,7 +32,12 @@ export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOStr
     .filter(({ candidates }) => candidates.some((c) => c.match_type === 'CORRIDOR'));
 
   const returnLockEligible = [];
-  const creditEligible = [];
+  // Earn-only: whether this itinerary has earned the right to 2x AU$25
+  // credits. Redemption against a specific FijiTourTransfers tour booking
+  // (src/pricing.js#redeemExperienceCredit) is a separate check the board
+  // does not attempt — the board has no tour-booking data source, only
+  // transfer movements.
+  const creditsEarned = [];
   const seenItineraryPairs = new Set();
   for (const m of movements) {
     if (!m.linked_return_movement_id || seenItineraryPairs.has(m.itinerary_id)) continue;
@@ -49,14 +54,9 @@ export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOStr
       returnLockEligible.push({ itinerary_id: m.itinerary_id, outbound: m.movement_id, return: returnMovement.movement_id, ...lockResult });
     }
 
-    const creditResult = experienceCreditEligibility({
-      outboundMovement: m,
-      returnMovement,
-      nowIso: bookedAtIso,
-      minSpendThreshold,
-    });
-    if (creditResult.eligible) {
-      creditEligible.push({ itinerary_id: m.itinerary_id, outbound: m.movement_id, return: returnMovement.movement_id, ...creditResult });
+    const earnResult = earnExperienceCreditEligibility({ outboundMovement: m, returnMovement, nowIso: bookedAtIso });
+    if (earnResult.earned) {
+      creditsEarned.push({ itinerary_id: m.itinerary_id, outbound: m.movement_id, return: returnMovement.movement_id, ...earnResult });
     }
   }
 
@@ -86,7 +86,7 @@ export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOStr
     unmatchedMovements,
     corridorOpportunities,
     returnLockEligible,
-    experienceCreditEligible: creditEligible,
+    experienceCreditEarned: creditsEarned,
     possibleSmartFillSpecials,
     predictedEmptyKm: {
       total: predictedEmptyKmTotal,

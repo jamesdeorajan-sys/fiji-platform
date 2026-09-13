@@ -21,6 +21,7 @@ export function buildSyntheticMovements() {
       arrival_or_departure: 'arrival',
       passenger_count: 2, vehicle_class: 'SEDAN',
       customer_price: 45, operator_payout: 30, absolute_floor: 25,
+      estimated_duration_minutes: 30,
       test_data: true,
     },
     {
@@ -49,6 +50,7 @@ export function buildSyntheticMovements() {
       arrival_or_departure: 'departure',
       passenger_count: 1, vehicle_class: 'SEDAN',
       customer_price: 20, operator_payout: null, absolute_floor: null,
+      estimated_duration_minutes: 20, // known timing; economics is the unknown here, deliberately
       test_data: true,
     },
 
@@ -63,6 +65,7 @@ export function buildSyntheticMovements() {
       arrival_or_departure: 'arrival',
       passenger_count: 3, vehicle_class: 'VAN',
       customer_price: 90, operator_payout: 60, absolute_floor: 50,
+      estimated_duration_minutes: 10,
       test_data: true,
     },
     {
@@ -134,6 +137,7 @@ export function buildSyntheticMovements() {
       arrival_or_departure: 'arrival',
       passenger_count: 1, vehicle_class: 'SEDAN',
       customer_price: 20, operator_payout: 12, absolute_floor: 10,
+      estimated_duration_minutes: 30,
       test_data: true,
     },
     {
@@ -146,6 +150,7 @@ export function buildSyntheticMovements() {
       arrival_or_departure: 'departure',
       passenger_count: 1, vehicle_class: 'SEDAN',
       customer_price: 18, operator_payout: 11, absolute_floor: 9,
+      estimated_duration_minutes: 30,
       test_data: true,
     },
     {

@@ -2,24 +2,35 @@
 
 Issue #54, branch `ceo/smart-return-trigger-fill-shadow`.
 
-## PII posture: deliberately none in the ledger
+## PII posture: no direct PII, enforced in code (updated 2026-09-13)
 
-The `movements` table (migrations/0001) has no name, email, phone number,
-or physical address column. The only customer-linking fields are:
+The `movements` table (migrations/0001, 0006) has no name, email, phone
+number, or physical address column. Per the CEO's 2026-09-13 decision, the
+customer-linking fields are:
 
 - `booking_reference` — opaque, meaningful only inside the storefront that
   issued it.
+- `booking_contact_ref` (migrations/0006) — nullable, opaque pointer back
+  to the originating storefront's own secure booking/customer record.
+  Never a name, phone number, email, or WhatsApp number.
 - `flight_number` — arguably semi-identifying in combination with a date,
   but standard for airport-transfer logistics and already visible to the
   operator today.
 
-This was a deliberate scope choice, not an oversight, and it is the single
-biggest **open question for CEO policy input** (see item 16 in
-`CEO_RELEASE_REPORT.md`): ops-side WhatsApp coordination will eventually
-need *some* way to reach the customer, and that detail has to live either
-(a) only in the originating storefront's own system, looked up by
-`booking_reference` when a human needs it, or (b) added to this ledger
-later as an explicit, reviewed decision. Stage 1 assumes (a).
+This is enforced by code, not just convention: `model.js#normalizeMovementInput`
+throws a `ValidationError` if the raw ingestion payload carries any of
+`customer_name`, `name`, `first_name`, `last_name`, `customer_email`,
+`email`, `customer_phone`, `phone`, `phone_number`, `mobile`,
+`whatsapp_number`, or `whatsapp` — ingestion is rejected outright, not
+silently stripped. `booking_contact_ref` itself is additionally rejected
+if it looks like an email address or phone number (regex check), as a
+defense-in-depth measure against someone stuffing PII into the "opaque
+ref" field by mistake. See `test/pii_guard.test.js`.
+
+Reaching an actual customer (e.g. for a WhatsApp match/hold conversation)
+is assumed to happen by looking `booking_contact_ref` (or
+`booking_reference`) up in the originating storefront's own system — this
+subsystem is never the place that PII lives.
 
 ## Synthetic data discipline
 

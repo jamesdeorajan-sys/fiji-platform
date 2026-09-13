@@ -8,8 +8,7 @@
 
 export function recommendedAction(bestCandidate) {
   if (!bestCandidate) return 'HOLD';
-  if (bestCandidate.feasibility === 'HOLD_UNKNOWN_ECONOMICS') return 'HOLD';
-  if (bestCandidate.feasibility === 'INFEASIBLE') return 'HOLD';
+  if (bestCandidate.feasibility !== 'FEASIBLE') return 'HOLD';
   if (bestCandidate.match_type === 'EXACT_REVERSE') return 'RETURN_LOCK';
   if (bestCandidate.match_score >= 70) return 'SMART_MATCH';
   return 'LIVE_FILL';

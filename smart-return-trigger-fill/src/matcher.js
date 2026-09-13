@@ -3,17 +3,37 @@
  * reverse/corridor/chain candidates and score them. No AI/LLM call in this
  * module — the issue permits AI to rank/explain candidates on top of this,
  * but the hard feasibility/economics verdict must stay deterministic.
+ *
+ * CEO fix 2026-09-13: chronological feasibility is based on when the
+ * SOURCE movement's own trip actually finishes (pickup + known duration),
+ * plus a turnaround buffer — never a raw |pickup - pickup| gap, which
+ * could accept a candidate that starts before the source movement can
+ * possibly be done, or even before it starts. If the source movement's
+ * duration is unknown, this returns HOLD_UNKNOWN_TIMING rather than
+ * guessing from placeholder geography (src/geo_seed.js is classification
+ * only — it never feeds a feasibility verdict).
  */
-import { MATCH_TYPE, FEASIBILITY } from './model.js';
+import { MATCH_TYPE, FEASIBILITY, estimateSourceCompletionMs } from './model.js';
 import { lookupDistance, isNearby, corridorOf, MIN_TURNAROUND_MINUTES } from './geo_seed.js';
 
-function minutesBetween(isoA, isoB) {
-  return Math.abs(new Date(isoB).getTime() - new Date(isoA).getTime()) / 60000;
-}
+const CHRONOLOGICAL = Object.freeze({ OK: 'OK', INFEASIBLE: 'INFEASIBLE', UNKNOWN: 'UNKNOWN' });
 
-function timeCompatible(movement, candidate) {
-  const gapMinutes = minutesBetween(movement.pickup_datetime, candidate.pickup_datetime);
-  return { compatible: gapMinutes >= MIN_TURNAROUND_MINUTES, gapMinutes };
+/**
+ * Requires candidate.pickup_datetime to be at least MIN_TURNAROUND_MINUTES
+ * after the source movement's own estimated completion. Returns UNKNOWN
+ * (never a guessed OK/INFEASIBLE) when the source's duration isn't known.
+ */
+function chronologicalFeasibility(sourceMovement, candidate) {
+  const completionMs = estimateSourceCompletionMs(sourceMovement);
+  if (completionMs == null) {
+    return { status: CHRONOLOGICAL.UNKNOWN, gapMinutes: null };
+  }
+  const candidatePickupMs = new Date(candidate.pickup_datetime).getTime();
+  const gapMinutes = (candidatePickupMs - completionMs) / 60000;
+  return {
+    status: gapMinutes >= MIN_TURNAROUND_MINUTES ? CHRONOLOGICAL.OK : CHRONOLOGICAL.INFEASIBLE,
+    gapMinutes,
+  };
 }
 
 function vehicleCompatible(movement, candidate) {
@@ -41,10 +61,11 @@ function classify(movement, candidate) {
 
 /**
  * Returns match candidates for `movement` against `pool` (all other known
- * movements). Each candidate carries a deterministic feasibility verdict —
- * HOLD_UNKNOWN_ECONOMICS whenever payout/floor data is missing, per the
- * hard rule "do not calculate an aggressive public fare on unknown
- * economics."
+ * movements). Each candidate carries a deterministic feasibility verdict:
+ * INFEASIBLE for a certain vehicle/timing mismatch, HOLD_UNKNOWN_TIMING
+ * when the source trip's completion time can't be established,
+ * HOLD_UNKNOWN_ECONOMICS when payout/floor data is missing, and FEASIBLE
+ * only once all three are confirmed.
  */
 export function computeMatchCandidates(movement, pool, { routePriceTruthLookup } = {}) {
   const candidates = [];
@@ -57,20 +78,23 @@ export function computeMatchCandidates(movement, pool, { routePriceTruthLookup }
     if (!classification) continue;
 
     const { type, baseScore } = classification;
-    const time = timeCompatible(movement, candidate);
+    const chronological = chronologicalFeasibility(movement, candidate);
     const vehicleOk = vehicleCompatible(movement, candidate);
     const distance = lookupDistance(movement.dropoff_zone, candidate.pickup_zone);
 
     let score = baseScore;
-    if (!time.compatible) score -= 30;
+    if (chronological.status === CHRONOLOGICAL.INFEASIBLE) score -= 30;
+    if (chronological.status === CHRONOLOGICAL.UNKNOWN) score -= 10;
     if (!vehicleOk) score -= 25;
     score = Math.max(0, Math.min(100, score));
 
     const economicsKnown = movement.absolute_floor != null && movement.operator_payout != null;
 
     let feasibility;
-    if (!time.compatible || !vehicleOk) {
+    if (!vehicleOk || chronological.status === CHRONOLOGICAL.INFEASIBLE) {
       feasibility = FEASIBILITY.INFEASIBLE;
+    } else if (chronological.status === CHRONOLOGICAL.UNKNOWN) {
+      feasibility = FEASIBILITY.HOLD_UNKNOWN_TIMING;
     } else if (!economicsKnown) {
       feasibility = FEASIBILITY.HOLD_UNKNOWN_ECONOMICS;
     } else {
@@ -96,8 +120,10 @@ export function computeMatchCandidates(movement, pool, { routePriceTruthLookup }
       candidate_movement_id: candidate.movement_id,
       match_type: type,
       match_score: score,
-      time_compatible: time.compatible,
-      time_gap_minutes: time.gapMinutes,
+      // true | false | null(unknown) — never coerced to a boolean guess.
+      time_compatible:
+        chronological.status === CHRONOLOGICAL.OK ? true : chronological.status === CHRONOLOGICAL.INFEASIBLE ? false : null,
+      time_gap_minutes: chronological.gapMinutes,
       route_compatible: true,
       vehicle_compatible: vehicleOk,
       empty_km_potentially_avoided: distance ? distance.km : null,
@@ -113,21 +139,15 @@ export function computeMatchCandidates(movement, pool, { routePriceTruthLookup }
 
 /**
  * Multi-leg chain: finds sequences of 3+ movements where each leg's
- * drop-off feeds the next leg's pickup within the turnaround window, for
- * the same vehicle class. Deterministic depth-first search, small pools
- * only (Stage 1 shadow mode operates on a 7-day board, not a live fleet).
+ * drop-off feeds the next leg's pickup, using the same completion-based
+ * chronological check as the general matcher above. A leg with unknown
+ * duration cannot be confirmed connectable, so it is never chained
+ * through (HOLD_UNKNOWN_TIMING is not treated as "good enough").
+ * Deterministic depth-first search, small pools only (Stage 1 shadow mode
+ * operates on a 7-day board, not a live fleet).
  */
 export function findMultiLegChains(movement, pool, { maxLegs = 4 } = {}) {
   const chains = [];
-
-  // Chains move forward in time by definition (leg N's drop-off feeds leg
-  // N+1's pickup), so — unlike the general reverse/corridor matcher above —
-  // a candidate that starts before the previous leg's pickup can never be
-  // the next leg, regardless of how large the absolute time gap is.
-  function forwardTurnaroundOk(last, candidate) {
-    const gapMinutes = (new Date(candidate.pickup_datetime).getTime() - new Date(last.pickup_datetime).getTime()) / 60000;
-    return gapMinutes >= MIN_TURNAROUND_MINUTES;
-  }
 
   function extend(chain) {
     if (chain.length >= maxLegs) {
@@ -135,13 +155,11 @@ export function findMultiLegChains(movement, pool, { maxLegs = 4 } = {}) {
       return;
     }
     const last = chain[chain.length - 1];
-    let extended = false;
     for (const candidate of pool) {
       if (chain.some((m) => m.movement_id === candidate.movement_id)) continue;
       if (candidate.vehicle_class !== movement.vehicle_class) continue;
       if (candidate.pickup_zone !== last.dropoff_zone) continue;
-      if (!forwardTurnaroundOk(last, candidate)) continue;
-      extended = true;
+      if (chronologicalFeasibility(last, candidate).status !== CHRONOLOGICAL.OK) continue;
       extend([...chain, candidate]);
     }
     if (chain.length >= 3) chains.push([...chain]);

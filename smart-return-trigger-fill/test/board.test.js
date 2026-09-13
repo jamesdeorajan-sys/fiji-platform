@@ -102,10 +102,12 @@ test('return-lock eligibility on the board is evaluated against booking time, no
   assert.ok(board.returnLockEligible.some((r) => r.itinerary_id === 'itn_board'));
 });
 
-test('experience credit eligibility stays false when minSpendThreshold is not configured', () => {
+test('experience credit EARN has no transfer-spend threshold — a return-lock-eligible itinerary earns it on the board', () => {
   const store = seedStore();
-  const board = buildSevenDayMovementBoard(store, { nowIso: NOW, minSpendThreshold: null });
-  assert.equal(board.experienceCreditEligible.length, 0);
+  const board = buildSevenDayMovementBoard(store, { nowIso: NOW });
+  const earned = board.experienceCreditEarned.find((e) => e.itinerary_id === 'itn_board');
+  assert.ok(earned, 'expected itn_board to have earned the AU$50 credit eligibility');
+  assert.equal(earned.creditsEarned, 2);
 });
 
 test('estimated recoverable revenue never includes a fabricated figure', () => {

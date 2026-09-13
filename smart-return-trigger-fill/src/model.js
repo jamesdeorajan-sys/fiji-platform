@@ -40,11 +40,26 @@ export const FEASIBILITY = Object.freeze({
   FEASIBLE: 'FEASIBLE',
   INFEASIBLE: 'INFEASIBLE',
   HOLD_UNKNOWN_ECONOMICS: 'HOLD_UNKNOWN_ECONOMICS',
+  // Chronological feasibility could not be determined because the source
+  // movement's trip duration is unknown (no estimated_duration_minutes or
+  // planned_dropoff_datetime, and placeholder geography is not allowed to
+  // fill that gap — see src/geo_seed.js). Never inferred as FEASIBLE.
+  HOLD_UNKNOWN_TIMING: 'HOLD_UNKNOWN_TIMING',
 });
+
+export function isHoldFeasibility(feasibility) {
+  return feasibility === FEASIBILITY.HOLD_UNKNOWN_ECONOMICS || feasibility === FEASIBILITY.HOLD_UNKNOWN_TIMING;
+}
 
 export const RETURN_LOCK_MIN_DAYS_AHEAD = 7;
 export const EXPERIENCE_CREDIT_VALUE_EACH = 25;
 export const EXPERIENCE_CREDIT_MAX_COUNT = 2;
+// CEO policy decision 2026-09-13 / corrected same day: this is the default
+// minimum spend on a SEPARATE, EARN-vs-REDEEM-independent FijiTourTransfers
+// TOUR booking required to redeem one AU$25 credit. It must never be
+// compared against combined transfer customer_price — see
+// src/pricing.js#redeemExperienceCredit.
+export const DEFAULT_MIN_TOUR_SPEND_PER_CREDIT = 100;
 
 const REQUIRED_MOVEMENT_FIELDS = [
   'booking_reference',
@@ -59,6 +74,19 @@ const REQUIRED_MOVEMENT_FIELDS = [
   'vehicle_class',
   'customer_price',
 ];
+
+// CEO fix 2026-09-13: this subsystem must never carry direct customer PII.
+// Ingestion rejects any payload that carries one of these field names at
+// all, rather than silently dropping the value — a caller sending PII
+// here has a bug that needs to be visible, not swallowed.
+const PII_DENYLIST_FIELDS = [
+  'customer_name', 'name', 'first_name', 'last_name',
+  'customer_email', 'email',
+  'customer_phone', 'phone', 'phone_number', 'mobile',
+  'whatsapp_number', 'whatsapp',
+];
+
+const CONTACT_REF_LOOKS_LIKE_PII = /@|(?:\+?\d[\d\s().-]{6,}\d)/;
 
 export class ValidationError extends Error {
   constructor(message, field) {
@@ -83,6 +111,32 @@ export function normalizeMovementInput(raw, { now = () => new Date().toISOString
     if (raw[field] === undefined || raw[field] === null || raw[field] === '') {
       throw new ValidationError(`missing required field: ${field}`, field);
     }
+  }
+
+  for (const field of PII_DENYLIST_FIELDS) {
+    if (raw[field] !== undefined) {
+      throw new ValidationError(
+        `movement ingestion must not carry direct PII field '${field}' — use booking_contact_ref instead`,
+        field
+      );
+    }
+  }
+
+  if (raw.booking_contact_ref != null && CONTACT_REF_LOOKS_LIKE_PII.test(String(raw.booking_contact_ref))) {
+    throw new ValidationError(
+      'booking_contact_ref must be an opaque reference, not an email address or phone number',
+      'booking_contact_ref'
+    );
+  }
+
+  if (raw.estimated_duration_minutes != null) {
+    if (!Number.isFinite(Number(raw.estimated_duration_minutes)) || Number(raw.estimated_duration_minutes) <= 0) {
+      throw new ValidationError('estimated_duration_minutes must be a positive number', 'estimated_duration_minutes');
+    }
+  }
+
+  if (raw.planned_dropoff_datetime != null && Number.isNaN(new Date(raw.planned_dropoff_datetime).getTime())) {
+    throw new ValidationError('planned_dropoff_datetime is not a valid ISO date', 'planned_dropoff_datetime');
   }
 
   if (!SOURCE_SITES.includes(raw.source_site)) {
@@ -147,10 +201,33 @@ export function normalizeMovementInput(raw, { now = () => new Date().toISOString
       : 'UNCONFIRMED',
     assigned_vehicle: raw.assigned_vehicle ?? null,
     assigned_operator: raw.assigned_operator ?? null,
+    estimated_duration_minutes: raw.estimated_duration_minutes != null ? Number(raw.estimated_duration_minutes) : null,
+    planned_dropoff_datetime: raw.planned_dropoff_datetime
+      ? new Date(raw.planned_dropoff_datetime).toISOString()
+      : null,
+    booking_contact_ref: raw.booking_contact_ref ?? null,
     test_data: raw.test_data,
     created_at: raw.created_at ?? nowIso,
     updated_at: nowIso,
   };
+}
+
+/**
+ * Best-known completion time (ms epoch) of a movement's own trip, or null
+ * if unknown. Deliberately does NOT fall back to any geography-derived
+ * distance/duration lookup — placeholder geography (src/geo_seed.js) is
+ * not verified and must never manufacture a chronological feasibility
+ * verdict. Prefers an explicit planned_dropoff_datetime; falls back to
+ * pickup_datetime + estimated_duration_minutes; otherwise null.
+ */
+export function estimateSourceCompletionMs(movement) {
+  if (movement.planned_dropoff_datetime) {
+    return new Date(movement.planned_dropoff_datetime).getTime();
+  }
+  if (movement.estimated_duration_minutes != null) {
+    return new Date(movement.pickup_datetime).getTime() + movement.estimated_duration_minutes * 60000;
+  }
+  return null;
 }
 
 export function cryptoRandomId() {

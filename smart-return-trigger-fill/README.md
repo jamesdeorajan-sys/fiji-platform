@@ -16,19 +16,19 @@ the full accounting of what was and wasn't built.
 ## Layout
 
 ```
-migrations/            SQL schema for movements, smart_offers, route_price_truth, credit eligibility
-src/model.js            enums, constants, movement input validation
+migrations/            SQL schema: movements, smart_offers, route_price_truth, credit eligibility, duration fields, booking_contact_ref
+src/model.js            enums, constants, movement input validation, PII denylist, source-completion helper
 src/db.js                 storage adapters: createMemoryStore() (used by every test) + createD1Store() (Stage 2, unused here)
-src/geo_seed.js             PLACEHOLDER zone adjacency/distance data — not verified Fiji geography
-src/matcher.js                deterministic match engine (reverse/nearby/corridor/extension/multi-leg-chain)
-src/pricing.js                 fare-class eligibility + hard floor enforcement + AU$50 credit eligibility
+src/geo_seed.js             PLACEHOLDER zone adjacency/distance data — classification/hints only, never feasibility
+src/matcher.js                deterministic match engine (reverse/nearby/corridor/extension/multi-leg-chain), completion-based chronology
+src/pricing.js                 fare-class eligibility + hard floor enforcement + AU$50 EARN/REDEEM split
 src/offers.js                    smart_offers atomic state machine (compare-and-swap transitions)
 src/ledger.js                     movement ingestion (idempotent)
 src/pipeline.js                    orchestration: persist -> match (best-effort) -> ops card (best-effort)
 src/whatsapp_cards.js                internal-only recommendation card builder (never sends)
 src/route_price_truth.js              contract validation
 src/board.js                            7-day movement board (read-only aggregation)
-test/                                    47 tests, node:test, zero dependencies
+test/                                    76 tests, node:test, zero dependencies
 scripts/demo.js                           run the pipeline + board over the synthetic fixtures
 docs/                                      contract, rollback, security review, sample scenarios, CEO release report
 ```
