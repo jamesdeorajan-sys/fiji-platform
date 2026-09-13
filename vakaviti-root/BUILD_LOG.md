@@ -1,0 +1,372 @@
+# Build Log — vakaviti-root (vakaviti.ai static site)
+
+> Chronological record of what's shipped to the vakaviti.ai static site specifically. Separate from `docs/BUILD_LOG.md`, which is scoped to the fijitourtransfers.com booking widget. Newest entries at the top.
+
+---
+
+## 2026-08-10 — Actual root cause of the persistent seam found and fixed
+
+**Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
+**Commit:** `70e0808`
+**File:** `vakaviti-root/index.html` only
+
+### The previous fix (commit `9e35b75`) was solving the wrong seam
+James sent a real screenshot of the live deployment (`https://1b36e95c.vakavitiai.pages.dev`) that finally made this diagnosable. It showed the hard edge sitting between the hero text (photo visible) and the map — right where "Solomon Islands" begins, with the map's own faint graticule grid visible below the line. That is **not** the `.hero`/`.scope-callout` boundary the previous fix targeted. It's the edge of `<img src="hero-network-map.svg">` itself.
+
+The map's SVG has always had its own fully opaque `<rect fill="#0a3d52">` as its first element. An `<img>` element renders its own pixels — nothing behind it in the DOM is ever visible through it, regardless of what `background` any ancestor declares. Wrapping `.hero` and `.scope-callout` in a shared `.hero-photo-band` (the previous fix) genuinely did make their backgrounds continuous with each other, and that part of the diagnosis was correct — it just had no effect at all on the actual reported symptom, because the map's opaque image was never going to reveal any ancestor's background no matter how it was structured. Confirmed this by fetching the live deployment's actual HTML/CSS directly (`curl https://1b36e95c.vakavitiai.pages.dev/`) — it matched the pushed source byte-for-byte, which is exactly why the seam persisted despite the source "looking correct": the source was correctly implementing a fix for a seam that wasn't the one being shown.
+
+### The actual fix
+Two small (48px), full-width-of-map, empty `aria-hidden` strips inserted as direct siblings of `.hero-map`, still inside `.hero` (still inside the same `.hero-photo-band`, so its continuous photo background is what they're painted on top of):
+- `.hero-fade-out`, immediately before `.hero-map`: `linear-gradient(transparent, #0a3d52)` — fades the band's own photo+overlay down to flat `#0a3d52` (exactly the map's own fill color) right before the opaque image begins.
+- `.hero-fade-in`, immediately after `.hero-map`: the mirror, `linear-gradient(#0a3d52, transparent)` — fades back from flat `#0a3d52` to revealing the band's photo again after the map ends.
+
+This doesn't try to make the photo show through the opaque map (impossible) — it makes the *photo band itself* ease into and out of the exact color the map already is, so the transition into and out of the opaque image is gradual rather than an abrupt cut.
+
+### Verified (with appropriate caution this time)
+- Organization JSON-LD confirmed byte-identical to `main`
+- Confirmed via computed style: `.hero-fade-out`/`.hero-fade-in` background gradients are exactly `transparent↔rgb(10,61,82)` as intended, `.hero-map` itself has no background of its own (`none`/transparent — relies entirely on its own opaque `<img>`), and there is a **zero-pixel gap** at every boundary (`hero-inner→fade-out→map→fade-in`, all measured 0px apart)
+- **Not claiming this is visually confirmed fixed.** Computed-style verification is the same class of check that already failed to catch the real problem once this session — it can confirm the mechanism is wired correctly, it cannot substitute for actually seeing the rendered page. Screenshot tool still broken in this environment. This needs a real screenshot against the correct deployment before being called done, same as James's original catch.
+
+---
+
+## 2026-08-10 — Lighter overlay, seamless hero-to-callout band, headline update
+
+**Branch:** `feature/favicon-and-hero-photo` (same branch, follow-up commit)
+**Commit:** `9e35b75`
+**File:** `vakaviti-root/index.html` only
+
+Three changes from James's review of the previous commit.
+
+### 1. Overlay lightened 0.78 → 0.55, with a real finding along the way
+Re-ran the same WCAG contrast computation against the real photo at 0.40–0.65 opacity, not just picking a value in the requested 0.45–0.55 range and eyeballing it. Result: **0.45 and 0.50 both fail** body-text contrast (needs ≥4.5:1) against a realistic bright region of the actual photo (its brightest 5%, not a single outlier pixel) — 0.50 only reaches 4.13:1. Only **0.55** clears both thresholds against that realistic standard:
+
+| Overlay alpha | Test region | Headline (≥3:1) | Body text (≥4.5:1) |
+|---|---|---|---|
+| 0.45 | brightest 5% of real photo | 4.18:1 ok | 3.73:1 **FAIL** |
+| 0.50 | brightest 5% of real photo | 4.67:1 ok | 4.13:1 **FAIL** |
+| **0.55** | **brightest 5% of real photo** | **5.23:1 ok** | **4.60:1 ok** |
+| 0.55 | single brightest literal pixel in the photo | 3.98:1 ok | 3.56:1 FAIL |
+| 0.55 | hypothetical pure-white pixel (doesn't occur in this photo) | 3.59:1 ok | 3.23:1 FAIL |
+
+Landed on **0.55** — the lightest value that passes against a real, non-trivial region of the photo. It does *not* pass against the single-brightest-literal-pixel or theoretical-pure-white cases, which is why the second fix below exists: added `text-shadow: 0 1px 4px rgba(0,0,0,0.55)` to every text element sitting on the photo band (hero eyebrow/h1/sub, scope-callout h2/p). WCAG's contrast formula doesn't model text-shadow — it's not a fix for the computed ratio — but it's the standard real-world mitigation for exactly this scenario (a small localized bright spot, like a sunlit wave crest, that a flat-color contrast check against regional averages doesn't catch). Flagging this explicitly rather than presenting 0.55 as if it passes every conceivable case, because it doesn't.
+
+### 2. Seam removed — restructured into one shared background, not two matching ones
+The hard box seam was `.hero` (photo-backed) ending and `.scope-callout` (still flat `var(--ocean)`) starting immediately after. Considered just copying the same background rule onto `.scope-callout` too, but two elements independently running `background-size: cover` on the same photo would each crop/zoom it differently based on their own box dimensions — "the same photo" twice, not necessarily "one photo." Instead wrapped both in a new `.hero-photo-band` div and moved the background there; `.hero` and `.scope-callout` now have no background of their own (confirmed via computed style: both report `background-image: none`). This is one continuous cover-cropped image spanning the full combined height, not two independently-matched copies. Verified `heroRect.bottom === calloutRect.top` at both 375px and 1280px (no gap, no double-rendering) and that the map's own opaque SVG background is untouched by this restructuring — it was never dependent on which element painted behind it.
+
+### 3. Headline updated, checked for duplication first
+Changed to "Honest Fiji Travel Guides, Built by Locals. Powered by AI." Searched the entire `vakaviti-root/` tree for the literal phrase "Honest Fiji Travel Guides" before assuming only the visible `<h1>` needed it — found exactly one occurrence, in the `<h1>` itself. Meta description, `og:title`/`og:description`, the Organization schema's `description`, and `llms.txt` all use different wording already and don't quote this phrase — confirmed via grep, not assumed, so none of them needed touching.
+
+### Verified
+- Organization JSON-LD confirmed byte-identical to `main`
+- Old `0.78` value confirmed fully gone from the file; new `0.55` confirmed applied to `.hero-photo-band` only
+- Headline confirmed updated (exactly one occurrence, new text)
+- `/network`, `/methodology`, `/partners` confirmed untouched this round (`git status` shows only `index.html` changed)
+- No console errors at 375px or 1280px beyond the pre-existing, unrelated widget CORS warning present throughout this project
+
+### Known gap
+Screenshot tool still broken this session — verified via computed styles (background layering, box-boundary geometry, text-shadow application) and a visual proxy built from the real photo URL and exact final CSS values, same approach as every prior round.
+
+---
+
+## 2026-08-10 — Interim favicon + homepage hero ocean photo
+
+**Branch:** `feature/favicon-and-hero-photo`
+**Commit:** `6b5b82d`
+
+### ⚠️ INTERIM FAVICON — NOT A FINISHED STATE
+Confirmed via search (no `<link rel="icon">`, no `favicon.ico`, anywhere in `vakaviti-root/`) that this site had zero favicon before this change, consistent with the earlier finding that it has zero image/brand assets. Generated a simple placeholder — a solid `#e8693a` (sunset-orange, the same color as the map's Fiji hub marker) circle with a white "V" monogram (Arial Bold) — at `favicon.ico` (16+32px multi-res), `favicon-16x16.png`, `favicon-32x32.png`, and `apple-touch-icon.png` (180x180), all generated with Pillow, not sourced from anywhere. **Same treatment as the missing `logo` field in the Organization schema: this is an interim placeholder, not a real logo/favicon design.** A real one is separate future work.
+
+Referenced in all 10 pages' `<head>` (`index.html`, `network.html`, `methodology.html`, `partners.html`, and all 6 guide pages) — not just the homepage. Inserted identically after each page's `<meta name="viewport">` line via script, since all 10 pages shared byte-identical head structure at that point, verified before running it rather than assumed.
+
+### Homepage hero: flat teal → ocean photo (index.html only)
+Sourced a real aerial-ocean-waves photo via Unsplash (individually verified via its own photo page metadata, same as every other Unsplash placeholder in this project) — Papamoa, New Zealand, a genuine South Pacific location, by Zoe Hoole (@zoella13). `/network`, `/methodology`, and `/partners` are untouched — confirmed via grep, all three still show `background: var(--ocean)` on their own `.hero` rule unchanged.
+
+**Implementation:** `.hero`'s CSS background is now `linear-gradient(rgba(11,42,58,0.78), rgba(11,42,58,0.78)), var(--hero-photo, none)` with `background-color: var(--ocean)` as a fallback if the photo or the JS that sets `--hero-photo` fails for any reason — the page never regresses to something worse than today's flat color. The photo URL itself comes from `images.js` (`heroOceanBg` key, same centralized-reference pattern as the guide-card photos) and is applied via a small JS snippet that sets the `--hero-photo` custom property, keeping the swap-later story consistent with every other placeholder image in this project.
+
+**Why the map's legibility isn't actually at risk, structurally, not just visually:** `hero-network-map.svg` has always had its own fully opaque `<rect fill="#0a3d52">` as its first element, covering its entire viewBox. The photo sits behind `.hero` as a whole, but the map image is opaque on top of it — every label, marker, and the "VAKAVITI HQ" badge are physically painted over a solid color that has nothing to do with what's behind the `<img>` tag. This makes "the map's contrast is unaffected" a structural guarantee rather than something dependent on overlay tuning. The overlay's real job is protecting the *hero text* (eyebrow, headline, subhead, CTA buttons), which does sit directly on `.hero`'s composited background.
+
+### Contrast verified computationally, not just visually
+Downloaded the actual chosen photo and computed real WCAG relative-luminance contrast ratios in Python (sRGB→linear conversion, proper WCAG formula) between the composited background (overlay alpha-blended with real photo pixels) and the hero text colors:
+
+| Scenario | H1 (white, large text, needs ≥3:1) | hero-sub (90%-white, normal text, needs ≥4.5:1) |
+|---|---|---|
+| Brightest 5% of actual photo pixels | 8.44:1 | 7.21:1 |
+| Single brightest pixel in the whole photo | 7.84:1 | 6.74:1 |
+| Hypothetical pure-white (255,255,255) pixel — doesn't occur in this photo | 7.40:1 | 6.38:1 |
+
+All comfortably clear WCAG AA even under the least realistic worst case tested. Chose 0.78 opacity after testing 0.70–0.90 — 0.70 alone already cleared both thresholds with margin, 0.78 adds headroom while keeping the photo visibly present rather than nearly opaque.
+
+### Verified
+- Organization JSON-LD confirmed byte-identical to `main`
+- Computed styles confirmed: `background-image` correctly layers the gradient over the real Unsplash URL, `background-size: cover, cover`, `background-position: 50% 50%, 50% 50%`, at both 375px and 1280px
+- Confirmed via grep: zero references to the hero-photo mechanism in `network.html`, `methodology.html`, or `partners.html`
+- No console errors at either width (aside from the pre-existing, unrelated widget CORS error present throughout this project)
+
+### Known gap
+Screenshot tool broken again this session (consistent with every prior round) — verified via computed styles and a faithful visual proxy built from the actual photo URL and exact overlay value, rather than a literal screenshot.
+
+---
+
+## 2026-08-09 — Scope-callout CTA retargeted from `join.vakaviti.ai` to `/partners`
+
+**Branch:** `feature/homepage-scope-caveat` (same branch, follow-up commit)
+**Commit:** `f61785e`
+
+Now that `/partners` exists and is live, pointed the callout band's "Bring Vakaviti to Your Island →" button at it instead of `join.vakaviti.ai` — closing the gap flagged when this CTA was first built (see the entry below). The other two `join.vakaviti.ai` links on this page (hero's "Are You a Fiji Operator? Join Free" button, the footer link) are untouched — both correctly target Fiji operators, which is exactly what `join.vakaviti.ai` is for.
+
+### Verified
+- Organization JSON-LD re-confirmed byte-identical to `main`
+- The other two `join.vakaviti.ai` references confirmed still present and unedited
+- This branch forked before `/methodology` and `/partners` were merged, so its own tree (and any preview built from it) was missing both files — synced `main` in to fix that, same pattern as the earlier `feature/partner-recruitment-page` sync
+
+---
+
+## 2026-08-09 — Homepage scope callout: muted caption → confident band with CTA
+
+**Branch:** `feature/homepage-scope-caveat`
+**Commits:** `ca93a87` (initial small caption), `47eec02` (redesigned into a callout band, superseding the caption)
+
+Two passes on the same section, between the hero and Guides:
+
+1. **`ca93a87`** — a single small muted caption ("Fiji guides live now — more islands coming as ComeTo South Pacific launches.") dropped onto the cream `<main>` background, styled like the footer note.
+2. **`47eec02`** — James held the branch: functionally correct but visually underselling the message. Replaced with a proper callout `<section>` sitting on the dark-teal `--ocean` background (seamless 0px gap from the hero, confirmed via bounding-rect check — not dropped onto cream `<main>`), serif display headline "Fiji is live. Five islands are next.", a supporting line, and a sunset-orange CTA button "Bring Vakaviti to Your Island →".
+
+**CTA target — deviated from the literal spec, flagged before building:** asked to link to `/partners`, treating a 404 as expected, or hold until it exists. Checked the repo first: `/partners` doesn't exist anywhere under `vakaviti-root/` (there's an unrelated `partners/blue-lagoon/` per-partner demo-site directory at the repo root, not a vakaviti.ai route). `join.vakaviti.ai` does exist, is live, and is already the "become a partner" destination used in all 4 other CTAs on this site (index.html hero + footer, network.html operator band + footer). Linked there instead of shipping a guaranteed 404 on the site's most prominent new CTA. If a dedicated `/partners` page distinct from the join.vakaviti.ai onboarding flow is actually wanted, that's a separate future build, not a redirect. **Resolved — see the entry above this one.**
+
+**Honesty check:** "Fiji is live. Five islands are next." states expansion intent, not current availability — doesn't claim any island beyond Fiji is live, consistent with every other accuracy check on this project.
+
+### Verified
+- Organization JSON-LD re-confirmed byte-identical to `main`
+- Callout section background confirmed `rgb(10,61,82)` (`--ocean`), 0px gap from the hero, ends exactly before `<main>` begins
+- Headline confirmed serif (`Playfair Display`), 24px→30px mobile→desktop; CTA button confirmed sunset-orange (`rgb(232,105,58)`), 48px min-height touch target, `href="https://join.vakaviti.ai"` **(superseded — see the entry above)**
+
+---
+
+## 2026-08-09 — Unified both `/partners` CTAs onto `partners@vakaviti.ai`
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** `cc48d60`
+
+James confirmed both paths should use the same address, differentiated by subject line rather than by inbox — the apparent separation wasn't functional anyway (both ultimately reach the same place), and a branded domain address on both CTAs reads more consistent with the page's own "working network, not a pitch deck" framing than a personal Gmail address on one path and a domain address on the other.
+
+Updated the operator-interest form's `mailto:` target (`submitOperatorInterest()`) from `helpronline@gmail.com` to `partners@vakaviti.ai`. Zero remaining `helpronline@gmail.com` references anywhere in `partners.html` — confirmed via grep, not assumed.
+
+### Verified
+- Mailto encoding checked two ways: re-derived the expected URL and decoded it via the browser's native `URL`/`URLSearchParams` parser (address, subject `Vakaviti Partner Interest — Tonga`, body all correct), **and** pulled the actual live function source via `submitOperatorInterest.toString()` from the loaded page to confirm the deployed code itself uses `partners@vakaviti.ai`, not just a re-derivation of the intended logic
+- `grep -c helpronline@gmail.com vakaviti-root/partners.html` → 0
+- `grep -c partners@vakaviti.ai vakaviti-root/partners.html` → 3 (both mailto targets + the node-lead form-note text)
+
+---
+
+**Branch:** `feature/partner-recruitment-page` (same branch, follow-up commit)
+**Commit:** `a8d9948`
+
+James confirmed the proposed placeholder (`helpronline@gmail.com`) should be replaced: `partners@vakaviti.ai` is now a real, active forwarding alias (set up on the domain registrar's side — confirmed earlier this session via live MX/SPF records that vakaviti.ai's email already runs through the registrar's own forwarding service, not Cloudflare Email Routing, so this alias didn't need any DNS/Cloudflare change).
+
+- Updated the node-lead `mailto:` link and its `form-note` text to `partners@vakaviti.ai`
+- Also updated the now-stale copy above it — "There's no dedicated inquiry line for this yet" was true when written, false now that a real alias exists. Left as a contradiction would have repeated the exact kind of overstated-or-understated claim this whole project has been checking for at every step.
+- **Did not touch** the operator-interest form's `mailto:` target (still `helpronline@gmail.com`, `submitOperatorInterest()` in the `<script>`) — only the node-lead CTA was specified for this change.
+
+### Verified
+- Mailto link decoded via the browser's own `URL`/`URLSearchParams` parser (not manual string inspection): address `partners@vakaviti.ai`, subject `Vakaviti Node Lead Inquiry`, body `Which island:\nWhy you:\n` — all correct
+- All 3 `/methodology` links still present and correct (`/methodology`, unaffected by this edit)
+- Production `/methodology` re-confirmed 200, and this branch's `methodology.html` re-confirmed byte-identical to what's live
+- "30 verified partner operators" re-checked against `docs/VAKAVITI-BRAIN.md`/`docs/BUILD.md` — still current, now corroborated by a second independent reference ("28 of 30 partner WhatsApp rows")
+
+---
+
+## 2026-08-09 — New `/partners` recruitment page
+
+**Branch:** `feature/partner-recruitment-page`
+**Commit:** `908c233`
+**Files:** `vakaviti-root/partners.html` (new), `vakaviti-root/sitemap.xml`
+
+New page recruiting the next five islands (Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands) — both tour operators and prospective node leads. Reuses `hero-network-map.svg` as the hero visual, matches `network.html`/`methodology.html`'s design system exactly. `ContactPage` JSON-LD referencing the canonical Organization via `about` — no duplicate Organization block.
+
+### Number corrected before shipping, not assumed
+The spec said "confirm 29 verified partner operators is still current before using it." Checked `docs/VAKAVITI-BRAIN.md` and `docs/BUILD.md`: a real D1 audit (Session 57) found **30** active partners, explicitly noting "previous sessions carried '29' — use 30 going forward." Used 30, not the spec's draft figure.
+
+### CTA destinations
+- **Tour & Transfer Operators** — no new D1 table or Worker built (would need its own stop-and-confirm gate per ground rule 2, out of scope here). Interim: a real form (name, email, island/country — the 5 real islands, no Fiji sub-regions — business type, description) that composes a `mailto:` link to `helpronline@gmail.com` on submit via JS, rather than pretending a backend exists. Verified the URL-encoding logic produces a correctly formed `mailto:` string. Labeled honestly: "Opens your email client... nothing is submitted automatically" — no fake success state.
+- **Become a Node Lead** — a direct `mailto:helpronline@gmail.com` inquiry link, not a form (deliberately higher-touch per the spec). **Flagging as a proposal, not a final decision, per the spec's own instruction:** no dedicated node-lead inquiry address exists yet; used the one real, confirmed-monitored address already behind every other partner conversation on this network (`JAMES_EMAIL`/`FROM_EMAIL` in `workers/vakaviti-onboard/worker.js`) rather than inventing a new `@vakaviti.ai` address that might not be provisioned or monitored.
+
+### Cross-branch dependency — flagged, not silently shipped
+This page links to `/methodology` twice (methodology reference, team credit). Checked directly: `feature/methodology-page` (commit `8c596ca`) was **never merged to `main`** — confirmed via `git cat-file -e main:vakaviti-root/methodology.html` failing. Both links will 404 in production until that branch also merges. Not fixing this by removing the links (the spec explicitly asks for them, and the content is genuinely on that page) — flagging for James to sequence the merges, or merge both together.
+
+### What was deliberately not claimed
+No island beyond Fiji is described as live or active. No fabricated testimonials, booking numbers, or timelines for any island beyond Fiji.
+
+### Verified
+- `ContactPage` JSON-LD valid, `about` correctly references `https://vakaviti.ai/#organization`
+- Mobile (375px): single-column join-grid, hero map at full viewport width with native 1.870 aspect ratio preserved (no cropping), zero body-level horizontal overflow
+- Desktop (1280px): 2-column join-grid
+- Operator-interest form's `mailto:` composition logic verified correct (tested with sample field values, confirmed proper URL-encoding)
+- Node-lead `mailto:` link verified correctly formed
+- `/partners` added to `sitemap.xml`, same convention as every other page
+
+---
+
+## 2026-08-09 — Fixed Tonga label/badge collision on the hero SVG map
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** `94bcfef`
+**File:** `vakaviti-root/hero-network-map.svg` only
+
+James caught this on live review: Tonga's label was partially obscured by the "VAKAVITI NETWORK HQ" badge beneath the Fiji marker. Verified with a bounding-box script rather than eyeballing a fix — computed each label/marker/badge's approximate glyph box (character-width estimate, cap-height/descender per font-size) and checked every pairwise overlap:
+
+- **Confirmed root cause #1:** Tonga's label (centered at x=470.3, y=362, font-size 30 — "Tonga" has a descending 'g') had a glyph box overlapping the badge rect (`x:[270.5,480.5], y:[316,350]`) by roughly 54×10 units.
+- **Confirmed root cause #2, worse than reported:** the script also found the badge's own text, "VAKAVITI NETWORK HQ," overlapping the **Tonga marker circle itself** (~16×13 units) — because the badge is painted after the satellite-markers group in the SVG's document order, it would have visually sat on top of and partially hidden Tonga's marker dot, not just crowded its label.
+
+Fixed both, verified together (not sequentially, since narrowing the badge for reason #2 could have reopened reason #1 or vice versa):
+- Moved Tonga's label from y=362 to y=390 — 18.4 units clear below the badge's bottom edge
+- Shortened the badge text from "VAKAVITI NETWORK HQ" to "VAKAVITI HQ" and narrowed the badge rect from 210 to 130 units wide (still centered under Fiji) — its right edge now sits 18.8 units clear of Tonga's marker
+
+Re-ran the full pairwise check (7 labels × each other, badge rect × every label, badge rect × every marker, badge text × every marker, every label × every foreign marker) after the fix: zero overlaps anywhere on the map. Since the hero image scales as `width:100%; height:auto` with matching intrinsic dimensions (no distortion), this is a single fix valid at every render width by construction — a viewBox-space collision (or its absence) doesn't change between mobile and desktop, only the pixel scale does.
+
+**Accessibility ask (alt text):** already in place, no change needed. `index.html`'s hero `<img>` already carries `alt="Map of the South Pacific showing Fiji as the Vakaviti network hub, connected by route lines to Samoa, Tonga, Vanuatu, the Cook Islands, and the Solomon Islands"`, added during the original SVG integration — verified present and matching the requested content before reporting this as done rather than assuming.
+
+---
+
+## 2026-08-09 — Removed the redundant "Wider Network" journey-strip section
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit)
+**Commit:** `74fd449`
+
+James caught this on live review of the preview: the "THE WIDER NETWORK — One Standard, Across the Pacific" section (a plain circles-and-a-line CSS strip, shipped in the `8ac41ca` entry below as the original spec's optional "simple visual journey" element) duplicated the same fact the new hero SVG map now shows more accurately — Fiji plus the same five satellite islands — just with no hub emphasis, no real projected positions, and plain outline circles instead of labeled markers.
+
+Removed entirely: the `<div class="section-label">The Wider Network</div>` block through the `.journey-strip` `<div>` (`index.html`), plus its CSS (`.network-teaser`, `.journey-strip`, `.journey-stop`, `.journey-dot`, `.journey-label` and their `.is-live` variants).
+
+**Supporting evidence for the removal, not the sole reason:** the strip's markup did list all 6 islands correctly (verified directly against the committed HTML — `Fiji, Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands` were all present in the DOM). What James saw as only 4 visible was consistent with the stale-preview issue investigated separately (an old commit-specific Cloudflare Pages URL, not the branch tip) — worth correcting for the record, since the real reason for removal is redundancy against the more accurate hero map, not a missing-island bug in the strip itself.
+
+**"See the full network" link:** not lost. `index.html`'s footer already links to `/network` independently (`<a href="/network">The Network</a>`, present since the original `/network` build) — no replacement link needed.
+
+### Verified
+- `.journey-strip` and all related CSS confirmed gone from the DOM/stylesheet
+- Footer `/network` link confirmed still present
+- Hero SVG and all 6 guide-card Unsplash images confirmed unaffected
+- Organization JSON-LD re-confirmed byte-identical to `main`
+
+---
+
+## 2026-08-09 — Hero replaced with a custom SVG network map
+
+**Branch:** `feature/homepage-visual-refresh` (same branch, follow-up commit to the homepage visual refresh below)
+**Commit:** `da973a7`
+**Files:** `vakaviti-root/hero-network-map.svg` (new), `vakaviti-root/index.html` (hero markup + CSS), `vakaviti-root/images.js` (hero entry removed — no longer applicable)
+
+James decided the hero should be a custom SVG map of the South Pacific — Fiji as the network hub with routes radiating to the five satellite islands — instead of the Unsplash lagoon photo shipped in the entry below. Reviewed and approved as a standalone graphic before integration, per his explicit request.
+
+### Coordinate / projection methodology
+Real approximate capital/main-hub coordinates were used, not decorative placement:
+
+| Island | Reference point | Lat | Lon |
+|---|---|---|---|
+| Fiji | Suva | 18.14°S | 178.44°E |
+| Vanuatu | Port Vila | 17.73°S | 168.32°E |
+| Solomon Islands | Honiara | 9.43°S | 159.95°E |
+| Tonga | Nuku'alofa | 21.14°S | 175.20°W |
+| Samoa | Apia | 13.83°S | 171.76°W |
+| Cook Islands | Rarotonga | 21.21°S | 159.78°W |
+
+This cluster straddles the International Date Line, so longitude was **unwrapped** before projecting (the three western-hemisphere islands had 360° added to their longitude — e.g. Tonga's -175.20° became 184.80°) so the whole group plots as one continuous band instead of splitting across the ±180° seam. Both axes then use **one uniform scale** (degrees-of-longitude adjusted by cos(mean latitude) to correct for meridian convergence at this latitude, same px-per-degree as the latitude axis) — so relative distances and directions stay geographically honest rather than being stretched to fit a nicer shape. James explicitly confirmed to leave the resulting layout as-is even where it produces visually close lines (Solomon Islands/Vanuatu run near-parallel from Fiji, because they genuinely are close together relative to the other three) — accuracy over tidiness.
+
+### Why it's a stacked block, not a `background-image` (a real adaptation, flagging it)
+The original homepage refresh (entry below) used a full-bleed `background-size: cover` photo with a heavy dark scrim so white headline text stayed legible over arbitrary tropical photography. That treatment is actively wrong for a labeled informational graphic: `cover` **crops** whatever doesn't fit the container's aspect ratio, which for a mobile portrait-ish hero would have sliced off the map's leftmost/rightmost content — i.e. Solomon Islands and Cook Islands, the two edge markers, could have disappeared entirely on a phone. And a heavy scrim strong enough for photo-text legibility would dim the map's own labels enough to defeat the entire point of building it.
+
+Fixed by restructuring the hero into two stacked (non-overlapping) blocks: the headline/CTA text first, then the map as a full-width `<img>` below it using natural `height: auto` (not `object-fit` or `background-size` tricks) — this makes zero cropping a mathematical guarantee of the layout, not something that needs runtime verification, and the map is never dimmed by anything since nothing sits on top of it. Capped at `max-width: 1100px` centered so it doesn't become absurdly tall on very wide desktop screens.
+
+### Verified
+- SVG structurally checked: 6 markers present (5 satellite circles + Fiji hub), 7 text labels (5 islands + "FIJI" + "VAKAVITI NETWORK HQ")
+- Organization JSON-LD in `index.html`'s `<head>` re-confirmed byte-identical to `main`
+- At 375px: image renders at full viewport width (375px), height auto-scales to preserve the SVG's native 1.87:1 aspect ratio exactly (rendered aspect 1.870 vs. native 1.867) — confirms the complete map, not a cropped portion, is what's visible
+- At 1280px: image caps at 1100px max-width, centered, aspect ratio still preserved
+- All 6 guide-card Unsplash images confirmed still loading and unaffected — only the hero's image source changed
+- Zero console errors at either width
+
+### Known gap
+Full-page visual screenshots weren't possible this session (Browser pane screenshot tool broken all session — confirmed via repeated retries and no local headless-browser fallback available in this environment). The SVG graphic itself *was* visually rendered and reviewed by James via the `show_widget` preview tool before integration; the page-level integration was verified via computed styles, DOM structure, and native/rendered aspect-ratio comparison instead of a literal screenshot. Recommend a manual look at the preview URL before merge.
+
+---
+
+## 2026-08-09 — Homepage visual refresh (mobile-first, photography-led)
+
+**Branch:** `feature/homepage-visual-refresh`
+**Commit:** `8ac41ca`
+**Does not touch:** `/network`, `/methodology`, or the Organization JSON-LD in `index.html`'s `<head>` — confirmed byte-identical to `main` before and after this build.
+
+### ⚠️ PLACEHOLDER IMAGERY — NOT A FINISHED STATE
+Every photo on the homepage is a real, properly-licensed Unsplash photo (sourced via Unsplash's site, not scraped from fiji.travel or anywhere else, each one individually verified for license/attribution via its own photo page metadata) — but these are **placeholders pending real partner/operator photography**, per James's explicit decision. Follow-up task: replace every entry in `vakaviti-root/images.js` with real photos once available. Photo credits:
+- ~~Hero — "Overwater bungalows and turquoise lagoon in Nadi, Fiji," Irvin Liang (@il07)~~ **SUPERSEDED same day** — the hero is now a custom SVG network map, not a photo. See the entry above this one.
+- Nadi Airport Transfers card — Hieu (@thehncreative) *(generic airport/plane photo — no literal Nadi airport photo exists on Unsplash; not claimed as Nadi in the alt text)*
+- Where to Stay card — "Beachfront resort bungalow in Fiji," Josaia Cakacaka (@joecakacaka)
+- Horse Riding card — Carolin Thiergart (@carolinthiergart) *(Zeeland, Netherlands — generic illustrative photo, no false Fiji claim in alt text)*
+- Visa, Entry & Money card — "Passport and travel documents," Spencer Davis (@spencerdavis)
+- Culture, Kava & Language card — "Coastal village scene in Fiji," Savir C (@savir21)
+- Weather & Best Time card — "Beach sunset in Nadi, Fiji," Timothy Ah Koy (@timothyfiji)
+
+All references live in one file, `vakaviti-root/images.js` — swapping in a real photo later means replacing one `url`/`alt`/`credit` per key, no markup changes needed.
+
+### Shipped
+- ✅ New `vakaviti-root/images.js` — centralized image config (see above) — guide-card photography only; the hero's image was superseded same day, see entry above
+- ✅ Guide card grid upgraded with real card images + location tag pills, same 6 existing guides
+- ✅ New "Explore by Interest" section — filterable (All/Culture/Adventure/Practical) horizontally-swipeable carousel, reusing the same 6 guides under interest framing rather than inventing new content (site only has 6 pieces of guide content; a literal "Food & Drink" category from the original fiji.travel-inspired brief was dropped rather than faked, since no such guide exists)
+- ✅ New schematic "network reach" journey strip (Fiji → Samoa → Tonga → Vanuatu → Cook Islands → Solomon Islands) — CSS only, no map imagery, linking to `/network`
+- ✅ Rebuilt hero/grid/carousel CSS mobile-first: base styles are phone-sized, `min-width` media queries scale up to tablet/desktop (previous pattern was desktop-first with a `max-width` override — flagged and corrected per this spec's explicit requirement)
+- ✅ Touch targets: all buttons/tabs ≥40px, primary CTAs 48px min-height
+- ✅ Verified via computed-style + functional checks at 375px, 390px, and 1280px: single-column grid → 3-column, stacked hero CTAs → row, carousel `scrollWidth` > `clientWidth` (confirms real horizontal scroll), filter click correctly shows/hides tagged cards, all 7 images load (200, non-broken), zero console errors, zero unwanted body-level horizontal overflow at 375px
+
+### Known gap this session
+Screenshot capture was broken in this session's Browser pane tooling (pane not compositing frames, confirmed via repeated retries across fresh tabs — an environment issue, not a content issue). Verification was done via computed styles, network requests, and DOM inspection instead of visual screenshots. Recommend a quick manual look at the preview URL before merge.
+
+### Why
+`/network` established who Vakaviti is, `/methodology` established why it should be trusted; this pass makes the homepage itself look and feel like a real, considered product rather than a plain-HTML placeholder — borrowing proven mobile travel-site UX patterns (photography hero, card grid, filterable carousel) while keeping Vakaviti's own dark-teal/serif/green identity distinct from the sites it borrowed structure from.
+
+---
+
+## 2026-08-09 — Methodology page + AboutPage schema
+
+**Branch:** `feature/methodology-page`
+**Commit:** `8c596ca`
+**Depends on:** the Organization `@id` (`https://vakaviti.ai/#organization`) established in the `/network` build above — already live in production.
+
+### Shipped
+- ✅ New page `methodology.html` (served at `/methodology`) — editorial and verification standards page, matches `network.html`'s design system exactly (same CSS variables/components)
+- ✅ New `AboutPage` JSON-LD referencing the canonical Organization via `about`/`publisher` — no duplicate Organization block. `dateModified` set to the real publish date (2026-08-09), not a placeholder
+- ✅ Added `/methodology` to `sitemap.xml`, same convention as every other page
+
+### Corrected before shipping — real findings, not assumptions
+Two sections of the original draft spec were checked against this repo's actual documented systems and found to overstate real process. Both were rewritten before shipping rather than published as drafted:
+- **Operator Verification** — draft claimed an automated compliance system ("zone-manager process") cross-references operator claims against verifiable records, with ongoing re-checks and automatic removal on failure. `vakaviti-zone-manager` is actually a Cloudflare zone/DNS/SSL settings automation Worker (`docs/VAKAVITI-BRAIN.md`, Session 42) — unrelated to operator legitimacy. The real process (Session 55 writeup): operators apply via `join.vakaviti.ai` → `vakaviti-onboard` Worker → D1 `status='pending'` → a human on the team clicks a one-click activation link. Rewritten to describe this honestly as a human review step, not an automated licensing-verification system.
+- **Pricing Accuracy** — draft claimed automated, scheduled collection from fuel-linked official sources with a human-approval gate. The real source of truth (`docs/PRICING_MODEL.md`) is a fixed, documented distance-tiered formula, manually updated whenever rates or competitor pricing shift. Rewritten to describe the real, documented-formula process.
+- **Who's Behind This** — draft included a placeholder name ("Lipa") not confirmed by James. Corrected to the four confirmed real Fiji-based ops team members: Ben, Emma, Nia, Asilika.
+
+### Not shipped (deliberately out of scope)
+- "How we verify this" footer links from other content pages back to `/methodology` — flagged as its own future ticket, not built here.
+- The "last reviewed" date is currently set manually on each edit. Whether to auto-pull it from the last-commit date instead is still an open decision — see PR for James's confirmation.
+
+### Why
+`/network` established who Vakaviti is; `/methodology` establishes why it should be trusted — the credibility counterpart, targeting the "is this a qualified, checkable source" signal for both human readers and AI citation engines.
+
+**Merge note:** this branch was built and validated weeks before merging — the actual merge-to-`main` step was missed, which surfaced today as a live production bug (`/methodology` silently served the homepage instead of 404ing, root-caused via direct `curl` and confirmed as Cloudflare's default no-custom-404 fallback, not a routing bug). Merged now via PR #11.
+
+---
+
+## 2026-08-09 — Parent-entity `/network` page + canonical Organization schema
+
+**Branch:** `feature/network-parent-entity-page`
+**Commits:** `78ff764` (initial build), `5c8f435` (review fixes: description wording, sitemap entry, this log)
+**PR:** [#9](https://github.com/jamesdeorajan-sys/fiji-platform/pull/9) — validated clean on schema.org's validator (0 errors, 0 warnings) and visually reviewed on the preview deployment before merge, approved by James
+
+### Shipped
+- ✅ New page `network.html` (served at `/network`) — lists every property in the Vakaviti/ComeTo network across Fiji and the South Pacific, links to Lagi and the operator signup, matches the existing site's design system (same CSS variables/components as `index.html`)
+- ✅ Upgraded the homepage Organization JSON-LD (`index.html`) into the canonical parent-entity anchor for the network: added `@id` (`https://vakaviti.ai/#organization`), `foundingLocation`, `areaServed` (Fiji, Samoa, Tonga, Vanuatu, Cook Islands, Solomon Islands), `subOrganization` (ComeTo Fiji, ComeTo South Pacific), `knowsAbout`; extended `sameAs` from 1 to 7 entries (kept existing `lagi.vakaviti.ai`, added the 5 other network domains + cometosouthpacific.com); kept canonical `name` as `"Vakaviti.ai"`, added `"Vakaviti AI"` as a second `alternateName`; updated `description` to reflect the network's South Pacific expansion while keeping Fiji as the primary named market
+- ✅ Added `network.html`'s own `CollectionPage` schema, referencing the canonical entity via `"about"`/`"publisher"` — no duplicate Organization block
+- ✅ New `llms.txt` for AI-crawler discovery (network overview, core pages, network properties, booking/policy notes)
+- ✅ Added `/network` to `sitemap.xml`, same convention as the other 6 pages
+
+### Not shipped (deliberately out of scope)
+- No `logo` field added to the Organization schema — no real logo asset exists on the live site yet. Follow-up: get a real logo designed and add the field once it exists.
+- The 6 existing guide pages were **not** touched — they still carry only their own `FAQPage` schema, with no reference back to the canonical Organization entity. Sitewide injection into those pages is scoped as its own future ticket.
+
+### Why
+vakaviti.ai needed to function as the canonical parent-entity anchor for the whole Vakaviti/ComeTo portfolio, so AI search engines and Google's Knowledge Graph resolve the network to one trusted entity instead of treating each domain as unrelated.

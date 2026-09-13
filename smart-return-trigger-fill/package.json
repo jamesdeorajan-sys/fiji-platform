@@ -1,0 +1,9 @@
+{
+  "name": "smart-return-trigger-fill",
+  "private": true,
+  "type": "module",
+  "description": "Issue #54 Stage 1 (shadow mode) — centralized movement ledger, match engine, pricing guardrails, and offer inventory foundation. Not wired to any live storefront.",
+  "scripts": {
+    "test": "node --test test/"
+  }
+}
