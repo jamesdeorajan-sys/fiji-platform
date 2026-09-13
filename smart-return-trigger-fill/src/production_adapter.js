@@ -40,19 +40,37 @@
  *      is available, even for a booking that turns out not to be
  *      human-confirmed) or nothing at all when no ref could be computed.
  *
- * ── AUTHORITATIVE TRIGGER (Milestone 36, 2026-09-14) ────────────────────
- * The mission's "HUMAN_CONFIRMED" state now maps to `bookings.status =
- * 'human_confirmed'`, a purpose-built state reachable ONLY via
- * `POST /admin/bookings/:id/human-confirm` (handleAdminHumanConfirm() in
- * worker.js) — admin-only (requireAdmin(), the same gate as every other
- * /admin/* action), never reachable by a driver, a guest, or any
- * automated process. Every human_confirmed booking_events row this
- * adapter will ever see has actor === 'admin' exactly — a literal in the
- * handler, never read from the request — so HUMAN_ACTOR_PATTERN below is
- * tightened to match only that, not the broader driver:<id>|admin pattern
- * the OLDER 'accepted' trigger needed.
+ * ── AUTHORITATIVE TRIGGER (Milestone 36, CORRECTED 2026-09-14) ──────────
+ * CEO P0 correction: the trigger is NOT bookings.status. The mission's
+ * first pass repurposed `bookings.status = 'human_confirmed'`, which was
+ * rejected — bookings.status is load-bearing for the existing operational
+ * driver-accept flow (handleDriverAcceptBooking/handleAdminManualAssign in
+ * worker.js both do `WHERE ... AND status = 'pending'` compare-and-swap
+ * UPDATEs), and overwriting it would have silently blocked any
+ * human-confirmed booking from ever being accepted by a driver.
  *
- * This deliberately replaces the previous round's use of `bookings.status
+ * The real trigger is now two ADDITIVE, orthogonal columns
+ * (migrations/milestone36-human-confirmed-status.sql):
+ *   bookings.human_confirmed_at  — non-null once confirmed, set exactly
+ *     once by POST /admin/bookings/:id/human-confirm
+ *     (handleAdminHumanConfirm() in worker.js) — admin-only
+ *     (requireAdmin(), the same gate as every other /admin/* action),
+ *     never reachable by a driver, a guest, or any automated process.
+ *   bookings.human_confirmed_by  — always the literal 'admin'.
+ * bookings.status is never read as a precondition and never written by
+ * this action, in either direction — a booking can be human-confirmed
+ * while still 'pending' (and go on to be accepted by a driver completely
+ * normally afterward) or after it has already reached 'accepted'/
+ * 'en_route'/'completed'/'cancelled'. Every human_confirmed booking_events
+ * row this adapter will ever see has actor === 'admin' exactly — a
+ * literal in the handler, never read from the request — so
+ * HUMAN_ACTOR_PATTERN below matches only that, not the broader
+ * driver:<id>|admin pattern the OLDER 'accepted' trigger needed. Its
+ * new_status is always NULL (human confirmation never changes
+ * bookings.status, so there is nothing to record as "new") —
+ * isHumanConfirmedBooking() below does not check new_status at all.
+ *
+ * This deliberately replaces the earlier round's use of `bookings.status
  * = 'accepted'` (reached via handleDriverAcceptBooking or
  * handleAdminManualAssign) as the trigger. That older 'accepted' state
  * conflated two different real-world facts — "a driver/admin has been
@@ -60,14 +78,15 @@
  * booking is genuinely happening and ready to be evaluated" — which
  * happened to always be true together for every path that set it, but
  * was never a purpose-built confirmation signal. human_confirmed is
- * additive on the backend (see migrations/milestone36-human-confirmed-status.sql)
- * — the old accepted/en_route/completed driver-assignment flow is
- * completely untouched and still exists in parallel for its own
- * operational purpose; this adapter simply no longer keys off it.
+ * additive on the backend — the old pending/accepted/en_route/completed/
+ * cancelled operational lifecycle is completely untouched and still
+ * exists in parallel for its own purpose; this adapter simply no longer
+ * keys off it, and must never be keyed off pending, accepted,
+ * assigned_driver_id, or any notification-sent signal.
  *
- * Never triggers on booking creation ('pending'), a quote, a page view,
- * or a notification being sent — human_confirmed's own admin-only gate
- * makes that true by construction, same as before.
+ * Never triggers on booking creation, a quote, a page view, or a
+ * notification being sent — human_confirmed's own admin-only gate makes
+ * that true by construction, same as before.
  *
  * ── OPAQUE LINKAGE ──────────────────────────────────────────────────────
  * computeOpaqueBookingRef(booking, sourceSite, shadowSecret) is
@@ -87,12 +106,12 @@
  * (documented, not executed by this module or by this branch — no D1
  * binding exists here)
  *
- *   SELECT b.*, be.actor, be.created_at AS confirmed_at
+ *   SELECT b.*, be.actor, be.booking_id AS event_booking_id, be.created_at AS confirmed_at
  *   FROM bookings b
  *   JOIN booking_events be ON be.booking_id = b.id
- *   WHERE b.status = 'human_confirmed'
+ *   WHERE b.human_confirmed_at IS NOT NULL
  *     AND be.event_type = 'human_confirmed'
- *     AND be.new_status = 'human_confirmed'
+ *     AND be.actor = 'admin'
  *   ORDER BY be.created_at DESC;
  *
  * ── KNOWN GAP: THE REAL bookings TABLE HAS NO TRIP-DURATION FIELD ──────
@@ -114,10 +133,12 @@
  */
 import { normalizeMovementInput } from './model.js';
 
-export const HUMAN_CONFIRMED_BOOKING_STATUS = 'human_confirmed';
+// The event_type this adapter's trigger looks for — NOT a bookings.status
+// value (there is no such status; see AUTHORITATIVE TRIGGER above).
+export const HUMAN_CONFIRMED_EVENT_TYPE = 'human_confirmed';
 export const SHADOW_REF_HMAC_DOMAIN = 'smart-return-booking-ref:v1';
 
-const HUMAN_ACCEPT_EVENT_TYPE = 'human_confirmed';
+const HUMAN_ACCEPT_EVENT_TYPE = HUMAN_CONFIRMED_EVENT_TYPE;
 // handleAdminHumanConfirm() (worker.js) writes actor: 'admin' as a literal
 // — always, never read from the request — and there is no driver/guest/
 // cron route to this event type at all (see this file's AUTHORITATIVE
@@ -137,19 +158,26 @@ const AIRPORT_ZONE_IDENTIFIERS = new Set(['NAN', 'NADI_AIRPORT']);
 const FIJI_TIME_ZONE = 'Pacific/Fiji';
 
 /**
- * True only for a booking whose CURRENT status is 'human_confirmed' AND
- * whose supplied confirming event (a) is a real human_confirmed
- * transition, (b) was actioned by admin (the only real actor this event
- * type can ever have), and (c) actually belongs to THIS booking — proven
- * by booking.id === bookingEvent.booking_id, compared as strings so a
- * numeric-vs-string DB driver difference can't cause a false rejection,
- * but never fuzzy/substring-matched.
+ * True only when ALL of the following real facts hold — deliberately NEVER
+ * checks booking.status, assigned_driver_id, or any notification-sent
+ * signal (see AUTHORITATIVE TRIGGER above):
+ *   (a) booking.human_confirmed_at is non-null (the admin action ran and
+ *       wrote its timestamp);
+ *   (b) the supplied bookingEvent is a real human_confirmed event, i.e.
+ *       event_type === 'human_confirmed';
+ *   (c) it was actioned by admin (the only real actor this event type can
+ *       ever have — HUMAN_ACTOR_PATTERN);
+ *   (d) it actually belongs to THIS booking — proven by
+ *       booking.id === bookingEvent.booking_id, compared as strings so a
+ *       numeric-vs-string DB driver difference can't cause a false
+ *       rejection, but never fuzzy/substring-matched.
+ * new_status is deliberately not checked — the real handler always writes
+ * it as NULL (human confirmation never changes bookings.status).
  */
 export function isHumanConfirmedBooking(booking, bookingEvent) {
-  if (!booking || booking.status !== HUMAN_CONFIRMED_BOOKING_STATUS) return false;
+  if (!booking || booking.human_confirmed_at == null) return false;
   if (!bookingEvent) return false;
   if (bookingEvent.event_type !== HUMAN_ACCEPT_EVENT_TYPE) return false;
-  if (bookingEvent.new_status !== HUMAN_CONFIRMED_BOOKING_STATUS) return false;
   if (typeof bookingEvent.actor !== 'string' || !HUMAN_ACTOR_PATTERN.test(bookingEvent.actor)) return false;
   if (booking.id == null || bookingEvent.booking_id == null) return false;
   if (String(booking.id) !== String(bookingEvent.booking_id)) return false;

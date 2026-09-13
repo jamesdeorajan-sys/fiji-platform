@@ -1,44 +1,68 @@
 -- Nadi Airport Transfers — Milestone 36: authoritative human-confirmed
 -- booking state.
 --
--- No schema change is strictly required to USE the value 'human_confirmed'
--- in bookings.status or booking_events.event_type - both columns are plain
--- TEXT with no CHECK constraint (see schema.sql). This migration exists
--- for two real, needed things:
+-- CORRECTED 2026-09-14 per CEO P0 review of the original version of this
+-- migration (which repurposed bookings.status = 'human_confirmed'). That
+-- design was rejected: bookings.status is load-bearing for the existing
+-- operational driver-accept flow — handleDriverAcceptBooking() and
+-- handleAdminManualAssign() (worker.js) both do
+-- `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted'
+--  WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`.
+-- Any booking whose status had been overwritten to 'human_confirmed' would
+-- silently fail that WHERE clause forever — no driver could ever accept a
+-- human-confirmed booking. That is a P0 state-machine conflict, not a
+-- cosmetic issue.
 --
--- 1. Indexes. bookings.status and booking_events.event_type currently have
---    no index at all (only booking_events.booking_id does - see
---    idx_booking_events_booking_id). Smart Return's read-only export query
---    (WHERE b.status = 'accepted' AND be.event_type = 'accepted') - and
---    its human_confirmed equivalent this migration is for - will do a full
---    table scan without these. Purely additive, zero risk to existing
---    rows or queries.
+-- CORRECTED DESIGN: human confirmation is orthogonal to operational status.
+-- bookings.status keeps its existing, unmodified lifecycle end to end:
+--   pending -> accepted -> en_route -> completed
+--   (-> cancelled reachable from most non-terminal states, unchanged)
+-- "Has a real staff member checked this booking is genuinely happening" is
+-- recorded as two new nullable columns instead, set exactly once and never
+-- read by, or interfering with, any existing status-driven query:
 --
--- 2. This comment itself, as the single documented record of the new
---    status/event_type value and its meaning, matching this repo's own
---    established convention (see e.g. milestone24-admin-pin.sql, which is
---    "no new table" but still gets its own migration file for exactly
---    this reason).
+--   bookings.human_confirmed_at  TEXT NULL  — ISO-8601 UTC timestamp, set
+--     once by POST /admin/bookings/:id/human-confirm (worker.js).
+--   bookings.human_confirmed_by  TEXT NULL  — always the literal 'admin'
+--     (see handleAdminHumanConfirm(); this state can only be created by an
+--     authenticated admin action, never a driver, guest, or cron/system
+--     process — there is no route or code path that sets a different
+--     value).
 --
--- CONTRACT for the new value:
---   bookings.status = 'human_confirmed'
---   booking_events.event_type = 'human_confirmed'
---   booking_events.new_status = 'human_confirmed'
---   booking_events.actor = 'admin' (always - see handleAdminHumanConfirm()
---     in worker.js; this state can ONLY be created by an authenticated
---     admin action, never a driver, never a guest, never a cron/system
---     process)
+-- Both are ADDITIVE ALTER TABLE ADD COLUMN statements — SQLite adds a
+-- nullable column to every existing row without rewriting or touching any
+-- of that row's other data. Every existing pending/accepted/en_route/
+-- completed/cancelled row is completely unaffected: it simply gains these
+-- two columns, both NULL, exactly as if the columns had always existed and
+-- had never been set for that row.
 --
--- Lifecycle: pending -> human_confirmed -> completed/cancelled.
--- Deliberately does NOT replace or modify the existing pending -> accepted
--- (driver/admin assignment) -> en_route -> completed flow, which is a
--- separate, unrelated operational concern (who is driving) that this
--- migration does not touch. A booking may still independently go through
--- that flow; human_confirmed is additive, not a replacement.
+-- CONTRACT for the human_confirmed booking_events row this endpoint writes
+-- alongside setting the two columns above (never a status column change):
+--   booking_events.event_type      = 'human_confirmed'
+--   booking_events.previous_status = <bookings.status at confirm time>
+--   booking_events.new_status      = NULL (no operational transition
+--     occurred — human confirmation does not change bookings.status, so
+--     there is nothing to record as a "new" status; previous_status alone
+--     is the audit record of what the operational status was at the time)
+--   booking_events.actor           = 'admin' (always)
 --
--- Existing pending/accepted/en_route/completed/cancelled rows are
--- completely unaffected - this migration inserts and alters nothing about
--- any existing row.
+-- Smart Return's trigger condition (production_adapter.js) requires ALL of:
+--   bookings.human_confirmed_at IS NOT NULL
+--   a booking_events row for the same booking_id with
+--     event_type = 'human_confirmed' AND actor = 'admin'
+-- It must never be keyed off bookings.status, assigned_driver_id, or any
+-- notification-sent signal.
+--
+-- Indexes: bookings.status and booking_events.event_type currently have no
+-- index at all (only booking_events.booking_id does - see
+-- idx_booking_events_booking_id). Smart Return's read-only export query
+-- filters on human_confirmed_at IS NOT NULL and booking_events.event_type -
+-- these will do a full table scan without indexes. Purely additive, zero
+-- risk to existing rows or queries.
 
+ALTER TABLE bookings ADD COLUMN human_confirmed_at TEXT NULL;
+ALTER TABLE bookings ADD COLUMN human_confirmed_by TEXT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_bookings_human_confirmed_at ON bookings(human_confirmed_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 CREATE INDEX IF NOT EXISTS idx_booking_events_event_type ON booking_events(event_type);

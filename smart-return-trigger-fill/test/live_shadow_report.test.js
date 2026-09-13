@@ -11,6 +11,9 @@ import { buildRoutePriceTruthEntry } from '../src/route_price_truth_source.js';
 
 const TEST_SHADOW_SECRET = crypto.getRandomValues(new Uint8Array(32));
 
+// status stays a realistic OPERATIONAL value ('accepted') — human
+// confirmation is orthogonal to bookings.status (CEO P0 correction). The
+// trigger fields are human_confirmed_at/human_confirmed_by instead.
 function realBooking(overrides = {}) {
   return {
     id: 100,
@@ -25,7 +28,9 @@ function realBooking(overrides = {}) {
     quoted_currency: 'FJD',
     quoted_amount: 49,
     assigned_driver_id: 5,
-    status: 'human_confirmed',
+    status: 'accepted',
+    human_confirmed_at: '2026-10-01T00:05:00.000Z',
+    human_confirmed_by: 'admin',
     pickup_date: '2026-10-05',
     pickup_time: '09:00',
     created_at: '2026-10-01T00:00:00Z',
@@ -33,11 +38,12 @@ function realBooking(overrides = {}) {
   };
 }
 
+// new_status is always NULL on a real human_confirmed event.
 function acceptEvent(overrides = {}) {
   return {
     booking_id: 100,
     event_type: 'human_confirmed',
-    new_status: 'human_confirmed',
+    new_status: null,
     actor: 'admin', // handleAdminHumanConfirm() (worker.js) always writes this literal
     created_at: '2026-10-01T00:05:00Z',
     ...overrides,
@@ -64,7 +70,7 @@ test('fails closed (throws) when there are rows to evaluate but no shadowSecret 
 
 test('a non-human-confirmed booking is skipped and counted by reason, identified only by its opaque shadowRef, never a raw booking id', async () => {
   const rows = [
-    { booking: realBooking({ status: 'pending' }), event: null, passengerCount: 2 },
+    { booking: realBooking({ status: 'pending', human_confirmed_at: null, human_confirmed_by: null }), event: null, passengerCount: 2 },
   ];
   const report = await runLiveShadowReport(rows, { sourceSite: 'nadiairporttransfers.com', shadowSecret: TEST_SHADOW_SECRET });
   assert.equal(report.confirmed_movements_evaluated, 0);
@@ -155,7 +161,7 @@ test('no customer PII appears anywhere in the serialized report, even when input
 test('no raw booking id or sourceSite:bookingId string appears anywhere in the serialized report', async () => {
   const rows = [
     { booking: realBooking({ id: 314159 }), event: acceptEvent({ booking_id: 314159 }), passengerCount: 2 },
-    { booking: realBooking({ id: 271828, status: 'pending' }), event: null, passengerCount: 2 }, // skipped path too
+    { booking: realBooking({ id: 271828, status: 'pending', human_confirmed_at: null, human_confirmed_by: null }), event: null, passengerCount: 2 }, // skipped path too
   ];
   const report = await runLiveShadowReport(rows, { sourceSite: 'nadiairporttransfers.com', shadowSecret: TEST_SHADOW_SECRET });
   const serialized = JSON.stringify(report);

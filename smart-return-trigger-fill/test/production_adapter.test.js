@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HUMAN_CONFIRMED_BOOKING_STATUS,
+  HUMAN_CONFIRMED_EVENT_TYPE,
   isHumanConfirmedBooking,
   computeOpaqueBookingRef,
   mapConfirmedBookingToMovementInput,
@@ -30,6 +30,11 @@ import { normalizeMovementInput } from '../src/model.js';
 // tests below, which prove the adapter refuses to invent one).
 const TEST_SHADOW_SECRET = crypto.getRandomValues(new Uint8Array(32));
 
+// status/assigned_driver_id are set to realistic OPERATIONAL values here
+// ('accepted', a real driver) deliberately, not 'human_confirmed' — per the
+// CEO's P0 correction, human confirmation is orthogonal to bookings.status
+// (see production_adapter.js's AUTHORITATIVE TRIGGER header). The trigger
+// fields are human_confirmed_at/human_confirmed_by instead.
 function realBookingRow(overrides = {}) {
   return {
     id: 4821,
@@ -45,7 +50,9 @@ function realBookingRow(overrides = {}) {
     quoted_currency: 'FJD',
     quoted_amount: 49,
     assigned_driver_id: 77,
-    status: 'human_confirmed',
+    status: 'accepted',
+    human_confirmed_at: '2026-10-01T10:05:00.000Z',
+    human_confirmed_by: 'admin',
     pickup_date: '2026-10-05',
     pickup_time: '09:30', // Fiji LOCAL time — the whole point of test 2 below
     client_booking_ref: 'FD-ABC123',
@@ -55,12 +62,14 @@ function realBookingRow(overrides = {}) {
   };
 }
 
+// new_status is always NULL on a real human_confirmed event — this action
+// never changes bookings.status (see handleAdminHumanConfirm in worker.js).
 function realAcceptEvent(overrides = {}) {
   return {
     booking_id: 4821,
     event_type: 'human_confirmed',
-    previous_status: 'pending',
-    new_status: 'human_confirmed',
+    previous_status: 'accepted',
+    new_status: null,
     actor: 'admin', // handleAdminHumanConfirm() (worker.js) always writes this literal — never a driver
     created_at: '2026-10-01T10:05:00Z',
     ...overrides,
@@ -69,8 +78,8 @@ function realAcceptEvent(overrides = {}) {
 
 // ─── 1. OPAQUE BOOKING LINKAGE ──────────────────────────────────────────
 
-test('HUMAN_CONFIRMED_BOOKING_STATUS matches the real backend\'s own Milestone 36 human_confirmed literal', () => {
-  assert.equal(HUMAN_CONFIRMED_BOOKING_STATUS, 'human_confirmed');
+test('HUMAN_CONFIRMED_EVENT_TYPE matches the real backend\'s own Milestone 36 human_confirmed literal', () => {
+  assert.equal(HUMAN_CONFIRMED_EVENT_TYPE, 'human_confirmed');
 });
 
 test('computeOpaqueBookingRef: fails closed (returns null) when no secret is supplied — never invents or hardcodes one', async () => {
@@ -159,11 +168,28 @@ test('isHumanConfirmedBooking: booking_id match is safe across numeric vs string
   assert.equal(isHumanConfirmedBooking(booking, realAcceptEvent({ booking_id: 4820 })), false);
 });
 
-test('isHumanConfirmedBooking: false when booking.status is still pending, even with a stray accept-shaped event for the same id', () => {
+test('isHumanConfirmedBooking: false when booking.human_confirmed_at is null, even with a stray human_confirmed-shaped event for the same id', () => {
   assert.equal(
-    isHumanConfirmedBooking(realBookingRow({ status: 'pending' }), realAcceptEvent()),
+    isHumanConfirmedBooking(realBookingRow({ human_confirmed_at: null }), realAcceptEvent()),
     false
   );
+});
+
+test('isHumanConfirmedBooking: TRUE regardless of bookings.status — pending, accepted, en_route, completed and cancelled all qualify once human_confirmed_at is set (the whole point of the P0 correction: orthogonal to operational status)', () => {
+  for (const status of ['pending', 'accepted', 'en_route', 'completed', 'cancelled']) {
+    assert.equal(
+      isHumanConfirmedBooking(realBookingRow({ status }), realAcceptEvent()),
+      true,
+      `status=${status} must not block human-confirmed recognition`
+    );
+  }
+});
+
+test('isHumanConfirmedBooking: does not check new_status at all — true even though the real handler always writes new_status: null', () => {
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ new_status: null })), true);
+  // And equally true if some other value were ever present - new_status is
+  // simply not part of this check.
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ new_status: 'accepted' })), true);
 });
 
 test('isHumanConfirmedBooking: false with no confirming event at all — never triggers on booking creation alone', () => {
@@ -271,7 +297,7 @@ test('invalid/missing timezone data fails closed: malformed pickup_date/pickup_t
 
 test('mapConfirmedBookingToMovementInput: refuses a booking that is not human-confirmed, never silently maps it', async () => {
   const result = await mapConfirmedBookingToMovementInput(
-    realBookingRow({ status: 'pending' }),
+    realBookingRow({ human_confirmed_at: null }),
     null,
     { sourceSite: 'nadiairporttransfers.com', passengerCount: 2, shadowSecret: TEST_SHADOW_SECRET }
   );
@@ -394,7 +420,7 @@ test('every failure result (except SHADOW_SECRET_NOT_CONFIGURED, where none can 
 
 test('NOT_HUMAN_CONFIRMED failures still carry an opaque shadowRef when a secret is available (useful for ops to locate the real booking without exposing its id)', async () => {
   const result = await mapConfirmedBookingToMovementInput(
-    realBookingRow({ status: 'pending' }),
+    realBookingRow({ human_confirmed_at: null }),
     null,
     { sourceSite: 'nadiairporttransfers.com', passengerCount: 2, shadowSecret: TEST_SHADOW_SECRET }
   );

@@ -1,9 +1,19 @@
 // Nadi Airport Transfers — Milestone 36: authoritative human-confirmed
 // booking state tests.
 //
+// CORRECTED 2026-09-14 per CEO P0 review: the first version of this suite
+// tested a design that repurposed bookings.status = 'human_confirmed',
+// which was rejected because it would have silently blocked the existing
+// operational driver-accept flow. This version tests the corrected,
+// orthogonal design instead (human_confirmed_at/human_confirmed_by
+// columns, bookings.status completely untouched) and adds real
+// compatibility tests proving the existing pending -> accepted -> en_route
+// -> completed flow, and cancellation, still work exactly as before both
+// before and after a booking is human-confirmed.
+//
 // Offline, no network, no live D1 - drives the REAL worker.js `fetch()`
 // handler (imported directly, not reimplemented) against an in-memory
-// SQLite database loaded with the real schema.sql + the new
+// SQLite database loaded with the real schema.sql + the
 // milestone36-human-confirmed-status.sql migration, via a minimal D1-
 // compatible shim over node:sqlite (env.DB.prepare().bind().first()/
 // all()/run(), matching the exact shape worker.js already expects). This
@@ -115,6 +125,41 @@ async function humanConfirm(env, bookingId, opts = {}) {
   return { status: res.status, body };
 }
 
+// ─── driver fixtures, for exercising the REAL pending -> accepted ->
+// en_route -> completed flow (handleDriverAcceptBooking/
+// handleDriverBookingStatus) unmodified by this mission, to prove human
+// confirmation is genuinely orthogonal to it, not just asserted to be. ───
+
+function insertDriver(db, overrides = {}) {
+  const cols = {
+    name: 'Test Driver',
+    phone: '+6799999999',
+    status: 'verified',
+    zones: JSON.stringify(['NAD_AIRPORT']),
+    online: 1,
+    ...overrides,
+  };
+  const fields = Object.keys(cols);
+  const placeholders = fields.map(() => '?').join(', ');
+  const stmt = db.prepare(`INSERT INTO drivers (${fields.join(', ')}) VALUES (${placeholders})`);
+  const info = stmt.run(...fields.map((f) => cols[f]));
+  return info.lastInsertRowid;
+}
+
+function insertDriverLoginToken(db, driverId, token) {
+  db.prepare(
+    `INSERT INTO driver_login_tokens (driver_id, token, expires_at) VALUES (?, ?, datetime('now', '+1 hour'))`
+  ).run(driverId, token);
+}
+
+function driverAccept(env, bookingId, token) {
+  return worker.fetch(req(`/driver/bookings/${bookingId}/accept`, { token }), env);
+}
+
+function driverStatus(env, bookingId, token, status) {
+  return worker.fetch(req(`/driver/bookings/${bookingId}/status`, { token, body: { status } }), env);
+}
+
 // ─── 1. unauthenticated confirm rejected ───────────────────────────────
 test('unauthenticated confirm is rejected (401), booking untouched', async () => {
   const { env, db } = freshEnv();
@@ -187,25 +232,34 @@ test('missing pickup_time fails closed (400) too', async () => {
   assert.equal(row.status, 'pending');
 });
 
-// ─── 5. repeated confirmation idempotent / 6. event written once / 7. status written once ──
-test('repeated confirmation is idempotent: second call succeeds without writing a second event or re-writing status', async () => {
+// ─── 5. repeated confirmation idempotent / 6. event written once / 7. timestamp written once ──
+test('repeated confirmation is idempotent: second call succeeds without writing a second event or re-writing the timestamp — and bookings.status is never touched at all', async () => {
   const { env, db } = freshEnv();
   const id = insertBooking(db);
 
   const first = await humanConfirm(env, id);
   assert.equal(first.status, 200);
   assert.equal(first.body.already_confirmed, false);
+  assert.ok(first.body.human_confirmed_at, 'must return the timestamp it just wrote');
+  assert.equal(first.body.human_confirmed_by, 'admin');
+  assert.equal(first.body.status, 'pending', 'bookings.status must be completely untouched by this action');
 
   const second = await humanConfirm(env, id);
   assert.equal(second.status, 200);
   assert.equal(second.body.already_confirmed, true);
-  assert.equal(second.body.status, 'human_confirmed');
+  assert.equal(second.body.human_confirmed_at, first.body.human_confirmed_at, 'timestamp must not change on a repeat call');
+  assert.equal(second.body.status, 'pending');
 
   const events = db.prepare('SELECT * FROM booking_events WHERE booking_id = ? AND event_type = ?').all(id, 'human_confirmed');
   assert.equal(events.length, 1, 'event written exactly once across two confirm calls');
+  assert.equal(events[0].previous_status, 'pending', 'previous_status records the operational status at confirm time');
+  assert.equal(events[0].new_status, null, 'new_status must be null - this action never changes bookings.status');
+  assert.equal(events[0].actor, 'admin');
 
-  const row = db.prepare('SELECT status FROM bookings WHERE id = ?').get(id);
-  assert.equal(row.status, 'human_confirmed', 'status written exactly once and stays correct');
+  const row = db.prepare('SELECT status, human_confirmed_at, human_confirmed_by FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'pending', 'bookings.status is unchanged by human confirmation - the whole point of the P0 correction');
+  assert.equal(row.human_confirmed_by, 'admin');
+  assert.ok(row.human_confirmed_at, 'human_confirmed_at written exactly once and stays correct');
 });
 
 test('a third, fourth, fifth repeat call all remain idempotent no-ops', async () => {
@@ -219,16 +273,22 @@ test('a third, fourth, fifth repeat call all remain idempotent no-ops', async ()
   assert.equal(events.length, 1);
 });
 
-// ─── 8. cancellation after confirmation prevents Smart Return reuse ────
-test('a booking already accepted/en_route/completed (not pending) cannot be human-confirmed', async () => {
-  const { env, db } = freshEnv();
-  const id = insertBooking(db, { status: 'accepted' });
-  const { status, body } = await humanConfirm(env, id);
-  assert.equal(status, 409);
-  assert.equal(body.ok, false);
+// ─── 8. human confirmation is orthogonal to operational status — the P0 correction itself ────
+test('a booking that is already accepted/en_route/completed/cancelled CAN still be human-confirmed - operational status is never a precondition (this is the exact P0 correction: the prior version wrongly rejected this with 409)', async () => {
+  for (const status of ['accepted', 'en_route', 'completed', 'cancelled']) {
+    const { env, db } = freshEnv();
+    const id = insertBooking(db, { status });
+    const { status: httpStatus, body } = await humanConfirm(env, id);
+    assert.equal(httpStatus, 200, `status=${status} must not block human-confirm`);
+    assert.equal(body.already_confirmed, false);
+    assert.equal(body.status, status, 'bookings.status must be returned unchanged, exactly as it was before confirmation');
+    const row = db.prepare('SELECT status, human_confirmed_at FROM bookings WHERE id = ?').get(id);
+    assert.equal(row.status, status, 'bookings.status column itself must be unchanged in the database too');
+    assert.ok(row.human_confirmed_at);
+  }
 });
 
-test('cancelling a human_confirmed booking moves it out of human_confirmed - the existing /cancel endpoint already handles this with zero changes needed', async () => {
+test('cancelling a booking works identically whether or not it has been human-confirmed first - the existing /cancel endpoint needed zero changes, because it was never keyed off human_confirmed_at/by', async () => {
   const { env, db } = freshEnv();
   const id = insertBooking(db);
   const confirmed = await humanConfirm(env, id);
@@ -237,15 +297,119 @@ test('cancelling a human_confirmed booking moves it out of human_confirmed - the
   const cancelRes = await worker.fetch(req(`/admin/bookings/${id}/cancel`), env);
   assert.equal(cancelRes.status, 200);
 
-  const row = db.prepare('SELECT status FROM bookings WHERE id = ?').get(id);
+  const row = db.prepare('SELECT status, human_confirmed_at FROM bookings WHERE id = ?').get(id);
   assert.equal(row.status, 'cancelled', 'the pre-existing cancel endpoint already generically allows this — no backend change was needed for it');
+  assert.ok(row.human_confirmed_at, 'cancelling does not clear the human-confirmed record - it is an independent, orthogonal fact');
 });
 
-test('a cancelled booking cannot be human-confirmed afterward', async () => {
+test('a cancelled booking CAN be human-confirmed afterward too - no operational-status precondition exists in either direction', async () => {
   const { env, db } = freshEnv();
   const id = insertBooking(db, { status: 'cancelled' });
-  const { status } = await humanConfirm(env, id);
-  assert.equal(status, 409);
+  const { status, body } = await humanConfirm(env, id);
+  assert.equal(status, 200);
+  assert.equal(body.status, 'cancelled');
+});
+
+// ─── compatibility: the REAL pending -> accepted -> en_route -> completed flow, driven through worker.js unmodified, both before and after human-confirm ────
+
+test('a pending booking stays exactly pending after human-confirm - status is untouched, driver dispatch/broadcast is unaffected', async () => {
+  const { env, db } = freshEnv();
+  const id = insertBooking(db);
+  const confirmed = await humanConfirm(env, id);
+  assert.equal(confirmed.status, 200);
+  const row = db.prepare('SELECT status, assigned_driver_id FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'pending');
+  assert.equal(row.assigned_driver_id, null, 'human-confirm must never assign a driver');
+});
+
+test('a human-confirmed-while-pending booking can still be accepted by a real driver through the REAL handleDriverAcceptBooking flow, reaching accepted exactly as if it had never been human-confirmed', async () => {
+  const { env, db } = freshEnv();
+  const id = insertBooking(db);
+
+  const confirmed = await humanConfirm(env, id);
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.status, 'pending');
+
+  const token = 'driver-token-' + Math.random().toString(36).slice(2);
+  const driverId = insertDriver(db);
+  insertDriverLoginToken(db, driverId, token);
+
+  const acceptRes = await driverAccept(env, id, token);
+  const acceptBody = await acceptRes.json();
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptBody.won, true, 'the exact same compare-and-swap accept flow must still succeed on a human-confirmed booking - the P0 bug this mission exists to fix would have made this fail');
+
+  const row = db.prepare('SELECT status, assigned_driver_id, human_confirmed_at FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'accepted');
+  assert.equal(row.assigned_driver_id, driverId);
+  assert.ok(row.human_confirmed_at, 'human_confirmed_at survives the accept transition unchanged');
+});
+
+test('without human-confirm at all, a driver can still accept a pending booking exactly as before (regression guard: this mission must not have broken the untouched path)', async () => {
+  const { env, db } = freshEnv();
+  const id = insertBooking(db);
+  const token = 'driver-token-' + Math.random().toString(36).slice(2);
+  const driverId = insertDriver(db);
+  insertDriverLoginToken(db, driverId, token);
+
+  const acceptRes = await driverAccept(env, id, token);
+  assert.equal(acceptRes.status, 200);
+  const row = db.prepare('SELECT status, assigned_driver_id FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'accepted');
+  assert.equal(row.assigned_driver_id, driverId);
+});
+
+test('accepted -> en_route -> completed still works via the REAL handleDriverBookingStatus/VALID_STATUS_TRANSITIONS flow, on a booking that was human-confirmed first', async () => {
+  // payment_method: 'card' (not the default 'cash') so completing the trip
+  // doesn't hit accrueCommission()'s env.DB.batch() call, which the D1 shim
+  // in this file does not implement - unrelated to this mission's scope.
+  const { env, db } = freshEnv();
+  const id = insertBooking(db, { payment_method: 'card' });
+
+  const confirmed = await humanConfirm(env, id);
+  assert.equal(confirmed.status, 200);
+
+  const token = 'driver-token-' + Math.random().toString(36).slice(2);
+  const driverId = insertDriver(db);
+  insertDriverLoginToken(db, driverId, token);
+
+  const acceptRes = await driverAccept(env, id, token);
+  assert.equal(acceptRes.status, 200);
+
+  const enRouteRes = await driverStatus(env, id, token, 'en_route');
+  assert.equal(enRouteRes.status, 200);
+  let row = db.prepare('SELECT status FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'en_route');
+
+  const completedRes = await driverStatus(env, id, token, 'completed');
+  assert.equal(completedRes.status, 200);
+  row = db.prepare('SELECT status, human_confirmed_at, human_confirmed_by FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'completed');
+  assert.ok(row.human_confirmed_at, 'human confirmation record survives the full operational lifecycle unchanged');
+  assert.equal(row.human_confirmed_by, 'admin');
+
+  const events = db.prepare('SELECT event_type FROM booking_events WHERE booking_id = ? ORDER BY id').all(id);
+  assert.deepEqual(events.map((e) => e.event_type), ['human_confirmed', 'accepted', 'en_route', 'completed'], 'the real operational event trail is completely unaffected by the human_confirmed event alongside it');
+});
+
+test('a booking can equally be human-confirmed AFTER it already reached accepted/en_route/completed via the real driver flow - order does not matter, because the two are orthogonal', async () => {
+  const { env, db } = freshEnv();
+  const id = insertBooking(db, { payment_method: 'card' });
+  const token = 'driver-token-' + Math.random().toString(36).slice(2);
+  const driverId = insertDriver(db);
+  insertDriverLoginToken(db, driverId, token);
+
+  await driverAccept(env, id, token);
+  await driverStatus(env, id, token, 'en_route');
+  await driverStatus(env, id, token, 'completed');
+
+  const confirmed = await humanConfirm(env, id);
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.status, 'completed');
+
+  const row = db.prepare('SELECT status, human_confirmed_at FROM bookings WHERE id = ?').get(id);
+  assert.equal(row.status, 'completed');
+  assert.ok(row.human_confirmed_at);
 });
 
 // ─── 9. existing pending rows unchanged (simulated at 107-row scale) ───

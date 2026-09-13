@@ -2294,32 +2294,44 @@ async function handleAdminCancelBooking(request, env, bookingId) {
 // Milestone 36: the authoritative "a real staff member has checked this
 // booking is genuinely happening" event - see
 // migrations/milestone36-human-confirmed-status.sql for the full contract.
+//
+// CORRECTED 2026-09-14 per CEO P0 review: this is orthogonal to
+// bookings.status. It never reads bookings.status as a precondition and
+// never writes it - the existing pending -> accepted -> en_route ->
+// completed lifecycle (and handleDriverAcceptBooking's/
+// handleAdminManualAssign's `WHERE status = 'pending'` compare-and-swap
+// UPDATEs in particular) is completely untouched by this action, in either
+// direction. A booking can be human-confirmed while pending and still go
+// on to be accepted by a driver exactly as before; it can equally be
+// human-confirmed after it's already accepted/en_route/completed/
+// cancelled - this action records a fact about staff review, not a step in
+// the operational pipeline.
+//
 // Deliberately admin-only (requireAdmin(), same gate as every other
 // /admin/* action here) - there is no driver/guest/cron path to this
 // state, and actor is always the literal 'admin' below, never inferred
-// from anything else. Race-safe (a conditional UPDATE, same
-// compare-and-swap pattern as handleDriverAcceptBooking/
-// handleAdminManualAssign above) and idempotent - a repeat call on an
+// from anything else. Race-safe (a conditional UPDATE keyed on
+// human_confirmed_at IS NULL, same compare-and-swap shape as
+// handleDriverAcceptBooking/handleAdminManualAssign above, just against
+// the new column instead of status) and idempotent - a repeat call on an
 // already-confirmed booking is a no-op success, writing neither a second
-// status change nor a second booking_events row.
+// timestamp nor a second booking_events row. Never assigns a driver, never
+// sends WhatsApp, never dispatches - purely a record-keeping action.
 async function handleAdminHumanConfirm(request, env, bookingId) {
   if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const booking = await env.DB.prepare(
-    `SELECT id, status, pickup_date, pickup_time, assigned_driver_id FROM bookings WHERE id = ?`
+    `SELECT id, status, pickup_date, pickup_time, assigned_driver_id, human_confirmed_at, human_confirmed_by FROM bookings WHERE id = ?`
   ).bind(bookingId).first();
   if (!booking) return json({ ok: false, error: 'Booking not found.' }, 404);
 
-  if (booking.status === 'human_confirmed') {
+  if (booking.human_confirmed_at) {
     return json({
-      ok: true, booking_id: bookingId, status: 'human_confirmed',
+      ok: true, booking_id: bookingId, status: booking.status,
+      human_confirmed_at: booking.human_confirmed_at, human_confirmed_by: booking.human_confirmed_by,
       assigned_driver_id: booking.assigned_driver_id, already_confirmed: true,
     }, 200);
-  }
-
-  if (booking.status !== 'pending') {
-    return json({ ok: false, error: `Cannot human-confirm a booking that is ${booking.status} (must be pending).` }, 409);
   }
 
   // Fail closed: pickup_date/pickup_time (Milestone 17) must already be
@@ -2331,30 +2343,39 @@ async function handleAdminHumanConfirm(request, env, bookingId) {
     return json({ ok: false, error: 'Cannot human-confirm a booking with no pickup_date/pickup_time set.' }, 400);
   }
 
+  const confirmedAt = new Date().toISOString();
   const result = await env.DB.prepare(
-    `UPDATE bookings SET status = 'human_confirmed' WHERE id = ? AND status = 'pending'`
-  ).bind(bookingId).run();
+    `UPDATE bookings SET human_confirmed_at = ?, human_confirmed_by = 'admin' WHERE id = ? AND human_confirmed_at IS NULL`
+  ).bind(confirmedAt, bookingId).run();
 
   if (result.meta.changes !== 1) {
     // Lost a race to a concurrent request - re-check rather than silently
     // reporting success for a write that didn't happen here.
-    const current = await env.DB.prepare(`SELECT status, assigned_driver_id FROM bookings WHERE id = ?`).bind(bookingId).first();
-    if (current && current.status === 'human_confirmed') {
+    const current = await env.DB.prepare(
+      `SELECT status, assigned_driver_id, human_confirmed_at, human_confirmed_by FROM bookings WHERE id = ?`
+    ).bind(bookingId).first();
+    if (current && current.human_confirmed_at) {
       return json({
-        ok: true, booking_id: bookingId, status: 'human_confirmed',
+        ok: true, booking_id: bookingId, status: current.status,
+        human_confirmed_at: current.human_confirmed_at, human_confirmed_by: current.human_confirmed_by,
         assigned_driver_id: current.assigned_driver_id, already_confirmed: true,
       }, 200);
     }
-    return json({ ok: false, error: `Booking status changed concurrently (now ${current ? current.status : 'unknown'}) - not confirmed.` }, 409);
+    return json({ ok: false, error: 'Booking could not be confirmed - concurrent write lost the race and left no confirmed state.' }, 409);
   }
 
+  // previous_status records what the operational status was at confirm
+  // time, for audit purposes only - new_status is NULL because this action
+  // never changes bookings.status (see migration header for the full
+  // rationale).
   await logBookingEvent(env, {
-    bookingId, eventType: 'human_confirmed', previousStatus: 'pending', newStatus: 'human_confirmed',
+    bookingId, eventType: 'human_confirmed', previousStatus: booking.status, newStatus: null,
     actor: 'admin',
   });
 
   return json({
-    ok: true, booking_id: bookingId, status: 'human_confirmed',
+    ok: true, booking_id: bookingId, status: booking.status,
+    human_confirmed_at: confirmedAt, human_confirmed_by: 'admin',
     assigned_driver_id: booking.assigned_driver_id, already_confirmed: false,
   }, 200);
 }

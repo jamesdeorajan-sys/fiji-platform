@@ -13,24 +13,32 @@ results back.
 
 ## Step 1 — confirmed bookings + their confirming event
 
-**Updated 2026-09-14 (Milestone 36):** the trigger is now the purpose-built
-`human_confirmed` state (`POST /admin/bookings/:id/human-confirm`,
-admin-only), not the older `accepted` (driver/admin assignment) state this
-query originally targeted. See `src/production_adapter.js`'s
+**Updated 2026-09-14 (Milestone 36, CORRECTED same day per CEO P0 review):**
+the trigger is the purpose-built `human_confirmed` action
+(`POST /admin/bookings/:id/human-confirm`, admin-only), not the older
+`accepted` (driver/admin assignment) state this query originally targeted.
+The first version of this correction also mistakenly repurposed
+`bookings.status = 'human_confirmed'` — REJECTED, because bookings.status
+is load-bearing for the existing operational driver-accept flow. Human
+confirmation is recorded as two additive, orthogonal columns instead
+(`bookings.human_confirmed_at`/`human_confirmed_by`); `bookings.status`
+keeps its existing, untouched pending/accepted/en_route/completed/
+cancelled lifecycle throughout. See `src/production_adapter.js`'s
 AUTHORITATIVE TRIGGER header for the full rationale.
 
 ```sql
 SELECT
   b.id, b.pickup_zone, b.destination_zone, b.vehicle_type,
   b.quoted_amount, b.assigned_driver_id, b.status,
+  b.human_confirmed_at, b.human_confirmed_by,
   b.pickup_date, b.pickup_time, b.created_at,
   be.actor, be.booking_id AS event_booking_id, be.event_type, be.new_status,
   be.created_at AS confirmed_at
 FROM bookings b
 JOIN booking_events be ON be.booking_id = b.id
-WHERE b.status = 'human_confirmed'
+WHERE b.human_confirmed_at IS NOT NULL
   AND be.event_type = 'human_confirmed'
-  AND be.new_status = 'human_confirmed'
+  AND be.actor = 'admin'
 ORDER BY be.created_at DESC
 LIMIT 100;
 ```
@@ -132,8 +140,8 @@ Assemble step 1-3's results into the exact shape
 ```json
 [
   {
-    "booking": { "id": 4821, "pickup_zone": "NAN", "destination_zone": "HILTON_DENARAU", "vehicle_type": "sedan", "quoted_amount": 49, "assigned_driver_id": 77, "status": "accepted", "pickup_date": "2026-10-05", "pickup_time": "09:30", "created_at": "2026-10-01T10:00:00Z" },
-    "event": { "booking_id": 4821, "event_type": "accepted", "new_status": "accepted", "actor": "driver:77" },
+    "booking": { "id": 4821, "pickup_zone": "NAN", "destination_zone": "HILTON_DENARAU", "vehicle_type": "sedan", "quoted_amount": 49, "assigned_driver_id": 77, "status": "accepted", "human_confirmed_at": "2026-10-01T10:05:00.000Z", "human_confirmed_by": "admin", "pickup_date": "2026-10-05", "pickup_time": "09:30", "created_at": "2026-10-01T10:00:00Z" },
+    "event": { "booking_id": 4821, "event_type": "human_confirmed", "new_status": null, "actor": "admin" },
     "passengerCount": 2,
     "estimatedDurationMinutes": 20
   }

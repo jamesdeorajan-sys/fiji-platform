@@ -16,6 +16,11 @@ import { buildRoutePriceTruthEntry } from '../src/route_price_truth_source.js';
 
 const SOURCE_SITE = 'nadiairporttransfers.com';
 
+// status stays a realistic OPERATIONAL value ('accepted') — human
+// confirmation is orthogonal to bookings.status (CEO P0 correction,
+// 2026-09-14). The trigger fields are human_confirmed_at/
+// human_confirmed_by instead; see production_adapter.js's AUTHORITATIVE
+// TRIGGER header for the full rationale.
 function booking(overrides) {
   return {
     id: overrides.id,
@@ -27,7 +32,9 @@ function booking(overrides) {
     quoted_currency: 'FJD',
     quoted_amount: overrides.quoted_amount,
     assigned_driver_id: overrides.assigned_driver_id ?? 9,
-    status: 'human_confirmed',
+    status: 'accepted',
+    human_confirmed_at: '2026-10-01T00:05:00.000Z',
+    human_confirmed_by: 'admin',
     pickup_date: overrides.pickup_date,
     pickup_time: overrides.pickup_time,
     created_at: overrides.created_at ?? '2026-10-01T00:00:00Z',
@@ -35,11 +42,12 @@ function booking(overrides) {
 }
 
 // handleAdminHumanConfirm() (worker.js) always writes actor: 'admin' as a
-// literal — never a driver, never anything else — so there is no actor
-// parameter here to vary; every human_confirmed event has the same real
-// shape.
+// literal — never a driver, never anything else — and new_status: null
+// (human confirmation never changes bookings.status) — so there is no
+// actor or new_status parameter here to vary; every human_confirmed event
+// has the same real shape.
 function humanConfirmedEvent(bookingId) {
-  return { booking_id: bookingId, event_type: 'human_confirmed', new_status: 'human_confirmed', actor: 'admin', created_at: '2026-10-01T00:05:00Z' };
+  return { booking_id: bookingId, event_type: 'human_confirmed', new_status: null, actor: 'admin', created_at: '2026-10-01T00:05:00Z' };
 }
 
 const rows = [
@@ -85,10 +93,13 @@ const rows = [
     estimatedDurationMinutes: 20,
   },
 ];
-// booking() always sets status:'human_confirmed' from the overrides spread
-// order above except where explicitly overridden - fix the one deliberate
-// pending case:
+// booking() always sets human_confirmed_at/human_confirmed_by to a real
+// confirmed value - fix the one deliberate not-yet-confirmed case (9003)
+// so it correctly has neither set, and stays realistically 'pending' on
+// status too (it was never accepted by a driver either):
 rows[2].booking.status = 'pending';
+rows[2].booking.human_confirmed_at = null;
+rows[2].booking.human_confirmed_by = null;
 
 // Demo-only key: freshly random on every run via the Web Crypto RNG, never
 // a fixed/committed literal, and discarded the moment this process exits.
