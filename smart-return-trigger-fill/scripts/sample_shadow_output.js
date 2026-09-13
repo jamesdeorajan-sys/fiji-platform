@@ -27,28 +27,32 @@ function booking(overrides) {
     quoted_currency: 'FJD',
     quoted_amount: overrides.quoted_amount,
     assigned_driver_id: overrides.assigned_driver_id ?? 9,
-    status: 'accepted',
+    status: 'human_confirmed',
     pickup_date: overrides.pickup_date,
     pickup_time: overrides.pickup_time,
     created_at: overrides.created_at ?? '2026-10-01T00:00:00Z',
   };
 }
 
-function acceptedEvent(bookingId, actor) {
-  return { booking_id: bookingId, event_type: 'accepted', new_status: 'accepted', actor, created_at: '2026-10-01T00:05:00Z' };
+// handleAdminHumanConfirm() (worker.js) always writes actor: 'admin' as a
+// literal — never a driver, never anything else — so there is no actor
+// parameter here to vary; every human_confirmed event has the same real
+// shape.
+function humanConfirmedEvent(bookingId) {
+  return { booking_id: bookingId, event_type: 'human_confirmed', new_status: 'human_confirmed', actor: 'admin', created_at: '2026-10-01T00:05:00Z' };
 }
 
 const rows = [
-  // A confirmed arrival leg — driver-accepted.
+  // A confirmed arrival leg.
   {
     booking: booking({ id: 9001, pickup_zone: 'NAN', destination_zone: 'DENARAU', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '09:00' }),
-    event: acceptedEvent(9001, 'driver:9'),
+    event: humanConfirmedEvent(9001),
     passengerCount: 2,
   },
-  // Its plausible reverse (empty-leg-avoiding) candidate — admin-assigned.
+  // Its plausible reverse (empty-leg-avoiding) candidate.
   {
     booking: booking({ id: 9002, pickup_zone: 'DENARAU', destination_zone: 'NAN', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '15:00' }),
-    event: acceptedEvent(9002, 'admin'),
+    event: humanConfirmedEvent(9002),
     passengerCount: 2,
   },
   // A booking that is NOT yet human-confirmed — must be skipped, not evaluated.
@@ -64,13 +68,13 @@ const rows = [
   // HOLD state the first pair (9001/9002) shows.
   {
     booking: booking({ id: 9004, pickup_zone: 'NAN', destination_zone: 'HILTON_DENARAU', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '09:00' }),
-    event: acceptedEvent(9004, 'driver:9'),
+    event: humanConfirmedEvent(9004),
     passengerCount: 2,
     estimatedDurationMinutes: 20, // e.g. from deriveDurationMinutesFromGoogleRoutesDuration('1200s')
   },
   {
     booking: booking({ id: 9005, pickup_zone: 'HILTON_DENARAU', destination_zone: 'NAN', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '15:00' }),
-    event: acceptedEvent(9005, 'admin'),
+    event: humanConfirmedEvent(9005),
     passengerCount: 2,
     // chronologicalFeasibility() checks the movement being evaluated AS
     // SOURCE's own completion time — since matching runs in ingestion
@@ -81,8 +85,8 @@ const rows = [
     estimatedDurationMinutes: 20,
   },
 ];
-// booking() always sets status:'accepted' from the overrides spread order
-// above except where explicitly overridden - fix the one deliberate
+// booking() always sets status:'human_confirmed' from the overrides spread
+// order above except where explicitly overridden - fix the one deliberate
 // pending case:
 rows[2].booking.status = 'pending';
 

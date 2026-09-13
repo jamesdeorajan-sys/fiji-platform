@@ -13,6 +13,12 @@ results back.
 
 ## Step 1 — confirmed bookings + their confirming event
 
+**Updated 2026-09-14 (Milestone 36):** the trigger is now the purpose-built
+`human_confirmed` state (`POST /admin/bookings/:id/human-confirm`,
+admin-only), not the older `accepted` (driver/admin assignment) state this
+query originally targeted. See `src/production_adapter.js`'s
+AUTHORITATIVE TRIGGER header for the full rationale.
+
 ```sql
 SELECT
   b.id, b.pickup_zone, b.destination_zone, b.vehicle_type,
@@ -22,10 +28,11 @@ SELECT
   be.created_at AS confirmed_at
 FROM bookings b
 JOIN booking_events be ON be.booking_id = b.id
-WHERE b.status = 'accepted'
-  AND be.event_type = 'accepted'
-  AND be.new_status = 'accepted'
-ORDER BY be.created_at DESC;
+WHERE b.status = 'human_confirmed'
+  AND be.event_type = 'human_confirmed'
+  AND be.new_status = 'human_confirmed'
+ORDER BY be.created_at DESC
+LIMIT 100;
 ```
 
 No `guest_name`, `guest_phone`, `guest_email`, `flight_number`, or `notes`

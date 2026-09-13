@@ -40,16 +40,34 @@
  *      is available, even for a booking that turns out not to be
  *      human-confirmed) or nothing at all when no ref could be computed.
  *
- * ── AUTHORITATIVE TRIGGER ──────────────────────────────────────────────
- * The mission's "HUMAN_CONFIRMED" state maps to `bookings.status =
- * 'accepted'`, reached ONLY via one of three real code paths, every one of
- * which requires an explicit human action and logs it to `booking_events`:
- *   - handleDriverAcceptBooking()      -> actor: `driver:<id>`
- *   - handleAdminManualAssign() Path A -> actor: 'admin'
- *   - handleAdminManualAssign() Path B -> actor: 'admin'
- * Confirmed by grep across every `status = 'accepted'` occurrence in
- * worker.js, not assumed. Never triggers on booking creation ('pending'),
- * a quote, a page view, or a notification being sent.
+ * ── AUTHORITATIVE TRIGGER (Milestone 36, 2026-09-14) ────────────────────
+ * The mission's "HUMAN_CONFIRMED" state now maps to `bookings.status =
+ * 'human_confirmed'`, a purpose-built state reachable ONLY via
+ * `POST /admin/bookings/:id/human-confirm` (handleAdminHumanConfirm() in
+ * worker.js) — admin-only (requireAdmin(), the same gate as every other
+ * /admin/* action), never reachable by a driver, a guest, or any
+ * automated process. Every human_confirmed booking_events row this
+ * adapter will ever see has actor === 'admin' exactly — a literal in the
+ * handler, never read from the request — so HUMAN_ACTOR_PATTERN below is
+ * tightened to match only that, not the broader driver:<id>|admin pattern
+ * the OLDER 'accepted' trigger needed.
+ *
+ * This deliberately replaces the previous round's use of `bookings.status
+ * = 'accepted'` (reached via handleDriverAcceptBooking or
+ * handleAdminManualAssign) as the trigger. That older 'accepted' state
+ * conflated two different real-world facts — "a driver/admin has been
+ * operationally assigned to this job" and "a human has confirmed this
+ * booking is genuinely happening and ready to be evaluated" — which
+ * happened to always be true together for every path that set it, but
+ * was never a purpose-built confirmation signal. human_confirmed is
+ * additive on the backend (see migrations/milestone36-human-confirmed-status.sql)
+ * — the old accepted/en_route/completed driver-assignment flow is
+ * completely untouched and still exists in parallel for its own
+ * operational purpose; this adapter simply no longer keys off it.
+ *
+ * Never triggers on booking creation ('pending'), a quote, a page view,
+ * or a notification being sent — human_confirmed's own admin-only gate
+ * makes that true by construction, same as before.
  *
  * ── OPAQUE LINKAGE ──────────────────────────────────────────────────────
  * computeOpaqueBookingRef(booking, sourceSite, shadowSecret) is
@@ -72,9 +90,9 @@
  *   SELECT b.*, be.actor, be.created_at AS confirmed_at
  *   FROM bookings b
  *   JOIN booking_events be ON be.booking_id = b.id
- *   WHERE b.status = 'accepted'
- *     AND be.event_type = 'accepted'
- *     AND be.new_status = 'accepted'
+ *   WHERE b.status = 'human_confirmed'
+ *     AND be.event_type = 'human_confirmed'
+ *     AND be.new_status = 'human_confirmed'
  *   ORDER BY be.created_at DESC;
  *
  * ── KNOWN GAP: THE REAL bookings TABLE HAS NO TRIP-DURATION FIELD ──────
@@ -96,16 +114,20 @@
  */
 import { normalizeMovementInput } from './model.js';
 
-export const HUMAN_CONFIRMED_BOOKING_STATUS = 'accepted';
+export const HUMAN_CONFIRMED_BOOKING_STATUS = 'human_confirmed';
 export const SHADOW_REF_HMAC_DOMAIN = 'smart-return-booking-ref:v1';
 
-const HUMAN_ACCEPT_EVENT_TYPE = 'accepted';
-// Matches exactly the two real actor shapes ever written by
-// logBookingEvent() for an accept transition: 'admin' or 'driver:<id>'. A
-// future automated actor (e.g. 'system' or 'cron') deliberately does NOT
-// match, so an automated confirmation path introduced later fails closed
-// here rather than silently starting to trigger shadow evaluation.
-const HUMAN_ACTOR_PATTERN = /^(admin|driver:\d+)$/;
+const HUMAN_ACCEPT_EVENT_TYPE = 'human_confirmed';
+// handleAdminHumanConfirm() (worker.js) writes actor: 'admin' as a literal
+// — always, never read from the request — and there is no driver/guest/
+// cron route to this event type at all (see this file's AUTHORITATIVE
+// TRIGGER header). Matching ONLY 'admin' here (not the broader
+// driver:<id>|admin pattern the older 'accepted' trigger needed) means a
+// human_confirmed event carrying any other actor — including a real
+// driver:<id> — is treated as a spoofing/corruption signal and rejected,
+// not accepted. A future automated actor (e.g. 'system' or 'cron') also
+// deliberately does not match.
+const HUMAN_ACTOR_PATTERN = /^admin$/;
 
 // Zones the real bookings table uses to represent Nadi International
 // Airport — used only to derive arrival_or_departure, never feasibility
@@ -115,9 +137,10 @@ const AIRPORT_ZONE_IDENTIFIERS = new Set(['NAN', 'NADI_AIRPORT']);
 const FIJI_TIME_ZONE = 'Pacific/Fiji';
 
 /**
- * True only for a booking whose CURRENT status is 'accepted' AND whose
- * supplied confirming event (a) is a real accept transition, (b) was
- * actioned by a human, and (c) actually belongs to THIS booking — proven
+ * True only for a booking whose CURRENT status is 'human_confirmed' AND
+ * whose supplied confirming event (a) is a real human_confirmed
+ * transition, (b) was actioned by admin (the only real actor this event
+ * type can ever have), and (c) actually belongs to THIS booking — proven
  * by booking.id === bookingEvent.booking_id, compared as strings so a
  * numeric-vs-string DB driver difference can't cause a false rejection,
  * but never fuzzy/substring-matched.

@@ -25,7 +25,7 @@ function realBooking(overrides = {}) {
     quoted_currency: 'FJD',
     quoted_amount: 49,
     assigned_driver_id: 5,
-    status: 'accepted',
+    status: 'human_confirmed',
     pickup_date: '2026-10-05',
     pickup_time: '09:00',
     created_at: '2026-10-01T00:00:00Z',
@@ -36,9 +36,9 @@ function realBooking(overrides = {}) {
 function acceptEvent(overrides = {}) {
   return {
     booking_id: 100,
-    event_type: 'accepted',
-    new_status: 'accepted',
-    actor: 'driver:5',
+    event_type: 'human_confirmed',
+    new_status: 'human_confirmed',
+    actor: 'admin', // handleAdminHumanConfirm() (worker.js) always writes this literal
     created_at: '2026-10-01T00:05:00Z',
     ...overrides,
   };

@@ -45,7 +45,7 @@ function realBookingRow(overrides = {}) {
     quoted_currency: 'FJD',
     quoted_amount: 49,
     assigned_driver_id: 77,
-    status: 'accepted',
+    status: 'human_confirmed',
     pickup_date: '2026-10-05',
     pickup_time: '09:30', // Fiji LOCAL time — the whole point of test 2 below
     client_booking_ref: 'FD-ABC123',
@@ -58,10 +58,10 @@ function realBookingRow(overrides = {}) {
 function realAcceptEvent(overrides = {}) {
   return {
     booking_id: 4821,
-    event_type: 'accepted',
+    event_type: 'human_confirmed',
     previous_status: 'pending',
-    new_status: 'accepted',
-    actor: 'driver:77',
+    new_status: 'human_confirmed',
+    actor: 'admin', // handleAdminHumanConfirm() (worker.js) always writes this literal — never a driver
     created_at: '2026-10-01T10:05:00Z',
     ...overrides,
   };
@@ -69,8 +69,8 @@ function realAcceptEvent(overrides = {}) {
 
 // ─── 1. OPAQUE BOOKING LINKAGE ──────────────────────────────────────────
 
-test('HUMAN_CONFIRMED_BOOKING_STATUS matches the real backend\'s own accepted-state literal', () => {
-  assert.equal(HUMAN_CONFIRMED_BOOKING_STATUS, 'accepted');
+test('HUMAN_CONFIRMED_BOOKING_STATUS matches the real backend\'s own Milestone 36 human_confirmed literal', () => {
+  assert.equal(HUMAN_CONFIRMED_BOOKING_STATUS, 'human_confirmed');
 });
 
 test('computeOpaqueBookingRef: fails closed (returns null) when no secret is supplied — never invents or hardcodes one', async () => {
@@ -126,12 +126,13 @@ test('computeOpaqueBookingRef: two different HMAC keys of the same length never 
 
 // ─── 3. SAME-BOOKING EVENT PROOF ────────────────────────────────────────
 
-test('isHumanConfirmedBooking: true for a driver-accepted booking whose event matches this exact booking id', () => {
-  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'driver:12', booking_id: 4821 })), true);
+test('isHumanConfirmedBooking: true for an admin-confirmed booking whose event matches this exact booking id', () => {
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'admin', booking_id: 4821 })), true);
 });
 
-test('isHumanConfirmedBooking: true for an admin-manual-assigned booking whose event matches this exact booking id', () => {
-  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'admin', booking_id: 4821 })), true);
+test('isHumanConfirmedBooking: FALSE for a driver actor — Milestone 36 tightening: human_confirmed can ONLY ever be actor=\'admin\', a real driver:<id> here is treated as spoofing/corruption, not accepted', () => {
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'driver:12', booking_id: 4821 })), false);
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'driver:77', booking_id: 4821 })), false);
 });
 
 test('isHumanConfirmedBooking: FALSE for an accepted event that belongs to a DIFFERENT booking id — the exact defect being fixed', () => {
@@ -169,13 +170,14 @@ test('isHumanConfirmedBooking: false with no confirming event at all — never t
   assert.equal(isHumanConfirmedBooking(realBookingRow(), null), false);
 });
 
-test('isHumanConfirmedBooking: false for an actor that is neither a driver:<id> nor admin (defends against a future automated actor)', () => {
+test('isHumanConfirmedBooking: false for any actor other than the exact literal \'admin\' (defends against a future automated actor)', () => {
   assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'system' })), false);
   assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'cron' })), false);
   assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: '' })), false);
+  assert.equal(isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ actor: 'Admin' })), false, 'case-sensitive — must match the real literal exactly');
 });
 
-test('isHumanConfirmedBooking: false for page_view/quote/booking_attempt/notification_sent style events — only "accepted" qualifies', () => {
+test('isHumanConfirmedBooking: false for page_view/quote/booking_attempt/notification_sent style events — only "human_confirmed" qualifies', () => {
   for (const eventType of ['page_view', 'quote_requested', 'booking_attempt', 'notification_sent', 'created']) {
     assert.equal(
       isHumanConfirmedBooking(realBookingRow(), realAcceptEvent({ event_type: eventType, new_status: 'pending' })),
