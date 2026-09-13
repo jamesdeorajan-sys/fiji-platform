@@ -58,8 +58,18 @@
 -- or any existing column. Every existing booking simply has no row here
 -- until its admin notification is next attempted (treated as
 -- NOT_ATTEMPTED by claimAdminNotificationAttempt's own INSERT OR IGNORE).
+-- No historical booking is ever backfilled or retroactively marked SENT by
+-- this migration - a row only ever comes into existence, and only ever
+-- becomes SENT, via a real, positive send outcome recorded by the
+-- application code (attemptAdminNotification()), never by this schema
+-- change itself.
+--
+-- Idempotent on retry: both statements below use IF NOT EXISTS, so a
+-- deployment step that re-runs this file after a partial failure (e.g. the
+-- CREATE TABLE committed but the CREATE INDEX step didn't) errors on
+-- neither statement the second time - safe to apply more than once.
 
-CREATE TABLE admin_notification_state (
+CREATE TABLE IF NOT EXISTS admin_notification_state (
   booking_id INTEGER PRIMARY KEY REFERENCES bookings(id),
   client_booking_ref TEXT,
   state TEXT NOT NULL DEFAULT 'NOT_ATTEMPTED',

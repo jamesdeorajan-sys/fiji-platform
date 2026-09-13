@@ -242,63 +242,74 @@ test('Incident #60 fixture (newline, tab, 5+ consecutive spaces in guest-authore
 
 // ─── 2/3. NOTIFICATION DELIVERY STATE + RETRY BEHAVIOR ──────────────────
 
-test('provider failure -> guest retry (same client_booking_ref) -> success -> a third replay is skipped_idempotent with zero additional provider calls', async () => {
+// Incident #60 regression proof - the exact sequence from the CEO's own
+// mission text, asserted step by step:
+//   booking saved -> first Meta send fails -> state FAILED_RETRYABLE ->
+//   same client_booking_ref retry -> no second booking row -> notification
+//   reattempted -> provider success -> state SENT -> later replay skipped
+//   -> admin_notification_sent exactly once
+test('Incident #60 regression: booking saved -> first Meta send fails -> FAILED_RETRYABLE -> same-ref retry (no second booking row) -> reattempted -> provider success -> SENT -> later replay skipped -> admin_notification_sent exactly once', async () => {
   const { env, db } = freshEnv();
   const mock = installScriptedMetaMock([
     metaSuccessResponse(), // short alert, on the original (non-replay) creation
-    meta132018Response(),  // rich notification, on the original creation - FAILS
+    meta132018Response(),  // rich notification, on the original creation - FAILS (this is booking #60's real failure)
     metaSuccessResponse(), // rich notification, on the retry (first replay) - SUCCEEDS
   ]);
+  const bookingRowCount = (ref) => db.prepare('SELECT COUNT(*) as n FROM bookings WHERE client_booking_ref = ?').get(ref).n;
   try {
-    const ref = 'FD-RETRY-TEST-1';
+    const ref = 'FD-PYC5VE-REGRESSION';
+
+    // Step 1: booking saved.
     const create = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
     assert.equal(create.status, 201);
     const bookingId = create.body.booking_id;
+    assert.equal(bookingRowCount(ref), 1, 'exactly one booking row after the original save');
 
+    // Step 2/3: first Meta send fails -> state FAILED_RETRYABLE.
     let state = db.prepare('SELECT state, attempt_count FROM admin_notification_state WHERE booking_id = ?').get(bookingId);
     assert.equal(state.state, 'FAILED_RETRYABLE', 'a failed send must NOT be treated as SENT');
     assert.equal(state.attempt_count, 1);
-
-    let failedEvents = db.prepare(`SELECT * FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_failed'`).all(bookingId);
+    const failedEvents = db.prepare(`SELECT * FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_failed'`).all(bookingId);
     assert.equal(failedEvents.length, 1);
     const failedMeta = JSON.parse(failedEvents[0].metadata);
     assert.match(failedMeta.response, /132018/, 'the raw Meta rejection must be retained (response field), not just a generic reason string');
     assert.equal(failedMeta.status, 400);
 
-    // Guest retry: same client_booking_ref -> booking-level idempotent
-    // replay. Must NOT create a second booking, and must retry the
-    // notification for real (it was never actually delivered).
+    // Step 4/5/6: same client_booking_ref retry -> no second booking row,
+    // notification reattempted for real (this is the exact bug: the OLD
+    // code logged skipped_idempotent here instead of retrying).
     const retry = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
     assert.equal(retry.status, 200);
     assert.equal(retry.body.idempotent, true);
-    assert.equal(retry.body.booking_id, bookingId, 'must be the SAME booking - no second booking created');
+    assert.equal(retry.body.booking_id, bookingId, 'must be the SAME booking');
+    assert.equal(bookingRowCount(ref), 1, 'still exactly one booking row - the retry did not create a second one');
 
+    // Step 7: provider success -> state SENT.
     state = db.prepare('SELECT state, attempt_count FROM admin_notification_state WHERE booking_id = ?').get(bookingId);
     assert.equal(state.state, 'SENT');
     assert.equal(state.attempt_count, 2, 'the retry is attempt #2 on the SAME durable row, not a fresh #1');
-
     const sentEvents = db.prepare(`SELECT * FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_sent'`).all(bookingId);
-    assert.equal(sentEvents.length, 1, 'admin_notification_sent recorded exactly once');
+    assert.equal(sentEvents.length, 1, 'admin_notification_sent recorded exactly once so far');
 
-    const callsBeforeSecondReplay = mock.calls.length;
-    assert.equal(callsBeforeSecondReplay, 3);
+    const callsBeforeLaterReplay = mock.calls.length;
+    assert.equal(callsBeforeLaterReplay, 3, 'short alert + failed rich attempt + succeeded rich retry = 3 provider calls total');
 
-    // A further (third overall) request replaying the same ref must be
-    // skipped_idempotent - now correctly, because a real send genuinely
-    // already succeeded.
-    const secondReplay = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
-    assert.equal(secondReplay.status, 200);
-    assert.equal(secondReplay.body.booking_id, bookingId);
-    assert.equal(mock.calls.length, callsBeforeSecondReplay, 'a booking already SENT must trigger zero additional provider calls');
+    // Step 8/9: a LATER replay of the same ref is correctly skipped (now
+    // genuinely correct, because a real send already succeeded) - zero
+    // additional provider calls, and admin_notification_sent stays at
+    // exactly one occurrence, never a second.
+    const laterReplay = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
+    assert.equal(laterReplay.status, 200);
+    assert.equal(laterReplay.body.booking_id, bookingId);
+    assert.equal(mock.calls.length, callsBeforeLaterReplay, 'a booking already SENT must trigger zero additional provider calls');
+    assert.equal(bookingRowCount(ref), 1, 'still exactly one booking row after the later replay too');
 
     const skippedEvents = db.prepare(`SELECT * FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_skipped_idempotent'`).all(bookingId);
     assert.equal(skippedEvents.length, 1);
-    const skippedMeta = JSON.parse(skippedEvents[0].metadata);
-    assert.match(skippedMeta.reason, /already sent/);
+    assert.match(JSON.parse(skippedEvents[0].metadata).reason, /already sent/);
 
-    // Exactly one booking row ever exists for this ref, throughout.
-    const rows = db.prepare('SELECT COUNT(*) as n FROM bookings WHERE client_booking_ref = ?').get(ref);
-    assert.equal(rows.n, 1);
+    const sentEventsFinal = db.prepare(`SELECT * FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_sent'`).all(bookingId);
+    assert.equal(sentEventsFinal.length, 1, 'admin_notification_sent recorded EXACTLY ONCE across the whole sequence, including after the later replay');
   } finally {
     mock.restore();
   }
