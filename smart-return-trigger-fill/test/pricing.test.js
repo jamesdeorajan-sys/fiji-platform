@@ -90,12 +90,12 @@ test('AU$50 credit REDEEM: no tour booking at all -> not redeemable, no guess', 
   assert.equal(result.reason, 'NO_TOUR_BOOKING');
 });
 
-test('smartMatchPrice HOLDs when the candidate is not operationally feasible', () => {
+test('smartMatchPrice HOLDs when the candidate is not operationally feasible (reason names feasibility, not economics)', () => {
   const result = smartMatchPrice({
     matchCandidate: { operational_feasibility: 'HOLD_UNKNOWN_TIMING', commercial_pricing_status: 'READY' },
     routePriceTruth: { smart_match_price: 40, absolute_floor: 25 },
   });
-  assert.equal(result.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(result.decision, PRICE_DECISION.HOLD_NOT_OPERATIONALLY_FEASIBLE);
   assert.equal(result.price, null);
 });
 
@@ -104,7 +104,7 @@ test('CEO fix 2026-09-13: smartMatchPrice HOLDs when operationally feasible but 
     matchCandidate: { operational_feasibility: 'FEASIBLE', commercial_pricing_status: 'HOLD_UNKNOWN_ECONOMICS' },
     routePriceTruth: { smart_match_price: 40, absolute_floor: 25 },
   });
-  assert.equal(result.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(result.decision, PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS);
   assert.equal(result.price, null);
 });
 
@@ -117,9 +117,9 @@ test('smartMatchPrice returns a floor-safe price when operationally feasible AND
   assert.equal(result.price, 40);
 });
 
-test('liveFillPrice HOLDs for a non-active offer', () => {
+test('liveFillPrice HOLDs for a non-active offer (reason names the missing offer, not the floor)', () => {
   const result = liveFillPrice({ offer: { status: 'DISCOVERED', standard_price: 40, absolute_floor: 25 } });
-  assert.equal(result.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(result.decision, PRICE_DECISION.HOLD_NO_ACTIVE_OFFER);
 });
 
 test('liveFillPrice never returns a price below the offer floor', () => {

@@ -57,7 +57,7 @@ test('1. source economics known + candidate economics unknown = operational matc
   assert.equal(match.estimated_incremental_revenue, null);
 
   const price = smartMatchPrice({ matchCandidate: match, routePriceTruth: null });
-  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS);
   assert.equal(price.price, null);
 });
 
@@ -73,7 +73,7 @@ test('2. candidate floor unknown (even with route_price_truth present) = no Smar
   assert.equal(match.estimated_incremental_revenue, null);
 
   const price = smartMatchPrice({ matchCandidate: match, routePriceTruth });
-  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS);
   assert.equal(price.price, null);
 });
 
@@ -89,7 +89,7 @@ test('3. candidate payout/cost-basis unknown = contribution UNKNOWN and pricing 
   assert.equal(match.estimated_contribution, null);
 
   const price = smartMatchPrice({ matchCandidate: match, routePriceTruth });
-  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_FLOOR);
+  assert.equal(price.decision, PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS);
 });
 
 test('4. both route floor and a cost basis verified on the candidate leg = price may pass through enforceFloor', () => {

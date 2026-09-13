@@ -12,8 +12,29 @@ import {
   DEFAULT_MIN_TOUR_SPEND_PER_CREDIT,
 } from './model.js';
 
+/* CEO P1 semantic cleanup (2026-09-13): HOLD_UNKNOWN_FLOOR used to be
+ * returned for three genuinely different blockers - operational
+ * infeasibility, unverified candidate-leg economics (missing route price
+ * truth / cost basis), and the floor specifically being unknown - which
+ * made every HOLD look like a floor problem even when the floor was never
+ * the issue. Each real cause now gets its own reason:
+ *   HOLD_NOT_OPERATIONALLY_FEASIBLE - the match itself isn't (or isn't
+ *     known to be) chronologically/vehicle-compatible. Never an economics
+ *     question.
+ *   HOLD_UNKNOWN_ECONOMICS - the candidate leg's own route_price_truth,
+ *     cost basis, or commercial_pricing_status readiness is missing.
+ *     Mirrors model.js's COMMERCIAL_PRICING_STATUS.HOLD_UNKNOWN_ECONOMICS.
+ *   HOLD_NO_ACTIVE_OFFER - liveFillPrice() only: no real ACTIVE/VALIDATED/
+ *     HELD offer exists to price at all.
+ *   HOLD_UNKNOWN_FLOOR - narrowed to its literal meaning: enforceFloor()
+ *     was reached with a real candidate price but absolute_floor itself
+ *     is null.
+ */
 export const PRICE_DECISION = Object.freeze({
   OK: 'OK',
+  HOLD_NOT_OPERATIONALLY_FEASIBLE: 'HOLD_NOT_OPERATIONALLY_FEASIBLE',
+  HOLD_UNKNOWN_ECONOMICS: 'HOLD_UNKNOWN_ECONOMICS',
+  HOLD_NO_ACTIVE_OFFER: 'HOLD_NO_ACTIVE_OFFER',
   HOLD_UNKNOWN_FLOOR: 'HOLD_UNKNOWN_FLOOR',
   CLAMPED_TO_FLOOR: 'CLAMPED_TO_FLOOR',
 });
@@ -130,13 +151,13 @@ export function redeemExperienceCredit({ tourBooking, minSpendThreshold = DEFAUL
  */
 export function smartMatchPrice({ matchCandidate, routePriceTruth }) {
   if (!matchCandidate || matchCandidate.operational_feasibility !== 'FEASIBLE') {
-    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
+    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_NOT_OPERATIONALLY_FEASIBLE, price: null };
   }
   if (matchCandidate.commercial_pricing_status !== 'READY') {
-    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
+    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS, price: null };
   }
   if (!routePriceTruth || routePriceTruth.smart_match_price == null) {
-    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
+    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_ECONOMICS, price: null };
   }
   const { decision, price } = enforceFloor(routePriceTruth.smart_match_price, routePriceTruth.absolute_floor);
   return { fareClass: FARE_CLASS.SMART_MATCH, decision, price };
@@ -148,7 +169,7 @@ export function smartMatchPrice({ matchCandidate, routePriceTruth }) {
  */
 export function liveFillPrice({ offer }) {
   if (!offer || !['ACTIVE', 'VALIDATED', 'HELD'].includes(offer.status)) {
-    return { fareClass: FARE_CLASS.LIVE_FILL, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
+    return { fareClass: FARE_CLASS.LIVE_FILL, decision: PRICE_DECISION.HOLD_NO_ACTIVE_OFFER, price: null };
   }
   const candidate = offer.smart_match_price ?? offer.standard_price;
   const { decision, price } = enforceFloor(candidate, offer.absolute_floor);

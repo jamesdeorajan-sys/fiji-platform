@@ -39,7 +39,7 @@ only defines and validates the shape (`src/route_price_truth.js`,
 | `return_lock_price` | Fare shown once RETURN_LOCK eligibility is confirmed (`src/pricing.js#isReturnLockEligible`). |
 | `smart_match_price` | Never used unless the matcher found a `FEASIBLE` candidate (`src/pricing.js#smartMatchPrice`). |
 | `live_fill_price` | Never used unless a real `ACTIVE`/`VALIDATED`/`HELD` `smart_offers` row exists for the route. |
-| `operator_payout` / `absolute_floor` | Nullable. While either is null, every price-recommendation function in `src/pricing.js` returns `HOLD_UNKNOWN_FLOOR` instead of guessing. |
+| `operator_payout` / `absolute_floor` | Nullable. While either is null, every price-recommendation function in `src/pricing.js` returns a HOLD decision instead of guessing — `HOLD_UNKNOWN_ECONOMICS` while the route/cost-basis figures themselves are missing, `HOLD_UNKNOWN_FLOOR` if everything else is known but `absolute_floor` specifically is still null (see `src/pricing.js`'s `PRICE_DECISION` for the full set, split 2026-09-13 so each HOLD names its real cause). |
 | `last_verified_at` | Who/when confirmed these numbers are real — not auto-populated by any code path in Stage 1. |
 | `pricing_reason` | Free text audit trail for why a number is what it is. |
 | `offer_expiry` | Only meaningful for the fare classes tied to a live `smart_offers` row. |
