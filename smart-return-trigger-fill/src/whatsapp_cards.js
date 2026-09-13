@@ -6,10 +6,18 @@
  * "DO NOT auto-send to customer" in issue #54.
  */
 
+/**
+ * CEO fix 2026-09-13 (second review): RETURN_LOCK only needs operational
+ * feasibility (it prices off the customer's own two legs via
+ * route_price_truth.return_lock_price, not this matcher's economics gate).
+ * SMART_MATCH/LIVE_FILL additionally require commercial_pricing_status
+ * READY on the candidate leg — see src/pricing.js#smartMatchPrice.
+ */
 export function recommendedAction(bestCandidate) {
   if (!bestCandidate) return 'HOLD';
-  if (bestCandidate.feasibility !== 'FEASIBLE') return 'HOLD';
+  if (bestCandidate.operational_feasibility !== 'FEASIBLE') return 'HOLD';
   if (bestCandidate.match_type === 'EXACT_REVERSE') return 'RETURN_LOCK';
+  if (bestCandidate.commercial_pricing_status !== 'READY') return 'HOLD';
   if (bestCandidate.match_score >= 70) return 'SMART_MATCH';
   return 'LIVE_FILL';
 }

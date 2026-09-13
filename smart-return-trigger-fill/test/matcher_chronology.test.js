@@ -38,7 +38,7 @@ test('an earlier reverse leg is INFEASIBLE, never matched as feasible', () => {
   });
   const [candidate] = computeMatchCandidates(source, [earlierCandidate]);
   assert.equal(candidate.time_compatible, false);
-  assert.equal(candidate.feasibility, 'INFEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'INFEASIBLE');
 });
 
 test('a later reverse leg with sufficient gap after source completion is FEASIBLE', () => {
@@ -52,7 +52,7 @@ test('a later reverse leg with sufficient gap after source completion is FEASIBL
   });
   const [candidate] = computeMatchCandidates(source, [laterCandidate]);
   assert.equal(candidate.time_compatible, true);
-  assert.equal(candidate.feasibility, 'FEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'FEASIBLE');
 });
 
 test('identical pickup time is INFEASIBLE, not a borderline pass', () => {
@@ -66,7 +66,7 @@ test('identical pickup time is INFEASIBLE, not a borderline pass', () => {
   });
   const [candidate] = computeMatchCandidates(source, [sameTimeCandidate]);
   assert.equal(candidate.time_compatible, false);
-  assert.equal(candidate.feasibility, 'INFEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'INFEASIBLE');
 });
 
 test('a candidate starting mid-trip (overlapping the source\'s own duration) is INFEASIBLE', () => {
@@ -79,7 +79,7 @@ test('a candidate starting mid-trip (overlapping the source\'s own duration) is 
     pickup_datetime: plus(30),
   });
   const [candidate] = computeMatchCandidates(source, [overlappingCandidate]);
-  assert.equal(candidate.feasibility, 'INFEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'INFEASIBLE');
 });
 
 test('unknown source trip duration holds as HOLD_UNKNOWN_TIMING, never guessed feasible', () => {
@@ -93,7 +93,7 @@ test('unknown source trip duration holds as HOLD_UNKNOWN_TIMING, never guessed f
   });
   const [candidate] = computeMatchCandidates(source, [laterCandidate]);
   assert.equal(candidate.time_compatible, null);
-  assert.equal(candidate.feasibility, 'HOLD_UNKNOWN_TIMING');
+  assert.equal(candidate.operational_feasibility, 'HOLD_UNKNOWN_TIMING');
 });
 
 // CEO's literal scenario: NAN (Nadi International Airport, IATA code) ->
@@ -108,7 +108,7 @@ test('NAN -> Suva then Suva -> NAN too early is INFEASIBLE', () => {
     pickup_datetime: plus(150 + 10), // only 10 minutes after arrival; buffer requires 45
   });
   const [candidate] = computeMatchCandidates(outbound, [tooEarlyReturn]);
-  assert.equal(candidate.feasibility, 'INFEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'INFEASIBLE');
 });
 
 test('NAN -> Suva then Suva -> NAN with a realistic later pickup is FEASIBLE when other rules pass', () => {
@@ -122,7 +122,7 @@ test('NAN -> Suva then Suva -> NAN with a realistic later pickup is FEASIBLE whe
   });
   const [candidate] = computeMatchCandidates(outbound, [realisticReturn]);
   assert.equal(candidate.time_compatible, true);
-  assert.equal(candidate.feasibility, 'FEASIBLE');
+  assert.equal(candidate.operational_feasibility, 'FEASIBLE');
 });
 
 test('a planned_dropoff_datetime, when given, takes precedence over estimated_duration_minutes', () => {
@@ -137,5 +137,5 @@ test('a planned_dropoff_datetime, when given, takes precedence over estimated_du
     pickup_datetime: plus(60),
   });
   const [candidate] = computeMatchCandidates(source, [tooEarlyIfDurationUsed]);
-  assert.equal(candidate.feasibility, 'INFEASIBLE'); // plus(60) is before planned_dropoff_datetime plus(300)
+  assert.equal(candidate.operational_feasibility, 'INFEASIBLE'); // plus(60) is before planned_dropoff_datetime plus(300)
 });

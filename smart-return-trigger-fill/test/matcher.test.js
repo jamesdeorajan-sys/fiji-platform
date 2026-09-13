@@ -15,21 +15,30 @@ test('exact reverse leg is detected and scored highest', () => {
   assert.ok(exact.match_score >= 90);
 });
 
-test('known payout/floor on both sides yields a FEASIBLE verdict, not a guess', () => {
+test('known duration + chronology + vehicle yields operationally FEASIBLE, independent of economics', () => {
   const candidates = computeMatchCandidates(byId.mv_syn_out_01, movements);
   const exact = candidates.find((c) => c.candidate_movement_id === 'mv_syn_ret_01');
-  assert.equal(exact.feasibility, 'FEASIBLE');
+  assert.equal(exact.operational_feasibility, 'FEASIBLE');
+  // No routePriceTruthLookup was supplied here, so pricing has nothing to
+  // verify against — that's a separate axis from operational feasibility.
+  assert.equal(exact.commercial_pricing_status, 'HOLD_UNKNOWN_ECONOMICS');
 });
 
-test('unknown absolute_floor/payout forces HOLD_UNKNOWN_ECONOMICS, never a fabricated feasible verdict', () => {
-  // mv_syn_nearby_01 itself has null operator_payout/absolute_floor.
+test('CEO fix 2026-09-13: the SOURCE movement having unknown economics does NOT block operational feasibility', () => {
+  // mv_syn_nearby_01 itself has null operator_payout/absolute_floor — under
+  // the old (buggy) design this alone forced a HOLD verdict on every
+  // candidate. It must not anymore: operational feasibility only cares
+  // about chronology and vehicle class.
   const candidates = computeMatchCandidates(byId.mv_syn_nearby_01, movements);
   assert.ok(candidates.length > 0, 'expected at least one nearby-reverse candidate');
-  for (const c of candidates) {
-    assert.notEqual(c.feasibility, 'FEASIBLE');
-    if (c.time_compatible && c.vehicle_compatible) {
-      assert.equal(c.feasibility, 'HOLD_UNKNOWN_ECONOMICS');
-    }
+  const operationallyFeasible = candidates.filter((c) => c.operational_feasibility === 'FEASIBLE');
+  assert.ok(
+    operationallyFeasible.length > 0,
+    'expected at least one candidate to be operationally feasible despite the source lacking economics'
+  );
+  // Pricing must still HOLD though — no route_price_truth was supplied.
+  for (const c of operationallyFeasible) {
+    assert.equal(c.commercial_pricing_status, 'HOLD_UNKNOWN_ECONOMICS');
   }
 });
 
@@ -85,5 +94,5 @@ test('time-incompatible candidates (too tight a turnaround) are marked INFEASIBL
   const found = candidates.find((c) => c.candidate_movement_id === 'mv_syn_tight');
   assert.ok(found);
   assert.equal(found.time_compatible, false);
-  assert.equal(found.feasibility, 'INFEASIBLE');
+  assert.equal(found.operational_feasibility, 'INFEASIBLE');
 });

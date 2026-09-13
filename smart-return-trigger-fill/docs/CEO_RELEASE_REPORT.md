@@ -3,12 +3,16 @@
 Issue: #54 · Branch: `ceo/smart-return-trigger-fill-shadow` · Base commit:
 `3f9db86475ebcd542a74c04237d01001b21fcca6` (origin/main)
 
-**This report covers two rounds:** the original Stage 1 build (pushed at
-commit `a63447ad76402d7ca8a66dd39d600f040e3ea9ed`) and the 2026-09-13
+**This report covers three rounds:** the original Stage 1 build (pushed at
+`a63447ad76402d7ca8a66dd39d600f040e3ea9ed`), the first 2026-09-13
 second-review fix pass (P0 matcher chronology correction, EARN/REDEEM
-credit split, `booking_contact_ref`, geography re-labeling). Section
-numbers match the original issue's requested deliverable list; each
-section now reflects the current, corrected state.
+credit split, `booking_contact_ref`, geography re-labeling, pushed at
+`8b3dd7cb304843a05676a66634f14093bc41df86`), and a same-day third round
+splitting **operational feasibility** from **commercial pricing status**
+so a match can be operationally sound while a SMART_MATCH/LIVE_FILL price
+still correctly HOLDs on the candidate leg's own unverified economics.
+Section numbers match the original issue's requested deliverable list;
+each section reflects the current, corrected state.
 
 ## 1. Branch name
 
@@ -23,9 +27,21 @@ session report for the exact new HEAD SHA and diff-from-`a63447a`.
 
 ## 3. Exact files added/changed
 
-Round 1 added 32 files. Round 2 adds 4 more (2 migrations, 2 test files)
-and edits several existing ones — no file outside
-`smart-return-trigger-fill/` is touched in either round.
+Round 1 added 32 files. Round 2 added 4 more (2 migrations, 2 test files).
+Round 3 adds one more new test file and edits several existing ones — no
+file outside `smart-return-trigger-fill/` is touched in any round.
+
+**New in Round 3:**
+```
+smart-return-trigger-fill/test/economics_gate.test.js
+```
+
+**Edited in Round 3:** `src/model.js` (FEASIBILITY split into
+`OPERATIONAL_FEASIBILITY` + `COMMERCIAL_PRICING_STATUS`), `src/matcher.js`,
+`src/pricing.js` (`smartMatchPrice`), `src/whatsapp_cards.js`
+(`recommendedAction`), `scripts/demo.js`, `test/matcher.test.js`,
+`test/matcher_chronology.test.js`, `test/pricing.test.js`,
+`test/whatsapp_cards.test.js`, `docs/SAMPLE_SCENARIOS.md`, this file.
 
 **New in Round 2:**
 ```
@@ -42,12 +58,16 @@ smart-return-trigger-fill/test/pii_guard.test.js
 `docs/SECURITY_PRIVACY_REVIEW.md`, this file.
 
 **Unchanged since Round 1:** `README.md`, `package.json`, all of
-`migrations/0001`–`0004`, `src/db.js`, `src/ledger.js`, `src/offers.js`,
-`src/pipeline.js`, `src/route_price_truth.js`,
+`migrations/0001`–`0006`, `src/db.js`, `src/ledger.js`, `src/offers.js`,
+`src/pipeline.js`, `src/route_price_truth.js`, `src/board.js` (unchanged
+since Round 2), `src/geo_seed.js` (unchanged since Round 2),
 `docs/ROUTE_PRICE_TRUTH_CONTRACT.md`, `docs/ROLLBACK.md`,
+`docs/SECURITY_PRIVACY_REVIEW.md` (unchanged since Round 2),
 `test/ledger_idempotency.test.js`, `test/offers_atomicity.test.js`,
-`test/pipeline_safety.test.js`, `test/whatsapp_cards.test.js`,
-`test/route_price_truth.test.js`.
+`test/pipeline_safety.test.js`, `test/route_price_truth.test.js`,
+`test/board.test.js` (unchanged since Round 2),
+`test/fixtures/synthetic_movements.js` (unchanged since Round 2),
+`test/pii_guard.test.js`.
 
 ## 4. Schema / migrations
 
@@ -102,13 +122,36 @@ soon after completion — identical/overlapping/earlier all fall here), or
 `candidate.time_compatible` is now `true | false | null`, not just a
 boolean, so "unknown" is never silently coerced to a guess either way.
 
-Feasibility precedence: vehicle mismatch or chronologically `INFEASIBLE`
--> `FEASIBILITY.INFEASIBLE`; chronologically `UNKNOWN` ->
-`FEASIBILITY.HOLD_UNKNOWN_TIMING` (new); economics unknown ->
-`HOLD_UNKNOWN_ECONOMICS`; otherwise `FEASIBLE`.
+Feasibility precedence (Round 2): vehicle mismatch or chronologically
+`INFEASIBLE` -> `INFEASIBLE`; chronologically `UNKNOWN` ->
+`HOLD_UNKNOWN_TIMING`; otherwise `FEASIBLE`.
 
 `findMultiLegChains` uses the identical completion-based check for every
 hop — a leg with unknown duration is never chained through.
+
+**Round 3 fix: this "feasibility" is now `operational_feasibility`, and
+economics no longer participate in it at all.** The original design
+folded a fourth case — "economics unknown" — into the same feasibility
+verdict, checked against the **source** movement's `absolute_floor`/
+`operator_payout`. That was wrong on two counts: (1) operational
+feasibility (can this vehicle make the connection?) has nothing to do
+with economics, and (2) even where economics mattered, checking the
+*source's* economics was checking the wrong leg — a SMART_MATCH/LIVE_FILL
+price sells the **candidate** leg, not the source. Every match candidate
+now carries a second, independent field:
+
+```
+commercial_pricing_status: 'READY' | 'HOLD_UNKNOWN_ECONOMICS'
+```
+
+`READY` only when the **candidate's** route has a `route_price_truth`
+entry with a known `absolute_floor` AND a cost basis (`operator_payout` on
+that route, or on the candidate booking itself) — never derived from the
+source. `estimated_incremental_revenue`/`estimated_contribution` are now
+gated on `commercial_pricing_status === 'READY'` (in addition to
+operational feasibility), not on the source's economics. See
+`docs/SAMPLE_SCENARIOS.md` Scenario 7 for all four economics
+combinations and `test/economics_gate.test.js` for the regression tests.
 
 Regression tests for the exact scenarios called out in the review:
 earlier reverse leg (`INFEASIBLE`), later reverse leg (`FEASIBLE`),
@@ -131,6 +174,16 @@ instruction.
 `src/pricing.js#enforceFloor` is unchanged and still the single place the
 floor hard-rule is enforced (unknown floor -> `HOLD_UNKNOWN_FLOOR`;
 below-floor -> `CLAMPED_TO_FLOOR`, flagged, never silently returned).
+
+**Round 3 fix:** `smartMatchPrice` now requires BOTH
+`matchCandidate.operational_feasibility === 'FEASIBLE'` AND
+`matchCandidate.commercial_pricing_status === 'READY'` before it will even
+look at `routePriceTruth.smart_match_price` — previously it only checked
+the old combined `feasibility` field, which (per §7) could read `FEASIBLE`
+based on the source's economics rather than the candidate's. `liveFillPrice`
+needed no equivalent fix: it already operated on a `smart_offers` row's own
+`absolute_floor`/pricing fields directly — the offer *is* the saleable
+leg, so there was never a source/candidate leg to conflate there.
 
 **Policy fix (2026-09-13): EARN and REDEEM are now separate functions.**
 
@@ -178,8 +231,24 @@ literal chronologically-impossible case the review caught, now correctly
 
 ## 12. Tests and results
 
-**76 tests, `node --test test/*.test.js`, 76 passing, 0 failing** (up from
-47 in Round 1), zero external dependencies. New in Round 2:
+**85 tests, `node --test test/*.test.js`, 85 passing, 0 failing** (47 in
+Round 1 -> 76 in Round 2 -> 85 in Round 3), zero external dependencies.
+
+New in Round 3 (`test/economics_gate.test.js`, 6 tests, plus updated
+assertions in `matcher.test.js`, `matcher_chronology.test.js`,
+`pricing.test.js`, `whatsapp_cards.test.js`):
+
+| Invariant | Test file |
+|---|---|
+| Source economics known + candidate economics unknown = operational OK, price HOLD | `economics_gate.test.js` |
+| Candidate route known but floor unverified = no Smart Match price | `economics_gate.test.js` |
+| Candidate has no cost basis anywhere = contribution `null`, price HOLD | `economics_gate.test.js` |
+| Candidate route floor + cost basis both verified = price passes through `enforceFloor` | `economics_gate.test.js` |
+| A cost basis on the candidate's own booking (not just the route) also satisfies readiness | `economics_gate.test.js` |
+| Source's fully-known economics never substitute for the candidate's own verification | `economics_gate.test.js`, `matcher.test.js` |
+| `recommendedAction`: RETURN_LOCK only needs operational feasibility; SMART_MATCH/LIVE_FILL additionally need `READY` pricing | `whatsapp_cards.test.js` |
+
+New in Round 2:
 
 | Invariant | Test file |
 |---|---|
@@ -234,6 +303,13 @@ open question from Round 1 is now answered and enforced in code —
   flowing — this is the deliberately conservative consequence of "don't
   guess," not a bug. Worth knowing before expecting the matcher to
   surface many `FEASIBLE` results against real data on day one.
+- **New in Round 3: `commercial_pricing_status` will read
+  `HOLD_UNKNOWN_ECONOMICS` almost universally until `route_price_truth`
+  rows exist.** No code path in this branch populates that table (it's
+  Stage 2+ scope, held per your instruction). Expect every real candidate
+  to HOLD on price, even ones that are perfectly operationally feasible,
+  until `route_price_truth` is seeded with verified floors/payouts per
+  route.
 
 ## 16. Exact items that require CEO policy input
 

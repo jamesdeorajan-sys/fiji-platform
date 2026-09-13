@@ -24,18 +24,29 @@ test('ops card is a plain string with no send/network side effects, and lists HO
 test('an unverified empty-km estimate is labelled as such, never presented as fact', () => {
   const candidates = [{
     candidate_movement_id: 'mv_x', match_score: 90, match_type: 'EXACT_REVERSE',
-    feasibility: 'FEASIBLE', empty_km_potentially_avoided: 20, empty_km_verified: false,
+    operational_feasibility: 'FEASIBLE', commercial_pricing_status: 'READY',
+    empty_km_potentially_avoided: 20, empty_km_verified: false,
   }];
   const card = buildOpsCard(movement, candidates);
   assert.match(card, /20 \(unverified estimate\)/);
 });
 
-test('recommendedAction returns HOLD whenever economics are unknown, regardless of match score', () => {
-  const action = recommendedAction({ feasibility: 'HOLD_UNKNOWN_ECONOMICS', match_score: 95, match_type: 'EXACT_REVERSE' });
+test('recommendedAction returns HOLD when not operationally feasible, regardless of match score', () => {
+  const action = recommendedAction({ operational_feasibility: 'HOLD_UNKNOWN_TIMING', commercial_pricing_status: 'READY', match_score: 95, match_type: 'EXACT_REVERSE' });
   assert.equal(action, 'HOLD');
 });
 
-test('recommendedAction returns RETURN_LOCK for a feasible exact reverse match', () => {
-  const action = recommendedAction({ feasibility: 'FEASIBLE', match_score: 95, match_type: 'EXACT_REVERSE' });
+test('recommendedAction returns RETURN_LOCK for an operationally feasible exact reverse match, even with pricing unready', () => {
+  const action = recommendedAction({ operational_feasibility: 'FEASIBLE', commercial_pricing_status: 'HOLD_UNKNOWN_ECONOMICS', match_score: 95, match_type: 'EXACT_REVERSE' });
   assert.equal(action, 'RETURN_LOCK');
+});
+
+test('CEO fix 2026-09-13: recommendedAction returns HOLD for a non-reverse match that is operationally feasible but commercially unready', () => {
+  const action = recommendedAction({ operational_feasibility: 'FEASIBLE', commercial_pricing_status: 'HOLD_UNKNOWN_ECONOMICS', match_score: 80, match_type: 'CORRIDOR' });
+  assert.equal(action, 'HOLD');
+});
+
+test('recommendedAction returns SMART_MATCH only once both operational and commercial checks pass', () => {
+  const action = recommendedAction({ operational_feasibility: 'FEASIBLE', commercial_pricing_status: 'READY', match_score: 80, match_type: 'CORRIDOR' });
+  assert.equal(action, 'SMART_MATCH');
 });

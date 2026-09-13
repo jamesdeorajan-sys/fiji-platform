@@ -32,7 +32,9 @@ for (const m of allMovements) {
   const best = candidates[0];
   console.log(
     `${m.booking_reference} (${m.pickup_zone}->${m.dropoff_zone}) best match: ${
-      best ? `${best.candidate_movement_id} score=${best.match_score} feasibility=${best.feasibility}` : 'none'
+      best
+        ? `${best.candidate_movement_id} score=${best.match_score} operational=${best.operational_feasibility} pricing=${best.commercial_pricing_status}`
+        : 'none'
     }`
   );
 }

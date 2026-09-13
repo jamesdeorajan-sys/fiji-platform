@@ -122,12 +122,17 @@ export function redeemExperienceCredit({ tourBooking, minSpendThreshold = DEFAUL
 }
 
 /**
- * SMART_MATCH fare: only when the matcher found a FEASIBLE candidate and
- * route_price_truth has a known smart_match_price. Floor enforcement
- * always applies on top.
+ * SMART_MATCH fare: requires BOTH an operationally feasible candidate AND
+ * a READY commercial_pricing_status on that same candidate (CEO fix
+ * 2026-09-13, second review) — a match can be operationally fine while
+ * still HOLDing on price because the CANDIDATE leg's own economics are
+ * unverified. Floor enforcement always applies on top.
  */
 export function smartMatchPrice({ matchCandidate, routePriceTruth }) {
-  if (!matchCandidate || matchCandidate.feasibility !== 'FEASIBLE') {
+  if (!matchCandidate || matchCandidate.operational_feasibility !== 'FEASIBLE') {
+    return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
+  }
+  if (matchCandidate.commercial_pricing_status !== 'READY') {
     return { fareClass: FARE_CLASS.SMART_MATCH, decision: PRICE_DECISION.HOLD_UNKNOWN_FLOOR, price: null };
   }
   if (!routePriceTruth || routePriceTruth.smart_match_price == null) {

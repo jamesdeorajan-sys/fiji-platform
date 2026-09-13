@@ -36,10 +36,26 @@ export const MATCH_TYPE = Object.freeze({
   MULTI_LEG_CHAIN: 'MULTI_LEG_CHAIN',
 });
 
-export const FEASIBILITY = Object.freeze({
+/**
+ * CEO fix 2026-09-13 (second review): operational feasibility and
+ * commercial pricing status are DELIBERATELY SEPARATE verdicts.
+ *
+ * OPERATIONAL_FEASIBILITY answers "could this vehicle physically make
+ * this connection?" — chronology (source completion + turnaround buffer),
+ * vehicle class, and route relationship only. It never looks at anyone's
+ * economics, source or candidate.
+ *
+ * COMMERCIAL_PRICING_STATUS answers "do we know enough to safely quote a
+ * SMART_MATCH/LIVE_FILL price for the CANDIDATE leg — the one that would
+ * actually be sold?" It is based ONLY on the candidate's own verified
+ * route_price_truth + absolute_floor + a cost basis (operator_payout on
+ * the route or on the candidate booking itself). The source movement's
+ * economics must never be used to authorize a price on a different leg —
+ * that was the exact bug this split fixes.
+ */
+export const OPERATIONAL_FEASIBILITY = Object.freeze({
   FEASIBLE: 'FEASIBLE',
   INFEASIBLE: 'INFEASIBLE',
-  HOLD_UNKNOWN_ECONOMICS: 'HOLD_UNKNOWN_ECONOMICS',
   // Chronological feasibility could not be determined because the source
   // movement's trip duration is unknown (no estimated_duration_minutes or
   // planned_dropoff_datetime, and placeholder geography is not allowed to
@@ -47,9 +63,10 @@ export const FEASIBILITY = Object.freeze({
   HOLD_UNKNOWN_TIMING: 'HOLD_UNKNOWN_TIMING',
 });
 
-export function isHoldFeasibility(feasibility) {
-  return feasibility === FEASIBILITY.HOLD_UNKNOWN_ECONOMICS || feasibility === FEASIBILITY.HOLD_UNKNOWN_TIMING;
-}
+export const COMMERCIAL_PRICING_STATUS = Object.freeze({
+  READY: 'READY',
+  HOLD_UNKNOWN_ECONOMICS: 'HOLD_UNKNOWN_ECONOMICS',
+});
 
 export const RETURN_LOCK_MIN_DAYS_AHEAD = 7;
 export const EXPERIENCE_CREDIT_VALUE_EACH = 25;
