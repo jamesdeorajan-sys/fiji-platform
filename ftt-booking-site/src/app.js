@@ -1242,10 +1242,11 @@ function recommendedVehicle(pax, bags) {
 function buildVehicleCards() {
   const recommended = recommendedVehicle();
   return VEHICLES.map(v => {
-    const fits     = vehicleFits(v);
-    const isRec    = v.key === recommended;
+    const fits       = vehicleFits(v);
+    const isRec      = v.key === recommended;
+    const isSelected = state.selectedVehicle === v.key;
     const cls = ['vehicle-card'];
-    if (state.selectedVehicle === v.key) cls.push('selected');
+    if (isSelected)                       cls.push('selected');
     if (!fits)                           cls.push('disabled');
     if (isRec && fits)                   cls.push('recommended');
     // Why doesn't this fit?
@@ -1257,9 +1258,18 @@ function buildVehicleCards() {
     const onclick = fits
       ? `onclick="selectVehicle('${v.key}',this)"`
       : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    // CEO P1 mobile-conversion fix (2026-09-13) - "Selection clarity". Badge
+    // priority now checks selection FIRST: previously a manually-selected
+    // non-recommended vehicle showed no badge at all while the unselected
+    // recommended card kept showing "★ Recommended" with its own green
+    // border/glow (.vehicle-card.recommended:not(.selected) in styles.css),
+    // leaving two simultaneously-highlighted cards distinguished only by
+    // border color. Selection now always wins the badge slot.
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
-      : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
+      : isSelected
+        ? `<div class="vehicle-badge sel">✓ Selected</div>`
+        : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
     // Show discounted price if the per-vehicle price alone qualifies
     const t = calculateTotal(v.key);
     const priceBlock = t.qualifies
@@ -1286,10 +1296,11 @@ function buildVehicleDetailCards() {
     minibus: { features:['Air-conditioned','Up to 14 bags','Ideal for groups','Multiple drop-offs available'] }
   };
   return VEHICLES.map(v => {
-    const fits  = vehicleFits(v);
-    const isRec = v.key === recommended;
+    const fits       = vehicleFits(v);
+    const isRec      = v.key === recommended;
+    const isSelected = state.selectedVehicle === v.key;
     const cls = ['vehicle-detail-card'];
-    if (state.selectedVehicle === v.key) cls.push('selected');
+    if (isSelected)                       cls.push('selected');
     if (!fits)                           cls.push('disabled');
     if (isRec && fits)                   cls.push('recommended');
     let warn = '';
@@ -1300,9 +1311,13 @@ function buildVehicleDetailCards() {
     const onclick = fits
       ? `onclick="selectVehicleDetail('${v.key}',this)"`
       : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    // CEO P1 mobile-conversion fix (2026-09-13) - "Selection clarity", same
+    // fix as buildVehicleCards() above (see its comment for rationale).
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
-      : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
+      : isSelected
+        ? `<div class="vehicle-badge sel">✓ Selected</div>`
+        : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
     const t = calculateTotal(v.key);
     const priceBlock = t.qualifies
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
@@ -2027,20 +2042,23 @@ function showBulaSuccess(ref, bookingId) {
   if (bulaRef) bulaRef.textContent = bookingId ? `Booking #${bookingId} · Ref: ${ref}` : `Request ref: ${ref}`;
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
-    bulaLeadText.innerHTML = '<strong>Booking received.</strong> Our Fiji team has your reservation and will confirm your driver and final pickup details directly.';
+    bulaLeadText.innerHTML = '<strong>Your transfer request is saved.</strong> Our Fiji team checks availability and confirms your pickup details.';
   }
 
-  // CEO P0 Round 4 (2026-09-09) - "Final-Page WhatsApp Conversion RC".
-  // Explicitly (re-)set here, not just left to index.html's static
-  // default: showBulaUnsupportedRoute() hides this same pair of elements
-  // (its flow has no server-side booking yet, so this framing would be
-  // false there), so a guest who could somehow reach both states in one
-  // session always gets the version that matches their actual booking
-  // state. Kept byte-identical to index.html's static default text, same
-  // discipline as before (booking #66's stale-cache root cause).
+  // CEO P1 mobile-conversion fix (2026-09-13) - "Confirmation truth /
+  // WhatsApp semantics" correction. Explicitly (re-)set here, not just
+  // left to index.html's static default: showBulaUnsupportedRoute() hides
+  // this same pair of elements (its flow has no server-side booking yet,
+  // so this framing would be false there), so a guest who could somehow
+  // reach both states in one session always gets the version that matches
+  // their actual booking state. Kept byte-identical to index.html's static
+  // default text, same discipline as before (booking #66's stale-cache
+  // root cause). WhatsApp is presented as optional/faster contact, never
+  // as a required step to "confirm" or "complete" a booking that the
+  // server has already saved.
   const bulaWaContext = document.getElementById('bulaWaContext');
   if (bulaWaContext) {
-    bulaWaContext.textContent = 'Tap the green WhatsApp button now to connect with our local team and complete your pickup confirmation.';
+    bulaWaContext.textContent = 'Want faster contact? Message our Fiji team on WhatsApp.';
     bulaWaContext.style.display = '';
   }
 
@@ -2049,12 +2067,12 @@ function showBulaSuccess(ref, bookingId) {
   if (bulaWaBtn) {
     bulaWaBtn.href = waUrl;
     bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'CONTINUE TO WHATSAPP — CONFIRM MY PICKUP');
+    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'MESSAGE US ON WHATSAPP');
   }
 
   const bulaWaReassurance = document.getElementById('bulaWaReassurance');
   if (bulaWaReassurance) {
-    bulaWaReassurance.textContent = 'We already have your booking details. WhatsApp is where our Fiji team confirms your pickup and assists you directly.';
+    bulaWaReassurance.textContent = 'Your request is already saved online — WhatsApp is optional, just a faster way to reach us.';
     bulaWaReassurance.style.display = '';
   }
 
@@ -3621,4 +3639,28 @@ document.addEventListener('DOMContentLoaded', () => {
       if (target) { e.preventDefault(); target.scrollIntoView({ behavior:'smooth', block:'start' }); }
     });
   });
+
+  // CEO P1 mobile-conversion fix (2026-09-13) - "Mobile CTA collision".
+  // .sticky-bar is CSS-only (display:block under the mobile media query)
+  // with no prior JS control at all, so its generic "Get price →" nudge
+  // stayed pinned to the bottom of the screen throughout the entire active
+  // booking flow - overlapping/competing with the real step CTA
+  // (Confirm booking request, Continue, etc.) inside #bookingWidget. This
+  // hides the generic nudge bar for as long as the booking widget itself
+  // is on screen (there is already a real, more specific CTA visible in
+  // that case), and lets it reappear once the guest scrolls away from the
+  // widget. Purely a visibility toggle - no markup, pricing, or booking
+  // logic touched, and it never overrides the desktop `display:none`
+  // above the mobile breakpoint since that's still the default before any
+  // observer callback fires.
+  const stickyBar = document.getElementById('stickyBar');
+  const bookingWidgetEl = document.getElementById('bookingWidget');
+  if (stickyBar && bookingWidgetEl && 'IntersectionObserver' in window) {
+    const stickyBarObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        stickyBar.style.display = entry.isIntersecting ? 'none' : '';
+      });
+    }, { threshold: 0 });
+    stickyBarObserver.observe(bookingWidgetEl);
+  }
 });

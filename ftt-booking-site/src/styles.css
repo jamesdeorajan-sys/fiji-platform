@@ -489,7 +489,13 @@ textarea.field-input{resize:vertical;min-height:80px}
   .cta-band-inner{flex-direction:column;text-align:center}
   .sticky-bar{display:block}
   .form-grid{grid-template-columns:1fr}
-  .extras-grid{grid-template-columns:1fr}
+  /* CEO P1 mobile-conversion fix (2026-09-13) - "Optional extras" height.
+     This used to force a single column on mobile, stacking all 4 extras
+     into full-width rows and roughly doubling the vertical height the
+     section consumed versus desktop. Reverting to the same 2-column grid
+     desktop already uses (base rule at line 274) halves that height with
+     zero markup/pricing change - no extras removed, nothing redesigned. */
+  .extras-grid{grid-template-columns:repeat(2,1fr)}
   .steps{padding:16px 20px;gap:4px}
   .step-label{display:none}
   .booking-step{padding:20px}
@@ -537,6 +543,12 @@ textarea.field-input{resize:vertical;min-height:80px}
   padding:4px 12px;border-radius:99px;white-space:nowrap;z-index:2}
 .vehicle-badge.rec{background:#10b981;color:#fff}
 .vehicle-badge.warn{background:#f59e0b;color:#fff}
+/* CEO P1 mobile-conversion fix (2026-09-13) - "Selection clarity". Blue to
+   match the existing .vehicle-card.selected border/background theme
+   (var(--ocean)), and visually distinct from the green "rec" badge so a
+   selected non-recommended card is never confused with an unselected
+   recommended one. */
+.vehicle-badge.sel{background:var(--ocean);color:#fff}
 .vehicle-cap-sub{display:inline-block;font-size:11px;color:#94a3b8;margin-top:2px}
 
 /* ─── BOOKING CARD FLASH HIGHLIGHT (when route is auto-filled) ─────────── */

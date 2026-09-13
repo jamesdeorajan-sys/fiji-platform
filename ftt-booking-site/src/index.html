@@ -907,7 +907,7 @@
           <div class="price-total-row">
             <div>
               <div class="price-total-label">Total price</div>
-              <div class="price-total-sub">Instant confirmation · Guaranteed driver</div>
+              <div class="price-total-sub">Saved online · Fiji team confirms pickup</div>
             </div>
             <div class="price-total-value" id="priceTotalValue">FJ$—</div>
           </div>
@@ -971,43 +971,46 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <!-- CEO P0 Round 4 (2026-09-09) - "Final-Page WhatsApp Conversion RC".
-             Reordered so the CTA is visible immediately on landing:
-             headline -> instruction -> dominant CTA -> supporting text,
-             with the booking reference/summary moved BELOW the CTA (was
-             directly under the headline before). "Your booking request is
-             safely saved" and the old "already saved" framing are removed
-             from everything above the button - the booking's real state
-             still isn't misrepresented anywhere (bulaLeadText below still
-             carries the actual confirmation), it's just no longer the
-             first thing that gives a guest a reason to stop before
-             WhatsApp. Same stale-cache discipline as before: this static
-             default text MUST stay in sync with showBulaSuccess()'s JS-set
-             copy in app.js - see that function's own comment.
+        <!-- CEO P1 mobile-conversion fix (2026-09-13) - "Confirmation truth /
+             WhatsApp semantics" correction. The previous copy framed
+             WhatsApp as "one final step" / "complete your pickup
+             confirmation" - a mandatory-sounding action for a booking that
+             is, at this point, ALREADY server-saved (submitMarketplaceBooking
+             returned ok:true before this card ever shows). That contradicted
+             the booking's real state and is exactly the pattern flagged in
+             real mobile screenshots. WhatsApp is now presented as optional/
+             faster contact, never as something required to "confirm" or
+             "complete" the booking, and never claims the message was sent
+             or staff has seen it merely because wa.me opened (that open is
+             fire-and-forget from here - see confirmBooking() in app.js).
+             Same stale-cache discipline as before: this static default text
+             MUST stay in sync with showBulaSuccess()'s JS-set copy in
+             app.js - see that function's own comment.
              bulaTitleUnsupported/showBulaUnsupportedRoute() are untouched -
              out of scope, different flow (no server-side booking exists
-             yet there), never claims "we already have your details". -->
+             yet there, so WhatsApp genuinely is how the request reaches a
+             human - correctly labelled as NOT saved online). -->
         <h2 class="bula-title">
-          <span id="bulaTitleSupported" style="display:none">One final step to confirm your pickup with our Fiji team</span>
+          <span id="bulaTitleSupported" style="display:none">Your request is saved</span>
           <span id="bulaTitleUnsupported" style="display:none">One more step to send your request</span>
         </h2>
 
         <p class="bula-wa-context" id="bulaWaContext">
-          Tap the green WhatsApp button now to connect with our local team and complete your pickup confirmation.
+          Want faster contact? Message our Fiji team on WhatsApp.
         </p>
 
         <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn bula-wa-btn-dominant">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-          CONTINUE TO WHATSAPP — CONFIRM MY PICKUP
+          MESSAGE US ON WHATSAPP
         </a>
-        <p class="bula-wa-reassurance" id="bulaWaReassurance">We already have your booking details. WhatsApp is where our Fiji team confirms your pickup and assists you directly.</p>
+        <p class="bula-wa-reassurance" id="bulaWaReassurance">Your request is already saved online — WhatsApp is optional, just a faster way to reach us.</p>
 
         <!-- 5. BOOKING SUMMARY/DETAILS - moved below the CTA (was directly
              under the headline before this round). Same elements, same
              JS-set content, just repositioned. -->
         <div class="bula-ref" id="bulaRef"></div>
         <p class="bula-lead" id="bulaLeadText">
-          ✅ <strong>Booking received.</strong> Your reference is above and our team has been notified — we'll confirm your driver directly.
+          ✅ <strong>Your transfer request is saved.</strong> Our Fiji team checks availability and confirms your pickup details.
         </p>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
