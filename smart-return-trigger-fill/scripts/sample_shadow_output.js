@@ -61,6 +61,14 @@ const rows = [
 // pending case:
 rows[2].booking.status = 'pending';
 
-const report = runLiveShadowReport(rows, { sourceSite: SOURCE_SITE });
+// Demo-only key: freshly random on every run via the Web Crypto RNG, never
+// a fixed/committed literal, and discarded the moment this process exits.
+// This is NOT "inventing a production secret" (prohibited) - it's simply
+// what any keyed-HMAC demo needs to run at all, and it never needs to be
+// stable across runs since this script's output is illustrative only, not
+// a real, re-joinable shadow ledger.
+const demoShadowSecret = crypto.getRandomValues(new Uint8Array(32));
+
+const report = await runLiveShadowReport(rows, { sourceSite: SOURCE_SITE, shadowSecret: demoShadowSecret });
 console.log('# SAMPLE OUTPUT ONLY — hand-built demo rows, not real bookings.');
 console.log(JSON.stringify(report, null, 2));

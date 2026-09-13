@@ -21,6 +21,11 @@
  * With no --input (or an empty array), this reports zero real movements
  * evaluated and says so explicitly — it never substitutes synthetic data
  * for a real run without being asked to.
+ *
+ * Requires SMART_RETURN_SHADOW_SECRET (env var) whenever --input has at
+ * least one row — see src/production_adapter.js's OPAQUE LINKAGE section.
+ * There is no default and no fallback; this script refuses to run rather
+ * than invent one.
  */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -28,17 +33,32 @@ import { createMemoryStore } from '../src/db.js';
 import { processIncomingMovement } from '../src/pipeline.js';
 import { mapConfirmedBookingToMovementInput } from '../src/production_adapter.js';
 
-export function runLiveShadowReport(confirmedBookingRows, { sourceSite, store = createMemoryStore(), routePriceTruthLookup } = {}) {
-  const skipped = []; // { bookingId, reason }
-  const evaluated = []; // { movement, matches, matchCandidate (best), fareDecision }
+export async function runLiveShadowReport(confirmedBookingRows, { sourceSite, store = createMemoryStore(), routePriceTruthLookup, shadowSecret } = {}) {
+  // Fail closed up front: if there is anything to actually evaluate but no
+  // shadow secret was supplied, every row would fail identically anyway
+  // (see mapConfirmedBookingToMovementInput's own SHADOW_SECRET_NOT_CONFIGURED
+  // path) - refusing here makes that obvious immediately rather than
+  // producing a report that quietly skipped everything.
+  if (confirmedBookingRows.length > 0 && !shadowSecret) {
+    throw new Error(
+      'runLiveShadowReport: shadowSecret is required whenever there are rows to evaluate — refusing to run with an unkeyed/absent secret. Pass it via the SMART_RETURN_SHADOW_SECRET env var (CLI) or the shadowSecret option (programmatic use).'
+    );
+  }
+
+  const skipped = []; // { shadowRef, reason, detail }
+  const evaluated = []; // { movement, matches }
 
   for (const row of confirmedBookingRows) {
-    const mapped = mapConfirmedBookingToMovementInput(row.booking, row.event, {
+    const mapped = await mapConfirmedBookingToMovementInput(row.booking, row.event, {
       sourceSite: row.sourceSite ?? sourceSite,
       passengerCount: row.passengerCount,
+      shadowSecret,
     });
     if (!mapped.ok) {
-      skipped.push({ bookingId: mapped.bookingId, reason: mapped.reason, detail: mapped.detail ?? null });
+      // Only the opaque shadowRef is ever recorded here — never the raw
+      // booking id (see production_adapter.js's own header for why every
+      // failure path is designed to carry shadowRef instead).
+      skipped.push({ shadowRef: mapped.shadowRef ?? null, reason: mapped.reason, detail: mapped.detail ?? null });
       continue;
     }
     const { movement, matches } = processIncomingMovement(store, mapped.movementInput, { routePriceTruthLookup });
@@ -148,6 +168,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log('No --input supplied — running with ZERO real confirmed-booking rows.');
     console.log('This is not a synthetic substitute; it honestly reports nothing evaluated.');
   }
-  const report = runLiveShadowReport(rows, { sourceSite });
+  // Injected dependency only — no default, no hardcoded fallback. Must be
+  // set as raw key bytes via an env var; this script never invents one.
+  const shadowSecretEnv = process.env.SMART_RETURN_SHADOW_SECRET;
+  const shadowSecret = shadowSecretEnv ? new TextEncoder().encode(shadowSecretEnv) : undefined;
+  if (rows.length > 0 && !shadowSecret) {
+    console.error('SMART_RETURN_SHADOW_SECRET is not set and there are rows to evaluate — refusing to run. Set it (a real secret, never committed) and retry.');
+    process.exit(1);
+  }
+  const report = await runLiveShadowReport(rows, { sourceSite, shadowSecret });
   console.log(JSON.stringify(report, null, 2));
 }
