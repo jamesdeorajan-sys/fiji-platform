@@ -1207,6 +1207,57 @@ async function reportNadiSyncFailure(ref, payload, errorDetail) {
   }
 }
 
+// CEO P0 booking-integrity fix (2026-09-13, second review) - canonical
+// fingerprint of the FULL booking intent that actually reaches
+// POST /bookings, not just route/date/vehicle. Must stay stable across an
+// exact retry (network timeout, lost response, double-click) of the
+// identical intent, but must change the moment any field that would
+// change the persisted booking changes - the first version of this fix
+// only fingerprinted pickup/destination/date/time/vehicle/tripType, which
+// meant a guest who changed passenger count, luggage, flight number,
+// return details, an add-on, notes, or the quoted price after a failed/
+// lost-response attempt would have their edit silently discarded: the
+// backend's idempotency check would match the stale ref and hand back the
+// ORIGINAL (pre-edit) booking instead of persisting the new one.
+//
+// Deliberately EXCLUDES guest_name/guest_phone/guest_email: a guest
+// correcting a typo in their own contact details before retrying the SAME
+// trip must still collapse to the SAME booking, not mint a second one.
+// This value never leaves the guest's own browser (sessionStorage only,
+// never transmitted or logged), so excluding contact fields is a
+// booking-identity decision, not a privacy trade-off.
+//
+// Deliberately EXCLUDES any timestamp or other volatile field - an
+// idempotency identity must never include something that changes on its
+// own between an original attempt and its retry.
+//
+// distance_km is intentionally NOT included as a separate field: it is a
+// pure function of pickup/destination (already fingerprinted) and any
+// price impact it has is already captured via quotedAmount below - adding
+// it too would just be a redundant proxy for the same two things.
+function buildBookingIntentFingerprint() {
+  const isReturn = state.tripType === 'return';
+  const total = calculateTotal(); // pure read of state/DOM, no side effects
+  return JSON.stringify({
+    pickup: document.getElementById('pickup')?.value ?? null,
+    destination: document.getElementById('destination')?.value ?? null,
+    pickupDate: document.getElementById('travelDate')?.value || null,
+    pickupTime: document.getElementById('travelTime')?.value || null,
+    vehicle: state.selectedVehicle,
+    tripType: state.tripType,
+    returnDate: isReturn ? (document.getElementById('returnDate')?.value || null) : null,
+    returnTime: isReturn ? (document.getElementById('returnTime')?.value || null) : null,
+    returnPickupLocation: isReturn ? (document.getElementById('returnPickupLocation')?.value.trim() || null) : null,
+    passengers: state.passengers,
+    luggage: state.luggage,
+    flightNumber: document.getElementById('flightNum')?.value.trim() || null,
+    hasChildSeat: !!document.getElementById('extra-seat')?.checked,
+    hasSurfboard: !!document.getElementById('extra-surf')?.checked,
+    notes: document.getElementById('notes')?.value.trim() || null,
+    quotedAmount: total.final,
+  });
+}
+
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
 async function confirmBooking() {
   // CEO P0 booking-integrity fix (2026-09-13) - see the confirmBookingInFlight
@@ -1258,20 +1309,17 @@ async function confirmBooking() {
   // previous behaviour) defeats the backend's own idempotency guard, which
   // keys purely on this value (see nadi-marketplace/worker/worker.js's
   // createBookingRecord). Mirrors book.fijidash.com/app.js's
-  // sessionStorage-fingerprint fix exactly (same field set, same key name
-  // prefix convention) - that fix was made after two real production pairs
-  // proved a reload/resubmit could otherwise create a second real booking;
-  // this site's own dispatch-api history (bookings #77/78, #90/91,
-  // #101/102 - see P0_BOOKING_RECOVERY_REPORT.md) shows the identical
-  // failure mode already occurring here.
-  const attemptFingerprint = JSON.stringify([
-    pickupVal,
-    document.getElementById('destination')?.value,
-    document.getElementById('travelDate')?.value,
-    document.getElementById('travelTime')?.value,
-    state.selectedVehicle,
-    state.tripType,
-  ]);
+  // sessionStorage-fingerprint fix (same key name prefix convention) -
+  // that fix was made after two real production pairs proved a
+  // reload/resubmit could otherwise create a second real booking; this
+  // site's own dispatch-api history (bookings #77/78, #90/91, #101/102 -
+  // see P0_BOOKING_RECOVERY_REPORT.md) shows the identical failure mode
+  // already occurring here. Fingerprint covers the FULL booking intent -
+  // see buildBookingIntentFingerprint()'s own header comment for exactly
+  // why (second-review fix: the first version only covered
+  // route/date/vehicle/tripType and could silently discard an edited
+  // passenger count, flight number, etc. made after a failed attempt).
+  const attemptFingerprint = buildBookingIntentFingerprint();
   let ref;
   try {
     const stored = JSON.parse(sessionStorage.getItem('ftt_booking_attempt') || 'null');
@@ -1311,6 +1359,21 @@ async function confirmBooking() {
     if (destZone && destZone !== 'NEEDS_LOOKUP') {
       saveAttempted = true;
       saveResult = await submitNadiBooking(ref, destZone);
+      if (saveResult.ok) {
+        // CEO P0 booking-integrity fix (2026-09-13, second review) - clear
+        // the stored attempt only once the save is AUTHORITATIVELY
+        // confirmed (server returned ok:true - covers both a first-try
+        // success and a retry that discovers the server had already
+        // committed it). Without this, a guest who completes a booking
+        // and then - still on the same page, sessionStorage survives a
+        // reload - genuinely books the identical trip again (e.g. a
+        // second, separate group) would have that new attempt silently
+        // collapse into the already-completed booking via the stale ref.
+        // Never cleared on failure: that would break the exact
+        // lost-response recovery this fix exists for - a retry after a
+        // failed/lost response must keep reusing the same ref.
+        try { sessionStorage.removeItem('ftt_booking_attempt'); } catch { /* private mode - was never persisted anyway */ }
+      }
     }
   }
 
