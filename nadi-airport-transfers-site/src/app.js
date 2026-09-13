@@ -162,7 +162,17 @@ const state = {
   // selectedTour holds the full TOURS_DATA entry when a tour is in the booking,
   // null otherwise. Set by selectTour(), cleared by removeTourBanner().
   // Used by calculateTotal() to add tour cost (price × passengers) to the total.
-  selectedTour: null
+  selectedTour: null,
+  // CEO P0 booking-integrity fix (2026-09-13): mirrors book.fijidash.com/
+  // app.js's confirmBookingInFlight guard, which that site added after two
+  // real production pairs (same guest, seconds apart, two different refs)
+  // proved a rapid double-click/resubmit could create a second real
+  // booking. This site had no equivalent guard - live evidence (bookings
+  // #77/78, #90/91, #101/102 in the shared nadi-marketplace-db, same
+  // source IP/route/vehicle/price, 3-6 seconds apart, two different
+  // client_booking_ref values each time) shows the exact same failure mode
+  // has already been happening here.
+  confirmBookingInFlight: false,
 };
 
 // ─── DISTANCE HELPERS ────────────────────────────────────────────────────────
@@ -1199,6 +1209,19 @@ async function reportNadiSyncFailure(ref, payload, errorDetail) {
 
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
 async function confirmBooking() {
+  // CEO P0 booking-integrity fix (2026-09-13) - see the confirmBookingInFlight
+  // field comment in state{} above for the live evidence this closes. A
+  // second click/tap during the async save below must be rejected outright,
+  // not merely slowed down.
+  if (state.confirmBookingInFlight) return;
+  state.confirmBookingInFlight = true;
+  const confirmBtn = document.querySelector('.btn-confirm');
+  const confirmBtnOriginalText = confirmBtn?.textContent;
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Saving your booking…';
+  }
+
   // A1: Soft-required flight number for Nadi Airport arrivals.
   // We don't block submission, but if pickup is NAN and the customer left
   // the flight field blank, we surface a one-time confirmation prompt.
@@ -1214,6 +1237,11 @@ async function confirmBooking() {
       + 'Continue anyway?'
     );
     if (!proceed) {
+      state.confirmBookingInFlight = false;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnOriginalText;
+      }
       // Focus the field so they can fill it in
       document.getElementById('flightNum')?.focus();
       document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1223,8 +1251,38 @@ async function confirmBooking() {
     state.flightPromptDismissed = true;
   }
 
-  // Generate the booking reference
-  const ref = 'FTT-' + Date.now().toString(36).toUpperCase().slice(-6);
+  // CEO P0 booking-integrity fix (2026-09-13) - the booking reference is
+  // now ALSO the client_booking_ref idempotency key sent to POST /bookings
+  // (submitNadiBooking below), so it must be stable across a retry of the
+  // SAME booking attempt - a fresh Date.now()-based ref on every call (the
+  // previous behaviour) defeats the backend's own idempotency guard, which
+  // keys purely on this value (see nadi-marketplace/worker/worker.js's
+  // createBookingRecord). Mirrors book.fijidash.com/app.js's
+  // sessionStorage-fingerprint fix exactly (same field set, same key name
+  // prefix convention) - that fix was made after two real production pairs
+  // proved a reload/resubmit could otherwise create a second real booking;
+  // this site's own dispatch-api history (bookings #77/78, #90/91,
+  // #101/102 - see P0_BOOKING_RECOVERY_REPORT.md) shows the identical
+  // failure mode already occurring here.
+  const attemptFingerprint = JSON.stringify([
+    pickupVal,
+    document.getElementById('destination')?.value,
+    document.getElementById('travelDate')?.value,
+    document.getElementById('travelTime')?.value,
+    state.selectedVehicle,
+    state.tripType,
+  ]);
+  let ref;
+  try {
+    const stored = JSON.parse(sessionStorage.getItem('ftt_booking_attempt') || 'null');
+    if (stored && stored.fingerprint === attemptFingerprint && stored.ref) {
+      ref = stored.ref;
+    }
+  } catch { /* storage blocked or corrupt - fall through to a fresh ref */ }
+  if (!ref) {
+    ref = 'FTT-' + Date.now().toString(36).toUpperCase().slice(-6);
+    try { sessionStorage.setItem('ftt_booking_attempt', JSON.stringify({ ref, fingerprint: attemptFingerprint })); } catch { /* private mode - fine, just not persisted across a reload */ }
+  }
 
   // Pre-build the WhatsApp URL with the full booking details - unchanged,
   // still built and still offered as the optional/required-fallback
@@ -1236,12 +1294,22 @@ async function confirmBooking() {
   // scope-boundary comment above submitNadiBooking). Everything else falls
   // through to the exact, unmodified existing behaviour further down.
   let saveResult = { ok: false };
+  // CEO P0 booking-integrity fix (2026-09-13) - distinguishes "a save was
+  // never attempted because this route is out of scope by design" (custom
+  // address etc - always was, and remains, WhatsApp-only, unchanged
+  // wording) from "a save WAS attempted and it genuinely failed" - the
+  // false-reassurance defect the CEO P0 booking-recovery mission found:
+  // both cases previously showed the identical "has landed with our team,
+  // we'll confirm within 15 minutes" copy, which is only ever true for the
+  // former, not the latter.
+  let saveAttempted = false;
   const destVal = document.getElementById('destination')?.value;
   const destOpt = document.getElementById('destination')?.selectedOptions?.[0];
   const isEligibleForServerSave = pickupVal === 'NAN' && destVal && destVal !== 'CUSTOM_DEST';
   if (isEligibleForServerSave) {
     const destZone = resolveFixedDestinationZone(destOpt);
     if (destZone && destZone !== 'NEEDS_LOOKUP') {
+      saveAttempted = true;
       saveResult = await submitNadiBooking(ref, destZone);
     }
   }
@@ -1260,9 +1328,26 @@ async function confirmBooking() {
     if (bulaLeadText) {
       bulaLeadText.innerHTML = '<strong>Booking received.</strong> Our Fiji team has your reservation and will confirm your driver and final pickup details directly.';
     }
+  } else if (saveAttempted) {
+    // CEO P0 booking-integrity fix (2026-09-13) - SAVE_FAILED/SAVE_UNKNOWN:
+    // a save was attempted and did not come back confirmed. Truthful
+    // per-state copy per the mission's required truth model - never the
+    // "has landed with our team" claim that's only proven for the
+    // by-design WhatsApp-only case below.
+    if (bulaTitleSaved) bulaTitleSaved.style.display = 'none';
+    if (bulaTitleWhatsappOnly) {
+      bulaTitleWhatsappOnly.style.display = '';
+      bulaTitleWhatsappOnly.textContent = 'We could not confirm your booking was saved';
+    }
+    if (bulaLeadText) {
+      bulaLeadText.innerHTML = 'We could not confirm that your request was saved. Please tap the button below to send it on WhatsApp now, or try submitting again.';
+    }
   } else {
-    // Unchanged from today: WhatsApp-only headline/copy, including the
-    // guest's own name - .textContent only, exactly as before.
+    // Unchanged from today: this route was never eligible for a server
+    // save (custom address, by design) - original WhatsApp-only
+    // headline/copy is left completely untouched (including its
+    // bulaName child span, populated separately below via .textContent,
+    // exactly as before this fix).
     if (bulaTitleSaved) bulaTitleSaved.style.display = 'none';
     if (bulaTitleWhatsappOnly) bulaTitleWhatsappOnly.style.display = '';
   }
@@ -1297,7 +1382,11 @@ async function confirmBooking() {
     bulaModifyLink.href = `https://wa.me/61478886145?text=${encodeURIComponent(modifyText)}`;
   }
 
-  // Hide the entire booking widget, show the Bula success card
+  // Hide the entire booking widget, show the Bula success card - for every
+  // outcome (saved, save-failed, or by-design WhatsApp-only), same as
+  // before this fix. This site's only retry mechanism is resetBooking()'s
+  // full page reload, which naturally clears confirmBookingInFlight along
+  // with all other state - no separate reset needed here.
   const widget = document.getElementById('bookingWidget');
   if (widget) widget.style.display = 'none';
   const bula = document.getElementById('bulaSuccess');

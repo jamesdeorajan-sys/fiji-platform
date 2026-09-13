@@ -559,8 +559,12 @@
              classes, same defaulting behaviour) — CEO P0 Round 3 fix for the
              same gap FijiDash already closed: a return booking previously had
              no return date/time/pickup captured anywhere on this site.
-             PREVIEW ONLY per this round's directive — confirmBooking()/
-             submitNadiBooking() are not yet wired to read these fields. -->
+             CORRECTION (2026-09-13 P0 booking-recovery audit): this comment
+             previously said submitNadiBooking() was "not yet wired" to read
+             these fields — that was stale. It has read them (return_date/
+             return_time/return_pickup_location, sent whenever
+             state.tripType === 'return') since Round 3 shipped; see
+             submitNadiBooking()'s own header comment in app.js. -->
         <div class="field-row" id="returnTripFields" style="display:none">
           <div class="field-group">
             <label class="field-label">
