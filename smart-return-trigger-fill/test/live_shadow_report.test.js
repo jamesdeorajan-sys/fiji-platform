@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runLiveShadowReport } from '../scripts/live_shadow_report.js';
 import { createMemoryStore } from '../src/db.js';
+import { buildRoutePriceTruthEntry } from '../src/route_price_truth_source.js';
 
 const TEST_SHADOW_SECRET = crypto.getRandomValues(new Uint8Array(32));
 
@@ -104,6 +105,40 @@ test('two real bookings forming a plausible reverse pair correctly HOLD on UNKNO
   assert.equal(report.feasible_candidate_count, 0, 'no duration data exists on a real booking row, so feasibility must never be guessed');
   assert.equal(report.ready_for_shadow_match_count, 0, 'no route_price_truth was seeded either, so nothing may become READY');
   assert.ok(Object.keys(report.hold_reasons).some((r) => r === 'OPERATIONAL_HOLD_UNKNOWN_TIMING'), 'must HOLD on unknown timing, not silently assume feasibility');
+});
+
+test('the same reverse pair reaches FEASIBLE and READY once estimatedDurationMinutes and a seeded route_price_truth are supplied — proves row.estimatedDurationMinutes actually threads through runLiveShadowReport, not just the adapter directly (regression: this integration point was missed on the first pass)', async () => {
+  const rows = [
+    {
+      booking: realBooking({ id: 301, pickup_zone: 'NAN', destination_zone: 'DENARAU', pickup_date: '2026-10-05', pickup_time: '09:00' }),
+      event: acceptEvent({ booking_id: 301 }),
+      passengerCount: 2,
+      estimatedDurationMinutes: 20,
+    },
+    {
+      booking: realBooking({ id: 302, pickup_zone: 'DENARAU', destination_zone: 'NAN', pickup_date: '2026-10-05', pickup_time: '15:00' }),
+      event: acceptEvent({ booking_id: 302 }),
+      passengerCount: 2,
+      estimatedDurationMinutes: 20,
+    },
+  ];
+  const store = createMemoryStore();
+  const priceTruth = buildRoutePriceTruthEntry({
+    originZone: 'DENARAU', destinationZone: 'NAN', vehicleClass: 'SEDAN',
+    referenceFareFjd: 49, commissionRate: 0.15,
+  });
+  assert.equal(priceTruth.ok, true);
+  store.upsertRoutePriceTruth(priceTruth.entry);
+
+  const report = await runLiveShadowReport(rows, {
+    sourceSite: 'nadiairporttransfers.com',
+    shadowSecret: TEST_SHADOW_SECRET,
+    store,
+    routePriceTruthLookup: (o, d, v) => store.getRoutePriceTruth(o, d, v),
+  });
+  assert.ok(report.feasible_candidate_count >= 1, 'estimatedDurationMinutes must reach the matcher via runLiveShadowReport, not just when calling the adapter directly');
+  assert.ok(report.ready_for_shadow_match_count >= 1, 'a seeded route_price_truth must make at least one candidate READY');
+  assert.ok(report.shadow_price_where_permitted.length >= 1);
 });
 
 test('no customer PII appears anywhere in the serialized report, even when input rows carry real guest fields', async () => {

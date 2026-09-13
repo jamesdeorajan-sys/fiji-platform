@@ -11,6 +11,8 @@
  * Run with: node scripts/sample_shadow_output.js
  */
 import { runLiveShadowReport } from './live_shadow_report.js';
+import { createMemoryStore } from '../src/db.js';
+import { buildRoutePriceTruthEntry } from '../src/route_price_truth_source.js';
 
 const SOURCE_SITE = 'nadiairporttransfers.com';
 
@@ -55,6 +57,29 @@ const rows = [
     event: null,
     passengerCount: 3,
   },
+  // A second reverse pair, this time WITH an estimatedDurationMinutes
+  // override (as if step 3 of the read-only run plan found a real Google
+  // Routes duration for these) AND a seeded route_price_truth entry below
+  // — demonstrates the full HOLD -> FEASIBLE -> READY chain, not just the
+  // HOLD state the first pair (9001/9002) shows.
+  {
+    booking: booking({ id: 9004, pickup_zone: 'NAN', destination_zone: 'HILTON_DENARAU', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '09:00' }),
+    event: acceptedEvent(9004, 'driver:9'),
+    passengerCount: 2,
+    estimatedDurationMinutes: 20, // e.g. from deriveDurationMinutesFromGoogleRoutesDuration('1200s')
+  },
+  {
+    booking: booking({ id: 9005, pickup_zone: 'HILTON_DENARAU', destination_zone: 'NAN', quoted_amount: 49, pickup_date: '2026-10-05', pickup_time: '15:00' }),
+    event: acceptedEvent(9005, 'admin'),
+    passengerCount: 2,
+    // chronologicalFeasibility() checks the movement being evaluated AS
+    // SOURCE's own completion time — since matching runs in ingestion
+    // order, 9005 (ingested after 9004) is the one whose own duration
+    // matters when it looks back at 9004 as a candidate. Set on both pair
+    // members so this demo is correct regardless of which one ends up
+    // evaluated as source for a given candidate pairing.
+    estimatedDurationMinutes: 20,
+  },
 ];
 // booking() always sets status:'accepted' from the overrides spread order
 // above except where explicitly overridden - fix the one deliberate
@@ -69,6 +94,24 @@ rows[2].booking.status = 'pending';
 // a real, re-joinable shadow ledger.
 const demoShadowSecret = crypto.getRandomValues(new Uint8Array(32));
 
-const report = await runLiveShadowReport(rows, { sourceSite: SOURCE_SITE, shadowSecret: demoShadowSecret });
+// Seed one route_price_truth entry using the SAME real formulas
+// route_price_truth_source.js documents (never invented here either) —
+// illustrative figures only (a real run sources referenceFareFjd from
+// computeRealReferenceFare() and commissionRate from
+// platform_settings.default_commission_rate, per
+// docs/FIRST_READ_ONLY_RUN_PLAN.md step 4).
+const store = createMemoryStore();
+const priceTruth = buildRoutePriceTruthEntry({
+  originZone: 'HILTON_DENARAU', destinationZone: 'NAN', vehicleClass: 'SEDAN',
+  referenceFareFjd: 49, commissionRate: 0.15, asOfIso: new Date().toISOString(),
+});
+if (priceTruth.ok) store.upsertRoutePriceTruth(priceTruth.entry);
+
+const report = await runLiveShadowReport(rows, {
+  sourceSite: SOURCE_SITE,
+  shadowSecret: demoShadowSecret,
+  store,
+  routePriceTruthLookup: (origin, destination, vehicleClass) => store.getRoutePriceTruth(origin, destination, vehicleClass),
+});
 console.log('# SAMPLE OUTPUT ONLY — hand-built demo rows, not real bookings.');
 console.log(JSON.stringify(report, null, 2));

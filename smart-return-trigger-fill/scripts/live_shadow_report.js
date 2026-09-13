@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createMemoryStore } from '../src/db.js';
 import { processIncomingMovement } from '../src/pipeline.js';
+import { computeMatchCandidates } from '../src/matcher.js';
 import { mapConfirmedBookingToMovementInput } from '../src/production_adapter.js';
 
 export async function runLiveShadowReport(confirmedBookingRows, { sourceSite, store = createMemoryStore(), routePriceTruthLookup, shadowSecret } = {}) {
@@ -46,12 +47,13 @@ export async function runLiveShadowReport(confirmedBookingRows, { sourceSite, st
   }
 
   const skipped = []; // { shadowRef, reason, detail }
-  const evaluated = []; // { movement, matches }
+  const evaluatedMovements = [];
 
   for (const row of confirmedBookingRows) {
     const mapped = await mapConfirmedBookingToMovementInput(row.booking, row.event, {
       sourceSite: row.sourceSite ?? sourceSite,
       passengerCount: row.passengerCount,
+      estimatedDurationMinutes: row.estimatedDurationMinutes,
       shadowSecret,
     });
     if (!mapped.ok) {
@@ -61,9 +63,25 @@ export async function runLiveShadowReport(confirmedBookingRows, { sourceSite, st
       skipped.push({ shadowRef: mapped.shadowRef ?? null, reason: mapped.reason, detail: mapped.detail ?? null });
       continue;
     }
-    const { movement, matches } = processIncomingMovement(store, mapped.movementInput, { routePriceTruthLookup });
-    evaluated.push({ movement, matches });
+    // Ingest only — the matches processIncomingMovement returns here
+    // reflect just what was ALREADY in the store at this row's own
+    // ingestion time (ingestion-order-dependent), which is wrong for a
+    // retrospective batch report where the same booking's match should
+    // never depend on which order the input rows happened to arrive in.
+    // Real matches are computed in a separate full-pool pass below,
+    // matching board.js's own approach for the same reason.
+    const { movement } = processIncomingMovement(store, mapped.movementInput, { routePriceTruthLookup });
+    evaluatedMovements.push(movement);
   }
+
+  // Second pass: every evaluated movement is matched against the FULL
+  // final pool (all rows from this run, order-independent), not just
+  // whatever existed when it happened to be ingested.
+  const evaluated = evaluatedMovements.map((movement) => {
+    const pool = evaluatedMovements.filter((m) => m.movement_id !== movement.movement_id);
+    const matches = computeMatchCandidates(movement, pool, { routePriceTruthLookup });
+    return { movement, matches };
+  });
 
   // ── Aggregate into the mission's 12-point report shape ──────────────
   const confirmedMovementsEvaluated = evaluated.length;

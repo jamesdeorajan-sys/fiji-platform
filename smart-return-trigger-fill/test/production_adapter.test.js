@@ -19,6 +19,8 @@ import {
   isHumanConfirmedBooking,
   computeOpaqueBookingRef,
   mapConfirmedBookingToMovementInput,
+  derivePassengerCountFromNegotiationRequest,
+  deriveDurationMinutesFromGoogleRoutesDuration,
 } from '../src/production_adapter.js';
 import { normalizeMovementInput } from '../src/model.js';
 
@@ -397,4 +399,84 @@ test('NOT_HUMAN_CONFIRMED failures still carry an opaque shadowRef when a secret
   assert.equal(result.ok, false);
   assert.ok(result.shadowRef);
   assert.ok(!String(result.shadowRef).includes('4821'));
+});
+
+// ─── MINIMUM INPUT TRUTH (2026-09-14 mission) ───────────────────────────
+// Real authoritative sources found by reading nadi-marketplace/worker/
+// worker.js directly (not assumed):
+//   - passenger count: the main `bookings` table has NO passenger_count
+//     field at all (confirmed by reading createBookingRecord()'s full
+//     parameter list). The ONLY real, persisted passenger figure anywhere
+//     is negotiation_requests.passengers — optional there too, and only
+//     exists for the subset of bookings that originated from a negotiated
+//     fare (negotiation_requests.booking_id links back once accepted —
+//     see handleAdminManualAssign / handleNegotiationAcceptOffer). The
+//     majority fixed-fare path (handleGuestBookingCreate) has no source at
+//     all — HOLD is correct and unavoidable for those, not a shortfall in
+//     this adapter.
+//   - trip duration: no field on `bookings` or `zones` either. A REAL,
+//     already-approved source exists for the custom-address quote path
+//     only: geocoded_addresses.duration_text, sourced from an actual
+//     Google Routes API call (see callGoogleRoutesApi/handleQuoteCreate),
+//     in the Duration-proto JSON format "<seconds>s".
+
+test('derivePassengerCountFromNegotiationRequest: extracts a valid passenger count from the real negotiation_requests shape', () => {
+  assert.equal(derivePassengerCountFromNegotiationRequest({ id: 1, passengers: 3 }), 3);
+});
+
+test('derivePassengerCountFromNegotiationRequest: returns null (never guesses) when passengers is absent, null, or the whole row is missing', () => {
+  assert.equal(derivePassengerCountFromNegotiationRequest({ id: 1, passengers: null }), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest({ id: 1 }), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest(null), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest(undefined), null);
+});
+
+test('derivePassengerCountFromNegotiationRequest: rejects an out-of-bounds value rather than passing it through — matches the real backend\'s own validation range (1-20)', () => {
+  assert.equal(derivePassengerCountFromNegotiationRequest({ passengers: 0 }), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest({ passengers: 21 }), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest({ passengers: 2.5 }), null);
+  assert.equal(derivePassengerCountFromNegotiationRequest({ passengers: 'four' }), null);
+});
+
+test('deriveDurationMinutesFromGoogleRoutesDuration: parses the real Google Routes API Duration-proto format ("<seconds>s")', () => {
+  assert.equal(deriveDurationMinutesFromGoogleRoutesDuration('1200s'), 20);
+  assert.equal(deriveDurationMinutesFromGoogleRoutesDuration('90s'), 1.5);
+});
+
+test('deriveDurationMinutesFromGoogleRoutesDuration: fails closed (null) for anything not in that exact format — never guess-parses free text', () => {
+  for (const bad of ['20 mins', '1200', 's', '', null, undefined, 12, '1200min', '-30s', '0s']) {
+    assert.equal(deriveDurationMinutesFromGoogleRoutesDuration(bad), null, `expected null for ${JSON.stringify(bad)}`);
+  }
+});
+
+test('mapConfirmedBookingToMovementInput: accepts an explicit estimatedDurationMinutes override and threads it through to the movement (Fiji-UTC-safe: pure minute arithmetic on top of the already-converted pickup instant)', async () => {
+  const result = await mapConfirmedBookingToMovementInput(
+    realBookingRow(),
+    realAcceptEvent(),
+    { sourceSite: 'nadiairporttransfers.com', passengerCount: 2, shadowSecret: TEST_SHADOW_SECRET, estimatedDurationMinutes: 25 }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.movementInput.estimated_duration_minutes, 25);
+});
+
+test('mapConfirmedBookingToMovementInput: without an override, estimated_duration_minutes stays null — matcher.js will correctly HOLD_UNKNOWN_TIMING rather than guess', async () => {
+  const result = await mapConfirmedBookingToMovementInput(
+    realBookingRow(),
+    realAcceptEvent(),
+    { sourceSite: 'nadiairporttransfers.com', passengerCount: 2, shadowSecret: TEST_SHADOW_SECRET }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.movementInput.estimated_duration_minutes, null);
+});
+
+test('mapConfirmedBookingToMovementInput: rejects a non-positive/non-finite estimatedDurationMinutes override rather than silently ignoring or passing through garbage', async () => {
+  for (const bad of [0, -5, NaN, Infinity]) {
+    const result = await mapConfirmedBookingToMovementInput(
+      realBookingRow(),
+      realAcceptEvent(),
+      { sourceSite: 'nadiairporttransfers.com', passengerCount: 2, shadowSecret: TEST_SHADOW_SECRET, estimatedDurationMinutes: bad }
+    );
+    assert.equal(result.ok, false, `expected failure for estimatedDurationMinutes=${bad}`);
+    assert.equal(result.reason, 'INVALID_DURATION_OVERRIDE');
+  }
 });

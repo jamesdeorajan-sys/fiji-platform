@@ -198,6 +198,50 @@ function deriveArrivalOrDeparture(booking) {
   return null;
 }
 
+// Matches the real bookings/negotiation_requests validation range exactly
+// (see handleNegotiationCreate: 'passengers must be an integer between 1
+// and 20') — never widened here.
+const REAL_PASSENGER_BOUNDS = { min: 1, max: 20 };
+
+/**
+ * Extracts a real passenger count from a joined negotiation_requests row
+ * (see this file's "MINIMUM INPUT TRUTH" section for exactly why this is
+ * the only real source that exists, and only for the negotiated-booking
+ * subset). Returns null — never a guessed default — for a missing row,
+ * missing field, or a value outside the real backend's own validation
+ * bounds. Never invents a value for the majority of bookings that have no
+ * negotiation_requests row at all.
+ */
+export function derivePassengerCountFromNegotiationRequest(negotiationRequest) {
+  if (!negotiationRequest || negotiationRequest.passengers == null) return null;
+  const n = Number(negotiationRequest.passengers);
+  if (!Number.isInteger(n) || n < REAL_PASSENGER_BOUNDS.min || n > REAL_PASSENGER_BOUNDS.max) return null;
+  return n;
+}
+
+// Google Routes API's Duration proto is JSON-serialized as a string like
+// "1234s" (always seconds, always this exact suffix) — see
+// callGoogleRoutesApi's X-Goog-FieldMask: 'routes.duration' in
+// nadi-marketplace/worker/worker.js. Anything else is not this format and
+// must fail closed rather than being guess-parsed.
+const GOOGLE_DURATION_RE = /^(\d+(?:\.\d+)?)s$/;
+
+/**
+ * Parses the real Google Routes API duration string (as cached in
+ * geocoded_addresses.duration_text for the custom-address quote path —
+ * see this file's "MINIMUM INPUT TRUTH" section) into minutes. Returns
+ * null for anything not in that exact format, including plausible-looking
+ * free text — this must never become a guessed duration.
+ */
+export function deriveDurationMinutesFromGoogleRoutesDuration(durationText) {
+  if (typeof durationText !== 'string') return null;
+  const match = GOOGLE_DURATION_RE.exec(durationText.trim());
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return seconds / 60;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -278,10 +322,19 @@ export function zonedTimeToUtcIso(dateStr, timeStr, timeZone = FIJI_TIME_ZONE) {
  * `passengerCount` is an explicit override because the real `bookings`
  * table (see createBookingRecord) does not store passenger count at all
  * today — a genuine upstream data gap, not a Smart Return safety gate. If
- * the caller has it from another source it can be supplied; if not, this
- * returns MISSING_PASSENGER_COUNT rather than defaulting to 1.
+ * the caller has it from another source (see
+ * derivePassengerCountFromNegotiationRequest for the one real source that
+ * exists) it can be supplied; if not, this returns
+ * MISSING_PASSENGER_COUNT rather than defaulting to 1.
+ *
+ * `estimatedDurationMinutes` is the same pattern for trip duration — the
+ * real `bookings`/`zones` tables have no duration field either (see
+ * deriveDurationMinutesFromGoogleRoutesDuration for the one real source
+ * that exists, for the custom-address quote path only). Left null when
+ * not supplied, so matcher.js correctly reports HOLD_UNKNOWN_TIMING
+ * rather than a guessed FEASIBLE — never fabricated here.
  */
-export async function mapConfirmedBookingToMovementInput(booking, bookingEvent, { sourceSite, passengerCount, shadowSecret, now } = {}) {
+export async function mapConfirmedBookingToMovementInput(booking, bookingEvent, { sourceSite, passengerCount, shadowSecret, now, estimatedDurationMinutes } = {}) {
   const humanConfirmed = isHumanConfirmedBooking(booking, bookingEvent);
 
   // Computed whenever possible (even for a booking that turns out NOT to
@@ -311,6 +364,9 @@ export async function mapConfirmedBookingToMovementInput(booking, bookingEvent, 
   if (!pickupDatetime) {
     return { ok: false, reason: 'MISSING_OR_INVALID_PICKUP_DATETIME', shadowRef };
   }
+  if (estimatedDurationMinutes != null && (!Number.isFinite(estimatedDurationMinutes) || estimatedDurationMinutes <= 0)) {
+    return { ok: false, reason: 'INVALID_DURATION_OVERRIDE', shadowRef };
+  }
 
   try {
     const movementInput = normalizeMovementInput({
@@ -329,6 +385,7 @@ export async function mapConfirmedBookingToMovementInput(booking, bookingEvent, 
       pickup_datetime: pickupDatetime,
       arrival_or_departure: arrivalOrDeparture,
       passenger_count: passengerCount,
+      estimated_duration_minutes: estimatedDurationMinutes ?? null,
       vehicle_class: String(booking.vehicle_type || '').toUpperCase(),
       customer_price: booking.quoted_amount,
       // operator_payout / absolute_floor are deliberately NOT sourced from
