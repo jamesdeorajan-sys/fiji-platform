@@ -152,6 +152,24 @@ function stripEmoji(str) {
   return str.replace(emojiRe, '').replace(/\s{2,}/g, ' ').trim();
 }
 
+// CEO P0 security fix (2026-09-13) - HTML-escapes a string for the one
+// remaining spot in this file that builds trusted markup around a
+// guest-controlled value via a template string rather than
+// createElement/textContent (enhanceSelectAsTypeahead's "no matches for
+// ..." message, which echoes the guest's own search box input). Not used
+// anywhere else in this file - every other innerHTML-built block is
+// sourced only from this site's own hardcoded data (VEHICLES/TOURS_DATA/
+// ROUTES_DATA/REVIEWS_DATA/FAQ_DATA/trusted <option> markup), never
+// guest input, so it needs no escaping.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── APP STATE ────────────────────────────────────────────────────────────────
 const state = {
   pickup: null, destination: null,
@@ -876,6 +894,27 @@ function selectTour(idx) {
 }
 
 // ─── CONFIRMATION ────────────────────────────────────────────────────────────
+// CEO P0 security fix (2026-09-13) - builds one confirm-row via safe DOM
+// APIs (createElement/textContent/appendChild), never innerHTML. `value`
+// (and `label`, though every call site below passes a fixed literal for
+// it) may be arbitrary guest-typed text - textContent can never be parsed
+// as markup, unlike the previous template-string + innerHTML approach
+// this replaces, which had no escaping at all.
+function appendConfirmRow(parent, label, value) {
+  const row = document.createElement('div');
+  row.className = 'confirm-row';
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'confirm-label';
+  labelSpan.textContent = label;
+  const valueSpan = document.createElement('span');
+  valueSpan.className = 'confirm-value';
+  valueSpan.textContent = value;
+  row.appendChild(labelSpan);
+  row.appendChild(valueSpan);
+  parent.appendChild(row);
+  return row;
+}
+
 function buildConfirmation() {
   const fn    = document.getElementById('firstName').value.trim();
   const ln    = document.getElementById('lastName').value.trim();
@@ -913,20 +952,35 @@ function buildConfirmation() {
     totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
   }
 
-  card.innerHTML = [
-    ['Passenger',       `${fn} ${ln}`],
-    ['Contact',         `${em} · ${ph}`],
-    ['From',            stripEmoji(state.pickup?.name) || '—'],
-    ['To',              stripEmoji(state.destination?.hotel) || '—'],
-    ['Date & time',     `${dateStr} at ${time}`],
-    ['Vehicle',         vName],
-    ['Passengers',      `${state.passengers} adults · ${state.luggage} bags`],
-    ['Flight number',   flight],
-    ['Distance',        `${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`],
-    ['Trip type',       suffix],
-    ['Special requests',notes],
-  ].map(([l,v]) => `<div class="confirm-row"><span class="confirm-label">${l}</span><span class="confirm-value">${v}</span></div>`).join('')
-  + totalRows;
+  // CEO P0 security fix (2026-09-13) - every value below may be
+  // guest-controlled: fn/ln/em/ph/flight/notes are typed directly by the
+  // guest, and state.pickup?.name / state.destination?.hotel come from
+  // the guest's own free-text address input whenever a custom pickup/
+  // destination is selected (see resolveLocation()'s CUSTOM_PICKUP/
+  // CUSTOM_DEST branch - stripEmoji() only strips emoji, it does not
+  // escape HTML). Previously all eleven values were interpolated
+  // directly into an innerHTML template string with zero escaping -
+  // built via appendConfirmRow()/textContent now instead, so none of
+  // them can ever be parsed as markup regardless of what a guest types.
+  while (card.firstChild) card.removeChild(card.firstChild);
+  appendConfirmRow(card, 'Passenger', `${fn} ${ln}`);
+  appendConfirmRow(card, 'Contact', `${em} · ${ph}`);
+  appendConfirmRow(card, 'From', stripEmoji(state.pickup?.name) || '—');
+  appendConfirmRow(card, 'To', stripEmoji(state.destination?.hotel) || '—');
+  appendConfirmRow(card, 'Date & time', `${dateStr} at ${time}`);
+  appendConfirmRow(card, 'Vehicle', vName);
+  appendConfirmRow(card, 'Passengers', `${state.passengers} adults · ${state.luggage} bags`);
+  appendConfirmRow(card, 'Flight number', flight);
+  appendConfirmRow(card, 'Distance', `${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`);
+  appendConfirmRow(card, 'Trip type', suffix);
+  appendConfirmRow(card, 'Special requests', notes);
+
+  // totalRows (built above) contains ONLY numeric prices and, when a tour
+  // is in the booking, state.selectedTour.name - which is always sourced
+  // from the hardcoded TOURS_DATA catalog (see selectTour()), never
+  // guest-editable - so it remains trusted static markup, appended as-is
+  // after the safe rows above. Layout/classes/wording unchanged.
+  card.insertAdjacentHTML('beforeend', totalRows);
 }
 
 // ─── WHATSAPP MESSAGE ────────────────────────────────────────────────────────
@@ -2045,7 +2099,13 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
       });
     });
 
-    if (!html) html = `<div class="ta-empty">No matches for "${filter}". Try the area name (e.g. "Coral Coast") or pick "📍 Other / not listed".</div>`;
+    // CEO P0 security fix (2026-09-13) - `filter` is the guest's own live
+    // keystrokes in the location search box (see the 'input' listener
+    // below), echoed back here unescaped previously. Every other value
+    // built into `html` above (s.text/o.text/o.area/g.label) comes from
+    // this site's own trusted <option> markup, not guest input, so only
+    // this one interpolation needed escaping.
+    if (!html) html = `<div class="ta-empty">No matches for "${escapeHtml(filter)}". Try the area name (e.g. "Coral Coast") or pick "📍 Other / not listed".</div>`;
     list.innerHTML = html;
 
     // Wire option clicks
