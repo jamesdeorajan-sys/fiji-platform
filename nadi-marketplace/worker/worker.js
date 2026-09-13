@@ -455,6 +455,16 @@ export default {
       return handleAdminCancelBooking(request, env, Number(cancelBookingMatch[1]));
     }
 
+    // ── Milestone 36: authoritative human-confirmed booking state - the
+    // event Smart Return (smart-return-trigger-fill/) keys off. Deliberately
+    // separate from the driver/admin "accepted" (assignment) flow above -
+    // see migrations/milestone36-human-confirmed-status.sql for the full
+    // contract. ──
+    const humanConfirmMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/human-confirm$/);
+    if (request.method === 'POST' && humanConfirmMatch) {
+      return handleAdminHumanConfirm(request, env, Number(humanConfirmMatch[1]));
+    }
+
     // ── Milestone 20: operational dashboard metrics, admin-dashboard.html ──
     if (request.method === 'GET' && url.pathname === '/admin/dashboard-stats') {
       return handleAdminDashboardStats(request, env);
@@ -2279,6 +2289,74 @@ async function handleAdminCancelBooking(request, env, bookingId) {
   });
 
   return json({ ok: true, booking_id: bookingId, status: 'cancelled' }, 200);
+}
+
+// Milestone 36: the authoritative "a real staff member has checked this
+// booking is genuinely happening" event - see
+// migrations/milestone36-human-confirmed-status.sql for the full contract.
+// Deliberately admin-only (requireAdmin(), same gate as every other
+// /admin/* action here) - there is no driver/guest/cron path to this
+// state, and actor is always the literal 'admin' below, never inferred
+// from anything else. Race-safe (a conditional UPDATE, same
+// compare-and-swap pattern as handleDriverAcceptBooking/
+// handleAdminManualAssign above) and idempotent - a repeat call on an
+// already-confirmed booking is a no-op success, writing neither a second
+// status change nor a second booking_events row.
+async function handleAdminHumanConfirm(request, env, bookingId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+
+  const booking = await env.DB.prepare(
+    `SELECT id, status, pickup_date, pickup_time, assigned_driver_id FROM bookings WHERE id = ?`
+  ).bind(bookingId).first();
+  if (!booking) return json({ ok: false, error: 'Booking not found.' }, 404);
+
+  if (booking.status === 'human_confirmed') {
+    return json({
+      ok: true, booking_id: bookingId, status: 'human_confirmed',
+      assigned_driver_id: booking.assigned_driver_id, already_confirmed: true,
+    }, 200);
+  }
+
+  if (booking.status !== 'pending') {
+    return json({ ok: false, error: `Cannot human-confirm a booking that is ${booking.status} (must be pending).` }, 409);
+  }
+
+  // Fail closed: pickup_date/pickup_time (Milestone 17) must already be
+  // real values, not confirmed into existence here. Smart Return (and any
+  // other future consumer of this event) needs both to exist - this is the
+  // one authoritative point that guarantees it rather than trusting it was
+  // checked somewhere upstream.
+  if (!booking.pickup_date || !booking.pickup_time) {
+    return json({ ok: false, error: 'Cannot human-confirm a booking with no pickup_date/pickup_time set.' }, 400);
+  }
+
+  const result = await env.DB.prepare(
+    `UPDATE bookings SET status = 'human_confirmed' WHERE id = ? AND status = 'pending'`
+  ).bind(bookingId).run();
+
+  if (result.meta.changes !== 1) {
+    // Lost a race to a concurrent request - re-check rather than silently
+    // reporting success for a write that didn't happen here.
+    const current = await env.DB.prepare(`SELECT status, assigned_driver_id FROM bookings WHERE id = ?`).bind(bookingId).first();
+    if (current && current.status === 'human_confirmed') {
+      return json({
+        ok: true, booking_id: bookingId, status: 'human_confirmed',
+        assigned_driver_id: current.assigned_driver_id, already_confirmed: true,
+      }, 200);
+    }
+    return json({ ok: false, error: `Booking status changed concurrently (now ${current ? current.status : 'unknown'}) - not confirmed.` }, 409);
+  }
+
+  await logBookingEvent(env, {
+    bookingId, eventType: 'human_confirmed', previousStatus: 'pending', newStatus: 'human_confirmed',
+    actor: 'admin',
+  });
+
+  return json({
+    ok: true, booking_id: bookingId, status: 'human_confirmed',
+    assigned_driver_id: booking.assigned_driver_id, already_confirmed: false,
+  }, 200);
 }
 
 async function handleAdminManualAssign(request, env) {

@@ -1,0 +1,44 @@
+-- Nadi Airport Transfers — Milestone 36: authoritative human-confirmed
+-- booking state.
+--
+-- No schema change is strictly required to USE the value 'human_confirmed'
+-- in bookings.status or booking_events.event_type - both columns are plain
+-- TEXT with no CHECK constraint (see schema.sql). This migration exists
+-- for two real, needed things:
+--
+-- 1. Indexes. bookings.status and booking_events.event_type currently have
+--    no index at all (only booking_events.booking_id does - see
+--    idx_booking_events_booking_id). Smart Return's read-only export query
+--    (WHERE b.status = 'accepted' AND be.event_type = 'accepted') - and
+--    its human_confirmed equivalent this migration is for - will do a full
+--    table scan without these. Purely additive, zero risk to existing
+--    rows or queries.
+--
+-- 2. This comment itself, as the single documented record of the new
+--    status/event_type value and its meaning, matching this repo's own
+--    established convention (see e.g. milestone24-admin-pin.sql, which is
+--    "no new table" but still gets its own migration file for exactly
+--    this reason).
+--
+-- CONTRACT for the new value:
+--   bookings.status = 'human_confirmed'
+--   booking_events.event_type = 'human_confirmed'
+--   booking_events.new_status = 'human_confirmed'
+--   booking_events.actor = 'admin' (always - see handleAdminHumanConfirm()
+--     in worker.js; this state can ONLY be created by an authenticated
+--     admin action, never a driver, never a guest, never a cron/system
+--     process)
+--
+-- Lifecycle: pending -> human_confirmed -> completed/cancelled.
+-- Deliberately does NOT replace or modify the existing pending -> accepted
+-- (driver/admin assignment) -> en_route -> completed flow, which is a
+-- separate, unrelated operational concern (who is driving) that this
+-- migration does not touch. A booking may still independently go through
+-- that flow; human_confirmed is additive, not a replacement.
+--
+-- Existing pending/accepted/en_route/completed/cancelled rows are
+-- completely unaffected - this migration inserts and alters nothing about
+-- any existing row.
+
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+CREATE INDEX IF NOT EXISTS idx_booking_events_event_type ON booking_events(event_type);
