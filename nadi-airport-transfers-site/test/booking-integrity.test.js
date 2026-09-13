@@ -16,9 +16,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+// Mirrors app.js's three contact-field normalizers exactly.
+function normalisePhoneForFingerprint(phone) {
+  return (phone || '').replace(/[^\d+]/g, '');
+}
+function normaliseEmailForFingerprint(email) {
+  return (email || '').trim().toLowerCase();
+}
+function normaliseNameForFingerprint(name) {
+  return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 // Mirrors app.js's buildBookingIntentFingerprint() object shape exactly,
 // taking an explicit intent object instead of reading document/state
-// directly (same field set, same conditional return-field nulling).
+// directly (same field set, same conditional return-field nulling, same
+// contact-field normalization — see the CEO third-review fix: backend
+// verification proved a replay never reconciles a changed contact field
+// [createBookingRecord's idempotency pre-check and race-safe catch block
+// both return the pre-existing row unchanged; none of the file's four
+// UPDATE bookings statements are reachable from this path or touch
+// guest_name/guest_phone/guest_email], so an ACTUAL contact-field change
+// must mint a new ref — but a pure FORMATTING difference must not).
 function fingerprintFromIntent(intent) {
   const isReturn = intent.tripType === 'return';
   return JSON.stringify({
@@ -38,6 +56,9 @@ function fingerprintFromIntent(intent) {
     hasSurfboard: !!intent.hasSurfboard,
     notes: intent.notes || null,
     quotedAmount: intent.quotedAmount,
+    guestName: normaliseNameForFingerprint(intent.guestName),
+    guestPhone: normalisePhoneForFingerprint(intent.guestPhone),
+    guestEmail: normaliseEmailForFingerprint(intent.guestEmail),
   });
 }
 
@@ -95,6 +116,9 @@ const BASE_INTENT = Object.freeze({
   hasSurfboard: false,
   notes: null,
   quotedAmount: 79,
+  guestName: 'Jane Smith',
+  guestPhone: '+679 123 4567',
+  guestEmail: 'Jane.Smith@Example.com',
 });
 
 function refFor(intent, now) {
@@ -209,14 +233,70 @@ test('a genuinely different destination still gets its own fresh ref', () => {
   assert.notEqual(second, first);
 });
 
-test('contact-detail-only edits (name/phone/email are never part of the fingerprint) still collapse to the same ref', () => {
-  // buildBookingIntentFingerprint() deliberately never reads guest_name/
-  // guest_phone/guest_email - confirmed here by using an intent object
-  // that has no such fields at all and still matching.
+// ─── CEO third-review requirement: contact fields are now included
+// (normalized), because read-only backend verification proved a replay
+// never reconciles a changed contact field (see fingerprintFromIntent's
+// own header comment). Tests 1-7 below are exactly the CEO's numbered list.
+
+test('1. exact same full booking (including contact fields) -> same ref', () => {
   const s = scenario();
   const first = s.attempt(BASE_INTENT, () => 1000);
-  const second = s.attempt({ ...BASE_INTENT }, () => 2000); // a "typo correction" would only ever touch contact fields, not modeled here at all
+  const second = s.attempt({ ...BASE_INTENT }, () => 2000);
   assert.equal(second, first);
+});
+
+test('2. phone formatting-only normalization (spacing/punctuation) -> same ref', () => {
+  // Deliberately keeps the same leading '+' presence in both forms - the
+  // normalizer mirrors the backend's own normalisePhone() exactly, which
+  // (correctly) does NOT treat "has a +" vs "has no +" as pure formatting,
+  // since that can genuinely change which country's number is meant. Only
+  // spacing/punctuation around otherwise-identical digits is "formatting".
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000); // '+679 123 4567'
+  const second = s.attempt({ ...BASE_INTENT, guestPhone: '+679-123-4567' }, () => 2000);
+  assert.equal(second, first);
+});
+
+test('phone with a leading + vs without is treated as a real difference, matching the backend\'s own normalisePhone()', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000); // '+679 123 4567'
+  const second = s.attempt({ ...BASE_INTENT, guestPhone: '679 123 4567' }, () => 2000); // same digits, no '+'
+  assert.notEqual(second, first, 'presence of the international-dial-code + is not mere formatting');
+});
+
+test('3. actual phone number change -> new ref (backend proven not to reconcile this - Case B)', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000);
+  const second = s.attempt({ ...BASE_INTENT, guestPhone: '+679 999 9999' }, () => 2000);
+  assert.notEqual(second, first);
+});
+
+test('4. email case-only change -> same ref', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000); // 'Jane.Smith@Example.com'
+  const second = s.attempt({ ...BASE_INTENT, guestEmail: 'jane.smith@example.com' }, () => 2000);
+  assert.equal(second, first);
+});
+
+test('5. actual email change -> new ref (backend proven not to reconcile this - Case B)', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000);
+  const second = s.attempt({ ...BASE_INTENT, guestEmail: 'someone-else@example.com' }, () => 2000);
+  assert.notEqual(second, first);
+});
+
+test('6. name whitespace/case-only change -> same ref', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000); // 'Jane Smith'
+  const second = s.attempt({ ...BASE_INTENT, guestName: '  jane   smith  ' }, () => 2000);
+  assert.equal(second, first);
+});
+
+test('7. substantive name change -> new ref (backend proven not to reconcile this - Case B)', () => {
+  const s = scenario();
+  const first = s.attempt(BASE_INTENT, () => 1000);
+  const second = s.attempt({ ...BASE_INTENT, guestName: 'John Doe' }, () => 2000);
+  assert.notEqual(second, first);
 });
 
 test('a blocked/throwing storage (private browsing) still returns a usable ref instead of crashing', () => {

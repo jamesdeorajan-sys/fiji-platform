@@ -1207,25 +1207,50 @@ async function reportNadiSyncFailure(ref, payload, errorDetail) {
   }
 }
 
-// CEO P0 booking-integrity fix (2026-09-13, second review) - canonical
-// fingerprint of the FULL booking intent that actually reaches
+// CEO P0 booking-integrity fix (2026-09-13, third review) - contact-field
+// normalizers. Mirrors the backend's own normalisePhone() exactly (strip
+// everything but digits and a leading '+') so formatting-only differences
+// the backend would ALSO collapse to the same stored value never look like
+// a "changed" number here - only an actually different number does.
+function normalisePhoneForFingerprint(phone) {
+  return (phone || '').replace(/[^\d+]/g, '');
+}
+function normaliseEmailForFingerprint(email) {
+  return (email || '').trim().toLowerCase();
+}
+function normaliseNameForFingerprint(name) {
+  return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// CEO P0 booking-integrity fix (2026-09-13, second + third review) -
+// canonical fingerprint of the FULL booking intent that actually reaches
 // POST /bookings, not just route/date/vehicle. Must stay stable across an
 // exact retry (network timeout, lost response, double-click) of the
 // identical intent, but must change the moment any field that would
-// change the persisted booking changes - the first version of this fix
-// only fingerprinted pickup/destination/date/time/vehicle/tripType, which
-// meant a guest who changed passenger count, luggage, flight number,
-// return details, an add-on, notes, or the quoted price after a failed/
-// lost-response attempt would have their edit silently discarded: the
-// backend's idempotency check would match the stale ref and hand back the
-// ORIGINAL (pre-edit) booking instead of persisting the new one.
+// change the persisted booking changes - the second-review fix already
+// closed this gap for trip fields (passenger count, luggage, flight
+// number, return details, add-ons, notes, quoted price).
 //
-// Deliberately EXCLUDES guest_name/guest_phone/guest_email: a guest
-// correcting a typo in their own contact details before retrying the SAME
-// trip must still collapse to the SAME booking, not mint a second one.
-// This value never leaves the guest's own browser (sessionStorage only,
-// never transmitted or logged), so excluding contact fields is a
-// booking-identity decision, not a privacy trade-off.
+// Third review: guest_name/guest_phone/guest_email are now INCLUDED
+// (normalized - see the three functions above), reversing the
+// second-review fix's exclusion. That exclusion was only safe if the
+// backend reconciles a changed contact field on an idempotent replay.
+// Read-only verification of nadi-marketplace/worker/worker.js's
+// createBookingRecord() (both the pre-check at the "idempotency
+// pre-check" comment and the race-safe catch block at
+// "idx_bookings_client_booking_ref") proves it does NOT: a replay's
+// `existing` row is returned completely unchanged, and grep for every
+// `UPDATE bookings` statement in the whole file confirms none of the four
+// (driver-accept x2, admin-cancel, generic status change) ever touch
+// guest_name/guest_phone/guest_email, nor are any of them reachable from
+// this path. A corrected phone/email/name sent on a "retry" would
+// therefore be silently discarded server-side - so, per the CEO's
+// preferred safe policy, an ACTUAL contact-field change must mint a new
+// ref rather than silently reuse the old identity. Values are normalized
+// first specifically so a pure FORMATTING difference (phone spacing,
+// email casing, name whitespace/casing) - which persists to the exact
+// same backend value either way - does NOT spuriously invalidate an
+// otherwise-identical retry.
 //
 // Deliberately EXCLUDES any timestamp or other volatile field - an
 // idempotency identity must never include something that changes on its
@@ -1238,6 +1263,8 @@ async function reportNadiSyncFailure(ref, payload, errorDetail) {
 function buildBookingIntentFingerprint() {
   const isReturn = state.tripType === 'return';
   const total = calculateTotal(); // pure read of state/DOM, no side effects
+  const firstNameVal = document.getElementById('firstName')?.value || '';
+  const lastNameVal = document.getElementById('lastName')?.value || '';
   return JSON.stringify({
     pickup: document.getElementById('pickup')?.value ?? null,
     destination: document.getElementById('destination')?.value ?? null,
@@ -1255,6 +1282,9 @@ function buildBookingIntentFingerprint() {
     hasSurfboard: !!document.getElementById('extra-surf')?.checked,
     notes: document.getElementById('notes')?.value.trim() || null,
     quotedAmount: total.final,
+    guestName: normaliseNameForFingerprint(`${firstNameVal} ${lastNameVal}`),
+    guestPhone: normalisePhoneForFingerprint(document.getElementById('phone')?.value),
+    guestEmail: normaliseEmailForFingerprint(document.getElementById('email')?.value),
   });
 }
 
