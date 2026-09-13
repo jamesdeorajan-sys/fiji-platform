@@ -148,11 +148,33 @@ test('WhatsApp-only flow (showBulaUnsupportedRoute) remains truthful and untouch
   assert.ok(fn.includes("bulaWaReassurance.style.display = 'none'"));
 });
 
-test('definitive failure wording (bulaFailure card) is unchanged and never claims success', () => {
-  const card = extract(html, 'id="bulaFailure"', '</div>\n    </div>');
+test('definitive failure wording (bulaFailure card) is truthful for an unknown-save outcome and never claims success', () => {
+  // CEO P1 truthful-failure fix (2026-09-13): the old copy asserted "your
+  // details are saved and our team has already been alerted" as a blanket
+  // fact for every failure outcome, including the genuinely unknown one
+  // (network timeout after the server may have already committed - see
+  // the unknown-save test below). That's only true for a confirmed server
+  // rejection, never for an unknown outcome, so it's replaced with wording
+  // that doesn't assert either way.
+  // Strip HTML comments first: this card carries an explanatory comment
+  // that names the exact banned phrases being removed (for future
+  // editors), which would otherwise trip a naive substring/regex scan of
+  // the raw markup. Only rendered (customer-visible) text should be
+  // checked against these assertions.
+  const cardRaw = extract(html, 'id="bulaFailure"', '</div>\n    </div>');
+  const card = cardRaw.replace(/<!--[\s\S]*?-->/g, '');
   assert.ok(/we couldn.t confirm your booking automatically/i.test(card));
-  assert.ok(/your details are saved and our team has already been alerted/i.test(card));
+  assert.ok(/couldn.t confirm whether your booking request was saved/i.test(card), 'must not claim a settled save/no-save outcome');
+  assert.ok(!/details are saved/i.test(card), 'must not claim the booking is saved when the outcome is unknown');
+  assert.ok(!/team has already been alerted/i.test(card), 'must not claim the team has been alerted when the outcome is unknown');
   assert.ok(!/booking confirmed/i.test(card));
+  assert.ok(/do not make a second booking with different details/i.test(card), 'must warn against a second, different-details booking while save state is unknown');
+});
+
+test('unknown-save retry identity: retryMarketplaceBooking() reuses the same client_booking_ref, never mints a new one', () => {
+  const fn = extract(js, 'async function retryMarketplaceBooking() {', '\n// A2:');
+  assert.ok(fn.includes('const ref = state.currentBookingRef;'), 'retry must reuse the original booking ref, not generate a fresh one');
+  assert.ok(fn.includes('submitMarketplaceBooking(ref)'), 'retry must submit with that same ref, so the existing idempotency path can never create a duplicate booking');
 });
 
 test('unknown-save wording: a network timeout after the server may have already committed still routes to showBulaFailure(), never to a false success', () => {

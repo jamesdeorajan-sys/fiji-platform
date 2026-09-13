@@ -1074,9 +1074,26 @@
       <div class="bula-success-inner">
         <div class="bula-eyebrow">We hit a snag</div>
         <h2 class="bula-title">We couldn't confirm your booking automatically</h2>
+        <!-- CEO P1 truthful-failure fix (2026-09-13) - this card covers every
+             failure outcome submitMarketplaceBooking() can return, including
+             the genuinely UNKNOWN case (e.g. a network timeout after the
+             server may have already committed the row - see that function's
+             own comment). The previous copy asserted "your details are
+             saved and our team has already been alerted" unconditionally,
+             which is only true for a confirmed server rejection, not an
+             unknown outcome - a real save/no-save ambiguity must never be
+             presented to the guest as a settled fact either way. Retry
+             identity is unchanged: retryMarketplaceBooking() still reuses
+             state.currentBookingRef, so "try again" is safe to say
+             literally - the same client_booking_ref hits the existing
+             idempotency path server-side and can never create a duplicate
+             booking, confirmed or not. -->
         <p class="bula-lead">
-          Your details are saved and our team has already been alerted to check on this.
-          Please try again, or message us directly on WhatsApp and we'll get you booked right away.
+          We couldn't confirm whether your booking request was saved.
+          Please try again using the same request, or message our Fiji team on WhatsApp for help.
+        </p>
+        <p class="bula-lead">
+          Do not make a second booking with different details unless our team asks you to.
         </p>
         <div class="bula-actions">
           <button class="btn-primary btn-confirm" id="bulaRetryBtn" onclick="retryMarketplaceBooking()">Try again</button>
