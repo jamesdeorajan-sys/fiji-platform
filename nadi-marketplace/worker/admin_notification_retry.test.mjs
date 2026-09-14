@@ -95,10 +95,11 @@ const TEST_WHATSAPP_PHONE_ID = 'test-phone-id';
 const TEST_WHATSAPP_TOKEN = 'test-whatsapp-token';
 const DEFAULT_ADMIN_PHONE = '+6799999999';
 
-function freshEnv({ adminAlertPhone = DEFAULT_ADMIN_PHONE } = {}) {
+function freshEnv({ adminAlertPhone = DEFAULT_ADMIN_PHONE, applyMilestone36 = true } = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec(SCHEMA_SQL);
-  for (const sql of MIGRATIONS_SQL) db.exec(sql);
+  const migrations = applyMilestone36 ? MIGRATIONS_SQL : MIGRATIONS_SQL.slice(0, -1);
+  for (const sql of migrations) db.exec(sql);
   // schema.sql already seeds 'Nadi Airport'/'Denarau' (and 17 other real
   // zones) - no need to insert them ourselves.
   if (adminAlertPhone) {
@@ -428,6 +429,59 @@ test('booking idempotency, fares, and D1 rows are completely unaffected by this 
 
     const totalRows = db.prepare('SELECT COUNT(*) as n FROM bookings').get();
     assert.equal(totalRows.n, 2, 'exactly two booking rows, one per distinct client_booking_ref - booking-level idempotency (Milestone 34) is untouched by this fix');
+  } finally {
+    mock.restore();
+  }
+});
+
+// ─── RELEASE-ORDERING SAFETY ─────────────────────────────────────────────
+// Proves the exact scenario the CEO's release-sequence question raises: if
+// the Worker is ever deployed BEFORE milestone36-admin-notification-retry-
+// state.sql has been applied to D1, admin_notification_state does not
+// exist yet - claimAdminNotificationAttempt's queries against it would
+// throw a real D1 "no such table" error. Without attemptAdminNotification's
+// own try/catch, that error would propagate out of handleGuestBookingCreate
+// and turn an ALREADY-SUCCESSFUL, already-persisted booking into a
+// guest-facing failure. freshEnv({ applyMilestone36: false }) simulates
+// exactly this pre-migration state.
+
+test('booking creation still succeeds (201, one real row, correct fare) even when admin_notification_state does not exist yet - the exact Worker-before-migration deployment order', async () => {
+  const { env, db } = freshEnv({ applyMilestone36: false });
+  const mock = installScriptedMetaMock([metaSuccessResponse()]); // short alert only reachable call
+  try {
+    const tableExists = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'admin_notification_state'`).get();
+    assert.equal(tableExists, undefined, 'fixture sanity: the table really does not exist in this env');
+
+    const { status, body } = await postBooking(env, baseBookingPayload({ client_booking_ref: 'FD-PRE-MIGRATION', quoted_amount: 49 }));
+    assert.equal(status, 201, 'the booking save itself must succeed regardless of the missing retry-state table');
+    assert.equal(body.ok, true);
+
+    const row = db.prepare('SELECT quoted_amount, client_booking_ref FROM bookings WHERE id = ?').get(body.booking_id);
+    assert.equal(row.quoted_amount, 49, 'the real booking row and fare are completely unaffected');
+    assert.equal(row.client_booking_ref, 'FD-PRE-MIGRATION');
+
+    const totalRows = db.prepare('SELECT COUNT(*) as n FROM bookings').get();
+    assert.equal(totalRows.n, 1, 'exactly one booking row - no partial/duplicate write from the caught error');
+  } finally {
+    mock.restore();
+  }
+});
+
+test('an idempotent replay also survives a missing admin_notification_state table - still returns the same booking, still no crash', async () => {
+  const { env, db } = freshEnv({ applyMilestone36: false });
+  const mock = installScriptedMetaMock([metaSuccessResponse(), metaSuccessResponse()]);
+  try {
+    const ref = 'FD-PRE-MIGRATION-REPLAY';
+    const create = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
+    assert.equal(create.status, 201);
+
+    const replay = await postBooking(env, baseBookingPayload({ client_booking_ref: ref }));
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.idempotent, true);
+    assert.equal(replay.body.booking_id, create.body.booking_id);
+
+    const totalRows = db.prepare('SELECT COUNT(*) as n FROM bookings WHERE client_booking_ref = ?').get(ref);
+    assert.equal(totalRows.n, 1);
   } finally {
     mock.restore();
   }

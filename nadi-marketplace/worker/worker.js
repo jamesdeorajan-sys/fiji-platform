@@ -3201,65 +3201,85 @@ async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
 // idempotency is completely untouched) and never re-sends the guest's own
 // customer-facing confirmation (this function only ever touches the ops
 // admin channel).
+// Release-ordering safety: this entire function is wrapped in try/catch so
+// that ANY error touching admin_notification_state - most importantly
+// "no such table", if the Worker is ever deployed before
+// milestone36-admin-notification-retry-state.sql has been applied to D1 -
+// can never propagate out of handleGuestBookingCreate and turn an
+// already-successful, already-persisted booking (createBookingRecord has
+// already returned by the time this runs) into a guest-facing failure.
+// Same discipline logBookingEvent() itself already applies to
+// booking_events writes; extended here to the whole notification-attempt
+// path, not just the final audit-log call. A caught error here means ops
+// simply doesn't get pinged for this one booking - observable via
+// console.error, not via a crashed request - and, once the table exists,
+// the exact same retry path (a guest replay, or any future explicit resend
+// action) recovers it with no special handling needed, since a booking
+// that never got even a NOT_ATTEMPTED row behaves identically to one that
+// did.
 async function attemptAdminNotification(env, booking) {
-  const claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
-  if (!claim.claimed) {
-    const reason = claim.state === 'SENT'
-      ? 'already sent - provider-confirmed success on a prior attempt'
-      : claim.state === 'ATTEMPTING'
-        ? 'an attempt for this booking is already in flight'
-        : 'replay of existing client_booking_ref';
-    await recordAdminNotificationOutcome(env, booking.id, 'skipped_idempotent', { reason, previous_state: claim.state });
-    return;
-  }
+  try {
+    const claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
+    if (!claim.claimed) {
+      const reason = claim.state === 'SENT'
+        ? 'already sent - provider-confirmed success on a prior attempt'
+        : claim.state === 'ATTEMPTING'
+          ? 'an attempt for this booking is already in flight'
+          : 'replay of existing client_booking_ref';
+      await recordAdminNotificationOutcome(env, booking.id, 'skipped_idempotent', { reason, previous_state: claim.state });
+      return;
+    }
 
-  const fullSummary = buildFullBookingAdminSummary(booking);
-  const notifiedPhones = await getAdminAlertPhones(env);
+    const fullSummary = buildFullBookingAdminSummary(booking);
+    const notifiedPhones = await getAdminAlertPhones(env);
 
-  let sentDetail = null;
-  let failDetail = null;
+    let sentDetail = null;
+    let failDetail = null;
 
-  if (notifiedPhones.length === 0) {
-    failDetail = { reason: 'platform_settings.admin_alert_phone is not set.' };
-    await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
-  }
-
-  for (const alertPhone of notifiedPhones) {
-    const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
-    if (sendResult.attempted && sendResult.ok) {
-      // Issue #53 canary #2 - pull the WAMID out into its own field rather
-      // than leaving it buried in the raw response text, so "did Meta
-      // actually accept this" is a direct field read, not a JSON-parse of
-      // a debug string. Never throws on an unexpected response shape -
-      // wamid just stays null, response is kept either way as the fallback.
-      let wamid = null;
-      try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
-      sentDetail = { status: sendResult.status, wamid, response: sendResult.response };
-      await recordAdminNotificationOutcome(env, booking.id, 'sent', sentDetail);
-    } else {
-      failDetail = {
-        reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
-        status: sendResult.status, response: sendResult.response,
-      };
+    if (notifiedPhones.length === 0) {
+      failDetail = { reason: 'platform_settings.admin_alert_phone is not set.' };
       await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
     }
-  }
 
-  // Durable state reflects the OVERALL outcome - SENT the moment at least
-  // one real send succeeds (never downgraded by a later recipient's own
-  // failure - today there is only ever one admin_alert_phone, but this
-  // stays correct if that ever changes), FAILED_RETRYABLE otherwise
-  // (including "no admin_alert_phone configured at all", so a retry after
-  // one gets configured can still succeed). Never written as SENT unless a
-  // real send actually succeeded - the whole point of this fix.
-  if (sentDetail) {
-    await env.DB.prepare(
-      `UPDATE admin_notification_state SET state = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now') WHERE booking_id = ?`
-    ).bind(sentDetail.status ?? null, sentDetail.wamid ?? null, booking.id).run();
-  } else {
-    await env.DB.prepare(
-      `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_error = ?, last_provider_status = ?, updated_at = datetime('now') WHERE booking_id = ?`
-    ).bind(failDetail.reason, failDetail.status ?? null, booking.id).run();
+    for (const alertPhone of notifiedPhones) {
+      const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
+      if (sendResult.attempted && sendResult.ok) {
+        // Issue #53 canary #2 - pull the WAMID out into its own field rather
+        // than leaving it buried in the raw response text, so "did Meta
+        // actually accept this" is a direct field read, not a JSON-parse of
+        // a debug string. Never throws on an unexpected response shape -
+        // wamid just stays null, response is kept either way as the fallback.
+        let wamid = null;
+        try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
+        sentDetail = { status: sendResult.status, wamid, response: sendResult.response };
+        await recordAdminNotificationOutcome(env, booking.id, 'sent', sentDetail);
+      } else {
+        failDetail = {
+          reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
+          status: sendResult.status, response: sendResult.response,
+        };
+        await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
+      }
+    }
+
+    // Durable state reflects the OVERALL outcome - SENT the moment at least
+    // one real send succeeds (never downgraded by a later recipient's own
+    // failure - today there is only ever one admin_alert_phone, but this
+    // stays correct if that ever changes), FAILED_RETRYABLE otherwise
+    // (including "no admin_alert_phone configured at all", so a retry after
+    // one gets configured can still succeed). Never written as SENT unless a
+    // real send actually succeeded - the whole point of this fix.
+    if (sentDetail) {
+      await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now') WHERE booking_id = ?`
+      ).bind(sentDetail.status ?? null, sentDetail.wamid ?? null, booking.id).run();
+    } else {
+      await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_error = ?, last_provider_status = ?, updated_at = datetime('now') WHERE booking_id = ?`
+      ).bind(failDetail.reason, failDetail.status ?? null, booking.id).run();
+    }
+  } catch (err) {
+    console.error(`[admin-notification] attempt failed for booking ${booking.id}: ${err.message}`);
   }
 }
 
