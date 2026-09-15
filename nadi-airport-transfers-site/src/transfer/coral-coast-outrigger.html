@@ -113,6 +113,9 @@
 .rp-mobile-assist .rp-cta{width:100%;margin-top:10px;padding:11px 20px;font-size:14px;justify-content:center}
 .rp-sticky-cta{display:flex}
 }
+[data-route-cta][aria-disabled="true"]{opacity:.5;pointer-events:none;cursor:not-allowed}
+.rp-dest-chooser{width:100%;max-width:360px;padding:12px 14px;border:1px solid var(--border-light);border-radius:var(--radius-md);font-family:'DM Sans',sans-serif;font-size:14px;margin-bottom:14px;background:var(--white);color:var(--dark);display:block}
+.rp-dest-chooser:focus{outline:3px solid var(--ocean);outline-offset:1px}
 </style>
 </head>
 <body>
@@ -135,7 +138,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.35 12a19.79 19.79 0 01-3.07-8.67A2 2 0 013.22 1.32h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L7.09 9.32a16 16 0 006.29 6.29l1.37-1.37a2 2 0 012.12-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
         +61 478 886 145
       </a>
-      <a href="https://book.fijidash.com/?pickup=NAN&dest=OUTRIGGER_FIJI&utm_source=organic&utm_medium=route_page&utm_campaign=nadi_transfer_acquisition&utm_content=coral-coast-outrigger" class="btn-nav">Book Now</a>
+      <a href="https://book.fijidash.com/?pickup=NAN&amp;dest=OUTRIGGER_FIJI&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_transfer_acquisition&amp;utm_content=coral-coast-outrigger" data-route-cta class="btn-nav">Book Now</a>
     </div>
     <button class="hamburger" id="hamburger" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -172,7 +175,7 @@
     </div>
 
     <div class="rp-cta-wrap">
-      <a href="https://book.fijidash.com/?pickup=NAN&dest=OUTRIGGER_FIJI&utm_source=organic&utm_medium=route_page&utm_campaign=nadi_transfer_acquisition&utm_content=coral-coast-outrigger" class="rp-cta" id="primaryCta">
+      <a href="https://book.fijidash.com/?pickup=NAN&amp;dest=OUTRIGGER_FIJI&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_transfer_acquisition&amp;utm_content=coral-coast-outrigger" data-route-cta class="rp-cta" id="primaryCta">
         GET INSTANT PRICE
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
@@ -216,7 +219,7 @@
       <div class="rp-mobile-line"><b>Route</b> Nadi Airport &rarr; Outrigger Fiji Beach Resort</div>
       <div class="rp-mobile-line"><b>Vehicle</b> Sedan &middot; Minivan &middot; Minibus</div>
       <div class="rp-mobile-line"><b>Confirm</b> No payment now &mdash; our Fiji team confirms your pickup and driver.</div>
-      <a href="https://book.fijidash.com/?pickup=NAN&dest=OUTRIGGER_FIJI&utm_source=organic&utm_medium=route_page&utm_campaign=nadi_transfer_acquisition&utm_content=coral-coast-outrigger" class="rp-cta">CONTINUE TO BOOKING</a>
+      <a href="https://book.fijidash.com/?pickup=NAN&amp;dest=OUTRIGGER_FIJI&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_transfer_acquisition&amp;utm_content=coral-coast-outrigger" data-route-cta class="rp-cta">CONTINUE TO BOOKING</a>
     </div>
   </div>
 </section>
@@ -247,7 +250,7 @@
 <div class="rp-cta-band">
   <h2>Ready to book your Coral Coast transfer?</h2>
   <p>Get an instant, whole-vehicle price. No payment now — confirmed by a real person.</p>
-  <a href="https://book.fijidash.com/?pickup=NAN&dest=OUTRIGGER_FIJI&utm_source=organic&utm_medium=route_page&utm_campaign=nadi_transfer_acquisition&utm_content=coral-coast-outrigger" class="rp-cta" style="display:inline-flex">GET INSTANT PRICE</a>
+  <a href="https://book.fijidash.com/?pickup=NAN&amp;dest=OUTRIGGER_FIJI&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_transfer_acquisition&amp;utm_content=coral-coast-outrigger" data-route-cta class="rp-cta" style="display:inline-flex">GET INSTANT PRICE</a>
 </div>
 
 <footer class="footer">
@@ -261,9 +264,10 @@
 
 <div class="rp-sticky-cta" id="rpStickyBar">
   <div class="rp-sticky-fare">FJ$129 per vehicle<span>One-way, whole vehicle</span></div>
-  <a href="https://book.fijidash.com/?pickup=NAN&dest=OUTRIGGER_FIJI&utm_source=organic&utm_medium=route_page&utm_campaign=nadi_transfer_acquisition&utm_content=coral-coast-outrigger" class="rp-sticky-btn">GET INSTANT PRICE</a>
+  <a href="https://book.fijidash.com/?pickup=NAN&amp;dest=OUTRIGGER_FIJI&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_transfer_acquisition&amp;utm_content=coral-coast-outrigger" data-route-cta class="rp-sticky-btn">GET INSTANT PRICE</a>
 </div>
 
+<script src="../route-handoff.js"></script>
 <script>
 (function(){
   var hero = document.getElementById('primaryCta');
@@ -282,5 +286,8 @@
 })();
 </script>
 
+<script>
+NadiRouteHandoff.applyDestToAllCtas('OUTRIGGER_FIJI', 'coral-coast-outrigger');
+</script>
 </body>
 </html>
