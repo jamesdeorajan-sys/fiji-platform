@@ -3100,10 +3100,18 @@ async function createBookingRecord(env, {
 // first - including guest-authored `notes`, the one field here that isn't
 // server-generated and could otherwise reintroduce the exact character
 // classes Meta rejects.
+// P0 retry fix (2026-09-14) - widened from the original [\r\n\t] class.
+// \v (vertical tab) and \f (form feed) are real control characters a
+// pasted-from-elsewhere guest field (notes, in particular) can carry that
+// \r\n\t alone never catches; NEL/LINE SEPARATOR/PARAGRAPH SEPARATOR
+// (U+0085/U+2028/U+2029) are real Unicode line terminators with the same
+// problem. Any of these reaching Meta would risk the exact 132018
+// rejection this function exists to prevent, undetected by the narrower
+// original class.
 function sanitiseWhatsAppParamText(text, maxLen) {
   if (!text) return '';
   let s = String(text)
-    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\r\n\t\v\f\u0085\u2028\u2029]+/g, ' ')
     .replace(/ {2,}/g, ' ')
     .trim();
   if (maxLen && s.length > maxLen) s = s.slice(0, Math.max(0, maxLen - 1)).trimEnd() + '…';
@@ -3150,6 +3158,129 @@ async function recordAdminNotificationOutcome(env, bookingId, outcome, detail) {
     actor: 'system',
     metadata: { channel: 'whatsapp', ...detail },
   });
+}
+
+// P0 retry fix (2026-09-14) - see migrations/milestone36-admin-notification-
+// retry-state.sql for the full incident and contract this exists to fix.
+// Atomically claims the right to attempt (or retry) this booking's rich
+// admin notification. Durable (a real D1 row, correct across Worker
+// isolates and across retries minutes or hours apart - never an in-memory
+// flag) and race-safe: the UPDATE's WHERE clause only ever matches
+// NOT_ATTEMPTED or FAILED_RETRYABLE, so of any two concurrent callers for
+// the same booking only one can ever see changes === 1 - the exact same
+// compare-and-swap pattern handleDriverAcceptBooking uses for
+// `WHERE status = 'pending'`. Never claims from SENT or ATTEMPTING - a
+// second real send can never happen once one has already succeeded, or
+// while one is already in flight.
+async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO admin_notification_state (booking_id, client_booking_ref, state) VALUES (?, ?, 'NOT_ATTEMPTED')`
+  ).bind(bookingId, clientBookingRef).run();
+
+  const claim = await env.DB.prepare(
+    `UPDATE admin_notification_state
+     SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
+     WHERE booking_id = ? AND state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')`
+  ).bind(bookingId).run();
+
+  if (claim.meta.changes === 1) return { claimed: true };
+
+  const current = await env.DB.prepare(`SELECT state FROM admin_notification_state WHERE booking_id = ?`).bind(bookingId).first();
+  return { claimed: false, state: current ? current.state : null };
+}
+
+// P0 retry fix (2026-09-14) - the single entry point for the rich admin
+// notification, called on BOTH a genuine first creation and an idempotent
+// replay (a guest retry/double-tap landing on the same client_booking_ref
+// - see handleGuestBookingCreate below). Never assumes a replay means
+// "already notified" - only a real provider-confirmed SENT state does. A
+// booking whose first attempt failed (Meta rejection, network error, or no
+// admin_alert_phone configured) stays retryable forever, through this
+// exact same function, using the same booking/client_booking_ref - never
+// creates a second booking (createBookingRecord's own Milestone 34
+// idempotency is completely untouched) and never re-sends the guest's own
+// customer-facing confirmation (this function only ever touches the ops
+// admin channel).
+// Release-ordering safety: this entire function is wrapped in try/catch so
+// that ANY error touching admin_notification_state - most importantly
+// "no such table", if the Worker is ever deployed before
+// milestone36-admin-notification-retry-state.sql has been applied to D1 -
+// can never propagate out of handleGuestBookingCreate and turn an
+// already-successful, already-persisted booking (createBookingRecord has
+// already returned by the time this runs) into a guest-facing failure.
+// Same discipline logBookingEvent() itself already applies to
+// booking_events writes; extended here to the whole notification-attempt
+// path, not just the final audit-log call. A caught error here means ops
+// simply doesn't get pinged for this one booking - observable via
+// console.error, not via a crashed request - and, once the table exists,
+// the exact same retry path (a guest replay, or any future explicit resend
+// action) recovers it with no special handling needed, since a booking
+// that never got even a NOT_ATTEMPTED row behaves identically to one that
+// did.
+async function attemptAdminNotification(env, booking) {
+  try {
+    const claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
+    if (!claim.claimed) {
+      const reason = claim.state === 'SENT'
+        ? 'already sent - provider-confirmed success on a prior attempt'
+        : claim.state === 'ATTEMPTING'
+          ? 'an attempt for this booking is already in flight'
+          : 'replay of existing client_booking_ref';
+      await recordAdminNotificationOutcome(env, booking.id, 'skipped_idempotent', { reason, previous_state: claim.state });
+      return;
+    }
+
+    const fullSummary = buildFullBookingAdminSummary(booking);
+    const notifiedPhones = await getAdminAlertPhones(env);
+
+    let sentDetail = null;
+    let failDetail = null;
+
+    if (notifiedPhones.length === 0) {
+      failDetail = { reason: 'platform_settings.admin_alert_phone is not set.' };
+      await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
+    }
+
+    for (const alertPhone of notifiedPhones) {
+      const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
+      if (sendResult.attempted && sendResult.ok) {
+        // Issue #53 canary #2 - pull the WAMID out into its own field rather
+        // than leaving it buried in the raw response text, so "did Meta
+        // actually accept this" is a direct field read, not a JSON-parse of
+        // a debug string. Never throws on an unexpected response shape -
+        // wamid just stays null, response is kept either way as the fallback.
+        let wamid = null;
+        try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
+        sentDetail = { status: sendResult.status, wamid, response: sendResult.response };
+        await recordAdminNotificationOutcome(env, booking.id, 'sent', sentDetail);
+      } else {
+        failDetail = {
+          reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
+          status: sendResult.status, response: sendResult.response,
+        };
+        await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
+      }
+    }
+
+    // Durable state reflects the OVERALL outcome - SENT the moment at least
+    // one real send succeeds (never downgraded by a later recipient's own
+    // failure - today there is only ever one admin_alert_phone, but this
+    // stays correct if that ever changes), FAILED_RETRYABLE otherwise
+    // (including "no admin_alert_phone configured at all", so a retry after
+    // one gets configured can still succeed). Never written as SENT unless a
+    // real send actually succeeded - the whole point of this fix.
+    if (sentDetail) {
+      await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now') WHERE booking_id = ?`
+      ).bind(sentDetail.status ?? null, sentDetail.wamid ?? null, booking.id).run();
+    } else {
+      await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_error = ?, last_provider_status = ?, updated_at = datetime('now') WHERE booking_id = ?`
+      ).bind(failDetail.reason, failDetail.status ?? null, booking.id).run();
+    }
+  } catch (err) {
+    console.error(`[admin-notification] attempt failed for booking ${booking.id}: ${err.message}`);
+  }
 }
 
 async function handleGuestBookingCreate(request, env) {
@@ -3230,11 +3361,16 @@ async function handleGuestBookingCreate(request, env) {
   // re-alerts ops for a booking they've already seen - the opposite of
   // what idempotency is for. 200, not 201: nothing new was created.
   if (result.idempotent) {
-    // Issue #53 - positive confirmation that the replay correctly sent
-    // ZERO additional admin notifications, not just silence. Fire-and-
-    // forget same as every other call below: never lets a logging failure
-    // affect the (already-decided) response to this replay.
-    await recordAdminNotificationOutcome(env, result.bookingId, 'skipped_idempotent', { reason: 'replay of existing client_booking_ref' });
+    // P0 retry fix (2026-09-14) - a replay must NOT automatically mean
+    // "already notified". attemptAdminNotification() checks the DURABLE
+    // admin_notification_state row: only a real provider-confirmed SENT
+    // blocks a resend here - a prior FAILED_RETRYABLE (or NOT_ATTEMPTED,
+    // e.g. no admin_alert_phone was configured at creation time) is
+    // retried for real, through the same booking/client_booking_ref,
+    // never creating a second booking or a duplicate customer-facing
+    // message. Fire-and-forget same as before: never lets a notification
+    // outcome affect the (already-decided) response to this replay.
+    await attemptAdminNotification(env, result.booking);
     return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
   }
 
@@ -3247,11 +3383,20 @@ async function handleGuestBookingCreate(request, env) {
   // independent-of-guest-WhatsApp notification Issue #34 requirement 10
   // asks for - it already existed before this fix (Milestone 19-era code),
   // fires unconditionally on every real booking creation, and does not
-  // depend on the driver broadcast having found anyone online. Left
-  // completely unchanged by Issue #53 below (CEO instruction: preserve the
-  // existing short alert unless duplication becomes operationally harmful).
+  // depend on the driver broadcast having found anyone online. Sanitised
+  // as of the P0 retry fix (2026-09-14) - this short alert interpolates
+  // guest_name/zones/vehicle_type/currency/amount directly and has the
+  // exact same 132018 exposure buildFullBookingAdminSummary already
+  // guarded against. Deliberately NOT tracked by the retry state machine
+  // below - it is a best-effort heads-up (never logged, never retried,
+  // same as before this fix), not the ops-critical notification Issue #53
+  // restored; a lost short alert is not operationally silent the way a
+  // lost full-detail notification was, since ops still gets the richer one.
   const b = result.booking;
-  const bookingSummary = `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`;
+  const bookingSummary = sanitiseWhatsAppParamText(
+    `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`,
+    1000
+  );
   for (const alertPhone of await getAdminAlertPhones(env)) {
     await sendHealthAlertWhatsApp(env, alertPhone, bookingSummary, sqliteNow());
   }
@@ -3259,36 +3404,14 @@ async function handleGuestBookingCreate(request, env) {
   // Issue #53 (CEO P0) - the actual restoration: a SECOND, richer automatic
   // admin notification carrying the itinerary detail ops needs to run the
   // job, so James no longer has to depend on the guest tapping their own
-  // optional WhatsApp chat button. Only reachable past the `if
-  // (result.idempotent) return` above, so a replay can never double-send
-  // this either - same guarantee as the short alert and driver broadcast
-  // just above. A WhatsApp failure here is recorded (below) but never
-  // turns this already-persisted, already-broadcast booking into a
-  // guest-facing failure - the guest's success response is unaffected
-  // either way.
-  const fullSummary = buildFullBookingAdminSummary(b);
-  const notifiedPhones = await getAdminAlertPhones(env);
-  if (notifiedPhones.length === 0) {
-    await recordAdminNotificationOutcome(env, b.id, 'failed', { reason: 'platform_settings.admin_alert_phone is not set.' });
-  }
-  for (const alertPhone of notifiedPhones) {
-    const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
-    if (sendResult.attempted && sendResult.ok) {
-      // Issue #53 canary #2 - pull the WAMID out into its own field rather
-      // than leaving it buried in the raw response text, so "did Meta
-      // actually accept this" is a direct field read, not a JSON-parse of
-      // a debug string. Never throws on an unexpected response shape -
-      // wamid just stays null, response is kept either way as the fallback.
-      let wamid = null;
-      try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
-      await recordAdminNotificationOutcome(env, b.id, 'sent', { status: sendResult.status, wamid, response: sendResult.response });
-    } else {
-      await recordAdminNotificationOutcome(env, b.id, 'failed', {
-        reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
-        status: sendResult.status, response: sendResult.response,
-      });
-    }
-  }
+  // optional WhatsApp chat button. P0 retry fix (2026-09-14):
+  // attemptAdminNotification() now also runs from the idempotent-replay
+  // branch above, using the same durable, race-safe claim - see its own
+  // header comment for the full design. A WhatsApp failure here is
+  // recorded but never turns this already-persisted, already-broadcast
+  // booking into a guest-facing failure - the guest's success response is
+  // unaffected either way.
+  await attemptAdminNotification(env, b);
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
 }
