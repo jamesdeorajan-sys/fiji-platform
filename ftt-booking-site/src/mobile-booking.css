@@ -1,0 +1,21 @@
+/* Isolated mobile presentation patch; booking, fares and save handlers untouched. */
+#booking { scroll-margin-top: 80px; }
+@media (max-width: 768px) {
+  .nav { background: #fff; backdrop-filter: none; }
+  .nav-inner { gap: 12px; padding-inline: 16px; }
+  .nav-right { gap: 10px; }
+  #booking .vehicle-cards, #booking .vehicle-detail-cards { gap: 12px; }
+  #booking .vehicle-card { padding: 14px 12px; }
+  #booking .vehicle-icon { font-size: 22px; margin-bottom: 2px; }
+  #booking .vehicle-detail-card { padding: 16px 12px 12px; }
+  #booking .vd-icon { float: left; font-size: 24px; margin: 0 10px 4px 0; }
+  #booking .vd-name { margin-bottom: 2px; }
+  #booking .vd-cap { margin-bottom: 6px; }
+  #booking .vd-features { clear: both; margin-bottom: 6px; }
+  #booking .vehicle-detail-card:not(.selected) .vd-features { display: none; }
+  #booking .vd-price { font-size: 1.2rem; }
+  #booking .confirm-row { align-items: flex-start; gap: 12px; }
+  #booking .confirm-label { flex: 0 0 28%; }
+  #booking .confirm-value { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+  #booking input, #booking select, #booking textarea { font-size: 16px; }
+}
