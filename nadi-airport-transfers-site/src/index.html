@@ -600,7 +600,11 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
               Flight number
             </label>
-            <input type="text" id="flightNum" class="field-input" placeholder="e.g. FJ401, QF351, NZ56" oninput="onFlightInput()">
+            <input type="text" id="flightNum" class="field-input" placeholder="e.g. FJ401, QF351, NZ56" oninput="onFlightInput(); validateArrivalFlight()">
+            <label class="field-hint" style="display:block;margin-top:8px">
+              <input type="checkbox" id="flightUnknown" onchange="validateArrivalFlight()"> I don't know my flight number yet
+            </label>
+            <p id="flightError" role="alert" hidden>Enter your arrival flight number or select “I don't know my flight number yet”.</p>
             <div id="flightHint" class="field-hint flight-hint" style="display:none">
               ✈ We track your flight. If you're late, we wait — at no extra charge.
             </div>
