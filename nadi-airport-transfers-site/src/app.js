@@ -461,7 +461,7 @@ function updatePricing() {
   if (vcEl) vcEl.innerHTML = buildVehicleCards();
   if (panel) panel.style.display = 'block';
   if (empty) empty.style.display = 'none';
-  if (nextBtn) nextBtn.disabled = !state.selectedVehicle;
+  if (nextBtn) nextBtn.disabled = false; // Vehicle choice belongs to step 2.
 
   // Tour-bundle summary: show combined transfer + tour total when both
   // a tour and a vehicle are in the booking. Only renders after vehicle
@@ -751,17 +751,52 @@ function showStep(n) {
   }
 }
 
+// Validate before review and again before locking the submit button.
+function validateBookingContact() {
+  for (const id of ['firstName', 'lastName', 'email', 'phone']) {
+    const field = document.getElementById(id);
+    if (!field) return false;
+    const value = field.value.trim();
+    const valid = value && (id !== 'email' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+      && (id !== 'phone' || /^[+()\d\s.-]+$/.test(value) && value.replace(/\D/g, '').length >= 7);
+    field.setCustomValidity(valid ? '' : (id === 'email' ? 'Enter a valid email address.' : id === 'phone' ? 'Enter your phone number with country code.' : 'Please complete this field.'));
+    if (!valid) {
+      showStep(3);
+      field.focus();
+      field.reportValidity();
+      return false;
+    }
+  }
+  return true;
+}
+
+function validateArrivalFlight() {
+  const missing = document.getElementById('pickup')?.value === 'NAN'
+    && !document.getElementById('flightNum')?.value.trim()
+    && !document.getElementById('flightUnknown')?.checked;
+  const error = document.getElementById('flightError');
+  if (error) error.hidden = !missing;
+  if (missing) {
+    showStep(1);
+    document.getElementById('flightNum')?.focus();
+    document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  }
+  return true;
+}
+
 function goToStep(n) {
   if (n === 4) {
-    const fn = document.getElementById('firstName')?.value.trim();
-    const ln = document.getElementById('lastName')?.value.trim();
-    const em = document.getElementById('email')?.value.trim();
-    const ph = document.getElementById('phone')?.value.trim();
-    if (!fn || !ln || !em || !ph) { alert('Please fill in all required fields.'); return; }
+    if (!validateBookingContact()) return;
     buildConfirmation();
   }
   if (n === 2) {
-    if (!state.selectedVehicle) { alert('Please select a vehicle first.'); return; }
+    if (!validateArrivalFlight()) return;
+    if (!resolveLocation('pickup') || !resolveLocation('destination')) {
+      showStep(1);
+      alert('Please choose your pickup and destination.');
+      return;
+    }
     // Capacity guard — checks both pax and luggage
     const v = VEHICLES.find(x => x.key === state.selectedVehicle);
     if (v && !vehicleFits(v)) {
@@ -776,6 +811,7 @@ function goToStep(n) {
     if (vdc) vdc.innerHTML = buildVehicleDetailCards();
   }
   if (n === 3) {
+    if (!state.selectedVehicle) { alert('Please select a vehicle.'); return; }
     // Lock-in capacity check on confirm-vehicle step
     const v = VEHICLES.find(x => x.key === state.selectedVehicle);
     if (v && !vehicleFits(v)) {
@@ -1349,6 +1385,7 @@ async function confirmBooking() {
   // second click/tap during the async save below must be rejected outright,
   // not merely slowed down.
   if (state.confirmBookingInFlight) return;
+  if (!validateBookingContact() || !validateArrivalFlight()) return;
   state.confirmBookingInFlight = true;
   const confirmBtn = document.querySelector('.btn-confirm');
   const confirmBtnOriginalText = confirmBtn?.textContent;
@@ -1357,34 +1394,7 @@ async function confirmBooking() {
     confirmBtn.textContent = 'Saving your booking…';
   }
 
-  // A1: Soft-required flight number for Nadi Airport arrivals.
-  // We don't block submission, but if pickup is NAN and the customer left
-  // the flight field blank, we surface a one-time confirmation prompt.
-  // Pattern matches Welcome Pickups and Klook airport flows.
   const pickupVal = document.getElementById('pickup')?.value;
-  const flightVal = document.getElementById('flightNum')?.value.trim();
-  if (pickupVal === 'NAN' && !flightVal && !state.flightPromptDismissed) {
-    const proceed = confirm(
-      'No flight number entered.\n\n'
-      + 'We monitor incoming flights so the driver adjusts pickup time '
-      + 'automatically if you\'re delayed. Without it, your driver may '
-      + 'arrive before you clear customs.\n\n'
-      + 'Continue anyway?'
-    );
-    if (!proceed) {
-      state.confirmBookingInFlight = false;
-      if (confirmBtn) {
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = confirmBtnOriginalText;
-      }
-      // Focus the field so they can fill it in
-      document.getElementById('flightNum')?.focus();
-      document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    // They chose to proceed — don't ask again in this booking
-    state.flightPromptDismissed = true;
-  }
 
   // CEO P0 booking-integrity fix (2026-09-13) - the booking reference is
   // now ALSO the client_booking_ref idempotency key sent to POST /bookings
