@@ -125,7 +125,31 @@ preview. Full detail:
   23,475 chars, all 35 pricing links present, tours/reviews present.
   71/71 tests pass (app.js untouched). Same preview-first process,
   verified live on nadiairporttransfers.com after cutover.
-- **Codex — please independently verify all three deploys on your return**
+- **FOURTH live deploy, 2026-09-18 (commit `31a27fb`):** James connected
+  Bing Webmaster Tools (imported from an already-verified GSC property)
+  and pulled the "AI Performance" report — real Microsoft Copilot
+  citation data, 750 citations over 2 months across 22 pages. Cross-
+  checked all 22 against live site: **13 of 21 cited transfer pages
+  (142 of 750 citations) were soft-404ing to the homepage** — AI search
+  is already recommending these exact URLs and visitors get the wrong
+  content. (1 additional cited page, `outrigger-fiji-beach-resort`, 20
+  citations, already works via a mechanism outside this repo's source
+  tree — not touched.) Built real pages for all 13 using the same
+  template/JSON-LD/favicon pattern as the 11 existing pages, pricing
+  pulled directly from `app.js`'s `ROUTES_DATA` (same source of truth,
+  nothing invented). Added all 13 to `sitemap.xml` (11 → 24 transfer
+  URLs). 71/71 tests pass, all 25 HTML files + sitemap XML verified
+  well-formed, preview-first then production, full regression check
+  (all 24 prior pages + homepage + booking flow) confirmed clean after
+  cutover.
+  **Found while building, not fixed:** `ROUTES_DATA`'s `MARRIOTT_MOMI`
+  row has `m:79` (minibus) priced BELOW both sedan (`s:99`) and minivan
+  (`v:149`) — almost certainly a typo (missing digit, e.g. should be
+  179) in the pre-existing source data, not something introduced today.
+  Reproduced faithfully on the new page rather than silently "corrected"
+  — needs James to confirm the real minibus price for Momi Bay before
+  anyone changes it.
+- **Codex — please independently verify all four deploys on your return**
   (browser click-through still valuable even though Claude did one too —
   fresh eyes, different scenarios, different environment). Flag anything
   wrong here or in a new Issue #59 comment; James can execute rollback via
