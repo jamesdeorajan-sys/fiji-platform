@@ -305,3 +305,72 @@ Some entries below are being relabeled retroactively to reflect this.
   this specific frontend candidate) still applies: record the decision
   here before deploying, preview first when a browser/verification path
   allows it.
+
+---
+
+## 🔴 CRITICAL CORRECTION, 2026-09-18 — the "booking decline" premise was wrong
+
+**The entire premise driving today's session — "bookings not coming in,
+nose dive since Sept 4, business gone silent" — is NOT supported by the
+actual production data.** This needs to be read by anyone picking up
+this file before assuming the earlier framing is still accurate.
+
+**What the data actually shows** (queried directly from `nadi-marketplace-db`,
+the real production D1 database, 2026-09-18):
+- Full booking history: 137 rows total, `MIN(created_at)` 2026-07-24,
+  `MAX(created_at)` 2026-09-17.
+- Daily volume has NOT declined — several of the highest-volume days in
+  the entire history are in the second half of September: Sep 6 (12),
+  Sep 9 (13), Sep 10 (9), **Sep 13 (14, the all-time peak)**, Sep 16 (12).
+- Last real (non-test) nadiairporttransfers.com guest booking: **Victoria
+  Tiffen, id 135, ref FTT-3YX2QY, 2026-09-16 10:38:49**, real NZ phone,
+  Nadi Airport → Denarau, FJ$76.
+
+**What looked broken but wasn't:** every booking from id 100 onward
+(~Sept 9 onward) shows `status: pending`, `assigned_driver_id: NULL` in
+the database — Claude initially read this as a complete fulfillment
+failure (guests booking, nobody assigning drivers). **James confirmed
+directly this is a false signal: the ground team serves guests live via
+a WhatsApp group chat, entirely outside the admin dashboard/status
+fields.** The Victoria Tiffen alert (#135) was shown forwarded into a
+"Bula Victoria" WhatsApp group with a real team member tagged, same day
+it was created. **The admin dashboard's `status`/`assigned_driver_id`
+columns do not reflect real-world fulfillment for this business** — do
+not use "N pending/unassigned in the DB" as evidence of a fulfillment
+problem without checking with James first. This exact false-positive
+already happened once in this file's history (the Priority Recovery
+brief's "131 pending/unassigned, 26 escalations" framing) — it is the
+same underlying misread, not independent confirmation of a real problem.
+
+**Two genuinely real, separate, smaller findings from the same
+investigation, still open:**
+1. **Short-distance pricing mismatch.** Live-tested two real bookings
+   today: #143 (Tanoa International, 0.8km real distance, quoted FJ$15,
+   backend recorded/alerted **FJD 30.15** — mismatch) vs. #144 (Hilton
+   Denarau, 10km, quoted FJ$49, alerted FJD 49 — exact match). Confirmed
+   NOT site-wide via this A/B test. Likely a minimum-fare/base-fee floor
+   in the backend's distance-based "authoritative" pricing overriding
+   the published-table quote on very short trips. Root cause not fully
+   traced (would need the actual live Worker source, not a possibly-
+   stale branch). Real money risk if a driver charges the alerted amount
+   against what the guest actually agreed to.
+2. **`admin_notification_state` table does not exist in production**
+   (`nadi-marketplace-db`) — confirmed via direct query
+   (`SQLITE_ERROR: no such table`). The entire durable notification-
+   retry system PR #55 built and tested was never actually deployed.
+   The live Worker is sending notifications via some simpler, undurable
+   path (WhatsApp alerts for bookings #143/#144 arrived within 2 seconds
+   today, so basic sending works) with no tracking of delivery success
+   or retry-on-failure. Given real fulfillment happens over WhatsApp
+   group chat per the correction above, this may matter less than
+   originally assumed — but it's still a real gap if a send ever fails
+   silently with no record and no retry.
+
+**How to apply:** today's actual site-layer fixes (vehicle-selection
+bug, blank `/transfer/*` pages, JS-invisible pricing/tours/reviews
+content, missing favicon/metadata, 13 new AI-cited-but-broken pages) were
+real and are independently verifiable via the live site regardless of
+this correction. What's corrected here is only the *motivating narrative*
+("business is dying, bookings stopped") — treat that framing as false
+going forward, and treat the two findings above as bounded, specific,
+real issues, not symptoms of a broader collapse.
