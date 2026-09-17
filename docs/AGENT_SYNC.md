@@ -374,3 +374,22 @@ this correction. What's corrected here is only the *motivating narrative*
 ("business is dying, bookings stopped") — treat that framing as false
 going forward, and treat the two findings above as bounded, specific,
 real issues, not symptoms of a broader collapse.
+
+**September revenue snapshot (2026-09-18, Claude, queried directly from
+`nadi-marketplace-db`):** 73 real (non-test) bookings, Sept 1–18 to date,
+total **FJD $9,740.98 quoted** — nadiairporttransfers.com 38 bookings /
+$5,213.00, fijidash 31 bookings / $3,826.85, 4 unclear-site / $701.13.
+This is *quoted* amount at booking time, not confirmed *collected*
+revenue — payment is cash/card/bank transfer on arrival, and per the
+correction above the `status` field doesn't reliably reflect real
+fulfillment, so this cannot be read as "revenue collected." Full 105-row
+CSV (Sept 1–18, all bookings incl. test rows flagged) generated and
+given directly to James, not committed to this repo (contains real
+guest names/phone numbers).
+**Specific overdue-looking bookings James confirmed were NOT actually
+missed** (initially flagged as a live concern, now resolved): Khemarint
+Son, Tyler Sanderson, Jacinta Takchi, Sergi Arévalo, Maddy Green — all
+served via the WhatsApp ground-team workflow, not a genuine fulfillment
+failure. Three additional rows initially flagged as possibly-real
+(guest names "Ji Jjk" / "James I'm" / "Juh Jjj", all sharing phone
+`0478302777`) are confirmed by James to be his own test bookings.
