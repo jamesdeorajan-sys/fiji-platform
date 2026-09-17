@@ -60,10 +60,17 @@
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {"@type":"Question","name":"Is there Uber in Fiji?","acceptedAnswer":{"@type":"Answer","text":"No — Uber does not operate in Fiji. Pre-booked private transfers and shared shuttles are the reliable options from Nadi International Airport."}},
-    {"@type":"Question","name":"How much does a Nadi Airport to Denarau transfer cost?","acceptedAnswer":{"@type":"Answer","text":"From FJ$49 for a private sedan or FJ$69 for a minivan. Denarau is approximately 12km from the airport — 18–20 minutes."}},
-    {"@type":"Question","name":"How long is the drive from Nadi Airport to the Coral Coast?","acceptedAnswer":{"@type":"Answer","text":"Between 55 and 90 minutes depending on your resort. Shangri-La is ~70 min, Outrigger ~95 min, Warwick/Naviti ~98 min. Sedan from FJ$129."}},
-    {"@type":"Question","name":"Do you monitor flights for delays?","acceptedAnswer":{"@type":"Answer","text":"Yes. We track all incoming flights in real time. If your flight is delayed, your driver adjusts automatically at no extra charge."}}
+    {"@type":"Question","name":"Is there Uber in Fiji?","acceptedAnswer":{"@type":"Answer","text":"No — Uber does not operate in Fiji. Your reliable options are pre-booked private transfer services (like ours), shared shuttles, or licensed metered taxis. Pre-booking is strongly recommended to avoid negotiating fares after a long flight."}},
+    {"@type":"Question","name":"How long is the drive from Nadi Airport to the Coral Coast?","acceptedAnswer":{"@type":"Answer","text":"Journey times depend on your resort: Shangri-La Yanuca ~55 min (72 km), Gecko's / Bedarra ~80 min (82 km), Outrigger Fiji ~95 min (98 km), The Warwick / Naviti ~98 min (100 km). A private transfer is recommended."}},
+    {"@type":"Question","name":"How much does a Nadi Airport to Denarau transfer cost?","acceptedAnswer":{"@type":"Answer","text":"Private sedan (1–3 pax): FJ$49 per vehicle. Private minivan (4–7 pax): FJ$69. Minibus (8–12 pax): FJ$99. Denarau is approximately 12 km from the airport — 18–20 minutes."}},
+    {"@type":"Question","name":"How is pricing calculated?","acceptedAnswer":{"@type":"Answer","text":"Distance-based pricing in FJD with no surge fees. Short trips (Nadi/Denarau): from FJ$19 sedan, FJ$49 minivan. Mid-range (Natadola, Sigatoka): from FJ$99 sedan. Long-haul (Coral Coast, Pacific Harbour, Suva): from FJ$129 sedan. A 20% night surcharge applies for pickups between 10 pm and 6 am. Return bookings are discounted vs two one-ways."}},
+    {"@type":"Question","name":"What if my flight is delayed?","acceptedAnswer":{"@type":"Answer","text":"We monitor all incoming flights in real time. If your flight is delayed your driver adjusts automatically — no extra charge. Just provide your flight number at booking."}},
+    {"@type":"Question","name":"Can I stop at a supermarket or ATM on the way?","acceptedAnswer":{"@type":"Answer","text":"Yes — all private transfers include one complimentary stop at a supermarket, ATM, bottle shop or pharmacy en route. Mention it in special requests when booking."}},
+    {"@type":"Question","name":"Do you provide baby or child seats?","acceptedAnswer":{"@type":"Answer","text":"Yes, on request for a small charge of FJ$8. Specify your children's ages in special requests so we can fit the right seat before your arrival."}},
+    {"@type":"Question","name":"How do I find my driver at Nadi Airport?","acceptedAnswer":{"@type":"Answer","text":"Your driver waits in the international arrivals hall with a sign showing your name. If you can't find them, call or WhatsApp the number on your confirmation immediately."}},
+    {"@type":"Question","name":"Do you offer return transfers?","acceptedAnswer":{"@type":"Answer","text":"Yes — book return at the time of booking for a small discount. Your return pickup can be from your resort back to Nadi Airport or anywhere else on Viti Levu."}},
+    {"@type":"Question","name":"Can I change my pickup time after booking?","acceptedAnswer":{"@type":"Answer","text":"Yes — pickup time, date, and stops can all be modified free of charge up to 2 hours before your scheduled pickup. Just WhatsApp us with your booking reference. No fees, no questions."}},
+    {"@type":"Question","name":"How far in advance should I book?","acceptedAnswer":{"@type":"Answer","text":"We recommend 24–48 hours in advance, especially June–October and Christmas/New Year. For same-day bookings contact us via WhatsApp."}}
   ]
 }
 </script>
@@ -983,7 +990,323 @@
             <th></th>
           </tr>
         </thead>
-        <tbody id="routesTableBody"></tbody>
+        <tbody id="routesTableBody">
+    <tr>
+      <td>Nadi Town Centre<br><span class="area-badge">Nadi</span></td>
+      <td>5 km</td>
+      <td>13 min</td>
+      <td><strong>FJ$19</strong></td>
+      <td><strong>FJ$49</strong></td>
+      <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(0)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Tanoa International / Tokatoka<br><span class="area-badge">Nadi Airport</span></td>
+      <td>2 km</td>
+      <td>8 min</td>
+      <td><strong>FJ$15</strong></td>
+      <td><strong>FJ$25</strong></td>
+      <td><strong>FJ$45</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(1)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Mercure / Tradewinds Hotel<br><span class="area-badge">Nadi</span></td>
+      <td>5 km</td>
+      <td>13 min</td>
+      <td><strong>FJ$19</strong></td>
+      <td><strong>FJ$49</strong></td>
+      <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(2)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Wailoaloa Beach Hotels<br><span class="area-badge">Wailoaloa</span></td>
+      <td>8 km</td>
+      <td>17 min</td>
+      <td><strong>FJ$39</strong></td>
+      <td><span class="price-old">FJ$59</span><strong>FJ$53</strong></td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(3)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Crowne Plaza / Smugglers / Ramada<br><span class="area-badge">Wailoaloa</span></td>
+      <td>8 km</td>
+      <td>17 min</td>
+      <td><strong>FJ$39</strong></td>
+      <td><span class="price-old">FJ$59</span><strong>FJ$53</strong></td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(4)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Hilton / Sheraton / Westin Denarau<br><span class="area-badge">Denarau</span></td>
+      <td>12 km</td>
+      <td>22 min</td>
+      <td><strong>FJ$49</strong></td>
+      <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(5)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Sofitel / Radisson / Wyndham<br><span class="area-badge">Denarau</span></td>
+      <td>12 km</td>
+      <td>22 min</td>
+      <td><strong>FJ$49</strong></td>
+      <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(6)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Port Denarau Marina (Yasawa Flyer)<br><span class="area-badge">Denarau</span></td>
+      <td>13 km</td>
+      <td>23 min</td>
+      <td><strong>FJ$49</strong></td>
+      <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(7)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>DoubleTree Sonaisali Island<br><span class="area-badge">Sonaisali</span></td>
+      <td>18 km</td>
+      <td>28 min</td>
+      <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(8)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>First Landing Beach Resort<br><span class="area-badge">Vuda Point</span></td>
+      <td>22 km</td>
+      <td>32 min</td>
+      <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(9)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Vuda Marina (Yacht Haven)<br><span class="area-badge">Vuda Point</span></td>
+      <td>20 km</td>
+      <td>30 min</td>
+      <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(10)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Lautoka City Centre<br><span class="area-badge">Lautoka</span></td>
+      <td>28 km</td>
+      <td>38 min</td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(11)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Tanoa Waterfront / Cathay Lautoka<br><span class="area-badge">Lautoka</span></td>
+      <td>28 km</td>
+      <td>38 min</td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(12)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Lautoka Cruise Terminal<br><span class="area-badge">Lautoka</span></td>
+      <td>30 km</td>
+      <td>40 min</td>
+      <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
+      <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(13)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Fiji Marriott Resort Momi Bay<br><span class="area-badge">Momi Bay</span></td>
+      <td>42 km</td>
+      <td>52 min</td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(14)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>InterContinental Natadola / Yatule<br><span class="area-badge">Natadola</span></td>
+      <td>38 km</td>
+      <td>48 min</td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><span class="price-old">FJ$179</span><strong>FJ$161</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(15)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Robinson Crusoe Island (Likuri)<br><span class="area-badge">Natadola</span></td>
+      <td>50 km</td>
+      <td>58 min</td>
+      <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><span class="price-old">FJ$179</span><strong>FJ$161</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(16)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Sigatoka Town / Sand Dunes<br><span class="area-badge">Sigatoka</span></td>
+      <td>60 km</td>
+      <td>1 hr 6 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(17)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Bedarra / Gecko's / Sandy Point<br><span class="area-badge">Sigatoka</span></td>
+      <td>62 km</td>
+      <td>1 hr 8 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(18)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Kula Wild Adventure Park<br><span class="area-badge">Sigatoka</span></td>
+      <td>62 km</td>
+      <td>1 hr 8 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(19)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Shangri-La Yanuca Island<br><span class="area-badge">Coral Coast</span></td>
+      <td>72 km</td>
+      <td>1 hr 16 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(20)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Hideaway Resort / Tambua Sands<br><span class="area-badge">Coral Coast</span></td>
+      <td>90 km</td>
+      <td>1 hr 30 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(21)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Crusoe's Retreat / Mango Bay<br><span class="area-badge">Coral Coast</span></td>
+      <td>93 km</td>
+      <td>1 hr 32 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(22)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Outrigger Fiji Beach Resort<br><span class="area-badge">Coral Coast</span></td>
+      <td>98 km</td>
+      <td>1 hr 36 min</td>
+      <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
+      <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(23)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>The Warwick / The Naviti<br><span class="area-badge">Coral Coast</span></td>
+      <td>100 km</td>
+      <td>1 hr 38 min</td>
+      <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
+      <td><span class="price-old">FJ$189</span><strong>FJ$170</strong></td>
+      <td><span class="price-old">FJ$239</span><strong>FJ$215</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(24)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>The Beachouse Fiji<br><span class="area-badge">Coral Coast</span></td>
+      <td>115 km</td>
+      <td>1 hr 50 min</td>
+      <td><span class="price-old">FJ$169</span><strong>FJ$152</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$259</span><strong>FJ$233</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(25)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Pacific Harbour Arts Village<br><span class="area-badge">Pacific Harbour</span></td>
+      <td>145 km</td>
+      <td>2 hr 14 min</td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
+      <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(26)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Pearl South Pacific Resort<br><span class="area-badge">Pacific Harbour</span></td>
+      <td>145 km</td>
+      <td>2 hr 14 min</td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
+      <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(27)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Uprising Beach Resort<br><span class="area-badge">Pacific Harbour</span></td>
+      <td>147 km</td>
+      <td>2 hr 16 min</td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
+      <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(28)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Nanuku Resort Fiji (Auberge)<br><span class="area-badge">Pacific Harbour</span></td>
+      <td>150 km</td>
+      <td>2 hr 18 min</td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
+      <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(29)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Ba Town<br><span class="area-badge">Ba</span></td>
+      <td>58 km</td>
+      <td>1 hr 4 min</td>
+      <td><span class="price-old">FJ$169</span><strong>FJ$152</strong></td>
+      <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
+      <td><span class="price-old">FJ$249</span><strong>FJ$224</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(30)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Volivoli / Wananavu Beach Resort<br><span class="area-badge">Rakiraki</span></td>
+      <td>135 km</td>
+      <td>2 hr 6 min</td>
+      <td><span class="price-old">FJ$249</span><strong>FJ$224</strong></td>
+      <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
+      <td><span class="price-old">FJ$349</span><strong>FJ$314</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(31)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Grand Pacific Hotel Suva<br><span class="area-badge">Suva</span></td>
+      <td>198 km</td>
+      <td>2 hr 56 min</td>
+      <td><span class="price-old">FJ$319</span><strong>FJ$287</strong></td>
+      <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
+      <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(32)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Tanoa Plaza / Holiday Inn Suva<br><span class="area-badge">Suva</span></td>
+      <td>198 km</td>
+      <td>2 hr 56 min</td>
+      <td><span class="price-old">FJ$319</span><strong>FJ$287</strong></td>
+      <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
+      <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(33)">Book →</button></td>
+    </tr>
+    <tr>
+      <td>Nausori Airport (SUV)<br><span class="area-badge">Nausori</span></td>
+      <td>225 km</td>
+      <td>3 hr 18 min</td>
+      <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
+      <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
+      <td><span class="price-old">FJ$549</span><strong>FJ$494</strong></td>
+      <td><button class="btn-book" onclick="bookRoute(34)">Book →</button></td>
+    </tr>
+</tbody>
       </table>
     </div>
   </div>
@@ -997,7 +1320,424 @@
       <h2>Top 16 Fiji tours — handpicked for 2026</h2>
       <p>Featured tours from our full collection of 174+ Fiji experiences. Transfer + guided tour packages, all include hotel or airport pickup.</p>
     </div>
-    <div class="tours-grid" id="toursGrid"></div>
+    <div class="tours-grid" id="toursGrid">
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Nadi-Cultural-Night-Tour-Fiji-Up-to-15-Off-6-870x555-1-900x600.webp" alt="Nadi Cultural Night Tour" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#fef2f2;display:none">
+          <span style="font-size:48px">🌺</span>
+        </div>
+        <div class="tour-discount-badge">15% OFF</div>
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#dc2626;background:#fef2f2">Cultural Experience</div>
+        <div class="tour-name">Nadi Cultural Night Tour</div>
+        <div class="tour-desc">Sevusevu kava welcome, traditional meke dance performance, lovo earth-oven feast, village walk and Fijian storytelling.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 4 hrs evening</div>
+          <div class="tour-meta-item">📍 From Nadi & Denarau hotels</div>
+        </div>
+        <div class="tour-price-row">
+          <span class="tour-price-old">FJ$230</span><div class="tour-price">FJ$196</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(0)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nadi-cultural-night-tour-fiji-up-to-15-off/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Natadola-Beach-Horse-Riding-Fiji-–-AU95-2-870x555-1-900x600.webp" alt="Natadola Beach Horse Riding" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#ecfeff;display:none">
+          <span style="font-size:48px">🐎</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0891b2;background:#ecfeff">Beach Adventure</div>
+        <div class="tour-name">Natadola Beach Horse Riding</div>
+        <div class="tour-desc">Guided horse ride along iconic Natadola Beach. Suits all riding levels — confident horses, expert local guides, world-class views.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 50 minutes</div>
+          <div class="tour-meta-item">📍 Natadola Beach (transfer add-on available)</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$138</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(1)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/natadola-beach-horse-riding-fiji-au95/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Natadola-Beach-Cross-Country-Horse-Riding-Fiji-3-870x555-1-900x600.webp" alt="Natadola Beach Cross Country Horse Riding" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#ecfeff;display:none">
+          <span style="font-size:48px">🐴</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0891b2;background:#ecfeff">Beach + Country</div>
+        <div class="tour-name">Natadola Beach Cross Country Horse Riding</div>
+        <div class="tour-desc">Beach gallop combined with cross-country trail through cane fields, native bush and traditional villages. Longer ride for confident riders.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 1 hour</div>
+          <div class="tour-meta-item">📍 Natadola Beach</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$181</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(2)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/natadola-beach-cross-country-horse-riding-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Coral-Coast-Beach-Horse-Riding-Tour-Fiji-1-1-870x555-1-900x600.webp" alt="Coral Coast Beach Horse Riding" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#ecfeff;display:none">
+          <span style="font-size:48px">🌅</span>
+        </div>
+        <div class="tour-discount-badge">25% OFF</div>
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0891b2;background:#ecfeff">Premium Beach Ride</div>
+        <div class="tour-name">Coral Coast Beach Horse Riding</div>
+        <div class="tour-desc">Premium horse ride along the pristine Coral Coast. Hotel pickup from Shangri-La, Outrigger, Warwick, Naviti & all major Coral Coast resorts.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 1 hour</div>
+          <div class="tour-meta-item">📍 Coral Coast (Shangri-La to Warwick)</div>
+        </div>
+        <div class="tour-price-row">
+          <span class="tour-price-old">FJ$184</span><div class="tour-price">FJ$138</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(3)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/coral-coast-beach-horse-riding-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/484951001_1065235435650745_1627320383873036326_n-870x555-2-900x600.webp" alt="Biausevu Waterfall & Village Trek" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#f0fdfa;display:none">
+          <span style="font-size:48px">💦</span>
+        </div>
+        <div class="tour-discount-badge">30% OFF</div>
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0d9488;background:#f0fdfa">Waterfall Hike</div>
+        <div class="tour-name">Biausevu Waterfall & Village Trek</div>
+        <div class="tour-desc">Jungle hike to spectacular Biausevu waterfall (waterfall swim included), kava ceremony at Biausevu village, village walk and traditional lunch.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 3 hrs</div>
+          <div class="tour-meta-item">📍 Sigatoka</div>
+        </div>
+        <div class="tour-price-row">
+          <span class="tour-price-old">FJ$387</span><div class="tour-price">FJ$271</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(4)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/biausevu-waterfall-hiking-tour-in-sigatoka-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/3333-900x600.webp" alt="Sigatoka River Cruise + Biausevu Waterfall" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#f0fdfa;display:none">
+          <span style="font-size:48px">🛶</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0d9488;background:#f0fdfa">Combo Day Tour</div>
+        <div class="tour-name">Sigatoka River Cruise + Biausevu Waterfall</div>
+        <div class="tour-desc">Long-boat cruise up the Sigatoka River to Tau village, kava ceremony, jungle waterfall hike at Biausevu, traditional Fijian lunch. Two iconic tours, one day.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 6 hrs</div>
+          <div class="tour-meta-item">📍 Sigatoka</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$218</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(5)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/sigatoka-river-cruise-tour-biausevu-waterfall-tour/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Coral-Coast-Full-Day-Tour-2-1-870x555-1.webp" alt="Coral Coast Full Day Experience" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#eff6ff;display:none">
+          <span style="font-size:48px">🌊</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#1d4ed8;background:#eff6ff">Full Day Tour</div>
+        <div class="tour-name">Coral Coast Full Day Experience</div>
+        <div class="tour-desc">Sigatoka Sand Dunes + Kula Wild Adventure Park + Biausevu village kava ceremony + beach time on the Coral Coast. Lunch included.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 6 hrs</div>
+          <div class="tour-meta-item">📍 From Nadi or Denarau</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$174</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(6)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/coral-coast-full-day-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/Nadi-Zip-Line-Tour-Fiji-2024-2-870x555-1-900x600.webp" alt="Nadi Zip Line Tour" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#fef2f2;display:none">
+          <span style="font-size:48px">🪂</span>
+        </div>
+        <div class="tour-discount-badge">10% OFF</div>
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#b91c1c;background:#fef2f2">Adventure</div>
+        <div class="tour-name">Nadi Zip Line Tour</div>
+        <div class="tour-desc">Zip line adventure through Sleeping Giant rainforest in the Nadi hills. 5 platforms, 16 lines, jungle canopy views. All safety gear and instruction included.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 3 hrs</div>
+          <div class="tour-meta-item">📍 From Nadi & Denarau hotels</div>
+        </div>
+        <div class="tour-price-row">
+          <span class="tour-price-old">FJ$355</span><div class="tour-price">FJ$320</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(7)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nadi-zip-line-tour-fiji-2025/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/04/453222176_122149630076247556_7809408372744184951_n-870x555-1-900x600.webp" alt="Nausori Highland Off-Road ATV Adventure" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#fef2f2;display:none">
+          <span style="font-size:48px">🏍</span>
+        </div>
+        <div class="tour-discount-badge">30% OFF</div>
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#b91c1c;background:#fef2f2">High-Adrenaline</div>
+        <div class="tour-name">Nausori Highland Off-Road ATV Adventure</div>
+        <div class="tour-desc">ATV bike adventure through Nausori Highlands rainforest, river crossings, mountain views and remote villages. Driver instruction provided.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 5 hrs</div>
+          <div class="tour-meta-item">📍 From Nadi & Denarau</div>
+        </div>
+        <div class="tour-price-row">
+          <span class="tour-price-old">FJ$619</span><div class="tour-price">FJ$434</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(8)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nausori-highland-off-road-atv-bike-adventure-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/03/WhatsApp-Image-2026-01-23-at-14.10.04-870x555-1-900x600.webp" alt="Snorkel with Sharks" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#ecfeff;display:none">
+          <span style="font-size:48px">🦈</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0e7490;background:#ecfeff">Marine Adventure</div>
+        <div class="tour-name">Snorkel with Sharks</div>
+        <div class="tour-desc">Snorkel with reef sharks in their natural habitat. Smaller, less intense alternative to the famous Beqa Lagoon dive — perfect for non-divers.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 4 hrs</div>
+          <div class="tour-meta-item">📍 From Pacific Harbour or transfer included</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$244</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(9)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/snorkel-with-sharks-in-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2025/02/Whales_Tale_fish_feeding_006_med-900x600.jpg" alt="Mamanuca Islands All-Inclusive Sailing Cruise" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#f0f9ff;display:none">
+          <span style="font-size:48px">⛵</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0369a1;background:#f0f9ff">Island Cruise</div>
+        <div class="tour-name">Mamanuca Islands All-Inclusive Sailing Cruise</div>
+        <div class="tour-desc">Full-day sailing cruise through the Mamanucas. Fish feeding, snorkelling, lunch on board, drinks included. Departs Port Denarau.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 7 hrs</div>
+          <div class="tour-meta-item">📍 Departs Port Denarau Marina</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$262</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(10)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/fiji-mamanuca-islands-all-inclusive-sailing-cruise/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/03/480423163_567337009674871_1228509504795453619_n-900x600.jpg" alt="Whale's Tale Cruises (Denarau)" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#f0f9ff;display:none">
+          <span style="font-size:48px">🚢</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0369a1;background:#f0f9ff">Premium Day Cruise</div>
+        <div class="tour-name">Whale's Tale Cruises (Denarau)</div>
+        <div class="tour-desc">Premium full-day cruise to a private island in the Mamanucas. Gourmet lunch, premium drinks, snorkelling, beach access. Adults-only experience.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 7 hrs</div>
+          <div class="tour-meta-item">📍 Departs Port Denarau Marina</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$361</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(11)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/whales-tale-day-cruise/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2024/03/Explore-Naihehe-Cave-Tour-Sigatoka-Fiji-4-870x555-1-900x600.webp" alt="Naihehe Cave Tour (Sigatoka)" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#faf5ff;display:none">
+          <span style="font-size:48px">🦇</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#7c3aed;background:#faf5ff">Cultural Adventure</div>
+        <div class="tour-name">Naihehe Cave Tour (Sigatoka)</div>
+        <div class="tour-desc">Explore the largest cave in Fiji, once a hideout for Fijian warriors. Includes longboat upriver journey, village kava ceremony and cave torch-lit exploration.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 3 hrs</div>
+          <div class="tour-meta-item">📍 From Sigatoka & Coral Coast</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$232</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(12)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/explore-nahehe-cave-tour-sigatoka-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2026/03/39-870x555-1-870x555-1-900x600.webp" alt="Sabeto Hot Springs & Mud Pool" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#faf5ff;display:none">
+          <span style="font-size:48px">♨</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#9333ea;background:#faf5ff">Wellness</div>
+        <div class="tour-name">Sabeto Hot Springs & Mud Pool</div>
+        <div class="tour-desc">Soak in natural geothermal mud pools and warm springs nestled at the foot of the Sleeping Giant. Includes Sabeto Garden of the Sleeping Giant orchid garden visit.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 4 hrs</div>
+          <div class="tour-meta-item">📍 From Nadi & Denarau hotels</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$276</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(13)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/mud-pool-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2023/10/Kava-fruit-marekt-1-675x450253-1-1-900x600.webp" alt="Suva City Day Tour" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#eff6ff;display:none">
+          <span style="font-size:48px">🌇</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#1e40af;background:#eff6ff">City Tour</div>
+        <div class="tour-name">Suva City Day Tour</div>
+        <div class="tour-desc">Explore Fiji's capital — Government Buildings, Albert Park, Thurston Gardens, Fiji Museum, Suva Municipal Market and the Grand Pacific Hotel.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 2 hrs in Suva (full day with transfer)</div>
+          <div class="tour-meta-item">📍 From Pacific Harbour & Coral Coast</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$261</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(14)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/suva-city-tour/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="tour-card">
+      <div class="tour-thumb-wrap">
+        <img class="tour-thumb-img" src="https://fijitourtransfers.com/wp-content/uploads/2024/03/501019817_734191625790448_8981032551289993391_n-900x600.webp" alt="Sigatoka Coastal Fishing Charter" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="tour-thumb-fallback" style="background:#ecfeff;display:none">
+          <span style="font-size:48px">🎣</span>
+        </div>
+        
+      </div>
+      <div class="tour-body">
+        <div class="tour-label" style="color:#0e7490;background:#ecfeff">Fishing Charter</div>
+        <div class="tour-name">Sigatoka Coastal Fishing Charter</div>
+        <div class="tour-desc">Coastal fishing charter for tuna, mahi-mahi, walu and trevally. All gear and bait provided. Half-day options available.</div>
+        <div class="tour-meta">
+          <div class="tour-meta-item">⏱ 3 hrs</div>
+          <div class="tour-meta-item">📍 Departs Sigatoka coast</div>
+        </div>
+        <div class="tour-price-row">
+          <div class="tour-price">FJ$544</div>
+          <div class="tour-price-label">per person from</div>
+        </div>
+        <div class="tour-cta-row">
+          <button class="tour-cta" onclick="selectTour(15)">Book this tour →</button>
+          <a class="tour-link" href="https://fijitourtransfers.com/st_tour/sigatoka-coastal-fishing-charter-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
+        </div>
+      </div>
+    </div>
+</div>
     <div class="tours-cta-row">
       <a class="btn-secondary" href="https://fijitourtransfers.com/tours/" target="_blank" rel="noopener">
         Browse all 174 tours on fijitourtransfers.com →
@@ -1060,7 +1800,80 @@
         <div class="reviews-count">Based on 500+ Google & TripAdvisor reviews</div>
       </div>
     </div>
-    <div class="reviews-grid" id="reviewsGrid"></div>
+    <div class="reviews-grid" id="reviewsGrid">
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Driver was waiting in arrivals with our name. Shell lei, cold water, and a supermarket stop on the way. Couldn't have been easier arriving with two kids after a 10-hour flight from Sydney."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#0066cc">SM</div>
+        <div>
+          <div class="review-name">Sarah M.</div>
+          <div class="review-location">Sydney, AU</div>
+          <div class="review-source">Google review · Verified</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Junior Ali drove us from the airport to Coral Coast — 90 minutes and the whole time he was sharing stories about the villages we passed. Spotless vehicle, on time, genuinely friendly."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#00b386">MT</div>
+        <div>
+          <div class="review-name">Mark T.</div>
+          <div class="review-location">Auckland, NZ</div>
+          <div class="review-source">TripAdvisor review · Verified</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Booked online from Melbourne — easy process. Driver met us at arrivals with a sign, helped with all bags, waited patiently while we stopped at the ATM. Will use again on every Fiji trip."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#7c3aed">J&</div>
+        <div>
+          <div class="review-name">James & Kel</div>
+          <div class="review-location">Melbourne, AU</div>
+          <div class="review-source">Google review · Verified</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Transferred 8 of us from Nadi to Port Denarau in a large clean Toyota van. Kids seats provided without asking. Excellent communication, arrived on time, competitive pricing. Highly recommend."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#b45309">TW</div>
+        <div>
+          <div class="review-name">The Williamson Family</div>
+          <div class="review-location">Brisbane, AU</div>
+          <div class="review-source">Google review · Verified</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Used for both airport pickup and the Sigatoka Sand Dunes day tour. The guide was knowledgeable about the archaeology — genuinely one of the highlights of our Fiji trip."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#dc2626">CH</div>
+        <div>
+          <div class="review-name">Claire H.</div>
+          <div class="review-location">London, UK</div>
+          <div class="review-source">TripAdvisor review · Verified</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card">
+      <div class="review-stars">★★★★★</div>
+      <div class="review-text">"Booked a return transfer Nadi to Pacific Harbour for our shark dive trip. Driver was 15 minutes early both ways. Even texted to confirm the morning of. Absolutely faultless."</div>
+      <div class="review-author">
+        <div class="review-avatar" style="background:#059669">R&</div>
+        <div>
+          <div class="review-name">Ryan & Sophie</div>
+          <div class="review-location">Wellington, NZ</div>
+          <div class="review-source">Google review · Verified</div>
+        </div>
+      </div>
+    </div>
+</div>
   </div>
 </section>
 
@@ -1071,7 +1884,52 @@
       <span class="section-eyebrow">Common questions</span>
       <h2>Frequently asked</h2>
     </div>
-    <div class="faq-list" id="faqList"></div>
+    <div class="faq-list" id="faqList">
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(0,this)">Is there Uber in Fiji? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-0">No — Uber does not operate in Fiji. Your reliable options are pre-booked private transfer services (like ours), shared shuttles, or licensed metered taxis. Pre-booking is strongly recommended to avoid negotiating fares after a long flight.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(1,this)">How long is the drive from Nadi Airport to the Coral Coast? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-1">Journey times depend on your resort: Shangri-La Yanuca ~55 min (72 km), Gecko's / Bedarra ~80 min (82 km), Outrigger Fiji ~95 min (98 km), The Warwick / Naviti ~98 min (100 km). A private transfer is recommended.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(2,this)">How much does a Nadi Airport to Denarau transfer cost? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-2">Private sedan (1–3 pax): FJ$49 per vehicle. Private minivan (4–7 pax): FJ$69. Minibus (8–12 pax): FJ$99. Denarau is approximately 12 km from the airport — 18–20 minutes.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(3,this)">How is pricing calculated? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-3">Distance-based pricing in FJD with no surge fees. Short trips (Nadi/Denarau): from FJ$19 sedan, FJ$49 minivan. Mid-range (Natadola, Sigatoka): from FJ$99 sedan. Long-haul (Coral Coast, Pacific Harbour, Suva): from FJ$129 sedan. A 20% night surcharge applies for pickups between 10 pm and 6 am. Return bookings are discounted vs two one-ways.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(4,this)">What if my flight is delayed? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-4">We monitor all incoming flights in real time. If your flight is delayed your driver adjusts automatically — no extra charge. Just provide your flight number at booking.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(5,this)">Can I stop at a supermarket or ATM on the way? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-5">Yes — all private transfers include one complimentary stop at a supermarket, ATM, bottle shop or pharmacy en route. Mention it in special requests when booking.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(6,this)">Do you provide baby or child seats? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-6">Yes, on request for a small charge of FJ$8. Specify your children's ages in special requests so we can fit the right seat before your arrival.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(7,this)">How do I find my driver at Nadi Airport? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-7">Your driver waits in the international arrivals hall with a sign showing your name. If you can't find them, call or WhatsApp the number on your confirmation immediately.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(8,this)">Do you offer return transfers? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-8">Yes — book return at the time of booking for a small discount. Your return pickup can be from your resort back to Nadi Airport or anywhere else on Viti Levu.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(9,this)">Can I change my pickup time after booking? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-9">Yes — pickup time, date, and stops can all be modified free of charge up to 2 hours before your scheduled pickup. Just WhatsApp us with your booking reference. No fees, no questions.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(10,this)">How far in advance should I book? <span class="faq-arrow">▼</span></div>
+      <div class="faq-a" id="faq-a-10">We recommend 24–48 hours in advance, especially June–October and Christmas/New Year. For same-day bookings contact us via WhatsApp.</div>
+    </div>
+</div>
   </div>
 </section>
 
