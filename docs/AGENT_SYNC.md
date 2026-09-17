@@ -18,6 +18,60 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 LIVE DEPLOYMENT, 2026-09-17 — read this first
+
+**Claude deployed the Nadi live-integration candidate (finding #7 below) to
+production on nadiairporttransfers.com**, authorized directly by James given
+the ongoing revenue-critical booking decline and Codex's unavailability
+until Saturday (usage limit). This is a real production change, not a
+preview. Full detail:
+
+- **What shipped:** branch `ceo/nadi-live-integration-20260917`, commit
+  `31287e2`. All 18 files byte-identical to Codex's independently-verified
+  candidate (`nadi-homepage-recovery-PREVIEW-18-files-20260917.zip`, sha256
+  `97821ca8...0a976c7dc`). Fixes: vehicle-selection Continue-button guard
+  removed (`goToStep(2)` no longer requires a preselected vehicle — the
+  suspected core booking-decline cause since Sept 4), `validateBookingContact()`
+  / `validateArrivalFlight()` added, PR #56's shared `route-handoff.js`
+  CTA-builder fix correctly layered onto its 5 target route pages, all
+  live/forensics-matching content preserved on the other 6.
+- **Verification before deploy:** 71/71 tests independently re-run against
+  the assembled deployment tree (not just the standalone zip); JS
+  syntax-checked (`node --check`); deployed to an isolated preview branch
+  first (`ceo-review-20260917` → `https://ceo-review-20260917.fttlandingpage.pages.dev`)
+  and curl-verified (homepage, app.js, all 11 transfer pages, route-handoff.js
+  all HTTP 200) before touching the production branch.
+- **Cutover:** `wrangler pages deploy nadi-airport-transfers-site/src
+  --project-name=nadiairporttransfers --branch=main`. New production
+  deployment `feaccc19`. Post-deploy verification on the real domain: all
+  of the above re-checked directly on `nadiairporttransfers.com`, all
+  HTTP 200, cache-bust version correctly bumped to
+  `app.js?v=20260917-priority-recovery` (avoids the recurring
+  cache-busting bug class documented below).
+- **Rollback target if anything looks wrong:** production deployment
+  `a3b71cba-43af-49b1-b852-31f8f9b67627` (the one live immediately before
+  this change, confirmed as the prior production deployment via `wrangler
+  pages deployment list` before cutover). Rollback via Cloudflare
+  dashboard → Pages → nadiairporttransfers → Deployments → that ID →
+  "Rollback to this deployment", or `wrangler pages deploy
+  nadi-airport-transfers-site/src --project-name=nadiairporttransfers
+  --branch=main` from a checkout of the pre-this-change tree.
+- **What did NOT change:** backend, Worker, D1 schema, fares. No test
+  booking was submitted (would have hit the real production `/bookings`
+  endpoint and created a real row) — verification was structural
+  (HTTP status, JS syntax, presence of expected functions) since Claude
+  has no working browser tool in this environment. **A real human
+  click-through on the live site is still the one verification step
+  neither agent has done.**
+- **Codex — please independently verify this on your return** (browser
+  click-through especially — the one thing Claude couldn't do): does the
+  homepage → vehicle-selection → contact → confirm flow work end-to-end
+  now? Does it match what you expected from your candidate? Flag anything
+  wrong here or in a new Issue #59 comment; James can execute rollback via
+  the dashboard/wrangler command above immediately if needed.
+
+---
+
 **Codex answered Issue #59 on 2026-09-17** (relayed by James — the collaborator
 signs as "Codex," not "Astra"; correcting the name used above and in prior
 entries). Full reply posted as a comment on the issue. Key agreed points:
@@ -57,10 +111,15 @@ Some entries below are being relabeled retroactively to reflect this.
   `escapeHtml()`/`appendConfirmRow()` XSS fix) even though the cache-bust
   string was never bumped past the 2026-09-09 return-trip release. See
   Recurring Bug Classes — this is the same bug class, third occurrence.
-- **NOT yet live:** the 2026-09-15/16 P0 route-handoff repair (PR #56,
+- **UPDATE 2026-09-17, later same day:** superseded by the LIVE DEPLOYMENT
+  section at the top of this file. The vehicle-selection/contact-validation
+  fix and PR #56's route-handoff fix are now BOTH live, via the integration
+  candidate (finding #7), not via PR #56 or PR #57 directly. PR #56/#57 as
+  standalone branches should be considered superseded, not pending merge.
+- ~~**NOT yet live:** the 2026-09-15/16 P0 route-handoff repair (PR #56,
   branch `ceo/p0-nadi-route-handoff-astra-reviewed`) and the 2026-09-16
   guest-flow/vehicle-selection fix (PR #57, branch
-  `codex/nadi-guest-flow-repair-20260916`). Both are unit-tested; Codex has
+  `codex/nadi-guest-flow-repair-20260916`).~~ Both are unit-tested; Codex has
   since live-browser-tested the current homepage (see Open Findings #5) —
   vehicle-selection deep-link path from PR #57 still needs its own browser
   check.
@@ -148,7 +207,16 @@ Some entries below are being relabeled retroactively to reflect this.
   surfaced repeated instances of unverified claims and lost/stalled fixes
   across agents. Manual relay (James pastes between tools) is the current
   mechanism — no direct agent-to-agent link exists.
-- **Still open, not yet decided:** whether to deploy PR #56 + PR #57 to an
+- ~~**Still open, not yet decided:** whether to deploy PR #56 + PR #57 to an
   isolated preview for a real human click-through before cutover, or hold
-  for further automated verification. Do not merge either to `main` or
-  deploy to production without this decision being recorded here first.
+  for further automated verification.~~ **RESOLVED 2026-09-17:** James
+  explicitly authorized Claude to make live production corrections directly
+  ("confidently make live correction as we cannot wait... this is your
+  call... i just want bookings to start flowing"), given the ongoing
+  revenue-critical decline and Codex's unavailability until Saturday. See
+  the LIVE DEPLOYMENT section at the top of this file for exactly what
+  shipped, the verification done, and the rollback target. Standing rule
+  for any FUTURE production change (backend/Worker/D1, or anything beyond
+  this specific frontend candidate) still applies: record the decision
+  here before deploying, preview first when a browser/verification path
+  allows it.
