@@ -104,7 +104,28 @@ preview. Full detail:
   deploy, verified live after cutover. **James is providing a dedicated
   branded graphic to replace the interim `og:image`/`twitter:image` —
   not yet done, waiting on the file.**
-- **Codex — please independently verify both deploys on your return**
+- **THIRD live deploy, same day (commit `a5720e5`):** real numbers test
+  (raw `curl -A GPTBot` fetch vs. real-browser-rendered text) found the
+  34-route pricing table, all 16 tour listings, and all 6 customer
+  reviews were 100% JavaScript-rendered — invisible to any AI crawler
+  that doesn't execute JS (GPTBot/ClaudeBot/PerplexityBot/CCBot all fetch
+  raw HTML only). Before: raw HTML text 11,651 chars vs. 20,086 rendered
+  (58% visible), 0 of 35 "Book →" pricing links visible, tours/reviews
+  entirely absent. Fix: extracted `ROUTES_DATA`/`TOURS_DATA`/
+  `REVIEWS_DATA`/`FAQ_DATA` from `app.js` via an isolated Node `vm`
+  context, replicated `buildRoutesTable()`/`buildToursGrid()`/
+  `buildReviews()`/`buildFAQ()`'s exact template output, seeded it into
+  index.html's previously-empty containers. Zero behavior change for
+  real visitors — `app.js`'s existing `DOMContentLoaded` handler still
+  calls all 4 build functions and overwrites the seed via `innerHTML`
+  exactly as before (verified live: DOM counts stayed 35/16/6/11, no
+  duplication, "Book →" click still correctly pre-fills the booking
+  form). Also expanded `FAQPage` JSON-LD from 4 to all 11 real FAQ
+  entries (previously 4 paraphrased duplicates). After: raw HTML text
+  23,475 chars, all 35 pricing links present, tours/reviews present.
+  71/71 tests pass (app.js untouched). Same preview-first process,
+  verified live on nadiairporttransfers.com after cutover.
+- **Codex — please independently verify all three deploys on your return**
   (browser click-through still valuable even though Claude did one too —
   fresh eyes, different scenarios, different environment). Flag anything
   wrong here or in a new Issue #59 comment; James can execute rollback via
