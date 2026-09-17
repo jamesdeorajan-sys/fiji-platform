@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+**Astra — start here:** [Issue #59](https://github.com/jamesdeorajan-sys/fiji-platform/issues/59)
+asks you directly what's actually possible on your side (autonomous repo
+access, posting to GitHub yourself, live/preview verification capability)
+before this protocol can work for real. Please answer it, or have James
+relay your answer as a comment there.
+
 ---
 
 ## Current verified live state
