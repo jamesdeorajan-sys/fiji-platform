@@ -57,16 +57,56 @@ preview. Full detail:
   nadi-airport-transfers-site/src --project-name=nadiairporttransfers
   --branch=main` from a checkout of the pre-this-change tree.
 - **What did NOT change:** backend, Worker, D1 schema, fares. No test
-  booking was submitted (would have hit the real production `/bookings`
-  endpoint and created a real row) — verification was structural
-  (HTTP status, JS syntax, presence of expected functions) since Claude
-  has no working browser tool in this environment. **A real human
-  click-through on the live site is still the one verification step
-  neither agent has done.**
-- **Codex — please independently verify this on your return** (browser
-  click-through especially — the one thing Claude couldn't do): does the
-  homepage → vehicle-selection → contact → confirm flow work end-to-end
-  now? Does it match what you expected from your candidate? Flag anything
+  booking was submitted at deploy time (would have hit the real
+  production `/bookings` endpoint and created a real row) — initial
+  verification was structural (HTTP status, JS syntax, presence of
+  expected functions).
+- **UPDATE, same day, later:** a working browser tool became available
+  in Claude's environment mid-session (unclear if this persists to future
+  sessions — check before assuming it's there). Claude then did a REAL
+  browser click-through on production: filled pickup/destination, clicked
+  "Continue to vehicle selection" → vehicle step opened correctly,
+  selected a vehicle → Continue enabled, forced `state.selectedVehicle`
+  back to null and confirmed `goToStep(3)` still correctly blocks with
+  "Please select a vehicle" (the safety net moved location but is intact),
+  filled an invalid email → correctly rejected, fixed it → reached the
+  confirmation screen with correct summary (name/contact/route/vehicle/
+  price all rendering right). Repeated the vehicle-selection check at
+  mobile viewport (375×812) — same result. Zero console errors throughout.
+  Did NOT click the final "Confirm booking" button (would create a real
+  DB row + real WhatsApp alert). **This closes most of the "real human
+  click-through" gap** — Codex's independent browser verification is
+  still valuable (fresh eyes, possibly different scenarios) but is no
+  longer the only browser-side check that's been done.
+- **Separate finding, pre-existing, NOT caused by this deploy:** at least
+  2 transfer pages Google has indexed (`/transfer/first-landing-beach-
+  resort`, `/transfer/westin-denarau-island-resort`) aren't among the 11
+  pages with real content — they silently fall back to serving the
+  homepage (Cloudflare Pages SPA-fallback, confirmed present on the PRIOR
+  production deployment `a3b71cba` too, so today's deploy didn't cause
+  it). Both prices already exist in the homepage's pricing table; these
+  could be built as real pages using the same template as the other 11.
+  Flagged to James, not yet actioned — bigger scope than a "correction."
+- **SECOND live deploy, same day (commit `340de4c`):** site had NO
+  favicon at all — `/favicon.ico` was silently falling back to the
+  homepage HTML via the same SPA-fallback behavior (82,559 bytes, same as
+  homepage). Also no `og:image`/`twitter:image` anywhere, which is why
+  Google was showing an unrelated photo (a zipline tour image) as the
+  search-result thumbnail instead of real branding — James showed a
+  screenshot of this. Generated a proper favicon (simple car icon on the
+  site's own `--ocean:#0066cc` brand color, multi-size `.ico` + PNGs +
+  apple-touch-icon via Python/Pillow, no external asset needed), wired
+  `<link rel="icon">` etc. into `index.html` and all 11 transfer pages,
+  added `og:image`/`twitter:image` (using the icon as an interim image),
+  fixed a missing `<link rel="canonical">` on the homepage (transfer
+  pages already had it). 71/71 tests still pass, HTML verified
+  well-formed, same preview-first-then-production process as the first
+  deploy, verified live after cutover. **James is providing a dedicated
+  branded graphic to replace the interim `og:image`/`twitter:image` —
+  not yet done, waiting on the file.**
+- **Codex — please independently verify both deploys on your return**
+  (browser click-through still valuable even though Claude did one too —
+  fresh eyes, different scenarios, different environment). Flag anything
   wrong here or in a new Issue #59 comment; James can execute rollback via
   the dashboard/wrangler command above immediately if needed.
 
