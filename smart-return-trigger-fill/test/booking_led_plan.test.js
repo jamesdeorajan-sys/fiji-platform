@@ -46,7 +46,7 @@ test('a return leg without a recorded time is listed but cannot be paired (missi
 test('pairing arrival -> return in the same exact zone: recorded gap, DURATION_UNKNOWN, timing NOT_DETERMINED, not feasible, not an offer', () => {
   const a = row({ pickup_time: '09:00' }); const b = row({ pickup_time: '11:00', destination_zone: 'Coral Coast', return_date: '2026-09-24', return_time: '15:00', return_pickup_location: 'Hotel Alpha' });
   const { pairings, legs } = buildPlan([a, b], CTX);
-  const p = pairings.find((x) => x.type === 'SOLD_SEQUENCE_ARRIVAL_THEN_RETURN');
+  const p = pairings.find((x) => x.type === 'SAVED_REQUEST_PAIRING_ARRIVAL_THEN_RETURN');
   assert.ok(p);
   assert.equal(p.zone, 'Denarau');
   assert.equal(p.facts.recorded_pickup_gap_minutes, 360);
@@ -63,7 +63,7 @@ test('pairing return -> arrival is a distinct type (vehicle brings the returning
   const b = row({ pickup_time: '10:30' });                                        // arrival to Denarau 10:30
   const { pairings } = buildPlan([a, b], CTX);
   assert.equal(pairings.length, 1);
-  assert.equal(pairings[0].type, 'SOLD_SEQUENCE_RETURN_THEN_ARRIVAL');
+  assert.equal(pairings[0].type, 'SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL');
   assert.equal(pairings[0].facts.recorded_pickup_gap_minutes, 90);
 });
 
@@ -124,10 +124,12 @@ test('missing passengers/luggage are named per leg', () => {
   assert.ok(pairings[0].missing_inputs.some((m) => /passengers\/luggage for L001/.test(m)));
 });
 
-test('unsold potential empty legs are separate from sold pairings and are not offers', () => {
+test('unmatched requests carry a provisional hypothetical positioning need, separate from saved-request pairings, and are not offers', () => {
   const { empties, pairings } = buildPlan([row({}), withReturn({ pickup_date: '2026-09-22', return_pickup_location: 'Hotel Beta' })], CTX);
   assert.equal(pairings.length, 0);
-  assert.deepEqual(empties.map((e) => e.type).sort(), ['UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG', 'UNSOLD_POTENTIAL_EMPTY_RETURN_LEG']);
+  assert.ok(empties.every((e) => e.type === 'UNMATCHED_REQUEST' && e.need === 'HYPOTHETICAL_POSITIONING_NEED'));
+  assert.deepEqual(empties.map((e) => e.direction).sort(), ['OUTBOUND_POSITIONING_BEFORE_RETURN_PICKUP', 'RETURN_TO_AIRPORT_AFTER_ARRIVAL']);
+  assert.ok(empties.every((e) => e.provisional_status === 'PROVISIONAL_UNTIL_OPS_SELECTS_AND_VALIDATES_A_SCHEDULE'));
   assert.ok(empties.every((e) => /not an offer/i.test(e.note) || /cannot be assessed/i.test(e.note)));
 });
 
@@ -155,6 +157,7 @@ test('near-miss return text is only an UNVERIFIED suggestion: the location stays
   assert.equal(loc.zone, null);
   assert.equal(loc.suggestion.zone, 'Denarau');
   assert.equal(loc.suggestion.verified, false);
+  assert.equal(loc.category, 'NAMING_VARIANT');
   const rows = [row({}), withReturn({ pickup_date: '2026-09-22', return_pickup_location: 'Hotel Alpha Fiji' })];
   const plan = buildPlan(rows, CTX);
   assert.equal(plan.pairings.length, 1);
@@ -169,7 +172,9 @@ test('near-miss return text is only an UNVERIFIED suggestion: the location stays
 
 test('an ambiguous suggestion (two zones) or no containment gives no suggestion at all', () => {
   assert.equal(normalizeReturnLocation('Twin Name Lodge', DEST).suggestion, null);
+  assert.equal(normalizeReturnLocation('Twin Name Lodge', DEST).category, 'AMBIGUOUS');
   assert.equal(normalizeReturnLocation('Unknown Lodge', DEST).suggestion, null);
+  assert.equal(normalizeReturnLocation('Unknown Lodge', DEST).category, 'UNKNOWN_PLACE');
 });
 
 test('SCENARIO (explicit opt-in only): an unresolved return pickup may be assumed to equal the same booking\'s outbound zone, clearly flagged as scenario-only; the default plan never does this', () => {

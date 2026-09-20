@@ -1,11 +1,11 @@
 /* Issue #54 - BOOKING-LED PLANNING stage (recovery branch). PLANNING ONLY.
  *
  * Builds a provisional plan from SAVED booking records: legs (arrivals plus the actually-recorded return legs), potential arrival/return
- * pairings from recorded routes and times, unsold potential empty legs, and for each item the known facts, the missing inputs and the
+ * pairings from recorded routes and times, unmatched requests with a hypothetical positioning need, and for each item the known facts, the missing inputs and the
  * allocation decision ops must make.
  *
  * What this stage is NOT: it never labels anything operationally feasible (that stays with the verified pilot in scripts/seven_day_pilot.js),
- * it never proposes changing a guest's pickup time or service, it never turns a pairing or an empty leg into a discounted offer, and it
+ * it never proposes changing a guest's pickup time or service, it never turns a pairing or a positioning need into a discounted offer, never treats a candidate pairing as an allocation, fill, saving or inventory, and it
  * never invents a duration. Duration is DURATION_UNKNOWN unless a traceable estimate is supplied (source + date + provisional status).
  * Return locations are normalised to a zone ONLY through the existing platform mapping (destinations name -> zone), exact match, keeping the
  * original text; anything else stays unresolved and is never replaced by the outbound destination.
@@ -21,6 +21,7 @@ export const DECISION = Object.freeze({
 });
 export const LOCATION_STATUS = Object.freeze({
   RESOLVED_VIA_PLATFORM_MAPPING: 'RESOLVED_VIA_PLATFORM_MAPPING',
+  RESOLVED_VIA_OPS_CONFIRMATION: 'RESOLVED_VIA_OPS_CONFIRMATION',
   UNRESOLVED_NO_MATCH: 'UNRESOLVED_NO_MATCH',
   UNRESOLVED_AMBIGUOUS: 'UNRESOLVED_AMBIGUOUS',
   UNRESOLVED_NO_LOCATION_RECORDED: 'UNRESOLVED_NO_LOCATION_RECORDED',
@@ -29,23 +30,55 @@ export const LOCATION_STATUS = Object.freeze({
 const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 const startMs = (date, time) => (date && time && /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? Date.parse(zonedTimeToUtcIso(date, time) ?? '') : NaN);
 
-/** Existing platform mapping only: exact (case/space-insensitive) name match -> zone; original value is always preserved. */
-export function normalizeReturnLocation(original, destinations) {
-  if (original == null || String(original).trim() === '') return { original: original ?? null, zone: null, status: LOCATION_STATUS.UNRESOLVED_NO_LOCATION_RECORDED };
-  const hits = (destinations ?? []).filter((d) => norm(d.name) === norm(original));
-  const zones = [...new Set(hits.map((h) => h.zone))];
-  if (zones.length === 1) return { original, zone: zones[0], status: LOCATION_STATUS.RESOLVED_VIA_PLATFORM_MAPPING, mapping_source: 'destinations.name -> zones.name (existing platform mapping; not independently verified)' };
-  if (zones.length > 1) return { original, zone: null, status: LOCATION_STATUS.UNRESOLVED_AMBIGUOUS };
-  return { original, zone: null, status: LOCATION_STATUS.UNRESOLVED_NO_MATCH, suggestion: suggestZone(original, destinations) };
+const STOP = new Set(['the', 'fiji', 'resort', 'spa', 'hotel', 'and', 'island', 'beach', 'golf', 'villas', 'international', 'a', 'of']);
+const tokens = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const sig = (s) => tokens(s).split(' ').filter((t) => t && !STOP.has(t));
+
+export const MATCH_CATEGORY = Object.freeze({
+  EXACT_PLATFORM_MAPPING: 'EXACT_PLATFORM_MAPPING',
+  EXACT_STOREFRONT_HOTEL_OPTION: 'EXACT_STOREFRONT_HOTEL_OPTION',
+  NAMING_VARIANT: 'NAMING_VARIANT',
+  AMBIGUOUS: 'AMBIGUOUS',
+  UNKNOWN_PLACE: 'UNKNOWN_PLACE',
+  MISSING_TEXT: 'MISSING_TEXT',
+});
+
+/** Candidate names/aliases from existing sources only: D1 destinations (name -> zone) and the live storefront's own hotel options / route pages (name -> area). */
+function candidateNames(destinations, hotelOptions) {
+  const c = (destinations ?? []).map((d) => ({ name: d.name, zone: d.zone, source: 'platform destinations table (name -> zone)', kind: 'platform' }));
+  for (const o of hotelOptions ?? []) c.push({ name: o.name, zone: o.zone, source: o.source ?? 'storefront hotel option (data-hotel -> data-area)', kind: o.kind ?? 'storefront' });
+  return c.filter((x) => x.name && x.zone);
 }
 
-const tokens = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-/** NOT a normalisation: a punctuation-insensitive containment hint for ops to confirm. The location stays UNRESOLVED and no verified pairing is built from it. */
-function suggestZone(original, destinations) {
-  const o = tokens(original); if (!o) return null;
-  const hits = (destinations ?? []).filter((d) => { const t = tokens(d.name); return t && (o.includes(t) || t.includes(o)); });
-  const zones = [...new Set(hits.map((h) => h.zone))];
-  return zones.length === 1 ? { zone: zones[0], verified: false, basis: 'punctuation-insensitive containment with an existing destination name; ops must confirm', matched_destination_names: hits.map((h) => h.name) } : null;
+/**
+ * Classifies a recorded return-pickup string against existing names/aliases. Evidence is returned for ops to CONFIRM; nothing here is
+ * verified and the location stays unresolved until an exact platform-mapping match or an explicit ops confirmation.
+ */
+export function classifyReturnLocation(original, destinations, hotelOptions) {
+  if (original == null || String(original).trim() === '') return { category: MATCH_CATEGORY.MISSING_TEXT, suggestion: null, evidence: [] };
+  const cands = candidateNames(destinations, hotelOptions);
+  const exactPlatform = cands.filter((x) => x.kind === 'platform' && tokens(x.name) === tokens(original));
+  if (new Set(exactPlatform.map((x) => x.zone)).size === 1) return { category: MATCH_CATEGORY.EXACT_PLATFORM_MAPPING, suggestion: { zone: exactPlatform[0].zone }, evidence: exactPlatform.map((x) => ({ source: x.source, name: x.name, zone: x.zone, method: 'exact (case/punctuation-insensitive)' })) };
+  const exactStore = cands.filter((x) => x.kind !== 'platform' && tokens(x.name) === tokens(original));
+  if (exactStore.length && new Set(exactStore.map((x) => x.zone)).size === 1)
+    return { category: MATCH_CATEGORY.EXACT_STOREFRONT_HOTEL_OPTION, suggestion: { zone: exactStore[0].zone, verified: false }, evidence: exactStore.map((x) => ({ source: x.source, name: x.name, zone: x.zone, method: 'exact (case/punctuation-insensitive)' })) };
+  const so = sig(original); const o = tokens(original);
+  const variant = cands.filter((x) => { const sx = sig(x.name); const t = tokens(x.name); if (!sx.length || !so.length) return false; return o.includes(t) || t.includes(o) || sx.every((k) => so.includes(k)) || so.every((k) => sx.includes(k)); });
+  const zones = [...new Set(variant.map((x) => x.zone))];
+  const ev = variant.map((x) => ({ source: x.source, name: x.name, zone: x.zone, method: 'naming variant (containment / significant-word overlap)' }));
+  if (exactStore.length > 1 || zones.length > 1) return { category: MATCH_CATEGORY.AMBIGUOUS, suggestion: null, evidence: ev.length ? ev : exactStore.map((x) => ({ source: x.source, name: x.name, zone: x.zone, method: 'exact' })) };
+  if (zones.length === 1) return { category: MATCH_CATEGORY.NAMING_VARIANT, suggestion: { zone: zones[0], verified: false }, evidence: ev };
+  return { category: MATCH_CATEGORY.UNKNOWN_PLACE, suggestion: null, evidence: [] };
+}
+
+/** Existing platform mapping only (exact name -> zone), original preserved; otherwise unresolved, with the classification/evidence attached. */
+export function normalizeReturnLocation(original, destinations, hotelOptions) {
+  const cls = classifyReturnLocation(original, destinations, hotelOptions);
+  if (cls.category === MATCH_CATEGORY.MISSING_TEXT) return { original: original ?? null, zone: null, status: LOCATION_STATUS.UNRESOLVED_NO_LOCATION_RECORDED, category: cls.category, suggestion: null, evidence: [] };
+  if (cls.category === MATCH_CATEGORY.EXACT_PLATFORM_MAPPING) return { original, zone: cls.suggestion.zone, status: LOCATION_STATUS.RESOLVED_VIA_PLATFORM_MAPPING, mapping_source: 'destinations.name -> zones.name (existing platform mapping; not independently verified)', category: cls.category, evidence: cls.evidence };
+  const status = cls.category === MATCH_CATEGORY.AMBIGUOUS ? LOCATION_STATUS.UNRESOLVED_AMBIGUOUS : LOCATION_STATUS.UNRESOLVED_NO_MATCH;
+  const suggestion = cls.suggestion ? { ...cls.suggestion, verified: false, basis: `${cls.category}: existing name/alias evidence; ops must confirm`, matched_destination_names: cls.evidence.map((e) => e.name) } : null;
+  return { original, zone: null, status, category: cls.category, suggestion, evidence: cls.evidence };
 }
 
 function confirmationOf(row) {
@@ -53,7 +86,7 @@ function confirmationOf(row) {
 }
 
 /** rows: sanitized saved-booking records (see tests for the shape). */
-export function buildLegs(rows, { destinations, zoneDistanceCache, windowStart, windowEnd }) {
+export function buildLegs(rows, { destinations, hotelOptions, zoneDistanceCache, windowStart, windowEnd, locationCorrections, knownZones }) {
   const legs = []; const notes = { rows_in_scope: 0 }; let n = 0;
   const inWin = (d) => d && d >= windowStart && d <= windowEnd;
   const cacheKm = (zone) => { const c = (zoneDistanceCache ?? []).find((x) => (x.zone_a === AIRPORT && x.zone_b === zone) || (x.zone_b === AIRPORT && x.zone_a === zone)); return c ? { km: c.distance_km, source: `zone_distance_cache (server cache, saved ${String(c.created_at).slice(0, 10)})` } : null; };
@@ -73,7 +106,13 @@ export function buildLegs(rows, { destinations, zoneDistanceCache, windowStart, 
     }
     if (r.return_date && inWin(r.return_date)) {
       used = true;
-      const loc = normalizeReturnLocation(r.return_pickup_location, destinations);
+      let loc = normalizeReturnLocation(r.return_pickup_location, destinations, hotelOptions);
+      const fix = locationCorrections?.[r.id];
+      if (fix) {   // explicit ops confirmation: needs a known zone, a named confirmer and an evidence pointer; the recorded text is preserved
+        const ok = (knownZones ?? []).includes(fix.zone) && typeof fix.confirmed_by === 'string' && fix.confirmed_by.trim() && typeof fix.evidence_ref === 'string' && fix.evidence_ref.trim();
+        loc = ok ? { ...loc, zone: fix.zone, status: LOCATION_STATUS.RESOLVED_VIA_OPS_CONFIRMATION, resolved_by: 'ops confirmation' }
+                 : { ...loc, ops_correction_rejected: 'OPS_CORRECTION_INVALID (needs a known zone, confirmed_by and evidence_ref)' };
+      }
       legs.push({ ...base, leg_id: `L${String(++n).padStart(3, '0')}`, kind: 'RETURN', date: r.return_date, time: r.return_time ?? null, start_ms: startMs(r.return_date, r.return_time),
         from_zone: loc.zone, to_zone: AIRPORT, location: loc, booking_outbound_zone: r.destination_zone ?? null, distance: loc.zone ? cacheKm(loc.zone) : null, flight_recorded: false });
     }
@@ -130,9 +169,10 @@ export function buildPairings(legs, { routeDurationEstimates, conditional = true
     if (flags.length) missing.push(`resolve test/duplicate uncertainty: ${flags.join(', ')}`);
     pairings.push({
       pairing_id: `P${String(++n).padStart(3, '0')}`, conditional_on_location_confirmation: isConditional, scenario_only_outbound_zone_assumed: isScenario,
-      type: seqA ? 'SOLD_SEQUENCE_ARRIVAL_THEN_RETURN' : 'SOLD_SEQUENCE_RETURN_THEN_ARRIVAL',
+      type: seqA ? 'SAVED_REQUEST_PAIRING_ARRIVAL_THEN_RETURN' : 'SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL',
       first_leg: x.leg_id, second_leg: y.leg_id, zone,
-      note: 'Both legs are already-sold saved requests (not guest-confirmed). This is a planning candidate, not an offer and not a feasibility conclusion.',
+      note: 'Both legs are saved requests (guest confirmation unknown; no verified vehicle movement). This is one COMPETING ALTERNATIVE for ops to select or reject - not an allocation, not a filled leg, not a saving, not inventory, not an offer, and not a feasibility conclusion.',
+      does_not_allocate: true, alternative_of_legs: [x.leg_id, y.leg_id],
       facts: { recorded_pickup_gap_minutes: gap, first_pickup: `${x.date} ${x.time}`, second_pickup: `${y.date} ${y.time}`, booked_class: x.vehicle_class_booked, distance_first_leg: x.distance ?? null, guest_pickup_times_fixed: true },
       duration: dur,
       timing_check_for_ops: dur.status === 'DURATION_UNKNOWN'
@@ -148,14 +188,37 @@ export function buildPairings(legs, { routeDurationEstimates, conditional = true
   return { pairings, skipped };
 }
 
-/** Unsold potential empty legs: an ARRIVAL with no sold candidate return, and a RETURN with no sold candidate arrival. Neither is an offer. */
-export function buildPotentialEmptyLegs(legs, pairings) {
-  const paired = new Set(pairings.flatMap((p) => [p.first_leg, p.second_leg]));
+/** Requests with no candidate partner in the saved records. Provisional: without verified vehicle movements this is a HYPOTHETICAL positioning need, not an empty leg and not an offer. */
+export function buildUnmatchedRequests(legs, pairings) {
+  const inAlternatives = new Set(pairings.flatMap((p) => [p.first_leg, p.second_leg]));
   const out = [];
   for (const l of legs) {
-    if (paired.has(l.leg_id)) continue;
-    if (l.kind === 'ARRIVAL') out.push({ leg_id: l.leg_id, type: 'UNSOLD_POTENTIAL_EMPTY_RETURN_LEG', from_zone: l.to_zone, to_zone: AIRPORT, after: `${l.date} ${l.time}`, note: 'Hypothetical: the vehicle that serves this arrival has no recorded sold job back from that zone. Not an offer; needs vehicle identity, duration, availability, economics and approvals.', planning_status: 'PLANNING_CANDIDATE_NOT_VERIFIED' });
-    else out.push({ leg_id: l.leg_id, type: 'UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG', from_zone: AIRPORT, to_zone: l.from_zone, before: `${l.date} ${l.time}`, note: l.from_zone ? 'Hypothetical: no recorded sold job takes a vehicle out to this pickup zone beforehand. Not an offer.' : 'Cannot be assessed: the return pickup zone is unresolved.', planning_status: 'PLANNING_CANDIDATE_NOT_VERIFIED' });
+    if (inAlternatives.has(l.leg_id)) continue;
+    const base = { leg_id: l.leg_id, type: 'UNMATCHED_REQUEST', need: 'HYPOTHETICAL_POSITIONING_NEED', provisional_status: 'PROVISIONAL_UNTIL_OPS_SELECTS_AND_VALIDATES_A_SCHEDULE', planning_status: 'PLANNING_CANDIDATE_NOT_VERIFIED' };
+    if (l.kind === 'ARRIVAL') out.push({ ...base, direction: 'RETURN_TO_AIRPORT_AFTER_ARRIVAL', from_zone: l.to_zone, to_zone: AIRPORT, after: `${l.date} ${l.time}`, note: 'Hypothetical: no saved request in the records is a candidate partner for this arrival. Whether a vehicle would actually travel back empty depends on a verified vehicle movement and availability. Not an offer.' });
+    else out.push({ ...base, direction: 'OUTBOUND_POSITIONING_BEFORE_RETURN_PICKUP', from_zone: AIRPORT, to_zone: l.from_zone, before: `${l.date} ${l.time}`, note: l.from_zone ? 'Hypothetical: no saved request in the records is a candidate partner for this return. Not an offer.' : 'Cannot be assessed: the return pickup zone is unresolved.' });
+  }
+  return out;
+}
+
+/** Candidate pairings share legs, so they are COMPETING ALTERNATIVES. Groups = connected components; upper bound = max set of alternatives using each leg at most once. */
+export function buildAlternativeGroups(pairings) {
+  const parent = new Map(); const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const p of pairings) for (const id of [p.first_leg, p.second_leg]) if (!parent.has(id)) parent.set(id, id);
+  for (const p of pairings) parent.set(find(p.first_leg), find(p.second_leg));
+  const groups = new Map();
+  for (const p of pairings) { const r = find(p.first_leg); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(p); }
+  const out = []; let n = 0;
+  for (const list of groups.values()) {
+    const id = `G${String(++n).padStart(2, '0')}`;
+    // maximum matching between arrival-side and return-side legs (Kuhn)
+    const isArr = (p, leg) => (p.type.endsWith('ARRIVAL_THEN_RETURN') ? p.first_leg === leg : p.second_leg === leg);
+    const left = [...new Set(list.map((p) => (p.type.endsWith('ARRIVAL_THEN_RETURN') ? p.first_leg : p.second_leg)))];
+    const adj = Object.fromEntries(left.map((a) => [a, list.filter((p) => isArr(p, a)).map((p) => (p.type.endsWith('ARRIVAL_THEN_RETURN') ? p.second_leg : p.first_leg))]));
+    const match = new Map(); const tryA = (a, seen) => { for (const r of adj[a]) { if (seen.has(r)) continue; seen.add(r); if (!match.has(r) || tryA(match.get(r), seen)) { match.set(r, a); return true; } } return false; };
+    let best = 0; for (const a of left) if (tryA(a, new Set())) best++;
+    for (const p of list) p.alternative_group = id;
+    out.push({ group_id: id, alternatives: list.length, legs: new Set(list.flatMap((p) => [p.first_leg, p.second_leg])).size, max_selectable_at_once_upper_bound: best });
   }
   return out;
 }
@@ -163,7 +226,7 @@ export function buildPotentialEmptyLegs(legs, pairings) {
 const bucket = (m) => (m < 60 ? '<60' : m < 180 ? '60-179' : m < 360 ? '180-359' : '>=360');
 
 /** Aggregate-only summary (no ids, locations, times of individual bookings). */
-export function summarizePlan({ legs, pairings, skipped, empties }, label) {
+export function summarizePlan({ legs, pairings, skipped, empties, groups }, label) {
   const count = (arr, f) => arr.reduce((o, x) => { const k = f(x); o[k] = (o[k] || 0) + 1; return o; }, {});
   const returns = legs.filter((l) => l.kind === 'RETURN'); const arrivals = legs.filter((l) => l.kind === 'ARRIVAL');
   const candidatesPerLeg = {}; for (const p of pairings) for (const id of [p.first_leg, p.second_leg]) candidatesPerLeg[id] = (candidatesPerLeg[id] || 0) + 1;
@@ -176,6 +239,7 @@ export function summarizePlan({ legs, pairings, skipped, empties }, label) {
     legs_by_booked_class: count(legs, (l) => l.vehicle_class_booked ?? 'UNKNOWN'),
     legs_with_passengers_and_luggage_known: legs.filter((l) => l.passengers != null && l.luggage != null).length,
     return_location_status: count(returns, (l) => l.location.status),
+    return_location_match_category: count(returns, (l) => l.location.category ?? 'NOT_CLASSIFIED'),
     return_locations_with_unverified_zone_suggestion: returns.filter((l) => l.location.suggestion).length,
     return_legs_missing_time: returns.filter((l) => !l.time).length,
     distance_available: { arrival_from_bookings: arrivals.filter((l) => l.distance).length, return_from_zone_cache: returns.filter((l) => l.distance).length },
@@ -183,11 +247,12 @@ export function summarizePlan({ legs, pairings, skipped, empties }, label) {
     provider_accepted_alert: count(legs, (l) => l.confirmation.provider_accepted_alert),
     uncertainty_flags: count(legs.flatMap((l) => l.uncertainty_flags.map((f) => ({ f }))), (x) => x.f),
     legs_with_any_uncertainty_flag: legs.filter((l) => l.uncertainty_flags.length).length,
+    competing_alternatives: { statement: 'Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.', pairing_alternatives: pairings.length, alternative_groups: (groups ?? []).length, alternatives_per_group: (groups ?? []).map((g) => g.alternatives), max_selectable_at_once_upper_bound_per_group: (groups ?? []).map((g) => g.max_selectable_at_once_upper_bound), legs_allocated: 0 },
     potential_pairings: { total: pairings.length, confirmed_mapping: pairings.filter((p) => !p.conditional_on_location_confirmation && !p.scenario_only_outbound_zone_assumed).length, conditional_on_location_confirmation: pairings.filter((p) => p.conditional_on_location_confirmation).length, scenario_only_outbound_zone_assumed: pairings.filter((p) => p.scenario_only_outbound_zone_assumed).length, by_type: count(pairings, (p) => p.type), by_gap_minutes_bucket: count(pairings, (p) => bucket(p.facts.recorded_pickup_gap_minutes)), by_decision: count(pairings, (p) => p.decision),
       legs_with_at_least_one_candidate: Object.keys(candidatesPerLeg).length, legs_with_competing_candidates: Object.values(candidatesPerLeg).filter((v) => v > 1).length,
       duration_status: count(pairings, (p) => p.duration.status), timing_conclusion: 'NOT_DETERMINED for every pairing' },
     not_paired_reasons: skipped,
-    unsold_potential_empty_legs: count(empties, (e) => e.type),
+    unmatched_requests_hypothetical_positioning_need: { total: empties.length, by_direction: count(empties, (e) => e.direction), status: 'PROVISIONAL_UNTIL_OPS_SELECTS_AND_VALIDATES_A_SCHEDULE' },
     pairings_with_missing_drive_minutes: pairings.filter((p) => p.missing_inputs.some((m) => /DURATION_UNKNOWN/.test(m))).length,
     pairings_with_unknown_passengers_or_luggage: pairings.filter((p) => p.missing_inputs.some((m) => /passengers\/luggage/.test(m))).length,
   };
@@ -196,6 +261,9 @@ export function summarizePlan({ legs, pairings, skipped, empties }, label) {
 export function buildPlan(rows, ctx) {
   const { legs } = buildLegs(rows, ctx);
   const { pairings, skipped } = buildPairings(legs, { routeDurationEstimates: ctx.routeDurationEstimates, conditional: ctx.conditional !== false, scenarioOutbound: ctx.scenarioOutbound === true });
-  const empties = buildPotentialEmptyLegs(legs, pairings);
-  return { legs, pairings, skipped, empties, summary: summarizePlan({ legs, pairings, skipped, empties }, `${ctx.windowStart}..${ctx.windowEnd}`) };
+  const groups = buildAlternativeGroups(pairings);
+  const empties = buildUnmatchedRequests(legs, pairings);
+  const inAlt = new Set(pairings.flatMap((p) => [p.first_leg, p.second_leg]));
+  for (const l of legs) { l.allocation_status = 'UNALLOCATED'; l.provisional_status = inAlt.has(l.leg_id) ? 'HAS_COMPETING_CANDIDATE_ALTERNATIVES_NOT_ALLOCATED' : 'UNMATCHED_REQUEST_PROVISIONAL'; }
+  return { legs, pairings, skipped, empties, groups, summary: summarizePlan({ legs, pairings, skipped, empties, groups }, `${ctx.windowStart}..${ctx.windowEnd}`) };
 }
