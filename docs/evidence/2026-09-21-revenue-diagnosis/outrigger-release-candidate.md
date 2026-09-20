@@ -17,7 +17,7 @@ Prepared 2026-09-21. **Nothing here has been executed. No production approval ex
 | Preview content == candidate tree | AUTHOR-VERIFIED 2026-09-21: 37 of 37 served files identical to the `9ddd923` tree after stripping only Cloudflare's analytics beacon; `_redirects`/`404.html` verified by behaviour |
 | **Open:** unknown-route screen on the real phone; sideways-scroll confirmation; browser identity | PENDING (James) |
 
-**Provenance note.** Preview deployment `77ef3ba6…` shows source label `61d2393` and branch `ceo-outrigger-softfix-preview-20260921` in Cloudflare because it was uploaded from a different git working directory. Content parity with `9ddd923` is verified above; the label is cosmetic but the production deploy must use the exact commit (below). Cloudflare Pages cannot promote a preview, so production is a fresh upload of the same tree.
+**Provenance (kept as documented; parity is AUTHOR-VERIFIED until independently checked).** Preview deployment `77ef3ba6…` shows source label `61d2393` and branch `ceo-outrigger-softfix-preview-20260921` in Cloudflare because it was uploaded from a different git working directory. Content parity with `9ddd923` is verified above; the label is cosmetic but the production deploy must use the exact commit (below). Cloudflare Pages cannot promote a preview, so production is a fresh upload of the same tree.
 
 ## Production step (do not run until James approves)
 From a clean checkout of `9ddd923` (with `CLOUDFLARE_API_TOKEN` unset so OAuth is used):
@@ -38,3 +38,5 @@ Any failure in 1–3 → rollback.
 
 ## Scope guards
 Not in this release: mobile-UX changes (`mobile-ux-followup-spec.md`), distance/time reconciliation (98 / 96.7 / 87.9 km), fare changes, the four unexplained fares, PR #55, the Worker.
+
+Any eventual release must come from a clean checkout of the exact reviewed candidate commit, with `--commit-hash` and message accurate — never from another working directory.

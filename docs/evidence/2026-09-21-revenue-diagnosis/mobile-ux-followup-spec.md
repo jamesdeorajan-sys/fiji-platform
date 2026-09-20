@@ -1,4 +1,4 @@
-# Nadi mobile-UX follow-up — SPEC ONLY (not implemented, not deployed)
+# Nadi mobile-UX follow-up — SPEC (superseded by implementation: see `mobile-ux-preview.md`; preview only, not deployed)
 
 Status 2026-09-21. Separate from the Outrigger redirect/404 patch (`9ddd923`): that patch does not touch `index.html`, `app.js`, `styles.css` or `chat-widget.js`, and every finding below reproduces identically on production (base `31a27fb`). Ship on its own branch and its own preview; no production deployment is authorized by this document.
 

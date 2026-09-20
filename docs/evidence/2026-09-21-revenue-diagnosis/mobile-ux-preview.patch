@@ -1,0 +1,268 @@
+diff --git a/nadi-airport-transfers-site/src/app.js b/nadi-airport-transfers-site/src/app.js
+index 96af249..3190aeb 100644
+--- a/nadi-airport-transfers-site/src/app.js
++++ b/nadi-airport-transfers-site/src/app.js
+@@ -496,6 +496,7 @@ function updatePricing() {
+   if (step2 && step2.style.display !== 'none') {
+     const vdc = document.getElementById('vehicleDetailCards');
+     if (vdc) vdc.innerHTML = buildVehicleDetailCards();
++    syncVehicleStep();
+   }
+ }
+ 
+@@ -553,8 +554,9 @@ function buildVehicleCards() {
+       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
+          <div class="vehicle-price-sub">per vehicle</div>`;
+     return `
+-      <div class="${cls.join(' ')}" ${onclick}>
++      <div class="${cls.join(' ')}" role="radio" aria-checked="${state.selectedVehicle === v.key}" ${fits ? '' : 'aria-disabled="true"'} ${onclick}>
+         ${badge}
++        <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
+         <div class="vehicle-icon">${v.icon}</div>
+         <div class="vehicle-name">${v.name}</div>
+         <div class="vehicle-cap">${v.cap}<br><span class="vehicle-cap-sub">Up to ${v.maxBags} bags</span></div>
+@@ -593,8 +595,9 @@ function buildVehicleDetailCards() {
+       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
+       : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
+     return `
+-      <div class="${cls.join(' ')}" ${onclick}>
++      <div class="${cls.join(' ')}" role="radio" aria-checked="${state.selectedVehicle === v.key}" ${fits ? '' : 'aria-disabled="true"'} ${onclick}>
+         ${badge}
++        <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
+         <div class="vd-icon">${v.icon}</div>
+         <div class="vd-name">Private ${v.name}</div>
+         <div class="vd-cap">Up to ${v.maxPax} passengers · ${v.maxBags} bags</div>
+@@ -615,8 +618,10 @@ function selectVehicle(key, el) {
+   const v = VEHICLES.find(x => x.key === key);
+   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
+   state.selectedVehicle = key;
+-  document.querySelectorAll('.vehicle-card').forEach(c => c.classList.remove('selected'));
+-  if (el) el.classList.add('selected');
++  document.querySelectorAll('.vehicle-card').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked', 'false'); });
++  if (el) { el.classList.add('selected'); el.setAttribute('aria-checked', 'true'); }
++  state.vehicleNotice = '';
++  syncVehicleStep();
+   const nb = document.getElementById('nextBtn1');
+   if (nb) nb.disabled = false;
+   // Tour bundle summary depends on which vehicle is selected — refresh it
+@@ -626,8 +631,10 @@ function selectVehicleDetail(key, el) {
+   const v = VEHICLES.find(x => x.key === key);
+   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
+   state.selectedVehicle = key;
+-  document.querySelectorAll('.vehicle-detail-card').forEach(c => c.classList.remove('selected'));
+-  if (el) el.classList.add('selected');
++  document.querySelectorAll('.vehicle-detail-card').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked', 'false'); });
++  if (el) { el.classList.add('selected'); el.setAttribute('aria-checked', 'true'); }
++  state.vehicleNotice = '';
++  syncVehicleStep();
+   updateExtras();
+ }
+ 
+@@ -669,18 +676,16 @@ function syncReturnLocationDefault() {
+ 
+ // ─── PAX / LUGGAGE ────────────────────────────────────────────────────────────
+ function refreshAfterCapacityChange() {
+-  // Auto-upgrade if current vehicle is now too small for either pax or bags
+-  if (state.selectedVehicle) {
+-    const v = VEHICLES.find(x => x.key === state.selectedVehicle);
+-    if (v && !vehicleFits(v)) {
+-      state.selectedVehicle = recommendedVehicle();
+-    }
+-  }
++  // If the chosen vehicle is now too small for pax or bags, drop the choice and
++  // ask again. Never silently substitute the recommended vehicle (it sets the fare).
++  const unfit = clearUnfitVehicle();
++  if (unfit) state.vehicleNotice = unfit;
+   const vc = document.getElementById('vehicleCards');
+   if (vc && state.distanceKm > 0) vc.innerHTML = buildVehicleCards();
+   const vdc = document.getElementById('vehicleDetailCards');
+   const step2 = document.getElementById('step2');
+   if (vdc && step2 && step2.style.display !== 'none') vdc.innerHTML = buildVehicleDetailCards();
++  syncVehicleStep();
+   // Tour bundle total scales with passengers — re-run pricing so the summary
+   // panel and confirmation card both reflect the new pax count.
+   if (state.selectedTour) updatePricing();
+@@ -736,6 +741,7 @@ function swapLocations() {
+ 
+ // ─── STEP NAVIGATION ─────────────────────────────────────────────────────────
+ function showStep(n) {
++  if (document.body) document.body.classList.toggle('booking-flow', n > 1);
+   for (let i = 1; i <= 4; i++) {
+     const el = document.getElementById(`step${i}`);
+     if (el) el.style.display = (i === n) ? 'block' : 'none';
+@@ -785,6 +791,38 @@ function validateArrivalFlight() {
+   return true;
+ }
+ 
++// ─── EXPLICIT VEHICLE CHOICE ─────────────────────────────────────────────────
++// "★ Recommended" is a suggestion only: nothing is selected until the guest taps a card.
++function selectedVehicleIsValid() {
++  if (!state.selectedVehicle) return false;
++  const v = VEHICLES.find(x => x.key === state.selectedVehicle);
++  return !!v && vehicleFits(v);
++}
++// Clears a selection that no longer fits the party; returns a guest-facing notice ('' if nothing changed).
++function clearUnfitVehicle() {
++  const v = VEHICLES.find(x => x.key === state.selectedVehicle);
++  if (!v || vehicleFits(v)) return '';
++  const reasons = [];
++  if (state.passengers > v.maxPax)  reasons.push(`${state.passengers} passengers`);
++  if (state.luggage    > v.maxBags) reasons.push(`${state.luggage} bags`);
++  state.selectedVehicle = null;
++  return `Your ${v.name} can't carry ${reasons.join(' and ')}. Please choose another vehicle.`;
++}
++// Keeps the step-2 Continue button and hint in step with the selection.
++function syncVehicleStep() {
++  const ok = selectedVehicleIsValid();
++  if (ok) state.vehicleNotice = '';
++  const btn  = document.getElementById('nextBtn2');
++  if (btn) btn.disabled = !ok;
++  const hint = document.getElementById('vehicleHint');
++  if (!hint) return;
++  const v = ok ? VEHICLES.find(x => x.key === state.selectedVehicle) : null;
++  hint.className = 'vehicle-hint' + (ok ? ' ok' : (state.vehicleNotice ? ' warn' : ''));
++  hint.textContent = ok
++    ? `Selected: Private ${v.name}. Continue when you're ready.`
++    : (state.vehicleNotice || 'Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is selected yet.');
++}
++
+ function goToStep(n) {
+   if (n === 4) {
+     if (!validateBookingContact()) return;
+@@ -797,18 +835,13 @@ function goToStep(n) {
+       alert('Please choose your pickup and destination.');
+       return;
+     }
+-    // Capacity guard — checks both pax and luggage
+-    const v = VEHICLES.find(x => x.key === state.selectedVehicle);
+-    if (v && !vehicleFits(v)) {
+-      const rec = VEHICLES.find(x => x.key === recommendedVehicle());
+-      const reasons = [];
+-      if (state.passengers > v.maxPax)  reasons.push(`${state.passengers} passengers`);
+-      if (state.luggage    > v.maxBags) reasons.push(`${state.luggage} bags`);
+-      alert(`Your ${v.name} can't carry ${reasons.join(' and ')}. We've switched you to a ${rec.name}.`);
+-      state.selectedVehicle = rec.key;
+-    }
++    // Capacity guard — checks both pax and luggage. A choice that no longer fits
++    // is cleared and the guest is asked to choose again (shown in the step-2 hint).
++    const unfit = clearUnfitVehicle();
++    if (unfit) state.vehicleNotice = unfit;
+     const vdc = document.getElementById('vehicleDetailCards');
+     if (vdc) vdc.innerHTML = buildVehicleDetailCards();
++    syncVehicleStep();
+   }
+   if (n === 3) {
+     if (!state.selectedVehicle) { alert('Please select a vehicle.'); return; }
+@@ -2219,6 +2252,13 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
+ 
+ // ─── INIT ────────────────────────────────────────────────────────────────────
+ document.addEventListener('DOMContentLoaded', () => {
++  // The "Get price" sticky bar is an acquisition prompt: hide it while the booking widget is visible.
++  const bookingEl = document.getElementById('booking');
++  if (bookingEl && 'IntersectionObserver' in window) {
++    // -80px bottom margin: an element merely touching the fold (0px overlap) must not count as "in view"
++    new IntersectionObserver(entries => entries.forEach(e => document.body.classList.toggle('booking-in-view', e.isIntersecting)),
++      { rootMargin: '0px 0px -80px 0px' }).observe(bookingEl);
++  }
+   buildRoutesTable();
+   buildToursGrid();
+   buildReviews();
+diff --git a/nadi-airport-transfers-site/src/index.html b/nadi-airport-transfers-site/src/index.html
+index bfef994..c6f07a6 100644
+--- a/nadi-airport-transfers-site/src/index.html
++++ b/nadi-airport-transfers-site/src/index.html
+@@ -26,7 +26,7 @@
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+-<link rel="stylesheet" href="styles.css?v=20260908a">
++<link rel="stylesheet" href="styles.css?v=20260921-mobile-ux">
+ <script type="application/ld+json">
+ {
+   "@context": "https://schema.org",
+@@ -665,7 +665,7 @@
+             <span class="discount-banner-icon">★</span>
+             <span class="discount-banner-text">10% off automatically applied to bookings over FJ$50</span>
+           </div>
+-          <div class="vehicle-cards" id="vehicleCards"></div>
++          <div class="vehicle-cards" id="vehicleCards" role="radiogroup" aria-label="Vehicle prices"></div>
+           <!-- Tour-bundle price summary. Renders only when a tour is in the
+                booking AND a vehicle has been selected. Shows the combined
+                transfer + tour total so the customer sees the full price up
+@@ -690,7 +690,8 @@
+       <!-- STEP 2: VEHICLE -->
+       <div class="booking-step" id="step2" style="display:none">
+         <h3 class="step-title">Choose your vehicle</h3>
+-        <div class="vehicle-detail-cards" id="vehicleDetailCards"></div>
++        <p class="vehicle-hint" id="vehicleHint" role="status" aria-live="polite">Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is selected yet.</p>
++        <div class="vehicle-detail-cards" id="vehicleDetailCards" role="radiogroup" aria-label="Choose your vehicle"></div>
+         <div class="extras-section">
+           <h4 class="extras-title">Add-ons</h4>
+           <div class="extras-grid">
+@@ -726,7 +727,7 @@
+         </div>
+         <div class="step-actions">
+           <button class="btn-secondary" onclick="goToStep(1)">← Back</button>
+-          <button class="btn-primary" onclick="goToStep(3)">
++          <button class="btn-primary" id="nextBtn2" onclick="goToStep(3)" disabled>
+             Continue to passenger details
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+           </button>
+@@ -2018,7 +2019,7 @@
+   </div>
+ </div>
+ 
+-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20260917-priority-recovery"></script>
++<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20260921-mobile-ux"></script>
+ <script src="chat-widget.js?v=20260908a"></script>
+ <!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "40d766fdaddc4cb68ce32a56801f1639"}'></script><!-- Cloudflare Pages Analytics --></body>
+ </html>
+diff --git a/nadi-airport-transfers-site/src/styles.css b/nadi-airport-transfers-site/src/styles.css
+index cfcedfe..6abf8a0 100644
+--- a/nadi-airport-transfers-site/src/styles.css
++++ b/nadi-airport-transfers-site/src/styles.css
+@@ -166,7 +166,9 @@ textarea.field-input{resize:vertical;min-height:80px}
+ .tbs-total{margin-top:4px;padding-top:10px;border-top:2px solid #0d9488 !important}
+ .tbs-total .tbs-label,.tbs-total .tbs-value{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:#0d9488}
+ .vehicle-card{background:var(--white);border:2px solid var(--border);border-radius:var(--radius-md);padding:16px;cursor:pointer;transition:var(--transition);text-align:center}
+-.vehicle-card:hover,.vehicle-card.selected{border-color:var(--ocean);background:var(--ocean-light)}
++/* hover only where a real hover exists: on touch screens :hover sticks to the last-tapped card and looks "selected" */
++.vehicle-card.selected{border-color:var(--ocean);background:var(--ocean-light)}
++@media (hover:hover){.vehicle-card:hover{border-color:var(--ocean);background:var(--ocean-light)}}
+ .vehicle-card.selected{box-shadow:0 0 0 3px rgba(0,102,204,.15)}
+ .vehicle-icon{font-size:28px;margin-bottom:8px}
+ .vehicle-name{font-family:'Sora',sans-serif;font-weight:700;font-size:.9rem;color:var(--dark);margin-bottom:2px}
+@@ -186,8 +188,8 @@ textarea.field-input{resize:vertical;min-height:80px}
+ .step-title{font-size:1.2rem;margin-bottom:20px;color:var(--dark)}
+ .vehicle-detail-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+ .vehicle-detail-card{border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;cursor:pointer;transition:var(--transition)}
+-.vehicle-detail-card:hover,.vehicle-detail-card.selected{border-color:var(--ocean)}
+-.vehicle-detail-card.selected{background:var(--ocean-light)}
++@media (hover:hover){.vehicle-detail-card:hover{border-color:var(--ocean)}}
++.vehicle-detail-card.selected{border-color:var(--ocean);background:var(--ocean-light);box-shadow:0 0 0 3px rgba(0,102,204,.15)}
+ .vd-icon{font-size:36px;margin-bottom:12px}
+ .vd-name{font-family:'Sora',sans-serif;font-weight:700;font-size:1rem;margin-bottom:4px}
+ .vd-cap{font-size:12px;color:var(--mid);margin-bottom:10px}
+@@ -368,9 +370,19 @@ textarea.field-input{resize:vertical;min-height:80px}
+ 
+ /* ─── STICKY BAR ──────────────────────────────────────────────────────────── */
+ .sticky-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--dark);border-top:1px solid rgba(255,255,255,.1);padding:12px 20px}
+-.sticky-bar-inner{display:flex;justify-content:space-between;align-items:center}
+-.sticky-bar-inner span{color:rgba(255,255,255,.7);font-size:14px}
+-.btn-sticky{background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
++/* right padding keeps the CTA clear of the fixed chat launcher (60px + 20px offset) */
++.sticky-bar{padding-right:96px}
++.sticky-bar-inner{display:flex;justify-content:space-between;align-items:center;gap:12px}
++.sticky-bar-inner span{color:rgba(255,255,255,.7);font-size:14px;min-width:0}
++/* acquisition prompt: not shown while the booking widget is on screen or after step 1 */
++body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
++/* explicit vehicle choice */
++.vehicle-selected-mark{display:none;position:absolute;top:8px;right:8px;background:var(--ocean);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;padding:3px 9px;border-radius:99px;z-index:2}
++.vehicle-card.selected .vehicle-selected-mark,.vehicle-detail-card.selected .vehicle-selected-mark{display:inline-block}
++.vehicle-hint{margin:0 0 14px;padding:10px 12px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:14px;line-height:1.4}
++.vehicle-hint.ok{background:#e6f0ff;color:#0a4a94}
++.vehicle-hint.warn{background:#fef3c7;color:#92400e}
++.btn-sticky{white-space:nowrap;flex:none;background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
+ 
+ /* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
+ @media(max-width:900px){

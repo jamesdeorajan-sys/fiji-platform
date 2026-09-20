@@ -1,0 +1,6 @@
+variant,onsite_rows,fijidash_nadi_rows,fijidash_other_rows,no_ref_rows,total_rows,quoted_fjd_total,nadi_combined_A_8-10Sep,nadi_combined_A_per_day,nadi_combined_B_11-20Sep,nadi_combined_B_per_day
+S0_genuine_raw_no_dedup,46,8,28,25,107,14716.52,20,6.67,34,3.4
+S1_retry_rule_D1_PRIMARY,43,8,27,24,102,14074.23,18,6.0,33,3.3
+S2_D1_plus_trip_key_any_gap,42,8,26,22,98,13309.73,17,5.67,33,3.3
+S3_D1_minus_probable_internal_cluster,42,8,23,24,97,13846.62,17,5.67,33,3.3
+S4_D1_plus_trip_key_minus_cluster,41,8,22,22,93,13082.12,16,5.33,33,3.3
