@@ -40,3 +40,5 @@ Any failure in 1–3 → rollback.
 Not in this release: mobile-UX changes (`mobile-ux-followup-spec.md`), distance/time reconciliation (98 / 96.7 / 87.9 km), fare changes, the four unexplained fares, PR #55, the Worker.
 
 Any eventual release must come from a clean checkout of the exact reviewed candidate commit, with `--commit-hash` and message accurate — never from another working directory.
+
+**Overwrite warning (added 2026-09-21):** a Pages upload replaces the whole site, so deploying `9ddd923` alone would not include the mobile-UX repair, and the mobile branch alone would not include this patch. If both are to ship, use the combined tree in `combined-release-candidate.md` (`344d7f6`); if this patch ships first, any later mobile release must be built on top of what is live.

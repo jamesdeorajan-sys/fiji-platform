@@ -1,51 +1,43 @@
 # Nadi mobile-UX repair — PREVIEW ONLY (for independent review)
 
-Status 2026-09-21. **Not deployed to production. No production approval exists.** Separate from the Outrigger redirect/404 patch; built on the production base, so the two can be reviewed and released independently.
+Status 2026-09-21 (revision 2, after Codex's review of `7552243`). **Not deployed to production. No production approval exists.** Separate branch built on the production base; the combined tree with the Outrigger patch is documented in `combined-release-candidate.md`.
 
 | | |
 |---|---|
-| Branch | `ceo/nadi-mobile-ux-preview` (worktree of `jamesdeorajan-sys/fiji-platform`) |
+| Branch | `ceo/nadi-mobile-ux-preview` |
 | Base | `31a27fb` (= current production source, deployment `9af4d251`) |
-| Head | `7552243a4eeda6b60397ef174743e36656e983a5` (3 commits on the base: `46c9c81`, `9e9eb01`, `7552243`) |
-| Preview | `https://cea78a1a.fttlandingpage.pages.dev` (Cloudflare source label `7552243`, branch `ceo-nadi-mobile-ux-preview`, uploaded from the branch's own worktree so the label is accurate) |
-| Exact diff | `git diff 31a27fb 7552243` — 4 files, +262/−34: `src/app.js`, `src/index.html`, `src/styles.css`, `test/mobile-ux.test.js`; a copy of the source diff is `mobile-ux-preview.patch` beside this file |
-| Not touched | fares/pricing (`calculateTotal`, `applyModifiers`, price tables), booking submission, Worker, notifications, PR #55, route pages, sitemap, chat widget |
+| Head (rev 2) | `272cfebb577df770aa199c0c1a11e8a17ac9d717` (4 commits on the base: `46c9c81`, `9e9eb01`, `7552243`, `272cfeb`) |
+| Preview | `https://706dcc02.fttlandingpage.pages.dev` (label: source `272cfeb`, branch `ceo-nadi-mobile-ux-preview`) |
+| Exact diff | `git diff 31a27fb 272cfeb` — 4 files: `src/app.js`, `src/index.html`, `src/styles.css`, `test/mobile-ux.test.js`; source diff copy `mobile-ux-preview.patch` (regenerated at `272cfeb`) |
+| Not touched | fares/pricing, booking submission, Worker, notifications, PR #55, route pages, sitemap, `chat-widget.js` |
+| Revision 1 (superseded) | `7552243` / preview `cea78a1a` — Codex ran its suite (89/89, INDEPENDENTLY-VERIFIED for the suite only; emulation stayed AUTHOR-VERIFIED) |
 
-## What changed
-1. **Explicit vehicle choice.** No silent recommended-vehicle preselection. "★ Recommended" is a suggestion only; a hint says "Tap a vehicle to choose it … nothing is selected yet."
-2. **Continue disabled until a valid choice.** Step-2 "Continue to passenger details" (`#nextBtn2`) starts disabled; enabled only when the selected vehicle fits pax/luggage. The step-3 guard and its alert remain as a defensive fallback.
-3. **Selected mark.** Selected cards show a "✓ Selected" pill plus a stronger blue ring; radio semantics (`role=radiogroup/radio`, `aria-checked`).
-4. **Selection preserved** through add-on toggles and back/forward navigation (state-driven re-render).
-5. **Capacity revalidation.** If pax/bags change so the chosen vehicle no longer fits, the choice is cleared (never swapped for the recommended one), Continue is disabled, and the hint says why. The old "we've switched you to a …" behaviour is removed.
-6. **Sticky "Get price" bar** is hidden while the booking widget is on screen (`IntersectionObserver` on `#booking`, `rootMargin -80px` so merely touching the fold does not count) and after step 1 (`body.booking-flow`); it returns on the landing sections. While visible it has 96 px right padding so the CTA sits clear of the 60 px chat launcher, and the CTA cannot wrap (`white-space:nowrap`).
-7. **Touch hover fix.** `:hover` styling that looked identical to "selected" now applies only under `@media (hover:hover)`. On touch screens `:hover` sticks to the last-tapped card, so a card could look selected without being selected. This is a *plausible* contributor to the recommended-vs-selected confusion in the phone screenshots; it is not proven to be what James saw.
-8. Cache-busting: `styles.css` and `app.js` query strings in `index.html` bumped to `?v=20260921-mobile-ux`.
+## Changes in revision 2 (Codex findings 1 and 2)
+1. **Chat launcher no longer overlaps Continue and other booking buttons.** `.step-actions` gets right padding (40 px ≤ 900 px, 30 px ≤ 480 px) and stacks vertically on ≤ 480 px (Continue on top, Back below), so the buttons end left of the launcher's column. The launcher itself is **not moved, hidden or restyled** (`chat-widget.js` untouched; no `#ftt-chat` override in `styles.css`), so assistance stays one tap away everywhere.
+2. **Vehicle cards are native radios.** Each card is `<label><input type="radio" class="vehicle-radio" …>`; step-1 cards use group `vehiclePreview`, step-2 cards `vehicleChoice`. Tab/arrow keys/Space selection, `checked` and `disabled` come from the browser; the input is visually hidden but focusable; a 3 px `:focus-visible` ring shows on the card (`:has()` with a `:focus-within` fallback under `@supports not selector(:has(*))`). An unfit vehicle is a **disabled** radio (skipped by arrows) and tapping its card still explains why (`alertCapacity`). Custom `role="radio"`/`aria-checked` removed (no ARIA override of native state). Keyboard focus is kept on the same vehicle when the cards re-render (`setVehicleCards`).
+
+## Behaviour retained from revision 1
+Explicit choice with no preselect; Continue (`#nextBtn2`) disabled until a fitting vehicle; hint + "✓ Selected" mark; selection preserved across add-ons/back; capacity change clears (never swaps) with a notice; sticky "Get price" bar hidden while `#booking` is visible or after step 1 and clear of the launcher; hover styling only under `(hover:hover)`.
 
 ## Focused test evidence (AUTHOR-VERIFIED — for Codex to reproduce)
-- Command: `node --test nadi-airport-transfers-site/test/*.test.js` at `7552243` → **89 tests, 89 pass, 0 fail, 0 skipped** (71 existing + 18 new in `test/mobile-ux.test.js`).
-- Discrimination check: the 18 new tests run against the base `31a27fb` → **17 fail, 1 pass** (the scope-guard test, which asserts the money-path functions still exist). So the tests genuinely detect the old behaviour.
-- New tests cover: nothing preselected; Continue disabled + hint; tap selects exactly one card (aria); step-1 tap also satisfies the gate; selection survives add-on/back re-sync; capacity change clears (no swap) with notice; fitting choice preserved; notice clears on re-selection; no `selectedVehicle = recommendedVehicle()` anywhere; markup (`nextBtn2 disabled`, hint, radiogroup); Selected mark CSS; hover only under `(hover:hover)`; sticky-bar hide rules + observer + rootMargin; launcher clearance ≥ 80 px; CTA no-wrap; cache-bust versions; scope guard.
+- `node --test nadi-airport-transfers-site/test/*.test.js` at `272cfeb` → **95 tests, 95 pass, 0 fail, 0 skipped** (71 existing + 24 in `test/mobile-ux.test.js`).
+- New/changed tests in rev 2: native radio markup (2 inputs, 2 labels, distinct group names, no `role="radio"`, no `aria-checked`); `checked` mirrors state; unfit vehicle = disabled radio + label explains; hidden input stays focusable (no `display:none`) and has a focus-visible ring rule + fallback; focus is restored to the same vehicle after re-render and not stolen otherwise; step-action padding/stacking rules and no chat override.
 
-## Browser verification on the preview (AUTHOR-VERIFIED, emulation — not a real device; no submissions)
+## Browser evidence on the rev-2 preview (AUTHOR-VERIFIED, emulation — not a real device; no submissions)
 | Check | Result |
 |---|---|
-| 375×812, page top | Bar visible; CTA 160–279 × 758–800 vs launcher 305–359 × 742–796 → **no overlap**; `elementFromPoint` at CTA centre and right edge returns the CTA |
-| 320×640 | CTA one line (43 px tall), no overlap, no horizontal overflow |
-| 414×896 | no overlap, no overflow |
-| Scroll into booking / footer / top | bar hidden in booking, returns at footer and top |
-| Step 2 on arrival | nothing selected; Continue disabled; hint shown; clicking Continue → no step change, no alert |
-| Tap Sedan | one `selected` card with "✓ Selected", Continue enabled, hint "Selected: Private Sedan…" |
-| Add-on toggle; Back → Continue | selection preserved |
-| Raise passengers so Sedan no longer fits | choice cleared, Continue disabled, warn hint "Your Sedan can't carry 4 passengers…"; Minivan shown as Recommended but **not** selected; tap Minivan → selected; back to 2 pax keeps Minivan |
-| Step 3 | bar hidden (`booking-flow`) |
+| Real key events (ArrowDown/ArrowUp) on step 2 | ArrowDown from Sedan → Minivan selected, `checked` `[false,true,false]`, focus stays on Minivan after re-render, focus-visible ring `solid 3px`, Continue enabled, hint updated; ArrowUp → Sedan |
+| Capacity change (5 passengers) | Sedan radio `disabled`, card class `disabled`, badge "Too small for 5 pax", Continue disabled, notice shown; tapping the disabled card alerts the reason and selects nothing |
+| Step buttons vs launcher at the bottom edge (`scrollIntoView({block:'end'})`), steps 1–4 | 375 px: all buttons span x 45–300, launcher 305–359 → **0 overlaps**; 320 px: buttons end at x 245, launcher 250–304 → 0 overlaps, no horizontal overflow; 768 px: buttons end at 668, launcher 673–733 → 0 overlaps |
+| Other booking controls | Only the step-1 currency select and price cards reach the launcher column, by ≤ 4 px at their right edge (x 309 vs 305); nothing else narrower than 255 px reaches it |
+| Earlier rev-1 checks (sticky bar hide/return, CTA clear of launcher at 320/375/414, selection/notice flow) | unchanged; re-run at 375 on the combined tree |
 
-**Residual risk / not tested:** when a step's Continue button is scrolled to the very bottom edge of the screen, the fixed chat launcher can still cover its right ~25 px (button 121–330 vs launcher 305–359 at 375 px); centred, it is fully tappable. Not changed (would require touching the chat widget or page padding). Real-device behaviour (iPhone Safari touch/hover, IntersectionObserver timing) is untested — needs James's real-phone walkthrough and Codex's independent review. IntersectionObserver-driven hiding was only observable while the emulated tab was rendering.
+**Residual risk / not tested:** real-device behaviour (iPhone Safari touch/hover, VoiceOver, hardware keyboard on iPad), IntersectionObserver timing on a real page, and any browser without `:has()` (falls back to `:focus-within`, which also shows on mouse focus). If a focused radio becomes disabled by a capacity change, browsers reset focus to the page; the live-region hint announces why. Full-width fields can pass a few px under the launcher while scrolling (≤ 4 px measured) — not action buttons.
 
 ## Independent-review checklist for Codex
-1. Check out `7552243`, run the suite (expect 89/89), run the 18 new tests on `31a27fb` (expect 17 fail).
-2. Confirm `git diff 31a27fb 7552243 --stat` touches only the four files above and no fare/submission/Worker code.
-3. Open the preview at 375×812 and on a real phone; repeat the table above (do not submit a booking).
-4. Confirm production still serves the base (`9af4d251`) — nothing here is deployed to it.
+1. Check out `272cfeb`, run the suite (expect 95/95); confirm `git diff 31a27fb 272cfeb --stat` touches only the four files and no fare/submission/Worker/chat-widget code.
+2. On the preview at 375×812, 320×640 and on a real phone: Tab into the vehicle cards, use arrows/Space, confirm focus ring, Selected mark and disabled state; confirm no step button sits under the launcher; do not submit a booking.
+3. Confirm production still serves the base (`9af4d251`).
 
 ## Release
-Separate from the Outrigger patch. Any production release must be a fresh upload from a clean checkout of the exact reviewed commit with accurate commit metadata; Cloudflare Pages cannot promote a preview. James decides.
+Not on its own: because a Cloudflare Pages deploy replaces the whole site, this branch must not be deployed alone after the Outrigger patch (or vice versa). Use the combined candidate in `combined-release-candidate.md`. James decides; nothing here is authorized for deployment.

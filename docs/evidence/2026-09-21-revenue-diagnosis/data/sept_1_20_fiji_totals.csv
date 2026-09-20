@@ -1,0 +1,33 @@
+window,variant,storefront,rows,quoted_fjd_NOT_collected_revenue
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,NADI_ONSITE_WIDGET,46,6480.0
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,FIJIDASH_NADI_HANDOFF,8,1501.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,FIJIDASH_OTHER,28,3399.84
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,NO_REF_UNATTRIBUTED,4,551.49
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,ALL,86,11933.29
+Fiji days 2026-09-01..2026-09-20 (complete days),S0_not_excluded_by_current_test_rules_raw,NADI_COMBINED(on-site+FijiDash-Nadi),54,7981.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,NADI_ONSITE_WIDGET,43,5972.0
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,FIJIDASH_NADI_HANDOFF,8,1501.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,FIJIDASH_OTHER,27,3350.84
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,NO_REF_UNATTRIBUTED,4,551.49
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,ALL,82,11376.29
+Fiji days 2026-09-01..2026-09-20 (complete days),S1_after_retry_rule_D1_PRIMARY,NADI_COMBINED(on-site+FijiDash-Nadi),51,7473.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,NADI_ONSITE_WIDGET,42,5707.0
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,FIJIDASH_NADI_HANDOFF,8,1501.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,FIJIDASH_OTHER,26,3193.4
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,NO_REF_UNATTRIBUTED,3,314.86
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,ALL,79,10717.22
+Fiji days 2026-09-01..2026-09-20 (complete days),S2_D1_plus_trip_key_flagged_removed,NADI_COMBINED(on-site+FijiDash-Nadi),50,7208.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,NADI_ONSITE_WIDGET,42,5937.0
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,FIJIDASH_NADI_HANDOFF,8,1501.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,FIJIDASH_OTHER,23,3158.23
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,NO_REF_UNATTRIBUTED,4,551.49
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,ALL,77,11148.68
+Fiji days 2026-09-01..2026-09-20 (complete days),S3_D1_minus_six_suspected_tests,NADI_COMBINED(on-site+FijiDash-Nadi),50,7438.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,NADI_ONSITE_WIDGET,41,5672.0
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,FIJIDASH_NADI_HANDOFF,8,1501.96
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,FIJIDASH_OTHER,22,3000.79
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,NO_REF_UNATTRIBUTED,3,314.86
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,ALL,74,10489.61
+Fiji days 2026-09-01..2026-09-20 (complete days),S4_D1_plus_trip_key_minus_six_suspected_tests,NADI_COMBINED(on-site+FijiDash-Nadi),49,7173.96
+Fiji days 2026-07-24..2026-09-20 (whole history),S1_after_retry_rule_D1_PRIMARY,ALL,102,14074.23
+Fiji days 2026-07-24..2026-08-31 (pre-September),S1_after_retry_rule_D1_PRIMARY,ALL,20,2697.94

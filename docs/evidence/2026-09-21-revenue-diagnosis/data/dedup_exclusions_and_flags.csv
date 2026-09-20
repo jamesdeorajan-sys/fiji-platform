@@ -1,0 +1,10 @@
+rule,action,storefront_of_later_row,storefront_of_earlier_row,gap_minutes,same_phone,same_email,same_trip_key,same_pickup_date,same_dest_zone,same_vehicle,fiji_day_of_later_row,quoted_fjd_of_later_row
+D1 retry (same phone+zone+vehicle <=15min),dropped from primary series,NO_REF_UNATTRIBUTED,NO_REF_UNATTRIBUTED,5.1,True,False,True,True,True,True,2026-08-25,85.29
+D1 retry (same phone+zone+vehicle <=15min),dropped from primary series,FIJIDASH_OTHER,FIJIDASH_OTHER,7.2,True,False,True,True,True,True,2026-09-07,49
+D1 retry (same phone+zone+vehicle <=15min),dropped from primary series,NADI_ONSITE_WIDGET,NADI_ONSITE_WIDGET,0.1,True,True,True,True,True,True,2026-09-09,123
+D1 retry (same phone+zone+vehicle <=15min),dropped from primary series,NADI_ONSITE_WIDGET,NADI_ONSITE_WIDGET,0.1,True,True,True,True,True,True,2026-09-10,265
+D1 retry (same phone+zone+vehicle <=15min),dropped from primary series,NADI_ONSITE_WIDGET,NADI_ONSITE_WIDGET,10.2,True,True,False,False,True,True,2026-09-13,120
+"T trip-key (same date+time+route+vehicle+return, any gap)","flagged, kept in primary series",NO_REF_UNATTRIBUTED,NO_REF_UNATTRIBUTED,22.6,False,False,True,True,True,True,2026-08-23,105.43
+"T trip-key (same date+time+route+vehicle+return, any gap)","flagged, kept in primary series",NO_REF_UNATTRIBUTED,NO_REF_UNATTRIBUTED,54.3,True,False,True,True,True,True,2026-09-02,236.63
+"T trip-key (same date+time+route+vehicle+return, any gap)","flagged, kept in primary series",FIJIDASH_OTHER,FIJIDASH_OTHER,102.5,True,True,True,True,True,True,2026-09-03,157.44
+"T trip-key (same date+time+route+vehicle+return, any gap)","flagged, kept in primary series",NADI_ONSITE_WIDGET,NADI_ONSITE_WIDGET,150.3,True,True,True,True,True,True,2026-09-09,265
