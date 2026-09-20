@@ -18,6 +18,13 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue) — Issue #54 recovery rev 2 after Codex review (Claude)
+
+- **INDEPENDENTLY-VERIFIED (Codex):** `441c000c173b39f1b5e0d1994f91e192a50f280a` suite 163/163. Codex's synthetic cases found four pilot gaps (unconfirmed capacity / assumed reverse duration; approved-flag economics with negative contribution; chain matching bypassing conflict checks; empty `confirmed_at`).
+- **Revision 2 (AUTHOR-VERIFIED):** `ceo/smart-return-recovery-pilot` @ `344d4079c198713f9361e328bf5efa4c73834098`, 181/181. Regression tests first: 16 of 18 fail on `441c000`, all pass on rev 2; fixes mutation-checked. HYPOTHETICAL / OPERATIONALLY_FEASIBLE / READY_FOR_DISPATCH_REVIEW kept distinct; ready is not an offer. Details: RECOVERY_STATUS section 14.
+- **Zero feasible under missing inputs is not zero demand or fleet potential** — the report now says so and lists input gaps. What-if (21–27 Sep, placeholder confirmations): 13 hypothetical legs, 0 feasible, 0 ready, 7 input gaps.
+- **Smallest ops request:** one vehicle, one day (24 Sep), then seven days; private templates sent to James; no customer details on GitHub. No live offers, messages, D1 writes or production wiring.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue early) — Issue #54 Smart Return / Trigger Fill recovery (Claude)
 
 Existing work continued, no replacement project. No live fare change, public offer, message, D1 write or production wiring. Report: `docs/evidence/2026-09-21-smart-return-recovery/RECOVERY_STATUS.md` (+ `whatif_pilot_counts_only.csv`); posted on Issue #54.

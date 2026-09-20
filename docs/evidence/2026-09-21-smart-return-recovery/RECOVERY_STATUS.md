@@ -4,8 +4,8 @@ Prepared 2026-09-21 (Claude). Continues the **existing** work (Issue #54, branch
 
 ## 1. Bottom line
 - The shadow foundation is real and well tested **in memory** (Codex ran 143/143 at `4ca67ac`; I re-ran 143/143), but **the pipeline had never been run against real data**, and the real database cannot supply its main input: **no booking has ever reached `accepted`** (0 accept events; `pending` 150 / `completed` 1 across all rows; 1 driver, 1 vehicle).
-- I found and fixed one concrete real-data defect (the adapter recognised **0 of 107** real rows as airport trips because the real zone name is `Nadi Airport`, not `NAN`) and added the missing pieces for a pilot: an ops-verified-movement contract, a structured passenger/luggage extractor, and an internal seven-day shadow pilot runner (recovery branch `ceo/smart-return-recovery-pilot` @ `441c000`, **163/163** tests = 143 + 20).
-- A **what-if** run (saved requests treated *as if* verified — explicitly not a pilot) shows **0 feasible empty-leg opportunities**: every one is blocked by unknown vehicle assignment, trip duration, turnaround and economics. That is the correct outcome and it pinpoints what to collect.
+- I found and fixed one concrete real-data defect (the adapter recognised **0 of 107** real rows as airport trips because the real zone name is `Nadi Airport`, not `NAN`) and added the missing pieces for a pilot: an ops-verified-movement contract, a structured passenger/luggage extractor, and an internal seven-day shadow pilot runner (recovery branch `ceo/smart-return-recovery-pilot`; revision 1 @ `441c000` 163/163 (independently run by Codex), **revision 2 @ `344d4079c198713f9361e328bf5efa4c73834098` 181/181** after Codex's review found four pilot gaps — see section 14).
+- A **what-if** run (saved requests treated *as if* verified — explicitly not a pilot) shows **0 feasible empty-leg opportunities** because the inputs are missing (vehicle assignment, trip duration, turnaround, capacity, availability attestation, economics). **That is not evidence of zero commercial demand or fleet potential** — it only pinpoints what to collect.
 - Unknown feasibility or economics remains **HOLD**. Existing formula pricing is **not** treated as an approved commercial source.
 
 ## 2. What exists (branch `ceo/smart-return-trigger-fill-shadow` @ `4ca67ac`)
@@ -101,3 +101,21 @@ Existing: an offer status machine with CAS, `expires_at`, a sweep, hold/release/
 
 ## 13. Authorisation
 This review authorises none of: live fare changes, public offers, customer/driver messages, D1 writes, migrations, or production wiring. The recovery branch is a separate, unmerged branch; the Codex-verified branch `ceo/smart-return-trigger-fill-shadow` @ `4ca67ac` is unchanged.
+
+## 14. Revision 2 — Codex review of `441c000` (independent suite 163/163 PASS) and fixes
+Codex's synthetic cases exposed four gaps in `scripts/seven_day_pilot.js`. Regression tests were written **first**: 18 tests in `test/seven_day_pilot_regressions.test.js`, of which **16 fail on `441c000`** (2 are guard tests that already held) and **all 18 pass on `344d407`**. Full suite **181/181**; each fix was mutation-checked (removing the chain conflict check, the floor-vs-cost check, the capacity gate or the confirmer check fails tests).
+
+| Codex finding | Fix |
+|---|---|
+| Opportunity FEASIBLE with unconfirmed capacity; reverse duration silently assumed equal to outbound | Operationally feasible now requires confirmed capacity, an **ops-verified reverse duration** (`route_durations_verified`), confirmed turnaround, and an **availability attestation** covering the whole window; no duration is assumed |
+| Approved fare flag + price 30 / floor 20 / payout 40 gave READY, contribution −10 | Inputs validated; **additional cost** required; the floor must cover payout + additional cost; contribution must meet the requirement **James** approves (`contribution_requirement`: approved, minimum, approver). No threshold is invented; anything missing is HOLD with a named reason |
+| Sold reverse booking with unknown duration accepted as a chain; bypassed conflict checks | Chains use the same gates: complete sold-return interval, known duration, capacity, attested availability, and overlap against **all supplied movements** (verified or not, inside or outside the window, including commitments straddling the window start or end) |
+| `confirmed_at=""` passed; named confirmer not enforced | Strict contract: source, named `confirmed_by` (a system source must be `admin` or `driver:<id>`), ISO timestamp **with zone**, non-empty evidence; rejects are counted by reason; the confirmer never appears in a report |
+
+**Kept distinct in the output:** `HYPOTHETICAL` predicted empty legs; `OPERATIONALLY_FEASIBLE` (all operational gates); `READY_FOR_DISPATCH_REVIEW` (feasible and commercially safe) — still **not an offer** (no dispatch approval, exclusive claim, expiry or withdrawal exists). Sold chains are separate and never discountable specials. Every report carries an `interpretation` line and an `input_gaps` list.
+
+**What-if refreshed on revision 2** (23 legs, 21–27 Sep, saved requests given placeholder confirmations): 13 hypothetical empty legs, 0 chains, 0 operationally feasible, 0 ready for review, 13 on hold, 130 rejected matches, 7 input gaps (`whatif_pilot_counts_only.csv`). Zero here reflects **missing inputs**, not demand or fleet potential.
+
+**Smallest ops request (private worksheet; no customer details in GitHub):** one vehicle, one day (24 Sep, the day with the most saved requests), then seven days for that vehicle, then more vehicles — `ONE_VEHICLE_OPS_INPUT_REQUEST.md` on the recovery branch. Two private templates were sent to James: the day's jobs (ids, times, zones, booked class only) and the vehicle / routes / attestation sheet.
+
+**Remaining input gaps:** verified movements with vehicle assignment; an ops duration table (both directions) for the zone pairs used; turnaround; confirmed capacity; availability attestation per vehicle and period; payout and additional cost per leg; fare authority (#59); James's approved minimum contribution; then the section-11 lifecycle work.
