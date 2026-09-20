@@ -2255,7 +2255,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // The "Get price" sticky bar is an acquisition prompt: hide it while the booking widget is visible.
   const bookingEl = document.getElementById('booking');
   if (bookingEl && 'IntersectionObserver' in window) {
-    new IntersectionObserver(entries => entries.forEach(e => document.body.classList.toggle('booking-in-view', e.isIntersecting))).observe(bookingEl);
+    // -80px bottom margin: an element merely touching the fold (0px overlap) must not count as "in view"
+    new IntersectionObserver(entries => entries.forEach(e => document.body.classList.toggle('booking-in-view', e.isIntersecting)),
+      { rootMargin: '0px 0px -80px 0px' }).observe(bookingEl);
   }
   buildRoutesTable();
   buildToursGrid();

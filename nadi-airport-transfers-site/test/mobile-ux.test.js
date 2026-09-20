@@ -148,6 +148,10 @@ test('sticky acquisition bar is hidden while the booking widget is visible and a
   assert.match(app, /new IntersectionObserver\([^]*classList\.toggle\('booking-in-view', e\.isIntersecting\)/);
 });
 
+test('booking-in-view needs real overlap (edge-touching the fold does not hide the bar)', () => {
+  assert.match(app, /rootMargin: '0px 0px -80px 0px'/);
+});
+
 test('sticky bar leaves room for the fixed chat launcher (60px + 20px offset)', () => {
   const m = css.match(/\.sticky-bar\{padding-right:(\d+)px\}/);
   assert.ok(m, 'padding rule missing');
