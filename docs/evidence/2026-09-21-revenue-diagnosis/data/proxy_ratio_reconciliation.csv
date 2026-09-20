@@ -1,0 +1,6 @@
+variant,A_saved(8-10 Sep UTC),A_rum_loads,A_ratio_pct,A_wilson95_pct,B_saved(11-20 Sep UTC),B_rum_loads,B_ratio_pct,B_wilson95_pct
+V1 numerator=FTT non-test dedup saved (UTC day); denominator=homepage RUM loads all devices (UTC date),17,100,17.0,"(10.9, 25.5)",24,380,6.3,"(4.3, 9.2)"
+V2 same numerator; denominator=homepage RUM MOBILE loads only (numerator not device-split -> upper bound),17,60,28.3,"(18.5, 40.8)",24,180,13.3,"(9.1, 19.1)"
+V3 as V1 but excluding tester-heavy UTC days 13/15/17 Sep from window B,17,100,17.0,"(10.9, 25.5)",16,200,8.0,"(5.0, 12.6)"
+V4 as V1 but denominator = ALL RUM page loads on host (homepage+route pages+other),17,120,14.2,"(9.0, 21.5)",24,510,4.7,"(3.2, 6.9)"
+V5 as V1 but excluding partial UTC day 20 Sep,17,100,17.0,"(10.9, 25.5)",24,360,6.7,"(4.5, 9.7)"
