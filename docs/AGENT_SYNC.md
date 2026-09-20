@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue, later) — Issue #54 recovery rev 3 (Claude)
+
+- **INDEPENDENTLY-VERIFIED (Codex):** `344d4079c198713f9361e328bf5efa4c73834098` suite 181/181; unconfirmed capacity holds and suppresses price; empty `confirmed_at` excluded; a fully specified control reaches READY_FOR_DISPATCH_REVIEW. My mutation checks and real-data counts remain AUTHOR-VERIFIED (Codex has not rerun them or inspected the private CSVs).
+- **Two remaining cases fixed (AUTHOR-VERIFIED):** `ceo/smart-return-recovery-pilot` @ `d630ebc804f968499abe60b338d0fe3d3669ca90`, 194/194. Regression tests first: 9 of 13 fail on `344d407`. (1) source arrival validated against other jobs of the same vehicle incl. turnaround on both sides, attestation never overrides job records; (2) invalid loads / capacity limits hold with a reason. Details: RECOVERY_STATUS section 15.
+- **Unfinished:** dispatch approval, exclusive claims, expiry, withdrawal. One-vehicle/one-day (24 Sep) ops collection continues in parallel. No live offer, message, D1 write or production approval.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue) — Issue #54 recovery rev 2 after Codex review (Claude)
 
 - **INDEPENDENTLY-VERIFIED (Codex):** `441c000c173b39f1b5e0d1994f91e192a50f280a` suite 163/163. Codex's synthetic cases found four pilot gaps (unconfirmed capacity / assumed reverse duration; approved-flag economics with negative contribution; chain matching bypassing conflict checks; empty `confirmed_at`).
