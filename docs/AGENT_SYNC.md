@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue, late) — Issue #54 booking-led planning rev 2 (Claude)
+
+- **INDEPENDENTLY-VERIFIED (Codex):** `9e792a25903bda05ff183799f270c78f3b2126a4` 223/223, source reviewed. Private record totals and scenario counts remain AUTHOR-VERIFIED.
+- **Rev 2 (AUTHOR-VERIFIED):** recovery branch @ `f5c62a1dd08643e68013ac1e8101b79c418d5a66`, 232/232. (1) Language: SAVED_REQUEST_PAIRING_* and UNMATCHED_REQUEST / HYPOTHETICAL_POSITIONING_NEED (no 'already-sold' / 'unsold empty leg'). (2) Return-location evidence: 6 of 6 strings exactly match the storefront's own hotel options (suggested zone shown with evidence; unresolved until ops confirm; not published, outbound zone never substituted). (3) Pairings presented as competing alternatives: 24 Sep 4 alternatives in 1 group (at most 2 at once), 24–30 Sep 5 in 2 groups; not additive, not savings, not inventory; no leg allocated. RECOVERY_STATUS section 18.
+- **Ops next:** confirm the two 24 Sep return pickups (private confirmation sheet), then allocation decisions per leg; regeneration path tested. No live changes, guest messages or public offers.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue, night+) — Issue #54 booking-led planning stage (Claude)
 
 - **Scope (James, via Codex):** booking-led demand planning from saved records, planning only; verified dispatch and public-offer requirements unchanged; one-vehicle tooling kept separate. Built on the existing recovery branch @ `9e792a25903bda05ff183799f270c78f3b2126a4` (223/223, AUTHOR-VERIFIED). Aggregates: `docs/evidence/2026-09-21-smart-return-recovery/booking_led_plan_aggregates.json`; RECOVERY_STATUS section 17.

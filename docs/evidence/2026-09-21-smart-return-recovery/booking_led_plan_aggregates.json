@@ -24,7 +24,10 @@
     "return_location_status": {
       "UNRESOLVED_NO_MATCH": 2
     },
-    "return_locations_with_unverified_zone_suggestion": 0,
+    "return_location_match_category": {
+      "EXACT_STOREFRONT_HOTEL_OPTION": 2
+    },
+    "return_locations_with_unverified_zone_suggestion": 2,
     "return_legs_missing_time": 0,
     "distance_available": {
       "arrival_from_bookings": 5,
@@ -41,47 +44,56 @@
       "DUPLICATE_RETRY_D1_EXCLUDED_FROM_PRIMARY_COUNTS": 1
     },
     "legs_with_any_uncertainty_flag": 1,
+    "competing_alternatives": {
+      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.",
+      "pairing_alternatives": 4,
+      "alternative_groups": 1,
+      "alternatives_per_group": [
+        4
+      ],
+      "max_selectable_at_once_upper_bound_per_group": [
+        2
+      ],
+      "legs_allocated": 0
+    },
     "potential_pairings": {
-      "total": 0,
+      "total": 4,
       "confirmed_mapping": 0,
-      "conditional_on_location_confirmation": 0,
+      "conditional_on_location_confirmation": 4,
       "scenario_only_outbound_zone_assumed": 0,
-      "by_type": {},
-      "by_gap_minutes_bucket": {},
-      "by_decision": {},
-      "legs_with_at_least_one_candidate": 0,
-      "legs_with_competing_candidates": 0,
-      "duration_status": {},
+      "by_type": {
+        "SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL": 4
+      },
+      "by_gap_minutes_bucket": {
+        "180-359": 2,
+        ">=360": 2
+      },
+      "by_decision": {
+        "NEEDS_DISPATCH_ALLOCATION": 4
+      },
+      "legs_with_at_least_one_candidate": 4,
+      "legs_with_competing_candidates": 4,
+      "duration_status": {
+        "DURATION_UNKNOWN": 4
+      },
       "timing_conclusion": "NOT_DETERMINED for every pairing"
     },
     "not_paired_reasons": {
-      "different_zone_same_day": 0,
-      "class_differs_guest_service_fixed": 0,
+      "different_zone_same_day": 2,
+      "class_differs_guest_service_fixed": 4,
       "missing_time": 0,
-      "return_zone_unresolved": 10,
+      "return_zone_unresolved": 0,
       "simultaneous_pickups": 0
     },
-    "unsold_potential_empty_legs": {
-      "UNSOLD_POTENTIAL_EMPTY_RETURN_LEG": 5,
-      "UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG": 2
+    "unmatched_requests_hypothetical_positioning_need": {
+      "total": 3,
+      "by_direction": {
+        "RETURN_TO_AIRPORT_AFTER_ARRIVAL": 3
+      },
+      "status": "PROVISIONAL_UNTIL_OPS_SELECTS_AND_VALIDATES_A_SCHEDULE"
     },
-    "pairings_with_missing_drive_minutes": 0,
-    "pairings_with_unknown_passengers_or_luggage": 0
-  },
-  {
-    "label": "2026-09-24..2026-09-24 SCENARIO (return pickup assumed = same booking's outbound zone; pending ops confirmation; NOT the plan)",
-    "scenario_pairings": 4,
-    "by_type": {
-      "SOLD_SEQUENCE_RETURN_THEN_ARRIVAL": 4
-    },
-    "by_gap_minutes_bucket": {
-      "180-359": 2,
-      ">=360": 2
-    },
-    "by_decision": {
-      "NEEDS_DISPATCH_ALLOCATION": 4
-    },
-    "legs_with_competing_candidates": 4
+    "pairings_with_missing_drive_minutes": 4,
+    "pairings_with_unknown_passengers_or_luggage": 2
   },
   {
     "label": "2026-09-24..2026-09-30",
@@ -116,7 +128,10 @@
     "return_location_status": {
       "UNRESOLVED_NO_MATCH": 6
     },
-    "return_locations_with_unverified_zone_suggestion": 1,
+    "return_location_match_category": {
+      "EXACT_STOREFRONT_HOTEL_OPTION": 6
+    },
+    "return_locations_with_unverified_zone_suggestion": 6,
     "return_legs_missing_time": 0,
     "distance_available": {
       "arrival_from_bookings": 13,
@@ -134,47 +149,59 @@
       "DUPLICATE_RETRY_D1_EXCLUDED_FROM_PRIMARY_COUNTS": 1
     },
     "legs_with_any_uncertainty_flag": 2,
+    "competing_alternatives": {
+      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.",
+      "pairing_alternatives": 5,
+      "alternative_groups": 2,
+      "alternatives_per_group": [
+        1,
+        4
+      ],
+      "max_selectable_at_once_upper_bound_per_group": [
+        1,
+        2
+      ],
+      "legs_allocated": 0
+    },
     "potential_pairings": {
-      "total": 0,
+      "total": 5,
       "confirmed_mapping": 0,
-      "conditional_on_location_confirmation": 0,
+      "conditional_on_location_confirmation": 5,
       "scenario_only_outbound_zone_assumed": 0,
-      "by_type": {},
-      "by_gap_minutes_bucket": {},
-      "by_decision": {},
-      "legs_with_at_least_one_candidate": 0,
-      "legs_with_competing_candidates": 0,
-      "duration_status": {},
+      "by_type": {
+        "SAVED_REQUEST_PAIRING_ARRIVAL_THEN_RETURN": 1,
+        "SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL": 4
+      },
+      "by_gap_minutes_bucket": {
+        ">=360": 3,
+        "180-359": 2
+      },
+      "by_decision": {
+        "NEEDS_DISPATCH_ALLOCATION": 5
+      },
+      "legs_with_at_least_one_candidate": 6,
+      "legs_with_competing_candidates": 4,
+      "duration_status": {
+        "DURATION_UNKNOWN": 5
+      },
       "timing_conclusion": "NOT_DETERMINED for every pairing"
     },
     "not_paired_reasons": {
-      "different_zone_same_day": 1,
-      "class_differs_guest_service_fixed": 0,
+      "different_zone_same_day": 9,
+      "class_differs_guest_service_fixed": 4,
       "missing_time": 0,
-      "return_zone_unresolved": 17,
+      "return_zone_unresolved": 0,
       "simultaneous_pickups": 0
     },
-    "unsold_potential_empty_legs": {
-      "UNSOLD_POTENTIAL_EMPTY_RETURN_LEG": 13,
-      "UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG": 6
+    "unmatched_requests_hypothetical_positioning_need": {
+      "total": 13,
+      "by_direction": {
+        "RETURN_TO_AIRPORT_AFTER_ARRIVAL": 10,
+        "OUTBOUND_POSITIONING_BEFORE_RETURN_PICKUP": 3
+      },
+      "status": "PROVISIONAL_UNTIL_OPS_SELECTS_AND_VALIDATES_A_SCHEDULE"
     },
-    "pairings_with_missing_drive_minutes": 0,
-    "pairings_with_unknown_passengers_or_luggage": 0
-  },
-  {
-    "label": "2026-09-24..2026-09-30 SCENARIO (return pickup assumed = same booking's outbound zone; pending ops confirmation; NOT the plan)",
-    "scenario_pairings": 5,
-    "by_type": {
-      "SOLD_SEQUENCE_ARRIVAL_THEN_RETURN": 1,
-      "SOLD_SEQUENCE_RETURN_THEN_ARRIVAL": 4
-    },
-    "by_gap_minutes_bucket": {
-      ">=360": 3,
-      "180-359": 2
-    },
-    "by_decision": {
-      "NEEDS_DISPATCH_ALLOCATION": 5
-    },
-    "legs_with_competing_candidates": 4
+    "pairings_with_missing_drive_minutes": 5,
+    "pairings_with_unknown_passengers_or_luggage": 3
   }
 ]
