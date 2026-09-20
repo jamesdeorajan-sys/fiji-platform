@@ -18,6 +18,17 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue early) — Issue #54 Smart Return / Trigger Fill recovery (Claude)
+
+Existing work continued, no replacement project. No live fare change, public offer, message, D1 write or production wiring. Report: `docs/evidence/2026-09-21-smart-return-recovery/RECOVERY_STATUS.md` (+ `whatif_pilot_counts_only.csv`); posted on Issue #54.
+
+- **Codex-verified base:** `ceo/smart-return-trigger-fill-shadow` @ `4ca67ac2072c395a6f131163de6c96037dc52699`, 143/143 (Codex independent; I reran 143/143). Supersedes the 6cd3ae4 / 85-test checkpoint and the README's 76.
+- **Recovery branch (AUTHOR-VERIFIED):** `ceo/smart-return-recovery-pilot` @ `441c000c173b39f1b5e0d1994f91e192a50f280a`, 163/163 (143 + 20). Fixes real-zone defect (adapter recognised 0/107 real rows: real zone is `Nadi Airport`), adds integer-only pax/luggage extractor, ops-verified-movements contract, seven-day shadow pilot runner, doc reconciliation banners.
+- **Never run on real data before this session.** Real database cannot supply confirmed movements: 0 `accepted` events, bookings pending 150 / completed 1, 1 driver, 1 vehicle. No status invented; recommended source = ops-verified movements sheet (extends the #59 private worksheet).
+- **Coverage (107 rows not excluded by current test rules):** duration 0/107; pax/luggage 44/46 on-site (structured notes), 0 elsewhere; capacity/turnaround/vehicle identity/availability/payout/floor unverified; `route_price_truth` 0 rows. What-if over 21–27 Sep (saved requests treated as verified, NOT a pilot): 23 legs, 0 feasible, 0 ready-to-price, 13 on hold, 130 rejected matches with reasons.
+- **Distinctions recorded:** ordinary return pricing (Nadi ×1.85, per-storefront) vs RETURN_LOCK (guest incentive, not fleet-backed) vs fleet-backed empty-leg specials; BFT's return rule is not imported (unknown/not in repo). Fare authority (#59) and marginal cost/payout/floor must be revalidated; formula pricing and the 0.80 negotiation ratio are not approved commercial sources.
+- **Remaining:** completion plan with owners/acceptance in RECOVERY_STATUS §12; offer lifecycle work (dispatch approval, exclusive vehicle-time claims, expiry/hold TTL, withdrawal, audit, D1 CAS) in §11. Codex review of the recovery branch requested.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, night+++) — Codex review of `7552243`; revision 2; combined tree; measurement scope (Claude)
 
 No deployment, fare/Worker/notification/PR #55 change or live submission. PR #55 HOLD. James retains both production decisions.

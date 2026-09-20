@@ -1,0 +1,16 @@
+metric,value,note
+scope,WHAT-IF ONLY,Saved (NOT confirmed) requests treated as if verified to expose what blocks the pilot. NOT a pilot result. In-memory; nothing written anywhere.
+window,2026-09-21..2026-09-27 (Fiji),7 days
+rows_not_excluded_by_test_rules,107,same population as Issue #59 (44 known tests excluded)
+legs_built,147,105 arrival + 42 departure (a round-trip row is expanded into two legs)
+legs_with_passengers_known,63,from the widget's structured Passengers token only
+legs_in_window,23,13 arrival + 10 departure
+arrival_legs_evaluated,13,
+sold_reverse_chains_feasible,0,
+opportunities_operationally_feasible,0,
+opportunities_ready_to_price,0,
+opportunities_on_hold,13,every one on: NO_VEHICLE_ASSIGNMENT + DURATION_UNKNOWN + TURNAROUND_UNKNOWN + ECONOMICS_UNKNOWN
+rejected_matches,130,
+rejected_NOT_EXACT_REVERSE (geography unverified),83,not matched through placeholder geography
+rejected_exact_reverse_candidates,47,each blocked by NO_VEHICLE_ASSIGNMENT + DURATION_UNKNOWN + TURNAROUND_UNKNOWN + CAPACITY_UNKNOWN
+rejected_VEHICLE_CLASS_MISMATCH,23,
