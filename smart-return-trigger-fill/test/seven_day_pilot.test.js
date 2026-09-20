@@ -3,12 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runSevenDayPilot, REASON } from '../scripts/seven_day_pilot.js';
 
-const OK_CONF = { source: 'ops_worksheet', confirmed_at: '2026-09-20T05:00:00Z', evidence_ref: 'ops-sheet-row-A' };
+const OK_CONF = { source: 'ops_worksheet', confirmed_by: 'ops:dispatcher-1', confirmed_at: '2026-09-20T05:00:00Z', evidence_ref: 'ops-sheet-row-A' };
 const CONFIG = {
   airport_zone: 'Nadi Airport',
   turnaround_minutes: 45,
   vehicle_capacity_confirmed: true,
   vehicle_capacity: { sedan: { pax: 3, bags: 3 }, minivan: { pax: 7, bags: 7 } },
+  route_durations_verified: { 'Denarau|Nadi Airport': 80 },
+  vehicle_availability_attested: { veh_A: { from: '2026-09-20T00:00', to: '2026-09-30T00:00' } },
 };
 let n = 0;
 const mv = (o) => ({ movement_ref: `t_${++n}`, leg: 'arrival', pickup_zone: 'Nadi Airport', dropoff_zone: 'Denarau', pickup_local: '2026-09-22T09:00', vehicle_class: 'sedan',
@@ -28,23 +30,26 @@ test('verified arrival with known duration/turnaround/vehicle and no reverse boo
   const o = r.results[0];
   assert.equal(o.predicted_empty_leg.from, 'Denarau');
   assert.equal(o.predicted_empty_leg.to, 'Nadi Airport');
+  assert.equal(o.predicted_empty_leg.status, 'HYPOTHETICAL');
   assert.equal(o.predicted_empty_leg.earliest_start_utc, '2026-09-21T23:15:00.000Z'); // 09:00 +90m +45m = 11:15 Fiji (UTC+12)
-  assert.equal(o.predicted_empty_leg.duration_basis, 'ASSUMED_EQUAL_TO_OUTBOUND_UNVERIFIED');
+  assert.equal(o.predicted_empty_leg.duration_basis, 'OPS_VERIFIED_ROUTE_DURATION');
   assert.equal(o.opportunity.operational, 'FEASIBLE');
   assert.equal(o.opportunity.commercial, 'HOLD');
   assert.equal(o.opportunity.commercial_reason, REASON.ECONOMICS_UNKNOWN);
   assert.equal(o.opportunity.price_fjd, null);
-  assert.equal(r.counts.opportunities_ready_to_price, 0);
+  assert.equal(r.counts.ready_for_dispatch_review, 0);
+  assert.equal(o.opportunity.stage, 'OPERATIONALLY_FEASIBLE_COMMERCIAL_HOLD');
 });
 
-test('a price appears only with approved fare authority, payout and floor; it is clamped to the floor', () => {
-  const truth = (extra) => ({ ...CONFIG, route_price_truth: { 'Denarau|Nadi Airport|sedan': { operator_payout_fjd: 20, absolute_floor_fjd: 30, smart_match_price_fjd: 25, fare_authority_approved: true, ...extra } } });
+test('a price appears only with approved fare authority, payout, additional cost, floor and an approved contribution requirement; it is clamped to the floor', () => {
+  const truth = (extra) => ({ ...CONFIG, contribution_requirement: { approved: true, min_fjd: 0, approved_by: 'james', approved_on: '2026-09-21' },
+    route_price_truth: { 'Denarau|Nadi Airport|sedan': { operator_payout_fjd: 20, additional_cost_fjd: 5, absolute_floor_fjd: 30, smart_match_price_fjd: 25, fare_authority_approved: true, ...extra } } });
   const ready = run([mv({})], truth({})).results[0].opportunity;
   assert.equal(ready.commercial, 'READY');
   assert.equal(ready.price_fjd, 30);            // 25 is below the floor -> clamped
-  assert.equal(ready.contribution_fjd, 10);
+  assert.equal(ready.contribution_fjd, 5);      // 30 - (20 + 5)
   assert.equal(run([mv({})], truth({ fare_authority_approved: false })).results[0].opportunity.commercial_reason, REASON.FARE_AUTHORITY_UNAPPROVED);
-  assert.equal(run([mv({})], truth({ operator_payout_fjd: null })).results[0].opportunity.commercial_reason, REASON.ECONOMICS_UNKNOWN);
+  assert.equal(run([mv({})], truth({ operator_payout_fjd: null })).results[0].opportunity.commercial_reason, REASON.INVALID_COMMERCIAL_INPUT);
   assert.equal(run([mv({})], truth({ absolute_floor_fjd: null })).results[0].opportunity.price_fjd, null);
 });
 
@@ -59,11 +64,12 @@ test('no assigned vehicle -> HOLD NO_VEHICLE_ASSIGNMENT (cannot be fleet-backed)
   const o = run([mv({ assigned_vehicle_ref: null })]).results[0].opportunity;
   assert.equal(o.operational, 'HOLD');
   assert.ok(o.operational_hold_reasons.includes(REASON.NO_VEHICLE_ASSIGNMENT));
+  assert.equal(o.stage, 'HYPOTHETICAL_HOLD');
 });
 
 test('unknown duration and unknown turnaround are separate named HOLDs, never guessed', () => {
   const a = run([mv({ duration_minutes: null })]).results[0].opportunity;
-  assert.deepEqual(a.operational_hold_reasons, [REASON.DURATION_UNKNOWN]);
+  assert.ok(a.operational_hold_reasons.includes(REASON.DURATION_UNKNOWN));
   const b = run([mv({})], { ...CONFIG, turnaround_minutes: null }).results[0];
   assert.ok(b.opportunity.operational_hold_reasons.includes(REASON.TURNAROUND_UNKNOWN));
   assert.equal(b.predicted_empty_leg.earliest_start_utc, null);

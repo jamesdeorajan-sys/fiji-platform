@@ -1,147 +1,177 @@
-/* Issue #54 — INTERNAL seven-day SHADOW pilot runner (recovery branch).
+/* Issue #54 — INTERNAL seven-day SHADOW pilot runner (recovery branch, revision 2 after Codex's review of 441c000).
  *
- * Pure, in-memory, read-only. Writes nothing (no D1, no files unless the CLI is given --out),
- * sends nothing, publishes nothing, prices nothing publicly. Input is a SANITIZED, ops-VERIFIED
- * movement file (opaque refs, no names/phones/emails/notes) — see docs/OPS_VERIFIED_MOVEMENTS_CONTRACT.md.
+ * Pure, in-memory, read-only. Writes nothing (no D1; a file only if the CLI is given --out), sends nothing, publishes nothing,
+ * prices nothing publicly. Input is a SANITIZED, ops-VERIFIED movement file (opaque refs; no names, phones, emails, notes,
+ * booking references) - see docs/OPS_VERIFIED_MOVEMENTS_CONTRACT.md.
  *
- * What it answers, per verified ARRIVAL leg (airport -> X) that has an assigned vehicle:
- *   - the PREDICTED EMPTY LEG (X -> airport) the same vehicle would otherwise drive empty;
- *   - already-SOLD reverse bookings that same vehicle can serve (a chain: deadhead avoided, NOT a discountable special);
- *   - a fleet-backed EMPTY-LEG OPPORTUNITY only if every operational gate passes, with the commercial verdict kept
- *     separate (HOLD unless verified payout + floor + an approved fare authority exist);
- *   - every rejected match with its reason.
+ * Vocabulary (kept strictly apart in the output):
+ *   HYPOTHETICAL        a predicted empty leg (X -> airport) after a verified arrival. A prediction only.
+ *   OPERATIONALLY_FEASIBLE  every operational gate passed with ops-verified inputs: assigned vehicle, verified outbound AND reverse
+ *                       durations, confirmed turnaround, confirmed capacity, attested availability, no overlapping commitment
+ *                       (checked against ALL supplied movements, including those crossing the window boundary).
+ *   READY_FOR_DISPATCH_REVIEW  operationally feasible AND commercially safe (approved fare authority, valid inputs, floor >= known cost,
+ *                       contribution >= the requirement James has approved). Still NOT an offer: dispatch approval, an exclusive
+ *                       vehicle-time claim, expiry and withdrawal do not exist yet.
+ *   SOLD CHAIN          an already-sold reverse booking the same vehicle can serve (deadhead avoided). Not a discountable special.
  *
- * It never guesses: unknown duration, turnaround, capacity, passengers/luggage, vehicle assignment or economics is a HOLD
- * with a named reason. Placeholder geography (src/geo_seed.js) is NOT used: only exact reverse zone pairs are considered,
- * everything else is reported as NOT_EVALUATED_GEOGRAPHY_UNVERIFIED.
+ * It never guesses: every unknown is a HOLD with a named reason. Zero feasible legs under missing inputs is NOT evidence of zero
+ * commercial demand or fleet potential - it means the inputs needed to establish feasibility or economics are missing.
+ * Placeholder geography (src/geo_seed.js) is not used: only exact reverse zone pairs are considered.
  */
 import { zonedTimeToUtcIso } from '../src/production_adapter.js';
 import { enforceFloor } from '../src/pricing.js';
 
 export const REASON = Object.freeze({
-  NOT_VERIFIED: 'NOT_VERIFIED',                         // movement lacks an ops/system confirmation with evidence
-  NO_VEHICLE_ASSIGNMENT: 'NO_VEHICLE_ASSIGNMENT',       // cannot be fleet-backed without a named vehicle
-  DIFFERENT_VEHICLE: 'DIFFERENT_VEHICLE',               // the candidate is assigned to another vehicle
-  VEHICLE_CLASS_MISMATCH: 'VEHICLE_CLASS_MISMATCH',
-  NOT_EXACT_REVERSE: 'NOT_EXACT_REVERSE',
-  NOT_EVALUATED_GEOGRAPHY_UNVERIFIED: 'NOT_EVALUATED_GEOGRAPHY_UNVERIFIED',
-  DURATION_UNKNOWN: 'DURATION_UNKNOWN',
-  TURNAROUND_UNKNOWN: 'TURNAROUND_UNKNOWN',
-  TIMING_INFEASIBLE: 'TIMING_INFEASIBLE',
-  CAPACITY_UNKNOWN: 'CAPACITY_UNKNOWN',                 // passengers/luggage unknown, or capacity table not ops-confirmed
-  CAPACITY_EXCEEDED: 'CAPACITY_EXCEEDED',
-  VEHICLE_CONFLICT: 'VEHICLE_CONFLICT',                 // same vehicle already committed in the empty-leg window
-  ECONOMICS_UNKNOWN: 'ECONOMICS_UNKNOWN',               // payout / floor / approved fare authority missing
-  FARE_AUTHORITY_UNAPPROVED: 'FARE_AUTHORITY_UNAPPROVED',
+  // verification
+  MISSING_CONFIRMATION: 'MISSING_CONFIRMATION', BAD_CONFIRMATION_SOURCE: 'BAD_CONFIRMATION_SOURCE',
+  MISSING_CONFIRMER: 'MISSING_CONFIRMER', BAD_SYSTEM_ACTOR: 'BAD_SYSTEM_ACTOR',
+  BAD_CONFIRMED_AT: 'BAD_CONFIRMED_AT', MISSING_EVIDENCE_REF: 'MISSING_EVIDENCE_REF',
+  // operational
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  NO_VEHICLE_ASSIGNMENT: 'NO_VEHICLE_ASSIGNMENT', DIFFERENT_VEHICLE: 'DIFFERENT_VEHICLE', VEHICLE_CLASS_MISMATCH: 'VEHICLE_CLASS_MISMATCH',
+  NOT_EXACT_REVERSE: 'NOT_EXACT_REVERSE', NOT_EVALUATED_GEOGRAPHY_UNVERIFIED: 'NOT_EVALUATED_GEOGRAPHY_UNVERIFIED',
+  DURATION_UNKNOWN: 'DURATION_UNKNOWN', REVERSE_DURATION_UNKNOWN: 'REVERSE_DURATION_UNKNOWN', SOLD_RETURN_DURATION_UNKNOWN: 'SOLD_RETURN_DURATION_UNKNOWN',
+  TURNAROUND_UNKNOWN: 'TURNAROUND_UNKNOWN', TIMING_INFEASIBLE: 'TIMING_INFEASIBLE',
+  CAPACITY_UNKNOWN: 'CAPACITY_UNKNOWN', CAPACITY_EXCEEDED: 'CAPACITY_EXCEEDED',
+  AVAILABILITY_UNATTESTED: 'AVAILABILITY_UNATTESTED', VEHICLE_CONFLICT: 'VEHICLE_CONFLICT',
+  // commercial
+  ECONOMICS_UNKNOWN: 'ECONOMICS_UNKNOWN', FARE_AUTHORITY_UNAPPROVED: 'FARE_AUTHORITY_UNAPPROVED', INVALID_COMMERCIAL_INPUT: 'INVALID_COMMERCIAL_INPUT',
+  ADDITIONAL_COST_UNKNOWN: 'ADDITIONAL_COST_UNKNOWN', CONTRIBUTION_REQUIREMENT_NOT_APPROVED: 'CONTRIBUTION_REQUIREMENT_NOT_APPROVED',
+  FLOOR_BELOW_KNOWN_COST: 'FLOOR_BELOW_KNOWN_COST', NEGATIVE_CONTRIBUTION: 'NEGATIVE_CONTRIBUTION', BELOW_APPROVED_CONTRIBUTION: 'BELOW_APPROVED_CONTRIBUTION',
+});
+
+export const STAGE = Object.freeze({
+  HYPOTHETICAL_HOLD: 'HYPOTHETICAL_HOLD',
+  OPERATIONALLY_FEASIBLE_COMMERCIAL_HOLD: 'OPERATIONALLY_FEASIBLE_COMMERCIAL_HOLD',
+  READY_FOR_DISPATCH_REVIEW: 'READY_FOR_DISPATCH_REVIEW',
 });
 
 const MIN = 60000;
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
+const isNonNeg = (n) => isNum(n) && n >= 0;
+const nonEmpty = (s) => typeof s === 'string' && s.trim().length > 0;
 
-function toMs(pickupLocal) {
-  if (typeof pickupLocal !== 'string') return null;
-  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})$/.exec(pickupLocal);
+function localToMs(local) {
+  if (typeof local !== 'string') return null;
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})$/.exec(local);
   if (!m) return null;
   const iso = zonedTimeToUtcIso(m[1], m[2]);
   return iso ? Date.parse(iso) : null;
 }
 
-function isVerified(m) {
-  const c = m.confirmation;
-  return !!c && ['ops_worksheet', 'system_accepted'].includes(c.source) && typeof c.confirmed_at === 'string' && typeof c.evidence_ref === 'string' && c.evidence_ref.length > 0;
-}
+const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+const SYSTEM_ACTOR = /^(admin|driver:\d+)$/;
 
-function completionMs(m) {
-  const start = toMs(m.pickup_local);
-  if (start == null || !isNum(m.duration_minutes)) return null;
-  return start + m.duration_minutes * MIN;
-}
-
-function capacityCheck(m, config) {
-  const cap = config.vehicle_capacity_confirmed ? config.vehicle_capacity?.[m.vehicle_class] : null;
-  if (!cap || !isNum(m.passengers) || !isNum(m.luggage)) return { ok: null, reason: REASON.CAPACITY_UNKNOWN };
-  if (m.passengers > cap.pax || m.luggage > cap.bags) return { ok: false, reason: REASON.CAPACITY_EXCEEDED };
+/** Contract check (docs/OPS_VERIFIED_MOVEMENTS_CONTRACT.md): source, named confirmer, ISO timestamp with zone, evidence pointer. */
+export function checkConfirmation(m) {
+  const c = m?.confirmation;
+  if (!c || typeof c !== 'object') return { ok: false, reason: REASON.MISSING_CONFIRMATION };
+  if (!['ops_worksheet', 'system_accepted'].includes(c.source)) return { ok: false, reason: REASON.BAD_CONFIRMATION_SOURCE };
+  if (!nonEmpty(c.confirmed_by)) return { ok: false, reason: REASON.MISSING_CONFIRMER };
+  if (c.source === 'system_accepted' && !SYSTEM_ACTOR.test(c.confirmed_by.trim())) return { ok: false, reason: REASON.BAD_SYSTEM_ACTOR };
+  if (typeof c.confirmed_at !== 'string' || !ISO_WITH_ZONE.test(c.confirmed_at) || Number.isNaN(Date.parse(c.confirmed_at))) return { ok: false, reason: REASON.BAD_CONFIRMED_AT };
+  if (!nonEmpty(c.evidence_ref)) return { ok: false, reason: REASON.MISSING_EVIDENCE_REF };
   return { ok: true };
-}
-
-function economics(config, route) {
-  // Commercial gate only; never affects operational feasibility. An empty-leg special needs ALL of:
-  //   an approved fare authority for the route, a verified operator payout for the vehicle class, and a floor.
-  const t = config.route_price_truth?.[`${route.from}|${route.to}|${route.vehicle_class}`];
-  if (!t) return { status: 'HOLD', reason: REASON.ECONOMICS_UNKNOWN };
-  if (t.fare_authority_approved !== true) return { status: 'HOLD', reason: REASON.FARE_AUTHORITY_UNAPPROVED };
-  if (!isNum(t.operator_payout_fjd) || !isNum(t.absolute_floor_fjd) || !isNum(t.smart_match_price_fjd)) return { status: 'HOLD', reason: REASON.ECONOMICS_UNKNOWN };
-  const f = enforceFloor(t.smart_match_price_fjd, t.absolute_floor_fjd);
-  return { status: 'READY', price_fjd: f.price, clamped: f.decision !== 'OK', contribution_fjd: Number((f.price - t.operator_payout_fjd).toFixed(2)) };
 }
 
 export function runSevenDayPilot(input, { startDate, days = 7 } = {}) {
   const config = input.config ?? {};
   const airport = config.airport_zone ?? 'Nadi Airport';
   const all = Array.isArray(input.movements) ? input.movements : [];
-  const startMs = toMs(`${startDate}T00:00`);
+  const startMs = localToMs(`${startDate}T00:00`);
   const endMs = startMs == null ? null : startMs + days * 24 * 60 * MIN;
-  const inWindow = (m) => { const t = toMs(m.pickup_local); return t != null && startMs != null && t >= startMs && t < endMs; };
+  const inWindow = (m) => { const t = localToMs(m.pickup_local); return t != null && startMs != null && t >= startMs && t < endMs; };
 
-  const verified = all.filter(isVerified);
-  const unverified = all.filter((m) => !isVerified(m));
+  const notVerifiedReasons = {};
+  const verified = [];
+  for (const m of all) {
+    const v = checkConfirmation(m);
+    if (v.ok) verified.push(m); else notVerifiedReasons[v.reason] = (notVerifiedReasons[v.reason] || 0) + 1;
+  }
   const pool = verified.filter(inWindow);
-  const rejected = [];
-  const results = [];
-  const turnaround = isNum(config.turnaround_minutes) ? config.turnaround_minutes : null;
+  const turnaround = isNum(config.turnaround_minutes) && config.turnaround_minutes >= 0 ? config.turnaround_minutes : null;
 
+  const durationOf = (m) => (isNonNeg(m.duration_minutes) && m.duration_minutes > 0 ? m.duration_minutes
+    : (isNonNeg(config.route_durations_verified?.[`${m.pickup_zone}|${m.dropoff_zone}`]) && config.route_durations_verified[`${m.pickup_zone}|${m.dropoff_zone}`] > 0 ? config.route_durations_verified[`${m.pickup_zone}|${m.dropoff_zone}`] : null));
+  const startOf = (m) => localToMs(m.pickup_local);
+  const endOf = (m) => { const s = startOf(m); const d = durationOf(m); return s == null || d == null ? null : s + d * MIN; };
+
+  const capacityKnown = (cls) => config.vehicle_capacity_confirmed === true && isNonNeg(config.vehicle_capacity?.[cls]?.pax) && isNonNeg(config.vehicle_capacity?.[cls]?.bags);
+  const attested = (veh, fromMs, toMs) => {
+    const a = config.vehicle_availability_attested?.[veh];
+    const f = a ? localToMs(a.from) : null; const t = a ? localToMs(a.to) : null;
+    return f != null && t != null && fromMs != null && toMs != null && f <= fromMs && t >= toMs;
+  };
+  // Every supplied movement (verified or not, inside or outside the window) that names this vehicle is a potential commitment.
+  // Unknown start or end cannot be ruled out, so it counts as a conflict.
+  const conflicts = (veh, fromMs, toMs, ignoreRefs) => all.some((o) => {
+    if (o.assigned_vehicle_ref !== veh || ignoreRefs.includes(o.movement_ref)) return false;
+    const s = startOf(o); if (s == null) return true;
+    const e = endOf(o); if (e == null) return s < toMs;
+    return s < toMs && e > fromMs;
+  });
+
+  const results = []; const rejected = [];
   for (const a of pool.filter((m) => m.pickup_zone === airport && m.dropoff_zone !== airport)) {
     const X = a.dropoff_zone;
-    const out = { movement_ref: a.movement_ref, predicted_empty_leg: { from: X, to: airport, vehicle_class: a.vehicle_class }, chains: [], opportunity: null };
-    const hold = [];
-    if (!a.assigned_vehicle_ref) hold.push(REASON.NO_VEHICLE_ASSIGNMENT);
-    const done = completionMs(a);
-    if (!isNum(a.duration_minutes)) hold.push(REASON.DURATION_UNKNOWN);
-    if (turnaround == null) hold.push(REASON.TURNAROUND_UNKNOWN);
-    const earliest = done != null && turnaround != null ? done + turnaround * MIN : null;
+    const out = { movement_ref: a.movement_ref, predicted_empty_leg: { status: 'HYPOTHETICAL', from: X, to: airport, vehicle_class: a.vehicle_class }, chains: [], opportunity: null };
+    const aStart = startOf(a); const aEnd = endOf(a);
+    const reverseMin = isNonNeg(config.route_durations_verified?.[`${X}|${airport}`]) && config.route_durations_verified[`${X}|${airport}`] > 0 ? config.route_durations_verified[`${X}|${airport}`] : null;
+    const earliest = aEnd != null && turnaround != null ? aEnd + turnaround * MIN : null;
+    const legEnd = earliest != null && reverseMin != null ? earliest + reverseMin * MIN : null;
     out.predicted_empty_leg.earliest_start_utc = earliest != null ? new Date(earliest).toISOString() : null;
-    out.predicted_empty_leg.duration_basis = 'ASSUMED_EQUAL_TO_OUTBOUND_UNVERIFIED';
+    out.predicted_empty_leg.duration_basis = reverseMin != null ? 'OPS_VERIFIED_ROUTE_DURATION' : 'UNKNOWN';
 
-    // (1) already-sold reverse bookings this vehicle could serve
+    // shared operational gates for this vehicle after leg A
+    const gates = [];
+    if (!a.assigned_vehicle_ref) gates.push(REASON.NO_VEHICLE_ASSIGNMENT);
+    if (aEnd == null) gates.push(REASON.DURATION_UNKNOWN);
+    if (turnaround == null) gates.push(REASON.TURNAROUND_UNKNOWN);
+    if (!capacityKnown(a.vehicle_class)) gates.push(REASON.CAPACITY_UNKNOWN);
+
+    // (1) sold reverse bookings: same gates as an opportunity, applied to the sold booking's complete interval
     for (const d of pool) {
       if (d.movement_ref === a.movement_ref) continue;
-      const reasons = [];
       if (d.pickup_zone === X && d.dropoff_zone === airport) {
+        const reasons = [...gates];
         if (d.vehicle_class !== a.vehicle_class) reasons.push(REASON.VEHICLE_CLASS_MISMATCH);
         if (a.assigned_vehicle_ref && d.assigned_vehicle_ref && d.assigned_vehicle_ref !== a.assigned_vehicle_ref) reasons.push(REASON.DIFFERENT_VEHICLE);
-        if (!a.assigned_vehicle_ref) reasons.push(REASON.NO_VEHICLE_ASSIGNMENT);
-        if (!isNum(a.duration_minutes)) reasons.push(REASON.DURATION_UNKNOWN);
-        if (turnaround == null) reasons.push(REASON.TURNAROUND_UNKNOWN);
-        const cap = capacityCheck(d, config);
-        if (cap.ok !== true) reasons.push(cap.reason);
-        if (earliest != null) {
-          const dStart = toMs(d.pickup_local);
-          if (dStart == null || dStart < earliest) reasons.push(REASON.TIMING_INFEASIBLE);
+        const dStart = startOf(d); const dEnd = endOf(d);
+        if (dEnd == null) reasons.push(REASON.SOLD_RETURN_DURATION_UNKNOWN);
+        if (earliest != null && (dStart == null || dStart < earliest)) reasons.push(REASON.TIMING_INFEASIBLE);
+        const cap = capacityKnown(a.vehicle_class) ? (isNum(d.passengers) && isNum(d.luggage) ? (d.passengers > config.vehicle_capacity[a.vehicle_class].pax || d.luggage > config.vehicle_capacity[a.vehicle_class].bags ? REASON.CAPACITY_EXCEEDED : null) : REASON.CAPACITY_UNKNOWN) : null;
+        if (cap) reasons.push(cap);
+        if (a.assigned_vehicle_ref && dStart != null && dEnd != null) {
+          if (!attested(a.assigned_vehicle_ref, aStart, dEnd)) reasons.push(REASON.AVAILABILITY_UNATTESTED);
+          if (conflicts(a.assigned_vehicle_ref, dStart, dEnd, [a.movement_ref, d.movement_ref])) reasons.push(REASON.VEHICLE_CONFLICT);
         }
         if (reasons.length) rejected.push({ source: a.movement_ref, candidate: d.movement_ref, reasons: [...new Set(reasons)] });
-        else out.chains.push({ candidate: d.movement_ref, note: 'sold reverse booking the same vehicle can serve: deadhead avoided, not a discountable special' });
-      } else if (d.pickup_zone !== X || d.dropoff_zone !== airport) {
-        if (d.pickup_zone === X || d.dropoff_zone === airport) rejected.push({ source: a.movement_ref, candidate: d.movement_ref, reasons: [REASON.NOT_EXACT_REVERSE, REASON.NOT_EVALUATED_GEOGRAPHY_UNVERIFIED] });
+        else out.chains.push({ candidate: d.movement_ref, note: 'SOLD CHAIN: sold reverse booking the same vehicle can serve; deadhead avoided; not a discountable special' });
+      } else if (d.pickup_zone === X || d.dropoff_zone === airport) {
+        rejected.push({ source: a.movement_ref, candidate: d.movement_ref, reasons: [REASON.NOT_EXACT_REVERSE, REASON.NOT_EVALUATED_GEOGRAPHY_UNVERIFIED] });
       }
     }
 
-    // (2) fleet-backed empty-leg opportunity: only when no sold reverse booking already fills it
+    // (2) hypothetical empty leg -> operational gates -> commercial gates (only when no sold booking already fills it)
     if (out.chains.length === 0) {
-      if (a.assigned_vehicle_ref && earliest != null) {
-        // Empty-leg window = [earliest start, earliest start + outbound duration]. The reverse duration equal to the
-        // outbound duration is an UNVERIFIED assumption, recorded in the output. A same-vehicle movement whose completion
-        // is unknown cannot be ruled out, so it also counts as a conflict.
-        const wEnd = earliest + a.duration_minutes * MIN;
-        const conflict = pool.some((o) => {
-          if (o.movement_ref === a.movement_ref || o.assigned_vehicle_ref !== a.assigned_vehicle_ref) return false;
-          const st = toMs(o.pickup_local); if (st == null || st >= wEnd) return false;
-          const en = completionMs(o); return en == null || en > earliest;
-        });
-        if (conflict) hold.push(REASON.VEHICLE_CONFLICT);
+      const hold = [...gates];
+      if (reverseMin == null) hold.push(REASON.REVERSE_DURATION_UNKNOWN);
+      if (a.assigned_vehicle_ref && earliest != null && legEnd != null) {
+        if (!attested(a.assigned_vehicle_ref, aStart, legEnd)) hold.push(REASON.AVAILABILITY_UNATTESTED);
+        if (conflicts(a.assigned_vehicle_ref, earliest, legEnd, [a.movement_ref])) hold.push(REASON.VEHICLE_CONFLICT);
+      } else if (a.assigned_vehicle_ref && !hold.includes(REASON.AVAILABILITY_UNATTESTED)) {
+        hold.push(REASON.AVAILABILITY_UNATTESTED);   // window cannot be established without verified durations/turnaround
       }
-      const eco = economics(config, { from: X, to: airport, vehicle_class: a.vehicle_class });
       const operational = hold.length === 0 ? 'FEASIBLE' : 'HOLD';
-      out.opportunity = { operational, operational_hold_reasons: [...new Set(hold)], commercial: eco.status, commercial_reason: eco.reason ?? null, price_fjd: operational === 'FEASIBLE' && eco.status === 'READY' ? eco.price_fjd : null, contribution_fjd: operational === 'FEASIBLE' && eco.status === 'READY' ? eco.contribution_fjd : null };
+      const eco = economics(config, { from: X, to: airport, vehicle_class: a.vehicle_class });
+      const ready = operational === 'FEASIBLE' && eco.status === 'READY';
+      out.opportunity = {
+        stage: ready ? STAGE.READY_FOR_DISPATCH_REVIEW : (operational === 'FEASIBLE' ? STAGE.OPERATIONALLY_FEASIBLE_COMMERCIAL_HOLD : STAGE.HYPOTHETICAL_HOLD),
+        operational, operational_hold_reasons: [...new Set(hold)],
+        commercial: eco.status, commercial_reason: eco.reason ?? null,
+        price_fjd: ready ? eco.price_fjd : null, contribution_fjd: ready ? eco.contribution_fjd : null,
+        not_an_offer: 'requires dispatch approval, an exclusive vehicle-time claim, expiry and withdrawal handling (not built)',
+      };
     }
     results.push(out);
   }
@@ -151,21 +181,36 @@ export function runSevenDayPilot(input, { startDate, days = 7 } = {}) {
   const holdCounts = {};
   for (const r of results) if (r.opportunity) for (const x of [...r.opportunity.operational_hold_reasons, ...(r.opportunity.commercial === 'HOLD' ? [r.opportunity.commercial_reason] : [])]) holdCounts[x] = (holdCounts[x] || 0) + 1;
 
+  const opps = results.map((r) => r.opportunity).filter(Boolean);
+  const inputGaps = [];
+  if (turnaround == null) inputGaps.push('turnaround_minutes (ops-confirmed)');
+  if (config.vehicle_capacity_confirmed !== true) inputGaps.push('vehicle capacity table (ops-confirmed)');
+  if (!config.route_durations_verified || Object.keys(config.route_durations_verified).length === 0) inputGaps.push('ops-verified route durations (outbound and reverse)');
+  if (!config.vehicle_availability_attested || Object.keys(config.vehicle_availability_attested).length === 0) inputGaps.push('vehicle availability attestation (complete commitments list per vehicle and period)');
+  if (pool.some((m) => !m.assigned_vehicle_ref)) inputGaps.push('vehicle assignment on verified movements');
+  if (!config.route_price_truth || Object.keys(config.route_price_truth).length === 0) inputGaps.push('route price truth (payout, additional cost, floor, price, approved fare authority)');
+  if (!(config.contribution_requirement?.approved === true)) inputGaps.push('contribution requirement approved by James');
+  if (verified.length === 0) inputGaps.push('any verified movements');
+
   return {
     window: { start_date: startDate, days },
     shadow_only: true,
+    interpretation: 'Zero feasible or ready-for-review legs under missing inputs is NOT evidence of zero commercial demand or fleet potential; it means the inputs needed to establish feasibility or economics are missing. Hypothetical empty legs are predictions, not offers.',
+    input_gaps: inputGaps,
     counts: {
       movements_supplied: all.length,
       verified_movements: verified.length,
-      not_verified_excluded: unverified.length,
+      not_verified_excluded: all.length - verified.length,
       verified_in_window: pool.length,
       arrival_legs_evaluated: results.length,
+      hypothetical_empty_legs: results.length,
       sold_reverse_chains: results.reduce((n, r) => n + r.chains.length, 0),
-      opportunities_operationally_feasible: results.filter((r) => r.opportunity?.operational === 'FEASIBLE').length,
-      opportunities_ready_to_price: results.filter((r) => r.opportunity?.operational === 'FEASIBLE' && r.opportunity?.commercial === 'READY').length,
-      opportunities_on_hold: results.filter((r) => r.opportunity && !(r.opportunity.operational === 'FEASIBLE' && r.opportunity.commercial === 'READY')).length,
+      operationally_feasible: opps.filter((o) => o.operational === 'FEASIBLE').length,
+      ready_for_dispatch_review: opps.filter((o) => o.stage === STAGE.READY_FOR_DISPATCH_REVIEW).length,
+      on_hold: opps.filter((o) => o.stage !== STAGE.READY_FOR_DISPATCH_REVIEW).length,
       rejected_matches: rejected.length,
     },
+    not_verified_reason_counts: notVerifiedReasons,
     rejection_reason_counts: reasonCounts,
     opportunity_hold_reason_counts: holdCounts,
     results,
@@ -173,8 +218,25 @@ export function runSevenDayPilot(input, { startDate, days = 7 } = {}) {
   };
 }
 
+function economics(config, route) {
+  const t = config.route_price_truth?.[`${route.from}|${route.to}|${route.vehicle_class}`];
+  if (!t) return { status: 'HOLD', reason: REASON.ECONOMICS_UNKNOWN };
+  if (t.fare_authority_approved !== true) return { status: 'HOLD', reason: REASON.FARE_AUTHORITY_UNAPPROVED };
+  if (t.additional_cost_fjd == null) return { status: 'HOLD', reason: REASON.ADDITIONAL_COST_UNKNOWN };
+  if (![t.operator_payout_fjd, t.additional_cost_fjd, t.absolute_floor_fjd, t.smart_match_price_fjd].every(isNonNeg)) return { status: 'HOLD', reason: REASON.INVALID_COMMERCIAL_INPUT };
+  const req = config.contribution_requirement;
+  if (!(req && req.approved === true && isNonNeg(req.min_fjd) && nonEmpty(req.approved_by))) return { status: 'HOLD', reason: REASON.CONTRIBUTION_REQUIREMENT_NOT_APPROVED };
+  const cost = t.operator_payout_fjd + t.additional_cost_fjd;
+  if (t.absolute_floor_fjd < cost) return { status: 'HOLD', reason: REASON.FLOOR_BELOW_KNOWN_COST };
+  const price = enforceFloor(t.smart_match_price_fjd, t.absolute_floor_fjd).price;
+  const contribution = Number((price - cost).toFixed(2));
+  if (contribution < 0) return { status: 'HOLD', reason: REASON.NEGATIVE_CONTRIBUTION };
+  if (contribution < req.min_fjd) return { status: 'HOLD', reason: REASON.BELOW_APPROVED_CONTRIBUTION };
+  return { status: 'READY', price_fjd: price, contribution_fjd: contribution };
+}
+
 // CLI: node scripts/seven_day_pilot.js --input verified.json --start 2026-09-22 [--out report.json]
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}` || process.argv[1]?.endsWith('seven_day_pilot.js')) {
+if (process.argv[1]?.endsWith('seven_day_pilot.js')) {
   const { readFileSync, writeFileSync } = await import('node:fs');
   const arg = (k) => { const i = process.argv.indexOf(k); return i > -1 ? process.argv[i + 1] : null; };
   const inputPath = arg('--input'); const start = arg('--start');
