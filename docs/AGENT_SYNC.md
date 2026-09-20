@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Mon, late) — real-phone check, partial (James, via Codex)
+
+- **INDEPENDENTLY-VERIFIED (real phone, screenshot):** FijiDash displays Nadi International Airport → Outrigger Fiji Beach Resort after the mobile handoff. Outrigger destination-preserving handoff: **PASS**.
+- **PENDING:** Hilton deep-link prefill; unknown-route screen; sideways-scroll confirmation; device model / OS / browser. Recorded separately from Claude's 375×812 emulation (still AUTHOR-VERIFIED).
+- **Full mobile gate remains OPEN.** No production approval implied; James retains it. PR #55 HOLD.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, night) — independent suite rerun (Codex)
 
 - **INDEPENDENTLY-VERIFIED (Codex):** checkout `9ddd923b57f143b2ae44fdc6a4baf44a6cda03de`, `node --test nadi-airport-transfers-site/test/*.test.js` → 76 tests, 76 pass, 0 fail, 0 skipped. Supersedes "not rerun by Codex" below.
