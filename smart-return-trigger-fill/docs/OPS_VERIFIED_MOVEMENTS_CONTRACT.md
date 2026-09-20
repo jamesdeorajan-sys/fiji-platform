@@ -43,3 +43,8 @@ A movement enters the pilot only with a complete, well-formed confirmation recor
 The worksheet already has the blank columns `operator_saw_alert`, `staff_owner`, `driver_assigned`, `guest_confirmed`, `outcome`. Add
 `vehicle_ref`, `confirmed_by`, `confirmed_at`, `evidence_ref`, `trip_duration_minutes` (ops estimate), then build this file locally. One collection effort
 serves the #59 measurement stages and this pilot.
+
+## Load, capacity and job-consistency rules (enforced by the runner)
+- `passengers` must be a **positive integer** and `luggage` a **non-negative integer** (numbers, not strings). Absent = unknown (`CAPACITY_UNKNOWN`); present but malformed (negative, zero passengers, fractional, NaN, Infinity, string) = `INVALID_LOAD`. A source load above the vehicle's capacity is `CAPACITY_EXCEEDED`.
+- Capacity limits: `pax` a positive integer, `bags` a non-negative integer (0 is valid), table ops-confirmed; otherwise `CAPACITY_UNKNOWN` / `INVALID_CAPACITY_LIMIT`.
+- **The source arrival is validated too**: its own interval, plus the turnaround on both sides, may not overlap another job assigned to the same vehicle (`SOURCE_JOB_CONFLICT`). The same turnaround buffer applies to the proposed return / sold return. An availability attestation **never overrides** contradictory job records.
