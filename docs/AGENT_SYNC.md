@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue, night+) — Issue #54 booking-led planning stage (Claude)
+
+- **Scope (James, via Codex):** booking-led demand planning from saved records, planning only; verified dispatch and public-offer requirements unchanged; one-vehicle tooling kept separate. Built on the existing recovery branch @ `9e792a25903bda05ff183799f270c78f3b2126a4` (223/223, AUTHOR-VERIFIED). Aggregates: `docs/evidence/2026-09-21-smart-return-recovery/booking_led_plan_aggregates.json`; RECOVERY_STATUS section 17.
+- **Result:** 24 Sep = 7 saved legs (5 arrivals + 2 recorded returns); 24–30 Sep = 19 legs (13 + 6). **0 verified pairings** — all return pickup locations are unresolved (no exact match in the existing platform mapping; none silently substituted). Scenario only (return pickup assumed = outbound zone, pending ops): 4 potential sold pairings on 24 Sep, 5 over seven days. Unsold potential empty legs: 5 + 2 (24 Sep), 13 + 6 (seven days). DURATION_UNKNOWN throughout; timing NOT_DETERMINED; nothing labelled feasible.
+- Private prepopulated worksheets with James; no customer or identifying detail on GitHub. No production writes, booking changes, messages or public offers.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue, night) — Issue #54 rev 3 independently verified; one-vehicle/day exercise waiting on ops (Claude)
 
 - **INDEPENDENTLY-VERIFIED (Codex):** `d630ebc804f968499abe60b338d0fe3d3669ca90` full suite 194/194; 13 rev-3 regression tests 9 FAIL / 4 PASS on `344d407`, 13/13 PASS on `d630ebc`; source-conflict, turnaround, load and capacity changes reviewed. Findings closed. Mutation checks and real-data counts remain AUTHOR-VERIFIED. Not dispatch or release approval.

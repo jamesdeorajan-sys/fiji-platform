@@ -1,0 +1,180 @@
+[
+  {
+    "label": "2026-09-24..2026-09-24",
+    "planning_only": true,
+    "statement": "Planning candidates only. Nothing here is operationally feasible, verified for dispatch, a discounted offer, or a change to any booking or guest commitment.",
+    "rows_in_scope": 7,
+    "legs": {
+      "total": 7,
+      "arrival": 5,
+      "return": 2,
+      "by_date": {
+        "2026-09-24": 7
+      }
+    },
+    "arrivals_by_destination_zone": {
+      "Suva": 1,
+      "Coral Coast": 4
+    },
+    "legs_by_booked_class": {
+      "sedan": 3,
+      "minivan": 4
+    },
+    "legs_with_passengers_and_luggage_known": 4,
+    "return_location_status": {
+      "UNRESOLVED_NO_MATCH": 2
+    },
+    "return_locations_with_unverified_zone_suggestion": 0,
+    "return_legs_missing_time": 0,
+    "distance_available": {
+      "arrival_from_bookings": 5,
+      "return_from_zone_cache": 0
+    },
+    "confirmation": {
+      "SAVED_REQUEST_NOT_GUEST_CONFIRMED": 7
+    },
+    "provider_accepted_alert": {
+      "NO_RECORD": 1,
+      "YES (delivery to staff not proven)": 6
+    },
+    "uncertainty_flags": {
+      "DUPLICATE_RETRY_D1_EXCLUDED_FROM_PRIMARY_COUNTS": 1
+    },
+    "legs_with_any_uncertainty_flag": 1,
+    "potential_pairings": {
+      "total": 0,
+      "confirmed_mapping": 0,
+      "conditional_on_location_confirmation": 0,
+      "scenario_only_outbound_zone_assumed": 0,
+      "by_type": {},
+      "by_gap_minutes_bucket": {},
+      "by_decision": {},
+      "legs_with_at_least_one_candidate": 0,
+      "legs_with_competing_candidates": 0,
+      "duration_status": {},
+      "timing_conclusion": "NOT_DETERMINED for every pairing"
+    },
+    "not_paired_reasons": {
+      "different_zone_same_day": 0,
+      "class_differs_guest_service_fixed": 0,
+      "missing_time": 0,
+      "return_zone_unresolved": 10,
+      "simultaneous_pickups": 0
+    },
+    "unsold_potential_empty_legs": {
+      "UNSOLD_POTENTIAL_EMPTY_RETURN_LEG": 5,
+      "UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG": 2
+    },
+    "pairings_with_missing_drive_minutes": 0,
+    "pairings_with_unknown_passengers_or_luggage": 0
+  },
+  {
+    "label": "2026-09-24..2026-09-24 SCENARIO (return pickup assumed = same booking's outbound zone; pending ops confirmation; NOT the plan)",
+    "scenario_pairings": 4,
+    "by_type": {
+      "SOLD_SEQUENCE_RETURN_THEN_ARRIVAL": 4
+    },
+    "by_gap_minutes_bucket": {
+      "180-359": 2,
+      ">=360": 2
+    },
+    "by_decision": {
+      "NEEDS_DISPATCH_ALLOCATION": 4
+    },
+    "legs_with_competing_candidates": 4
+  },
+  {
+    "label": "2026-09-24..2026-09-30",
+    "planning_only": true,
+    "statement": "Planning candidates only. Nothing here is operationally feasible, verified for dispatch, a discounted offer, or a change to any booking or guest commitment.",
+    "rows_in_scope": 19,
+    "legs": {
+      "total": 19,
+      "arrival": 13,
+      "return": 6,
+      "by_date": {
+        "2026-09-24": 7,
+        "2026-09-26": 3,
+        "2026-09-28": 4,
+        "2026-09-27": 4,
+        "2026-09-30": 1
+      }
+    },
+    "arrivals_by_destination_zone": {
+      "Suva": 1,
+      "Denarau": 4,
+      "Momi Bay": 2,
+      "Coral Coast": 5,
+      "Nadi": 1
+    },
+    "legs_by_booked_class": {
+      "sedan": 8,
+      "minivan": 9,
+      "minibus": 2
+    },
+    "legs_with_passengers_and_luggage_known": 10,
+    "return_location_status": {
+      "UNRESOLVED_NO_MATCH": 6
+    },
+    "return_locations_with_unverified_zone_suggestion": 1,
+    "return_legs_missing_time": 0,
+    "distance_available": {
+      "arrival_from_bookings": 13,
+      "return_from_zone_cache": 0
+    },
+    "confirmation": {
+      "SAVED_REQUEST_NOT_GUEST_CONFIRMED": 19
+    },
+    "provider_accepted_alert": {
+      "NO_RECORD": 4,
+      "YES (delivery to staff not proven)": 15
+    },
+    "uncertainty_flags": {
+      "POSSIBLE_DUPLICATE_TRIP_KEY": 1,
+      "DUPLICATE_RETRY_D1_EXCLUDED_FROM_PRIMARY_COUNTS": 1
+    },
+    "legs_with_any_uncertainty_flag": 2,
+    "potential_pairings": {
+      "total": 0,
+      "confirmed_mapping": 0,
+      "conditional_on_location_confirmation": 0,
+      "scenario_only_outbound_zone_assumed": 0,
+      "by_type": {},
+      "by_gap_minutes_bucket": {},
+      "by_decision": {},
+      "legs_with_at_least_one_candidate": 0,
+      "legs_with_competing_candidates": 0,
+      "duration_status": {},
+      "timing_conclusion": "NOT_DETERMINED for every pairing"
+    },
+    "not_paired_reasons": {
+      "different_zone_same_day": 1,
+      "class_differs_guest_service_fixed": 0,
+      "missing_time": 0,
+      "return_zone_unresolved": 17,
+      "simultaneous_pickups": 0
+    },
+    "unsold_potential_empty_legs": {
+      "UNSOLD_POTENTIAL_EMPTY_RETURN_LEG": 13,
+      "UNSOLD_POTENTIAL_EMPTY_POSITIONING_LEG": 6
+    },
+    "pairings_with_missing_drive_minutes": 0,
+    "pairings_with_unknown_passengers_or_luggage": 0
+  },
+  {
+    "label": "2026-09-24..2026-09-30 SCENARIO (return pickup assumed = same booking's outbound zone; pending ops confirmation; NOT the plan)",
+    "scenario_pairings": 5,
+    "by_type": {
+      "SOLD_SEQUENCE_ARRIVAL_THEN_RETURN": 1,
+      "SOLD_SEQUENCE_RETURN_THEN_ARRIVAL": 4
+    },
+    "by_gap_minutes_bucket": {
+      ">=360": 3,
+      "180-359": 2
+    },
+    "by_decision": {
+      "NEEDS_DISPATCH_ALLOCATION": 5
+    },
+    "legs_with_competing_candidates": 4
+  }
+]
