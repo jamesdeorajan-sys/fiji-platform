@@ -457,8 +457,7 @@ function updatePricing() {
     }
   }
 
-  const vcEl = document.getElementById('vehicleCards');
-  if (vcEl) vcEl.innerHTML = buildVehicleCards();
+  setVehicleCards('vehicleCards', buildVehicleCards());
   if (panel) panel.style.display = 'block';
   if (empty) empty.style.display = 'none';
   if (nextBtn) nextBtn.disabled = false; // Vehicle choice belongs to step 2.
@@ -494,8 +493,8 @@ function updatePricing() {
   // Refresh step 2 if visible
   const step2 = document.getElementById('step2');
   if (step2 && step2.style.display !== 'none') {
-    const vdc = document.getElementById('vehicleDetailCards');
-    if (vdc) vdc.innerHTML = buildVehicleDetailCards();
+    setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
+    syncVehicleStep();
   }
 }
 
@@ -539,9 +538,10 @@ function buildVehicleCards() {
       if (state.passengers > v.maxPax)   warn = `Too small for ${state.passengers} pax`;
       else                               warn = `Not enough space for ${state.luggage} bags`;
     }
-    const onclick = fits
-      ? `onclick="selectVehicle('${v.key}',this)"`
-      : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    // Native radio inside a <label>: keyboard focus, arrow/Space selection and checked/disabled state come from the browser.
+    // An unfit vehicle is a disabled radio; tapping its card still explains why via alertCapacity.
+    const labelClick = fits ? '' : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const radio = `<input type="radio" class="vehicle-radio" name="vehiclePreview" value="${v.key}" ${state.selectedVehicle === v.key ? 'checked' : ''} ${fits ? `onchange="selectVehicle('${v.key}',this.closest('label'))"` : 'disabled'}>`;
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
@@ -553,13 +553,15 @@ function buildVehicleCards() {
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
          <div class="vehicle-price-sub">per vehicle</div>`;
     return `
-      <div class="${cls.join(' ')}" ${onclick}>
+      <label class="${cls.join(' ')}" ${labelClick}>
+        ${radio}
         ${badge}
+        <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
         <div class="vehicle-icon">${v.icon}</div>
         <div class="vehicle-name">${v.name}</div>
         <div class="vehicle-cap">${v.cap}<br><span class="vehicle-cap-sub">Up to ${v.maxBags} bags</span></div>
         ${priceBlock}
-      </div>`;
+      </label>`;
   }).join('');
 }
 
@@ -582,9 +584,8 @@ function buildVehicleDetailCards() {
       if (state.passengers > v.maxPax)   warn = `Too small for ${state.passengers} pax`;
       else                               warn = `Not enough space for ${state.luggage} bags`;
     }
-    const onclick = fits
-      ? `onclick="selectVehicleDetail('${v.key}',this)"`
-      : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const labelClick = fits ? '' : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const radio = `<input type="radio" class="vehicle-radio" name="vehicleChoice" value="${v.key}" ${state.selectedVehicle === v.key ? 'checked' : ''} ${fits ? `onchange="selectVehicleDetail('${v.key}',this.closest('label'))"` : 'disabled'}>`;
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
@@ -593,14 +594,16 @@ function buildVehicleDetailCards() {
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
       : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
     return `
-      <div class="${cls.join(' ')}" ${onclick}>
+      <label class="${cls.join(' ')}" ${labelClick}>
+        ${radio}
         ${badge}
+        <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
         <div class="vd-icon">${v.icon}</div>
         <div class="vd-name">Private ${v.name}</div>
         <div class="vd-cap">Up to ${v.maxPax} passengers · ${v.maxBags} bags</div>
         <div class="vd-features">${details[v.key].features.map(f=>`<div class="vd-feature">${f}</div>`).join('')}</div>
         ${priceBlock}
-      </div>`;
+      </label>`;
   }).join('');
 }
 
@@ -617,6 +620,8 @@ function selectVehicle(key, el) {
   state.selectedVehicle = key;
   document.querySelectorAll('.vehicle-card').forEach(c => c.classList.remove('selected'));
   if (el) el.classList.add('selected');
+  state.vehicleNotice = '';
+  syncVehicleStep();
   const nb = document.getElementById('nextBtn1');
   if (nb) nb.disabled = false;
   // Tour bundle summary depends on which vehicle is selected — refresh it
@@ -628,6 +633,8 @@ function selectVehicleDetail(key, el) {
   state.selectedVehicle = key;
   document.querySelectorAll('.vehicle-detail-card').forEach(c => c.classList.remove('selected'));
   if (el) el.classList.add('selected');
+  state.vehicleNotice = '';
+  syncVehicleStep();
   updateExtras();
 }
 
@@ -669,18 +676,15 @@ function syncReturnLocationDefault() {
 
 // ─── PAX / LUGGAGE ────────────────────────────────────────────────────────────
 function refreshAfterCapacityChange() {
-  // Auto-upgrade if current vehicle is now too small for either pax or bags
-  if (state.selectedVehicle) {
-    const v = VEHICLES.find(x => x.key === state.selectedVehicle);
-    if (v && !vehicleFits(v)) {
-      state.selectedVehicle = recommendedVehicle();
-    }
-  }
-  const vc = document.getElementById('vehicleCards');
-  if (vc && state.distanceKm > 0) vc.innerHTML = buildVehicleCards();
+  // If the chosen vehicle is now too small for pax or bags, drop the choice and
+  // ask again. Never silently substitute the recommended vehicle (it sets the fare).
+  const unfit = clearUnfitVehicle();
+  if (unfit) state.vehicleNotice = unfit;
+  if (state.distanceKm > 0) setVehicleCards('vehicleCards', buildVehicleCards());
   const vdc = document.getElementById('vehicleDetailCards');
   const step2 = document.getElementById('step2');
-  if (vdc && step2 && step2.style.display !== 'none') vdc.innerHTML = buildVehicleDetailCards();
+  if (vdc && step2 && step2.style.display !== 'none') setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
+  syncVehicleStep();
   // Tour bundle total scales with passengers — re-run pricing so the summary
   // panel and confirmation card both reflect the new pax count.
   if (state.selectedTour) updatePricing();
@@ -736,6 +740,7 @@ function swapLocations() {
 
 // ─── STEP NAVIGATION ─────────────────────────────────────────────────────────
 function showStep(n) {
+  if (document.body) document.body.classList.toggle('booking-flow', n > 1);
   for (let i = 1; i <= 4; i++) {
     const el = document.getElementById(`step${i}`);
     if (el) el.style.display = (i === n) ? 'block' : 'none';
@@ -785,6 +790,48 @@ function validateArrivalFlight() {
   return true;
 }
 
+// Re-render a vehicle card list without losing keyboard focus (innerHTML replaces the focused radio).
+function setVehicleCards(id, html) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const active = document.activeElement;
+  const key = active && active.classList && active.classList.contains('vehicle-radio') && box.contains(active) ? active.value : null;
+  box.innerHTML = html;
+  if (key) { const again = box.querySelector(`.vehicle-radio[value="${key}"]:not(:disabled)`); if (again) again.focus(); }
+}
+
+// ─── EXPLICIT VEHICLE CHOICE ─────────────────────────────────────────────────
+// "★ Recommended" is a suggestion only: nothing is selected until the guest taps a card.
+function selectedVehicleIsValid() {
+  if (!state.selectedVehicle) return false;
+  const v = VEHICLES.find(x => x.key === state.selectedVehicle);
+  return !!v && vehicleFits(v);
+}
+// Clears a selection that no longer fits the party; returns a guest-facing notice ('' if nothing changed).
+function clearUnfitVehicle() {
+  const v = VEHICLES.find(x => x.key === state.selectedVehicle);
+  if (!v || vehicleFits(v)) return '';
+  const reasons = [];
+  if (state.passengers > v.maxPax)  reasons.push(`${state.passengers} passengers`);
+  if (state.luggage    > v.maxBags) reasons.push(`${state.luggage} bags`);
+  state.selectedVehicle = null;
+  return `Your ${v.name} can't carry ${reasons.join(' and ')}. Please choose another vehicle.`;
+}
+// Keeps the step-2 Continue button and hint in step with the selection.
+function syncVehicleStep() {
+  const ok = selectedVehicleIsValid();
+  if (ok) state.vehicleNotice = '';
+  const btn  = document.getElementById('nextBtn2');
+  if (btn) btn.disabled = !ok;
+  const hint = document.getElementById('vehicleHint');
+  if (!hint) return;
+  const v = ok ? VEHICLES.find(x => x.key === state.selectedVehicle) : null;
+  hint.className = 'vehicle-hint' + (ok ? ' ok' : (state.vehicleNotice ? ' warn' : ''));
+  hint.textContent = ok
+    ? `Selected: Private ${v.name}. Continue when you're ready.`
+    : (state.vehicleNotice || 'Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is selected yet.');
+}
+
 function goToStep(n) {
   if (n === 4) {
     if (!validateBookingContact()) return;
@@ -797,18 +844,12 @@ function goToStep(n) {
       alert('Please choose your pickup and destination.');
       return;
     }
-    // Capacity guard — checks both pax and luggage
-    const v = VEHICLES.find(x => x.key === state.selectedVehicle);
-    if (v && !vehicleFits(v)) {
-      const rec = VEHICLES.find(x => x.key === recommendedVehicle());
-      const reasons = [];
-      if (state.passengers > v.maxPax)  reasons.push(`${state.passengers} passengers`);
-      if (state.luggage    > v.maxBags) reasons.push(`${state.luggage} bags`);
-      alert(`Your ${v.name} can't carry ${reasons.join(' and ')}. We've switched you to a ${rec.name}.`);
-      state.selectedVehicle = rec.key;
-    }
-    const vdc = document.getElementById('vehicleDetailCards');
-    if (vdc) vdc.innerHTML = buildVehicleDetailCards();
+    // Capacity guard — checks both pax and luggage. A choice that no longer fits
+    // is cleared and the guest is asked to choose again (shown in the step-2 hint).
+    const unfit = clearUnfitVehicle();
+    if (unfit) state.vehicleNotice = unfit;
+    setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
+    syncVehicleStep();
   }
   if (n === 3) {
     if (!state.selectedVehicle) { alert('Please select a vehicle.'); return; }
@@ -2219,6 +2260,13 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // The "Get price" sticky bar is an acquisition prompt: hide it while the booking widget is visible.
+  const bookingEl = document.getElementById('booking');
+  if (bookingEl && 'IntersectionObserver' in window) {
+    // -80px bottom margin: an element merely touching the fold (0px overlap) must not count as "in view"
+    new IntersectionObserver(entries => entries.forEach(e => document.body.classList.toggle('booking-in-view', e.isIntersecting)),
+      { rootMargin: '0px 0px -80px 0px' }).observe(bookingEl);
+  }
   buildRoutesTable();
   buildToursGrid();
   buildReviews();

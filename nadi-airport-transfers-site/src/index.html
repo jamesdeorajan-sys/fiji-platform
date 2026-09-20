@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260908a">
+<link rel="stylesheet" href="styles.css?v=20260921-mobile-ux">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -665,7 +665,7 @@
             <span class="discount-banner-icon">★</span>
             <span class="discount-banner-text">10% off automatically applied to bookings over FJ$50</span>
           </div>
-          <div class="vehicle-cards" id="vehicleCards"></div>
+          <div class="vehicle-cards" id="vehicleCards" role="radiogroup" aria-label="Vehicle prices"></div>
           <!-- Tour-bundle price summary. Renders only when a tour is in the
                booking AND a vehicle has been selected. Shows the combined
                transfer + tour total so the customer sees the full price up
@@ -690,7 +690,8 @@
       <!-- STEP 2: VEHICLE -->
       <div class="booking-step" id="step2" style="display:none">
         <h3 class="step-title">Choose your vehicle</h3>
-        <div class="vehicle-detail-cards" id="vehicleDetailCards"></div>
+        <p class="vehicle-hint" id="vehicleHint" role="status" aria-live="polite">Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is selected yet.</p>
+        <div class="vehicle-detail-cards" id="vehicleDetailCards" role="radiogroup" aria-label="Choose your vehicle"></div>
         <div class="extras-section">
           <h4 class="extras-title">Add-ons</h4>
           <div class="extras-grid">
@@ -726,7 +727,7 @@
         </div>
         <div class="step-actions">
           <button class="btn-secondary" onclick="goToStep(1)">← Back</button>
-          <button class="btn-primary" onclick="goToStep(3)">
+          <button class="btn-primary" id="nextBtn2" onclick="goToStep(3)" disabled>
             Continue to passenger details
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
@@ -2018,7 +2019,7 @@
   </div>
 </div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20260917-priority-recovery"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20260921-mobile-ux"></script>
 <script src="chat-widget.js?v=20260908a"></script>
 <!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "40d766fdaddc4cb68ce32a56801f1639"}'></script><!-- Cloudflare Pages Analytics --></body>
 </html>
