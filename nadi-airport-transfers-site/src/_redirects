@@ -1,0 +1,5 @@
+# Legacy Outrigger URL (20 Bing Copilot citations; ~245 requests 13-20 Sep 2026) -> the real Outrigger route page.
+/transfer/outrigger-fiji-beach-resort /transfer/coral-coast-outrigger 301
+# Bare /transfer hub has no page; send visitors to the homepage instead of a dead end.
+/transfer / 301
+/transfer/ / 301
