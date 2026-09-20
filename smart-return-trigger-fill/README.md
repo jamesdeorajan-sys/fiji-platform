@@ -8,6 +8,8 @@ Centralized foundation for the 3-storefront transfer revenue engine
 one route-price truth -> one booking/movement ledger -> one match engine
 -> one smart-offer inventory -> one WhatsApp ops channel.
 
+> **Recovery note 2026-09-21:** counts and statements below were reconciled against `4ca67ac` (143/143, independently run by Codex) and the recovery branch (163/163). See `docs/evidence/2026-09-21-smart-return-recovery/RECOVERY_STATUS.md` on `main`. The pipeline had **not** been run against real data at `4ca67ac`.
+
 **This branch changes nothing live.** No storefront UI, live fare, D1
 binding, or DNS record is touched. Everything here runs against an
 in-memory store and synthetic data; see `docs/CEO_RELEASE_REPORT.md` for
@@ -28,8 +30,9 @@ src/pipeline.js                    orchestration: persist -> match (best-effort)
 src/whatsapp_cards.js                internal-only recommendation card builder (never sends)
 src/route_price_truth.js              contract validation
 src/board.js                            7-day movement board (read-only aggregation)
-test/                                    76 tests, node:test, zero dependencies
+test/                                    163 tests at the recovery branch (143 at Codex-verified 4ca67ac), node:test, zero dependencies
 scripts/demo.js                           run the pipeline + board over the synthetic fixtures
+scripts/seven_day_pilot.js                 internal seven-day SHADOW pilot runner over an ops-verified movement file (recovery branch)
 docs/                                      contract, rollback, security review, sample scenarios, CEO release report
 ```
 

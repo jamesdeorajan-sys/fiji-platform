@@ -1,3 +1,5 @@
+> **Reconciliation banner 2026-09-21:** the "85 tests" figure in section 12 is superseded - 143/143 at `4ca67ac` (independently run by Codex) and 163/163 on the recovery branch. Sections 15-17 remain accurate that nothing was deployed or run against real data at that commit; see `docs/evidence/2026-09-21-smart-return-recovery/RECOVERY_STATUS.md` on `main` for what has run since.
+
 # CEO Release Report — Smart Return / Trigger Fill Stage 1 (Shadow Mode)
 
 Issue: #54 · Branch: `ceo/smart-return-trigger-fill-shadow` · Base commit:

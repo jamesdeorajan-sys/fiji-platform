@@ -110,7 +110,10 @@ const HUMAN_ACTOR_PATTERN = /^(admin|driver:\d+)$/;
 // Zones the real bookings table uses to represent Nadi International
 // Airport — used only to derive arrival_or_departure, never feasibility
 // or pricing.
-const AIRPORT_ZONE_IDENTIFIERS = new Set(['NAN', 'NADI_AIRPORT']);
+// 'Nadi Airport' is the zone name the REAL bookings/zones tables store (all 107 saved requests checked 2026-09-21 use it);
+// 'NAN'/'NADI_AIRPORT' are the storefront form value / earlier fixture spelling. Without the real name, every real row is
+// skipped as CANNOT_DETERMINE_ARRIVAL_OR_DEPARTURE.
+const AIRPORT_ZONE_IDENTIFIERS = new Set(['NAN', 'NADI_AIRPORT', 'Nadi Airport']);
 
 const FIJI_TIME_ZONE = 'Pacific/Fiji';
 

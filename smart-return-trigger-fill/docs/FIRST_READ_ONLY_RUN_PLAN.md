@@ -1,3 +1,5 @@
+> **SUPERSEDED NOTES 2026-09-21 (recovery review).** (1) Step 1 assumes `bookings.status='accepted'` with an `accepted` `booking_events` row. Read-only counts on the real `nadi-marketplace-db` show **0 accepted events; bookings are `pending` 150 / `completed` 1; 1 driver, 1 vehicle** - so Step 1 returns **zero rows** today. Confirmed movements must come from an ops-verified source instead (`docs/OPS_VERIFIED_MOVEMENTS_CONTRACT.md`). (2) Real zone names are `Nadi Airport`, `Denarau`, `Coral Coast`, ... not `NAN`/`HILTON_DENARAU`; the adapter recognised 0 of 107 real rows as airport trips until the recovery fix. (3) Step 2's negotiation join covers 0 bookings (5 negotiation requests, all expired, none linked); the widget's structured `Passengers:`/`Luggage:` notes tokens cover 44 of 46 on-site rows. (4) This plan has still **not been executed as written**; only read-only coverage counts and an in-memory what-if run were done.
+
 # First real read-only shadow run — exact plan
 
 Everything below is READ-ONLY against the real `nadi-dispatch-api` D1
