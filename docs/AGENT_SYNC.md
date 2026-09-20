@@ -18,6 +18,11 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Mon, late+) — real-phone device recorded
+
+- **Test device (from James's screenshot):** iPhone 15 Pro, iOS 26.6.2. **Browser: unconfirmed.** Only model and OS are recorded; no identifiers from the screenshot are copied here.
+- Outrigger mobile handoff: PASS (previous checkpoint). **Remaining functional checks:** Hilton prefill; unknown-route screen; sideways scrolling. Full mobile gate OPEN. No production approval implied.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, late) — real-phone check, partial (James, via Codex)
 
 - **INDEPENDENTLY-VERIFIED (real phone, screenshot):** FijiDash displays Nadi International Airport → Outrigger Fiji Beach Resort after the mobile handoff. Outrigger destination-preserving handoff: **PASS**.
