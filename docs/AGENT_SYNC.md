@@ -18,6 +18,65 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Mon 00:31 AEST) — bounded revenue diagnosis
+
+Reply: [Issue #59 comment 5750432002](https://github.com/jamesdeorajan-sys/fiji-platform/issues/59#issuecomment-5750432002)
+(answers Codex comment 5750121337). Evidence bundle (aggregates only, no PII):
+`docs/evidence/2026-09-21-revenue-diagnosis/` @ `cb431d0`. Read-only checks +
+one **preview-only** deployment; **no production change, no live submission**.
+All numbers AUTHOR-VERIFIED (Claude) until Codex reproduces them. Governs
+over the 2026-09-20 checkpoint below where they differ.
+
+**No proven cause of the fall.** Confirmed defects vs proven causes:
+- Homepage served under `/transfer/*` fallback (Outrigger alias + unknown
+  slugs; relative assets then 404-as-HTML): **confirmed**; 13–20 Sep alias
+  245 requests, `/transfer/app.js|chat-widget.js|styles.css` 45/43/25.
+  Not tied to lost bookings (`first_landing_path` NULL on all on-site rows).
+- Stored ≠ shown price: **confirmed**, reproduced offline
+  (`pricing_repro/recompute.py`), 6/105 cells; **0/46 real on-site bookings**
+  affected; money/dispute risk, not a conversion cause.
+- Notification: **71/71** non-test saved requests since 2026-09-06 15:36 UTC
+  have a WhatsApp-accepted `booking_events` row (2–6 s); 0 failures since
+  6 Sep. **Gap:** 8 saved requests predate the pipeline (6 with pickups
+  24 Sep–21 Dec) and were never auto-alerted. Staff receipt UNKNOWN.
+- Uncertain save/retry: 2 FijiDash client failures / 30 attempts, both
+  recovered idempotently; ≤3 on-site duplicate pairs, none since 13 Sep.
+- Mobile friction: UNKNOWN (no device data).
+- Visits did **not** fall: real-browser homepage loads/day 33.7 → 33.3 →
+  38.0 (20 Aug–7 Sep / 8–10 / 11–20); Google-referred 6.8 → 11.0/day.
+  On-site saved requests per homepage load 17% → 6.3% (signal only).
+- Fall itself (Fiji days, complete): FTT 8–10 Sep 6.7/day → 11–20 Sep 2.6/day
+  (p≈0.002–0.009; 8–14 vs 15–20 p≈0.04–0.09; incl. FijiDash handoffs
+  6.0 → 3.3, p≈0.046). Baseline before 7 Sep is **unobservable** in this DB.
+- Route pages absent from production 2026-06-06 13:33 → 2026-09-11 06:45,
+  blank 2026-09-13 08:25 → 09-16 07:35 (per pinned deployments), yet cited
+  by Copilot from 17 Jun and the alias served a real page on 17 Sep:
+  **unresolved** (needs Cloudflare audit-log export).
+
+**Corrections to earlier entries (history kept):** (a) the 2026-09-20
+checkpoint item 5 / #59 handover implied notification outcomes leave no
+record — **wrong**: `booking_events` logs sent/failed/skipped; only the
+retry-state table is absent. (b) The 2026-09-17 note dismissing
+`/transfer/styles.css` MIME console errors as a stale buffer was **not safe**.
+
+**Preview-only repair (not production):** branch
+`ceo/nadi-outrigger-softfix-preview` @ `9ddd923` (base `31a27fb`): `_redirects`
+(alias → `/transfer/coral-coast-outrigger` 301; `/transfer[/]` → `/`), noindex
+`404.html`, 5 static tests (76/76). Preview `77ef3ba6` (alias
+`ceo-outrigger-softfix-previe.fttlandingpage.pages.dev`). Verified: alias 301→200
+real page, unknown slugs 404, 25/25 sitemap pages 200/distinct/not fallback,
+deep-link prefill intact. **Awaiting Codex's independent preview test and
+James's production approval.** Production is still `9af4d251`.
+
+**Next (owners/acceptance in the #59 comment):** (1) ops fills the private
+upcoming-pickup worksheet (6 never-alerted first); (2) Codex tests preview →
+James approves promotion; (3) James supplies GSC/Bing exports, WhatsApp daily
+counts, Cloudflare audit log → Claude re-runs comparable-period analysis.
+PR #55 HOLD; Momi minibus HOLD; no pricing change; no production change
+authorized by this checkpoint.
+
+---
+
 ## ✅ CHECKPOINT 2026-09-20 (Sun ~23:15 AEST) — handover reply to Codex
 
 Full evidence, inventory tables and query definitions:
@@ -71,7 +130,7 @@ after Fri 18 Sep 18:19 AEST.
    (likely James).
 5. Deployed Nadi Worker has **no** `admin_notification_state` /
    `attemptAdminNotification` (static read); alerts are direct sends with
-   no durable state. PR #55 still OPEN/draft, unchanged, HOLD.
+   no durable state. **[CORRECTED 2026-09-21: outcomes ARE logged in `booking_events` (sent/failed/skipped); only the retry-state table is absent.]** PR #55 still OPEN/draft, unchanged, HOLD.
 
 **Narrowed claim:** "booking-decline premise false" (below, 2026-09-18) is
 **not supportable per site.** `FTT-` refs only begin 2026-09-07 12:19 UTC
