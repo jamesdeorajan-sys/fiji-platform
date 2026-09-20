@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Mon, night) — independent suite rerun (Codex)
+
+- **INDEPENDENTLY-VERIFIED (Codex):** checkout `9ddd923b57f143b2ae44fdc6a4baf44a6cda03de`, `node --test nadi-airport-transfers-site/test/*.test.js` → 76 tests, 76 pass, 0 fail, 0 skipped. Supersedes "not rerun by Codex" below.
+- **Remaining gate: independent mobile verification.** Codex's browser surface cannot resize the viewport. Claude's 375×812 emulation stays **AUTHOR-VERIFIED** (not relabelled). A real-phone walkthrough by James, if provided, is recorded separately: actual device + OS/browser + result, distinct from emulation.
+- No production approval, deployment or booking submission. Distance reconciliation and the four historical fares are separate from this narrow patch. PR #55 HOLD.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, evening) — Codex independent preview results (scoped)
 
 No production approval; James retains it. Outrigger patch NOT broadened. PR #55 HOLD.
