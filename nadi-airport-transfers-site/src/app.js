@@ -457,8 +457,7 @@ function updatePricing() {
     }
   }
 
-  const vcEl = document.getElementById('vehicleCards');
-  if (vcEl) vcEl.innerHTML = buildVehicleCards();
+  setVehicleCards('vehicleCards', buildVehicleCards());
   if (panel) panel.style.display = 'block';
   if (empty) empty.style.display = 'none';
   if (nextBtn) nextBtn.disabled = false; // Vehicle choice belongs to step 2.
@@ -494,8 +493,7 @@ function updatePricing() {
   // Refresh step 2 if visible
   const step2 = document.getElementById('step2');
   if (step2 && step2.style.display !== 'none') {
-    const vdc = document.getElementById('vehicleDetailCards');
-    if (vdc) vdc.innerHTML = buildVehicleDetailCards();
+    setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
     syncVehicleStep();
   }
 }
@@ -540,9 +538,10 @@ function buildVehicleCards() {
       if (state.passengers > v.maxPax)   warn = `Too small for ${state.passengers} pax`;
       else                               warn = `Not enough space for ${state.luggage} bags`;
     }
-    const onclick = fits
-      ? `onclick="selectVehicle('${v.key}',this)"`
-      : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    // Native radio inside a <label>: keyboard focus, arrow/Space selection and checked/disabled state come from the browser.
+    // An unfit vehicle is a disabled radio; tapping its card still explains why via alertCapacity.
+    const labelClick = fits ? '' : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const radio = `<input type="radio" class="vehicle-radio" name="vehiclePreview" value="${v.key}" ${state.selectedVehicle === v.key ? 'checked' : ''} ${fits ? `onchange="selectVehicle('${v.key}',this.closest('label'))"` : 'disabled'}>`;
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
@@ -554,14 +553,15 @@ function buildVehicleCards() {
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
          <div class="vehicle-price-sub">per vehicle</div>`;
     return `
-      <div class="${cls.join(' ')}" role="radio" aria-checked="${state.selectedVehicle === v.key}" ${fits ? '' : 'aria-disabled="true"'} ${onclick}>
+      <label class="${cls.join(' ')}" ${labelClick}>
+        ${radio}
         ${badge}
         <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
         <div class="vehicle-icon">${v.icon}</div>
         <div class="vehicle-name">${v.name}</div>
         <div class="vehicle-cap">${v.cap}<br><span class="vehicle-cap-sub">Up to ${v.maxBags} bags</span></div>
         ${priceBlock}
-      </div>`;
+      </label>`;
   }).join('');
 }
 
@@ -584,9 +584,8 @@ function buildVehicleDetailCards() {
       if (state.passengers > v.maxPax)   warn = `Too small for ${state.passengers} pax`;
       else                               warn = `Not enough space for ${state.luggage} bags`;
     }
-    const onclick = fits
-      ? `onclick="selectVehicleDetail('${v.key}',this)"`
-      : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const labelClick = fits ? '' : `onclick="alertCapacity('${v.name}',${v.maxPax},${v.maxBags})"`;
+    const radio = `<input type="radio" class="vehicle-radio" name="vehicleChoice" value="${v.key}" ${state.selectedVehicle === v.key ? 'checked' : ''} ${fits ? `onchange="selectVehicleDetail('${v.key}',this.closest('label'))"` : 'disabled'}>`;
     const badge = !fits
       ? `<div class="vehicle-badge warn">${warn}</div>`
       : (isRec ? `<div class="vehicle-badge rec">★ Recommended</div>` : '');
@@ -595,7 +594,8 @@ function buildVehicleDetailCards() {
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
       : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
     return `
-      <div class="${cls.join(' ')}" role="radio" aria-checked="${state.selectedVehicle === v.key}" ${fits ? '' : 'aria-disabled="true"'} ${onclick}>
+      <label class="${cls.join(' ')}" ${labelClick}>
+        ${radio}
         ${badge}
         <div class="vehicle-selected-mark" aria-hidden="true">✓ Selected</div>
         <div class="vd-icon">${v.icon}</div>
@@ -603,7 +603,7 @@ function buildVehicleDetailCards() {
         <div class="vd-cap">Up to ${v.maxPax} passengers · ${v.maxBags} bags</div>
         <div class="vd-features">${details[v.key].features.map(f=>`<div class="vd-feature">${f}</div>`).join('')}</div>
         ${priceBlock}
-      </div>`;
+      </label>`;
   }).join('');
 }
 
@@ -618,8 +618,8 @@ function selectVehicle(key, el) {
   const v = VEHICLES.find(x => x.key === key);
   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
   state.selectedVehicle = key;
-  document.querySelectorAll('.vehicle-card').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked', 'false'); });
-  if (el) { el.classList.add('selected'); el.setAttribute('aria-checked', 'true'); }
+  document.querySelectorAll('.vehicle-card').forEach(c => c.classList.remove('selected'));
+  if (el) el.classList.add('selected');
   state.vehicleNotice = '';
   syncVehicleStep();
   const nb = document.getElementById('nextBtn1');
@@ -631,8 +631,8 @@ function selectVehicleDetail(key, el) {
   const v = VEHICLES.find(x => x.key === key);
   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
   state.selectedVehicle = key;
-  document.querySelectorAll('.vehicle-detail-card').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked', 'false'); });
-  if (el) { el.classList.add('selected'); el.setAttribute('aria-checked', 'true'); }
+  document.querySelectorAll('.vehicle-detail-card').forEach(c => c.classList.remove('selected'));
+  if (el) el.classList.add('selected');
   state.vehicleNotice = '';
   syncVehicleStep();
   updateExtras();
@@ -680,11 +680,10 @@ function refreshAfterCapacityChange() {
   // ask again. Never silently substitute the recommended vehicle (it sets the fare).
   const unfit = clearUnfitVehicle();
   if (unfit) state.vehicleNotice = unfit;
-  const vc = document.getElementById('vehicleCards');
-  if (vc && state.distanceKm > 0) vc.innerHTML = buildVehicleCards();
+  if (state.distanceKm > 0) setVehicleCards('vehicleCards', buildVehicleCards());
   const vdc = document.getElementById('vehicleDetailCards');
   const step2 = document.getElementById('step2');
-  if (vdc && step2 && step2.style.display !== 'none') vdc.innerHTML = buildVehicleDetailCards();
+  if (vdc && step2 && step2.style.display !== 'none') setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
   syncVehicleStep();
   // Tour bundle total scales with passengers — re-run pricing so the summary
   // panel and confirmation card both reflect the new pax count.
@@ -791,6 +790,16 @@ function validateArrivalFlight() {
   return true;
 }
 
+// Re-render a vehicle card list without losing keyboard focus (innerHTML replaces the focused radio).
+function setVehicleCards(id, html) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const active = document.activeElement;
+  const key = active && active.classList && active.classList.contains('vehicle-radio') && box.contains(active) ? active.value : null;
+  box.innerHTML = html;
+  if (key) { const again = box.querySelector(`.vehicle-radio[value="${key}"]:not(:disabled)`); if (again) again.focus(); }
+}
+
 // ─── EXPLICIT VEHICLE CHOICE ─────────────────────────────────────────────────
 // "★ Recommended" is a suggestion only: nothing is selected until the guest taps a card.
 function selectedVehicleIsValid() {
@@ -839,8 +848,7 @@ function goToStep(n) {
     // is cleared and the guest is asked to choose again (shown in the step-2 hint).
     const unfit = clearUnfitVehicle();
     if (unfit) state.vehicleNotice = unfit;
-    const vdc = document.getElementById('vehicleDetailCards');
-    if (vdc) vdc.innerHTML = buildVehicleDetailCards();
+    setVehicleCards('vehicleDetailCards', buildVehicleDetailCards());
     syncVehicleStep();
   }
   if (n === 3) {

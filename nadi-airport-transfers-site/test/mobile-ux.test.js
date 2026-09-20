@@ -38,7 +38,7 @@ function harness(state = {}) {
     alertCapacity: () => {},
   };
   vm.createContext(ctx);
-  vm.runInContext([vehiclesSrc, ...['vehicleFits', 'recommendedVehicle', 'selectedVehicleIsValid', 'clearUnfitVehicle', 'syncVehicleStep', 'selectVehicle', 'selectVehicleDetail', 'refreshAfterCapacityChange'].map(fn)].join('\n'), ctx);
+  vm.runInContext([vehiclesSrc, ...['vehicleFits', 'recommendedVehicle', 'selectedVehicleIsValid', 'clearUnfitVehicle', 'syncVehicleStep', 'selectVehicle', 'selectVehicleDetail', 'refreshAfterCapacityChange', 'setVehicleCards'].map(fn)].join('\n'), ctx);
   return { ctx, els, cards };
 }
 
@@ -64,8 +64,7 @@ test('tapping a card selects exactly that card, enables Continue and shows the s
   ctx.selectVehicleDetail('minivan', cards[1]);
   assert.equal(ctx.state.selectedVehicle, 'minivan');
   assert.equal(cards.filter((c) => c.classList.has('selected')).length, 1);
-  assert.equal(cards[1].attrs['aria-checked'], 'true');
-  assert.equal(cards[0].attrs['aria-checked'], 'false');
+  assert.equal(cards[1].attrs['aria-checked'], undefined, 'native radios own checked state; no ARIA override');
   assert.equal(els.nextBtn2.disabled, false);
   assert.match(els.vehicleHint.textContent, /Selected: Private Minivan/);
   assert.equal(els.vehicleHint.className, 'vehicle-hint ok');
@@ -116,6 +115,57 @@ test('the notice clears once the guest picks a valid vehicle again', () => {
   ctx.selectVehicleDetail('minivan', cards[1]);
   assert.equal(ctx.state.vehicleNotice, '');
   assert.match(els.vehicleHint.textContent, /Selected: Private Minivan/);
+});
+
+test('vehicle cards are native radios inside labels, so keyboard focus, arrow/Space selection and checked state come from the browser', () => {
+  assert.equal((app.match(/<input type="radio" class="vehicle-radio"/g) || []).length, 2);
+  assert.match(app, /name="vehiclePreview"/);
+  assert.match(app, /name="vehicleChoice"/);
+  assert.equal((app.match(/<label class="\$\{cls\.join\(' '\)\}"/g) || []).length, 2);
+  assert.doesNotMatch(app, /role="radio"/);
+  assert.doesNotMatch(app, /aria-checked/);
+  assert.match(app, /\$\{state\.selectedVehicle === v\.key \? 'checked' : ''\}/);
+});
+
+test('an unfit vehicle is a disabled radio that still explains why when tapped', () => {
+  assert.equal((app.match(/fits \? `onchange="select[^`]*`[^:]*: 'disabled'/g) || []).length, 2);
+  assert.equal((app.match(/const labelClick = fits \? '' : `onclick="alertCapacity\(/g) || []).length, 2);
+});
+
+test('the visually hidden radio stays focusable and shows a visible focus ring on its card', () => {
+  assert.match(css, /\.vehicle-radio\{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none\}/);
+  assert.doesNotMatch(css, /\.vehicle-radio\{[^}]*display:none/);
+  assert.match(css, /\.vehicle-card:has\(\.vehicle-radio:focus-visible\),\.vehicle-detail-card:has\(\.vehicle-radio:focus-visible\)\{outline:3px solid/);
+  assert.match(css, /@supports not selector\(:has\(\*\)\)\{\.vehicle-card:focus-within/);
+});
+
+test('re-rendering the cards keeps keyboard focus on the same vehicle', () => {
+  const { ctx } = harness();
+  const events = [];
+  const again = { focus: () => events.push('focused again') };
+  const active = { value: 'minivan', classList: { contains: (c) => c === 'vehicle-radio' } };
+  const box = { innerHTML: '', contains: (n) => n === active, querySelector: (sel) => { events.push(sel); return again; } };
+  ctx.document.getElementById = (id) => (id === 'vehicleDetailCards' ? box : null);
+  ctx.document.activeElement = active;
+  ctx.setVehicleCards('vehicleDetailCards', '<b>new</b>');
+  assert.equal(box.innerHTML, '<b>new</b>');
+  assert.deepEqual(events, ['.vehicle-radio[value="minivan"]:not(:disabled)', 'focused again']);
+});
+
+test('re-rendering does not steal focus when the guest was elsewhere', () => {
+  const { ctx } = harness();
+  let focused = false;
+  const box = { innerHTML: '', contains: () => false, querySelector: () => ({ focus: () => { focused = true; } }) };
+  ctx.document.getElementById = () => box;
+  ctx.document.activeElement = { value: 'x', classList: { contains: () => false } };
+  ctx.setVehicleCards('vehicleCards', 'x');
+  assert.equal(focused, false);
+});
+
+test('step buttons are kept clear of the fixed chat launcher without moving or removing the launcher', () => {
+  assert.match(css, /@media \(max-width:900px\)\{\.step-actions\{padding-right:40px\}\}/);
+  assert.match(css, /@media \(max-width:480px\)\{\.step-actions\{flex-direction:column-reverse;align-items:stretch;gap:10px;padding-right:30px\}/);
+  assert.doesNotMatch(css, /#ftt-chat/);   // chat widget position/visibility is not overridden
 });
 
 test('source never assigns the recommended vehicle as a selection', () => {
