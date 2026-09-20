@@ -1,0 +1,122 @@
+[
+ {
+  "vehicle_type": "minibus",
+  "distance_min_km": 0,
+  "distance_max_km": 15,
+  "base_rate_fjd_per_km": 4.133,
+  "flagfall_fjd": 51.17,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minibus",
+  "distance_min_km": 15,
+  "distance_max_km": 35,
+  "base_rate_fjd_per_km": 2.622,
+  "flagfall_fjd": 73.54,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minibus",
+  "distance_min_km": 35,
+  "distance_max_km": 70,
+  "base_rate_fjd_per_km": 0.956,
+  "flagfall_fjd": 139,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minibus",
+  "distance_min_km": 70,
+  "distance_max_km": 160,
+  "base_rate_fjd_per_km": 1.576,
+  "flagfall_fjd": 66.96,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minibus",
+  "distance_min_km": 160,
+  "distance_max_km": 300,
+  "base_rate_fjd_per_km": 1.852,
+  "flagfall_fjd": 132.33,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minivan",
+  "distance_min_km": 0,
+  "distance_max_km": 15,
+  "base_rate_fjd_per_km": 3.581,
+  "flagfall_fjd": 26.91,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minivan",
+  "distance_min_km": 15,
+  "distance_max_km": 35,
+  "base_rate_fjd_per_km": 2.622,
+  "flagfall_fjd": 43.54,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minivan",
+  "distance_min_km": 35,
+  "distance_max_km": 70,
+  "base_rate_fjd_per_km": 0.479,
+  "flagfall_fjd": 128.92,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minivan",
+  "distance_min_km": 70,
+  "distance_max_km": 160,
+  "base_rate_fjd_per_km": 1.764,
+  "flagfall_fjd": 6.22,
+  "active": 1
+ },
+ {
+  "vehicle_type": "minivan",
+  "distance_min_km": 160,
+  "distance_max_km": 300,
+  "base_rate_fjd_per_km": 4.815,
+  "flagfall_fjd": -584.33,
+  "active": 1
+ },
+ {
+  "vehicle_type": "sedan",
+  "distance_min_km": 0,
+  "distance_max_km": 15,
+  "base_rate_fjd_per_km": 3.592,
+  "flagfall_fjd": 5.57,
+  "active": 1
+ },
+ {
+  "vehicle_type": "sedan",
+  "distance_min_km": 15,
+  "distance_max_km": 35,
+  "base_rate_fjd_per_km": 1.568,
+  "flagfall_fjd": 44.19,
+  "active": 1
+ },
+ {
+  "vehicle_type": "sedan",
+  "distance_min_km": 35,
+  "distance_max_km": 70,
+  "base_rate_fjd_per_km": 1.438,
+  "flagfall_fjd": 38.75,
+  "active": 1
+ },
+ {
+  "vehicle_type": "sedan",
+  "distance_min_km": 70,
+  "distance_max_km": 160,
+  "base_rate_fjd_per_km": 1.12,
+  "flagfall_fjd": 33.65,
+  "active": 1
+ },
+ {
+  "vehicle_type": "sedan",
+  "distance_min_km": 160,
+  "distance_max_km": 300,
+  "base_rate_fjd_per_km": 1.852,
+  "flagfall_fjd": -47.67,
+  "active": 1
+ }
+]

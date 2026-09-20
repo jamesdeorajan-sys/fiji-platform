@@ -1,0 +1,116 @@
+[
+ {
+  "name": "Ba",
+  "lat": -17.5333,
+  "lng": 177.6667,
+  "remote_multiplier": 1.37
+ },
+ {
+  "name": "Beqa Lagoon",
+  "lat": null,
+  "lng": null,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Coral Coast",
+  "lat": -18.2,
+  "lng": 177.7,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Denarau",
+  "lat": -17.7746,
+  "lng": 177.3814,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Lautoka",
+  "lat": -17.6053,
+  "lng": 177.4503,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Mamanuca Islands",
+  "lat": null,
+  "lng": null,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Momi Bay",
+  "lat": -17.9308,
+  "lng": 177.2678,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Nadi",
+  "lat": -17.8033,
+  "lng": 177.4145,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Nadi Airport",
+  "lat": -17.7554,
+  "lng": 177.4432,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Natadola",
+  "lat": -18.101017,
+  "lng": 177.319168,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Nausori",
+  "lat": -18.0233,
+  "lng": 178.5561,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Pacific Harbour",
+  "lat": -18.2333,
+  "lng": 178.05,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Rakiraki",
+  "lat": -17.3667,
+  "lng": 178.1667,
+  "remote_multiplier": 1.37
+ },
+ {
+  "name": "Sigatoka",
+  "lat": -18.1416,
+  "lng": 177.5049,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Sonaisali",
+  "lat": -17.8225,
+  "lng": 177.3634,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Suva",
+  "lat": -18.1416,
+  "lng": 178.4419,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Vuda Point",
+  "lat": -17.6725,
+  "lng": 177.3505,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Wailoaloa",
+  "lat": -17.7717,
+  "lng": 177.4083,
+  "remote_multiplier": 1
+ },
+ {
+  "name": "Yasawa Islands",
+  "lat": null,
+  "lng": null,
+  "remote_multiplier": 1
+ }
+]

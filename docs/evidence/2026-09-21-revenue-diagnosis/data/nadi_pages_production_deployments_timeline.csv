@@ -1,0 +1,75 @@
+created_utc,deployment_id8,source_commit,homepage_B,hilton_route_B,port_denarau_route_B,legacy_outrigger_alias_B,route_pages_state,legacy_alias_state
+2026-03-25T10:38:45,3a300b69,,61559,61559,,61559,homepage fallback (no route pages),homepage fallback
+2026-03-30T10:05:21,9925cf70,,28423,28423,,28423,homepage fallback (no route pages),homepage fallback
+2026-03-30T10:17:46,7b3586b0,,49472,49472,,49472,homepage fallback (no route pages),homepage fallback
+2026-03-30T10:23:16,a67a198e,,28423,28423,,28423,homepage fallback (no route pages),homepage fallback
+2026-03-30T10:37:42,934404c3,,45424,45424,,45424,homepage fallback (no route pages),homepage fallback
+2026-03-30T10:48:53,45a72652,,64842,64842,,64842,homepage fallback (no route pages),homepage fallback
+2026-03-30T11:16:49,20338a43,,64455,64455,,64455,homepage fallback (no route pages),homepage fallback
+2026-03-30T11:47:26,dee5edeb,,63529,63529,,63529,homepage fallback (no route pages),homepage fallback
+2026-03-31T08:52:16,23813339,,63627,63627,,63627,homepage fallback (no route pages),homepage fallback
+2026-03-31T08:59:53,fad9b257,,64046,64046,,64046,homepage fallback (no route pages),homepage fallback
+2026-03-31T10:29:24,25224c17,,63990,63990,,63990,homepage fallback (no route pages),homepage fallback
+2026-03-31T14:41:14,8de3b2d7,,85918,85918,,85918,homepage fallback (no route pages),homepage fallback
+2026-03-31T14:56:41,4819b003,,65210,65210,,65210,homepage fallback (no route pages),homepage fallback
+2026-04-02T07:06:54,54023bc0,,64582,64582,,64582,homepage fallback (no route pages),homepage fallback
+2026-04-07T09:03:17,beac04d7,,158049,158049,,158049,homepage fallback (no route pages),homepage fallback
+2026-04-07T09:48:08,808b38aa,,145320,145320,,145320,homepage fallback (no route pages),homepage fallback
+2026-04-27T12:12:11,ae496ae4,,69114,69114,,69114,homepage fallback (no route pages),homepage fallback
+2026-04-27T12:24:26,3731b388,,69136,69136,,69136,homepage fallback (no route pages),homepage fallback
+2026-04-27T12:32:35,83489237,,69138,69138,,69138,homepage fallback (no route pages),homepage fallback
+2026-04-27T23:36:40,75f8971b,,69627,69627,,69627,homepage fallback (no route pages),homepage fallback
+2026-04-27T23:47:49,e0e8e75c,,71806,71806,,71806,homepage fallback (no route pages),homepage fallback
+2026-04-28T00:53:55,d67a4036,,72103,72103,,72103,homepage fallback (no route pages),homepage fallback
+2026-04-28T05:35:34,05e8ba45,,72103,72103,,72103,homepage fallback (no route pages),homepage fallback
+2026-04-28T05:56:12,7abd18bd,,72103,72103,,72103,homepage fallback (no route pages),homepage fallback
+2026-04-28T12:56:12,e62c3b3b,,74565,74565,,74565,homepage fallback (no route pages),homepage fallback
+2026-05-03T23:49:16,1630d1ca,,74816,16440,,15805,REAL route pages,REAL alias page
+2026-05-04T00:16:34,f02fa9f5,,75195,16440,,15805,REAL route pages,REAL alias page
+2026-05-04T00:54:04,3129b997,,75195,16440,,15805,REAL route pages,REAL alias page
+2026-05-05T15:38:20,628491f5,,75246,16440,,15805,REAL route pages,REAL alias page
+2026-05-06T17:35:51,26d157af,,75649,16440,,15805,REAL route pages,REAL alias page
+2026-05-06T17:47:14,10723f4a,,75649,16440,,15805,REAL route pages,REAL alias page
+2026-05-06T17:53:11,f9003054,,75649,16440,,15805,REAL route pages,REAL alias page
+2026-05-07T04:49:35,9e832da4,,75649,16440,,15805,REAL route pages,REAL alias page
+2026-05-18T08:09:02,a9848d75,,0,0,,0,BLANK route pages (0 B),BLANK
+2026-05-18T08:21:41,aa218f2a,,0,0,,0,BLANK route pages (0 B),BLANK
+2026-05-18T12:10:52,6134bcc3,,0,0,,0,BLANK route pages (0 B),BLANK
+2026-05-18T12:40:21,c20f0c17,,0,0,,0,BLANK route pages (0 B),BLANK
+2026-05-29T15:30:26,c1b980d2,,40774,40774,,40774,homepage fallback (no route pages),homepage fallback
+2026-05-29T15:36:16,1b601178,,75659,75659,,75659,homepage fallback (no route pages),homepage fallback
+2026-06-06T13:06:41,69e09e1e,,66310,66310,,66310,homepage fallback (no route pages),homepage fallback
+2026-06-06T13:15:02,4bf70967,,26023,16440,,15805,REAL route pages,REAL alias page
+2026-06-06T13:23:31,2292c972,,23237,16440,,15805,REAL route pages,REAL alias page
+2026-06-06T13:33:31,f86a9c90,,66310,66310,,66310,homepage fallback (no route pages),homepage fallback
+2026-06-06T13:56:14,0dc14830,,76021,76021,,76021,homepage fallback (no route pages),homepage fallback
+2026-09-07T12:45:52,afacfa8f,12262ea,76429,76429,,76429,homepage fallback (no route pages),homepage fallback
+2026-09-07T12:50:34,d51bc2bf,89121ed,76429,76429,,76429,homepage fallback (no route pages),homepage fallback
+2026-09-07T14:01:34,179b7b8c,3ad5a38,76429,76429,76429,76429,homepage fallback (no route pages),homepage fallback
+2026-09-08T02:59:02,7ea8a633,b983410,77499,77499,77499,77499,homepage fallback (no route pages),homepage fallback
+2026-09-09T08:53:40,9ae362a0,6590a16,79799,79799,79799,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T02:20:18,e1fde67c,e8f8305,79799,79799,15430,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T02:38:54,8bd53bf9,666dba6,79799,79799,15430,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T03:25:09,b1425dc5,5dbbbff,79799,79799,15430,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T03:28:08,a252b77e,161ac7c,79799,79799,15430,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T03:49:06,7a972d86,2c665cb,79799,79799,16009,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T03:50:36,f7c24674,9d2c3f4,79799,79799,16009,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T03:51:53,bd0778a5,093d901,79799,79799,16009,79799,homepage fallback (no route pages),homepage fallback
+2026-09-10T04:43:28,11336ca1,d990250,81194,81194,16009,81194,homepage fallback (no route pages),homepage fallback
+2026-09-10T04:44:43,afe46998,6acd486,81194,81194,16009,81194,homepage fallback (no route pages),homepage fallback
+2026-09-10T04:46:05,51452c8a,6b8723e,81194,81194,17243,81194,homepage fallback (no route pages),homepage fallback
+2026-09-11T06:07:01,eb796f45,32f7c37,81194,81194,17243,81194,homepage fallback (no route pages),homepage fallback
+2026-09-11T06:11:53,c4d39ba0,4a596e7,81194,81194,17243,81194,homepage fallback (no route pages),homepage fallback
+2026-09-11T06:41:20,bdb4ed6f,e0d206b,81194,81194,17243,81194,homepage fallback (no route pages),homepage fallback
+2026-09-11T06:45:45,cf2c68ea,e0d206b,81194,17205,17243,81194,REAL route pages,homepage fallback
+2026-09-11T08:38:02,b6b0ec0a,fefbf64,81194,17441,17243,81194,REAL route pages,homepage fallback
+2026-09-12T04:30:31,e605bb96,81bfd45,81194,17441,17243,81194,REAL route pages,homepage fallback
+2026-09-12T04:47:02,23c13978,3a2ab5c,81754,17031,16908,81754,REAL route pages,homepage fallback
+2026-09-12T06:03:16,14b28dba,96cb1b2,82897,20333,20134,82897,REAL route pages,homepage fallback
+2026-09-13T06:34:25,257e5b83,72a9bdc,82034,20547,20348,82034,REAL route pages,homepage fallback
+2026-09-13T08:25:24,3c071f54,21cf35c,82613,0,0,10271,BLANK route pages (0 B),REAL alias page
+2026-09-16T07:35:20,a3b71cba,,82034,20333,21887,82034,REAL route pages,homepage fallback
+2026-09-17T08:34:36,feaccc19,31287e2,82559,20333,21887,82559,REAL route pages,homepage fallback
+2026-09-17T09:04:43,2b614400,340de4c,84781,21246,22830,84781,REAL route pages,homepage fallback
+2026-09-17T09:45:19,7eed1fe4,a5720e5,136844,21246,22830,136844,REAL route pages,homepage fallback
+2026-09-17T17:23:38,9af4d251,31a27fb,137705,21246,22830,137705,REAL route pages,homepage fallback

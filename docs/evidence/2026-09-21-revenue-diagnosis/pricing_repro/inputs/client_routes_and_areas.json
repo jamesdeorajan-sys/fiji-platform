@@ -1,0 +1,388 @@
+{
+ "routes_data_from_app_js_31a27fb": [
+  {
+   "destValue": "NADI_DOWNTOWN",
+   "label": "Nadi Town Centre",
+   "s": 19,
+   "v": 49,
+   "m": 79
+  },
+  {
+   "destValue": "TANOA_INTERNATIONAL",
+   "label": "Tanoa International / Tokatoka",
+   "s": 15,
+   "v": 25,
+   "m": 45
+  },
+  {
+   "destValue": "MERCURE_NADI",
+   "label": "Mercure / Tradewinds Hotel",
+   "s": 19,
+   "v": 49,
+   "m": 79
+  },
+  {
+   "destValue": "WAILOALOA_BEACH",
+   "label": "Wailoaloa Beach Hotels",
+   "s": 39,
+   "v": 59,
+   "m": 89
+  },
+  {
+   "destValue": "CROWNE_PLAZA_NADI_BAY",
+   "label": "Crowne Plaza / Smugglers / Ramada",
+   "s": 39,
+   "v": 59,
+   "m": 89
+  },
+  {
+   "destValue": "HILTON_DENARAU",
+   "label": "Hilton / Sheraton / Westin Denarau",
+   "s": 49,
+   "v": 69,
+   "m": 99
+  },
+  {
+   "destValue": "SOFITEL_DENARAU",
+   "label": "Sofitel / Radisson / Wyndham",
+   "s": 49,
+   "v": 69,
+   "m": 99
+  },
+  {
+   "destValue": "PORT_DENARAU_MARINA",
+   "label": "Port Denarau Marina (Yasawa Flyer)",
+   "s": 49,
+   "v": 69,
+   "m": 99
+  },
+  {
+   "destValue": "DOUBLETREE_SONAISALI",
+   "label": "DoubleTree Sonaisali Island",
+   "s": 69,
+   "v": 89,
+   "m": 119
+  },
+  {
+   "destValue": "FIRST_LANDING",
+   "label": "First Landing Beach Resort",
+   "s": 79,
+   "v": 99,
+   "m": 129
+  },
+  {
+   "destValue": "VUDA_MARINA",
+   "label": "Vuda Marina (Yacht Haven)",
+   "s": 79,
+   "v": 99,
+   "m": 129
+  },
+  {
+   "destValue": "LAUTOKA_HOTEL",
+   "label": "Lautoka City Centre",
+   "s": 89,
+   "v": 119,
+   "m": 149
+  },
+  {
+   "destValue": "TANOA_LAUTOKA",
+   "label": "Tanoa Waterfront / Cathay Lautoka",
+   "s": 89,
+   "v": 119,
+   "m": 149
+  },
+  {
+   "destValue": "LAUTOKA_CRUISE",
+   "label": "Lautoka Cruise Terminal",
+   "s": 89,
+   "v": 119,
+   "m": 149
+  },
+  {
+   "destValue": "MARRIOTT_MOMI",
+   "label": "Fiji Marriott Resort Momi Bay",
+   "s": 99,
+   "v": 149,
+   "m": 79
+  },
+  {
+   "destValue": "INTERCONTINENTAL_NATADOLA",
+   "label": "InterContinental Natadola / Yatule",
+   "s": 99,
+   "v": 149,
+   "m": 179
+  },
+  {
+   "destValue": "ROBINSON_CRUSOE",
+   "label": "Robinson Crusoe Island (Likuri)",
+   "s": 99,
+   "v": 149,
+   "m": 179
+  },
+  {
+   "destValue": "SIGATOKA_SAND_DUNES",
+   "label": "Sigatoka Town / Sand Dunes",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "BEDARRA_INN",
+   "label": "Bedarra / Gecko's / Sandy Point",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "KULA_ECO",
+   "label": "Kula Wild Adventure Park",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "SHANGRI_LA_YANUCA",
+   "label": "Shangri-La Yanuca Island",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "HIDEAWAY_RESORT",
+   "label": "Hideaway Resort / Tambua Sands",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "CRUSOES_RETREAT",
+   "label": "Crusoe's Retreat / Mango Bay",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "OUTRIGGER_FIJI",
+   "label": "Outrigger Fiji Beach Resort",
+   "s": 129,
+   "v": 159,
+   "m": 199
+  },
+  {
+   "destValue": "THE_WARWICK",
+   "label": "The Warwick / The Naviti",
+   "s": 149,
+   "v": 189,
+   "m": 239
+  },
+  {
+   "destValue": "BEACHHOUSE_FIJI",
+   "label": "The Beachouse Fiji",
+   "s": 169,
+   "v": 199,
+   "m": 259
+  },
+  {
+   "destValue": "ARTS_VILLAGE",
+   "label": "Pacific Harbour Arts Village",
+   "s": 199,
+   "v": 269,
+   "m": 299
+  },
+  {
+   "destValue": "PEARL_SOUTH_PACIFIC",
+   "label": "Pearl South Pacific Resort",
+   "s": 199,
+   "v": 269,
+   "m": 299
+  },
+  {
+   "destValue": "UPRISING",
+   "label": "Uprising Beach Resort",
+   "s": 199,
+   "v": 269,
+   "m": 299
+  },
+  {
+   "destValue": "NANUKU_RESORT",
+   "label": "Nanuku Resort Fiji (Auberge)",
+   "s": 199,
+   "v": 269,
+   "m": 299
+  },
+  {
+   "destValue": "BA_HOTEL",
+   "label": "Ba Town",
+   "s": 169,
+   "v": 199,
+   "m": 249
+  },
+  {
+   "destValue": "VOLIVOLI_BEACH",
+   "label": "Volivoli / Wananavu Beach Resort",
+   "s": 249,
+   "v": 299,
+   "m": 349
+  },
+  {
+   "destValue": "GRAND_PACIFIC",
+   "label": "Grand Pacific Hotel Suva",
+   "s": 319,
+   "v": 369,
+   "m": 499
+  },
+  {
+   "destValue": "TANOA_PLAZA_SUVA",
+   "label": "Tanoa Plaza / Holiday Inn Suva",
+   "s": 319,
+   "v": 369,
+   "m": 499
+  },
+  {
+   "destValue": "NAUSORI_AIRPORT",
+   "label": "Nausori Airport (SUV)",
+   "s": 369,
+   "v": 499,
+   "m": 549
+  }
+ ],
+ "destination_option_data_area_from_index_html_31a27fb": {
+  "CUSTOM_DEST": null,
+  "AQUARIUS_FIJI": "Wailoaloa",
+  "BAMBOO_BACKPACKERS": "Wailoaloa",
+  "BEACH_CLUB_WAILOALOA": "Wailoaloa",
+  "BLUEWATER_LODGE": "Wailoaloa",
+  "CENTURY_FIJI": "Nadi",
+  "CITRUS_HOTEL": "Nadi",
+  "CLUB_FIJI": "Wailoaloa",
+  "CROWNE_PLAZA_NADI_BAY": "Wailoaloa",
+  "FIJI_GATEWAY": "Nadi",
+  "FIJI_ORCHID": "Sabeto",
+  "GRAND_WEST_VILLAS": "Nadi",
+  "HEXAGON": "Wailoaloa",
+  "HORIZON_BEACH": "Wailoaloa",
+  "MERCURE_NADI": "Nadi",
+  "NADI_BAY_HOTEL": "Wailoaloa",
+  "NADI_DOWNTOWN": "Nadi",
+  "NUKU_LOALOA": "Nadi",
+  "RAMADA_WAILOALOA": "Wailoaloa",
+  "RAFFLES_GATEWAY": "Nadi",
+  "SMUGGLERS_COVE": "Wailoaloa",
+  "SUNSEEKERS": "Wailoaloa",
+  "TANOA_INTERNATIONAL": "Nadi",
+  "TOKATOKA": "Nadi",
+  "TRADEWINDS_FIJI": "Nadi",
+  "WAILOALOA_BEACH": "Wailoaloa",
+  "DENARAU_VILLAS": "Denarau",
+  "HILTON_DENARAU": "Denarau",
+  "HILTON_RESIDENCES": "Denarau",
+  "INTERCONTINENTAL_DENARAU": "Denarau",
+  "RADISSON_DENARAU": "Denarau",
+  "SHERATON_DENARAU_VILLAS": "Denarau",
+  "SHERATON_FIJI": "Denarau",
+  "SOFITEL_DENARAU": "Denarau",
+  "WESTIN_DENARAU": "Denarau",
+  "WYNDHAM_DENARAU": "Denarau",
+  "DENARAU_ISLAND_RESORT": "Denarau",
+  "PORT_DENARAU_MARINA": "Denarau",
+  "DOUBLETREE_SONAISALI": "Sonaisali",
+  "FIRST_LANDING": "Vuda Point",
+  "VUDA_MARINA": "Vuda Point",
+  "ANCHORAGE_BEACH": "Vuda Point",
+  "SAWENI_BEACH": "Saweni",
+  "CATHAY_LAUTOKA": "Lautoka",
+  "LAUTOKA_HOTEL": "Lautoka",
+  "NORTHERN_CLUB": "Lautoka",
+  "SEA_BREEZE_LAUTOKA": "Lautoka",
+  "TANOA_LAUTOKA": "Lautoka",
+  "WATERFRONT_LAUTOKA": "Lautoka",
+  "LAUTOKA_CRUISE": "Lautoka",
+  "MARRIOTT_MOMI": "Momi Bay",
+  "SEASHELL_RESORT": "Momi Bay",
+  "INTERCONTINENTAL_NATADOLA": "Natadola",
+  "YATULE_RESORT": "Natadola",
+  "ROBINSON_CRUSOE": "Natadola",
+  "MAUI_BAY_VILLAS": "Maui Bay",
+  "BEDARRA_INN": "Sigatoka",
+  "BEACHHOUSE_FIJI": "Coral Coast",
+  "GECKO_RESORT": "Sigatoka",
+  "KALEVU_HERITAGE_RESORT": "Sigatoka",
+  "KORO_SUN_LODGE": "Sigatoka",
+  "OCEANSIDE": "Sigatoka",
+  "SANDY_POINT_BEACH": "Sigatoka",
+  "SIGATOKA_CLUB": "Sigatoka",
+  "ANCHORAGE_KOROTOGO": "Coral Coast",
+  "CRUSOES_RETREAT": "Coral Coast",
+  "HIDEAWAY_RESORT": "Coral Coast",
+  "MANGO_BAY": "Coral Coast",
+  "MATAMANOA_LODGE": "Coral Coast",
+  "NAVITI_RESORT": "Coral Coast",
+  "OUTRIGGER_FIJI": "Coral Coast",
+  "SHANGRI_LA_YANUCA": "Coral Coast",
+  "TAMBUA_SANDS": "Coral Coast",
+  "TAVARUA_ISLAND": "Tavarua",
+  "THE_WARWICK": "Coral Coast",
+  "VAKAVITI": "Coral Coast",
+  "WAIDROKA_BAY": "Coral Coast",
+  "ARTS_VILLAGE": "Pacific Harbour",
+  "BEQA_LAGOON": "Beqa Island",
+  "LALATI_BEQA": "Beqa Island",
+  "NANUKU_RESORT": "Pacific Harbour",
+  "PEARL_SOUTH_PACIFIC": "Pacific Harbour",
+  "ROYAL_DAVUI": "Beqa Island",
+  "UPRISING": "Pacific Harbour",
+  "SIGATOKA_SAND_DUNES": "Sigatoka",
+  "SIGATOKA_TOWN": "Sigatoka",
+  "KULA_ECO": "Sigatoka",
+  "BIAUSEVU": "Sigatoka",
+  "NATURES_WAY": "Sigatoka",
+  "TAVUNI_HILL_FORT": "Sigatoka",
+  "BA_HOTEL": "Ba",
+  "DOLPHIN_ISLAND": "Rakiraki",
+  "NAMOSI_HIGHLANDS": "Namosi",
+  "NAVALA_VILLAGE": "Ba",
+  "TAVUA_HOTEL": "Tavua",
+  "VOLIVOLI_BEACH": "Rakiraki",
+  "WANANAVU": "Rakiraki",
+  "GRAND_PACIFIC": "Suva",
+  "HOLIDAY_INN_SUVA": "Suva",
+  "HOMESTEAD_SUVA": "Suva",
+  "NOVOTEL_LAMI": "Suva",
+  "PENINSULA_SUVA": "Suva",
+  "QUEST_SUVA": "Suva",
+  "SOUTHERN_CROSS_SUVA": "Suva",
+  "SUVA_MOTOR_INN": "Suva",
+  "TAGIMOUCIA_HOUSE": "Suva",
+  "TANOA_PLAZA_SUVA": "Suva",
+  "NAUSORI_AIRPORT": "Nausori",
+  "PORT_DENARAU_TRANSFER": "Port Denarau",
+  "MUSKET_COVE_TRANSFER": "Port Denarau",
+  "LIKULIKU_TRANSFER": "Port Denarau",
+  "CASTAWAY_TRANSFER": "Port Denarau",
+  "MANA_ISLAND_TRANSFER": "Port Denarau",
+  "TOKORIKI_TRANSFER": "Port Denarau",
+  "VOMO_TRANSFER": "Port Denarau",
+  "YASAWA_ISLAND_TRANSFER": "Port Denarau"
+ },
+ "marketplace_zone_names": [
+  "Nadi",
+  "Nadi Airport",
+  "Wailoaloa",
+  "Denarau",
+  "Sonaisali",
+  "Vuda Point",
+  "Lautoka",
+  "Momi Bay",
+  "Natadola",
+  "Sigatoka",
+  "Coral Coast",
+  "Pacific Harbour",
+  "Ba",
+  "Rakiraki",
+  "Suva",
+  "Nausori"
+ ],
+ "area_zone_aliases": {
+  "Port Denarau": "Denarau"
+ }
+}
