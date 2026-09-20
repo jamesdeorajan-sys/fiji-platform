@@ -158,6 +158,10 @@ test('sticky bar leaves room for the fixed chat launcher (60px + 20px offset)', 
   assert.ok(Number(m[1]) >= 80, 'padding-right must clear launcher width + offset');
 });
 
+test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line)', () => {
+  assert.match(css, /\.btn-sticky\{white-space:nowrap;flex:none;/);
+});
+
 test('cache-busting versions were bumped for the changed assets', () => {
   assert.match(html, /app\.js\?v=20260921-mobile-ux/);
   assert.match(html, /styles\.css\?v=20260921-mobile-ux/);

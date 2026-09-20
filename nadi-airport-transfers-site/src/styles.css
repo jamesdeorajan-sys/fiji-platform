@@ -382,7 +382,7 @@ body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
 .vehicle-hint{margin:0 0 14px;padding:10px 12px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:14px;line-height:1.4}
 .vehicle-hint.ok{background:#e6f0ff;color:#0a4a94}
 .vehicle-hint.warn{background:#fef3c7;color:#92400e}
-.btn-sticky{background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
+.btn-sticky{white-space:nowrap;flex:none;background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
 
 /* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
 @media(max-width:900px){
