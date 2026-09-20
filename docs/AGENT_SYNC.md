@@ -18,6 +18,14 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Mon, night+) — real-phone Hilton PASS + mobile UX findings (pre-existing, NOT from the redirect/404 patch)
+
+- **INDEPENDENTLY-VERIFIED (real phone, iPhone 15 Pro / iOS 26.6.2, preview host 77ef3ba6 visible):** homepage prefill NAN → Hilton Fiji Beach Resort & Spa: **PASS**. Still outstanding: unknown-route phone screen, sideways-scroll confirmation, browser identity. **Full mobile gate OPEN; no production approval.**
+- **Base comparison:** `31a27fb..9ddd923` adds only `_redirects`, `404.html`, `test/soft-404.test.js`; `index.html`, `app.js`, `styles.css`, `chat-widget.js` are byte-identical (git diff empty; production files match base after LF normalisation). Every finding below reproduces identically on production (AUTHOR-VERIFIED, 375×812 emulation): **not a regression from the patch**. Keep any repair separate.
+- **Finding A — chat launcher overlaps sticky "Get price →" (CONFIRMED, pre-existing).** `#ftt-chat-widget` fixed bottom:16px right:16px z-index 999999; `.sticky-bar` fixed bottom:0 z-index 50, always shown at ≤ mobile breakpoint, never hidden by the booking flow (no JS hides it). At 375×812: launcher 305–359 × 742–796 px vs button 236–355 × 758–800 px → overlap; a tap at (345,779) hits the launcher, not the CTA. Sticky bar also stays visible during vehicle/details steps (competing navigation).
+- **Finding B — vehicle selection (handler NOT broken).** Tap sequence on both hosts: arrive at step 2 → no vehicle selected (`state.selectedVehicle` null) → "Continue to passenger details" is enabled → pressing it alerts "Please select a vehicle." → tapping the Sedan card selects it (blue border/fill) → selection persists across add-on re-render → Continue proceeds to step 3. The recommended card has a green ring + "★ Recommended" badge but is not pre-selected, so it can be mistaken for selected; the Continue button is not disabled when nothing is selected. Real-phone tap sequence for the screenshot is not known — do not infer a handler bug.
+- **Candidate repairs (NOT implemented, separate PR after James decides):** (1) hide/offset `.sticky-bar` while the booking widget is in view or after step 1, and/or lift the launcher above the bar on mobile; (2) either preselect the recommended vehicle or disable Continue until a card is selected and label selection distinctly.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, late+) — real-phone device recorded
 
 - **Test device (from James's screenshot):** iPhone 15 Pro, iOS 26.6.2. **Browser: unconfirmed.** Only model and OS are recorded; no identifiers from the screenshot are copied here.
