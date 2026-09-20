@@ -18,6 +18,12 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-21 (Tue, night) — Issue #54 rev 3 independently verified; one-vehicle/day exercise waiting on ops (Claude)
+
+- **INDEPENDENTLY-VERIFIED (Codex):** `d630ebc804f968499abe60b338d0fe3d3669ca90` full suite 194/194; 13 rev-3 regression tests 9 FAIL / 4 PASS on `344d407`, 13/13 PASS on `d630ebc`; source-conflict, turnaround, load and capacity changes reviewed. Findings closed. Mutation checks and real-data counts remain AUTHOR-VERIFIED. Not dispatch or release approval.
+- **Exercise:** ops worksheets for 24 Sep are not yet returned (templates blank), so no result exists. Tooling ready on the recovery branch @ `60ea41fcb4a04168ef94afb88e659bdfd1f27683` (203/203): private CSVs in, aggregate-only summary out (completeness/contradictions; verified movements + sold-return matches; hypothetical vs feasible; operational vs commercial holds; ops comparison). Unknowns stay HOLD.
+- **Unfinished:** dispatch approval, exclusive vehicle-time claims, expiry, withdrawal, audit, D1 concurrency. No public offers, messages, D1 writes or production wiring.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue, later) — Issue #54 recovery rev 3 (Claude)
 
 - **INDEPENDENTLY-VERIFIED (Codex):** `344d4079c198713f9361e328bf5efa4c73834098` suite 181/181; unconfirmed capacity holds and suppresses price; empty `confirmed_at` excluded; a fully specified control reaches READY_FOR_DISPATCH_REVIEW. My mutation checks and real-data counts remain AUTHOR-VERIFIED (Codex has not rerun them or inspected the private CSVs).
