@@ -18,6 +18,21 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CONSOLIDATED NOW / NEXT / HOLD — 2026-09-21 (Claude; reconciliation, no new authorizations)
+
+Confirmed defects exist; **no proven overall root cause and no verified revenue-recovery measurement.** No production deployment, fare change or live test submission is authorized. Detail: Issue #59 consolidated comment; evidence `docs/evidence/2026-09-21-revenue-diagnosis/` (README §9–10, `outrigger-release-candidate.md`, `mobile-ux-followup-spec.md`, `data/daily_per_storefront_measurement.csv`).
+
+**NOW**
+1. Outrigger patch `9ddd923` (base `31a27fb`): candidate + rollback written (`outrigger-release-candidate.md`); rollback target production `9af4d251`. Preview content == `9ddd923` tree (37/37 files; deployment label says `61d2393` — cosmetic, prod deploy must use the exact commit). Open: unknown-route screen + sideways scroll + browser on the real phone (James). **Production decision: James, separate.**
+2. Mobile-UX follow-up: spec only (`mobile-ux-followup-spec.md`) — sticky/launcher overlap, sticky CTA in later steps, recommended-vs-selected. Handler reproduced as working; issue is presentation/gating. Separate branch/preview after James picks the M3 option.
+3. Ops reconciliation: 6 pre-alert upcoming requests (24 Sep–21 Dec) sent privately to James; plus 2 past (19–20 Sep) needing outcomes. Provider acceptance ≠ receipt ≠ ownership ≠ guest confirmation. Owner: James/ops. Only aggregates published.
+
+**MEASUREMENT** (`daily_per_storefront_measurement.csv`, Fiji dates, tests excluded, 15-min duplicate rule): genuine saved requests KNOWN; human-confirmed, completed, cancelled, collected revenue **UNKNOWN**; quoted value KNOWN (quoted only). Nadi combined (on-site + FijiDash-Nadi handoff, no overlap found) 8–10 Sep 18 (6.0/day) → 11–20 Sep 33 (3.3/day); 3-day launch baseline cannot settle the historical decline. GSC growth ≠ booking recovery; stable total homepage loads ≠ stable mobile/customer traffic.
+
+**NEXT (needs an owner decision or access):** ops results for the 6; James picks M1–M3 options; Codex/real-phone mobile gate; close 4 historical fares using config at save time; distance authority; a persistent human-confirmed status/collected-revenue field (or ops sheet) so the measurement stages stop being UNKNOWN.
+
+**HOLD (unchanged):** PR #55 stale-attempt recovery (separate release); fare-authority decision and Momi minibus fare; verified-reviews and support-hours claims + cross-site consistency; customer-confirmation privacy containment (owner unnamed — James to name); BookFijiTransfers findings PARKED; what served real `/transfer/*` 17 Jun–17 Sep.
+
 ## ✅ CHECKPOINT 2026-09-21 (Mon, night+) — real-phone Hilton PASS + mobile UX findings (pre-existing, NOT from the redirect/404 patch)
 
 - **INDEPENDENTLY-VERIFIED (real phone, iPhone 15 Pro / iOS 26.6.2, preview host 77ef3ba6 visible):** homepage prefill NAN → Hilton Fiji Beach Resort & Spa: **PASS**. Still outstanding: unknown-route phone screen, sideways-scroll confirmation, browser identity. **Full mobile gate OPEN; no production approval.**

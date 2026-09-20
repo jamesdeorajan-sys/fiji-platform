@@ -69,3 +69,35 @@ Not tested: production behaviour, edge caching after promotion, real-device mobi
 - **Not required:** zero post-deploy requests to `/transfer/app.js`, `/transfer/styles.css`, `/transfer/chat-widget.js` — cached clients and bots may keep requesting them. Monitor those counts, and their statuses, separately as residual errors (expected to trend down; they will 404 rather than return HTML).
 - Path counts are exposure, not guests.
 - No production change without Codex's independent result and James's approval.
+
+## 9. Daily per-storefront record (one series, Fiji dates) — `data/daily_per_storefront_measurement.csv`
+Extracted 2026-09-21 (read-only, `nadi-marketplace-db`, 151 rows, 43 known tests excluded → 108 genuine). Day = Fiji date = `date(created_at,'+12 hours')`. **Pipeline stage → availability:**
+| Stage | Source | State |
+|---|---|---|
+| Genuine saved requests | `bookings` rows, tests excluded | **KNOWN** (raw and de-duplicated) |
+| Human-confirmed bookings | none in DB (`status` has only `pending` 107 / `completed` 1; no confirmed/cancelled value ever written) | **UNKNOWN** — ops-held |
+| Completed trips | `status='completed'` is 1 row (pre-ref, 24 Jul) → not operationally meaningful | **UNKNOWN** (system count shown separately as `system_status_completed`) |
+| Cancelled bookings | never recorded | **UNKNOWN** |
+| Quoted/confirmed value | `settlement_amount_fjd` as stored (all FJD, 10% loyalty discount already applied where >FJ$50); quoted, not confirmed | **KNOWN as quoted only** |
+| Collected revenue | no payment/collection field (only `payment_method`) | **UNKNOWN** |
+
+**Storefront rule.** `FTT-` ref → `NADI_ONSITE_WIDGET`; `FD-` ref → `FIJIDASH_NADI_HANDOFF` when any referrer/campaign/source/landing/attribution field contains `nadiairporttransfers` or `nadi_`, else `FIJIDASH_OTHER`; no ref → `NO_REF_UNATTRIBUTED` (all before 2026-09-02; storefront cannot be determined). **BookFijiTransfers: no identifiable rows — UNKNOWN (parked).**
+
+**Test exclusion:** guest name contains CLAUDE / JAMES DER / JAMES DEO, or James's test phone (43 rows). Unknown internal tests may remain; the count is a floor for tests, so genuine counts are ceilings.
+
+**Duplicate rule (D1):** same phone + destination zone + vehicle within 15 minutes → later row dropped (5 rows: 1 no-ref, 1 FijiDash, 3 on-site). **No-double-count checks:** the two Nadi channels are separate rows with different ref prefixes; no phone appears on both an on-site and a FijiDash-Nadi row (0 groups), so `data/nadi_combined_daily_onsite_plus_handoff.csv` (= on-site + FijiDash-Nadi handoff, de-duplicated) has no overlap. One informational case: the same phone and pickup date appears on one FijiDash-Nadi row and one FijiDash-other row (possible attribution split of one guest; not dropped, ±1 on the `FIJIDASH_OTHER` side).
+
+**Result (de-duplicated, genuine saved requests, quoted value is FJD as stored):**
+| Storefront | Rows | Quoted FJD | First day |
+|---|---|---|---|
+| Nadi on-site widget | 43 (46 raw) | 5,972.00 | 8 Sep |
+| FijiDash with Nadi attribution | 8 | 1,501.96 | 12 Sep |
+| FijiDash other | 27 (28 raw) | 3,350.84 | 2 Sep |
+| No ref (pre-2 Sep) | 25 (26 raw) | 3,429.43 | 24 Jul |
+
+Nadi combined by window (Fiji days): **8–10 Sep 18 (6.0/day, FJ$2,172)**; **11–20 Sep 33 (3.3/day, FJ$5,302)** — on-site 25 + FijiDash handoff 8. 1–7 Sep: 0 (the widget did not exist; first on-site row 8 Sep Fiji). The 6.0 → 3.3 per day comparison rests on a 3-day launch window and cannot settle the historical decline; there is no observable pre-launch baseline in this DB. Data end 20 Sep Fiji; 21 Sep partial and excluded.
+
+**Caveats that must travel with these numbers:** GSC click growth is not booking recovery. Stable total homepage loads do not establish stable mobile/customer traffic (mobile loads fell while desktop, incl. testers, rose). Quoted value is not confirmed revenue.
+
+## 10. Open items (unchanged by this reconciliation)
+Four unexplained historical fares (reconcile against fare/config in force when saved); fare-authority decision; distance authority (98 / 96.7 / 87.9 km); PR #55 stale-attempt recovery (HOLD, separate release); verified-reviews and support-hours claims and cross-site consistency; customer-confirmation privacy containment and named owner; BookFijiTransfers data (parked); what served real `/transfer/*` on the custom domain 17 Jun–17 Sep.

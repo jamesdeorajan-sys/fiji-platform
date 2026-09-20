@@ -30,7 +30,7 @@ SELECT event_type, COUNT(*) FROM booking_events GROUP BY 1;   -- created 147, ad
 -- Q4 saved before alerts existed and still upcoming/recent pickup (no automatic alert was ever sent)
 --   6 upcoming (pickup 2026-09-24 .. 2026-12-21) + 2 with pickups 19-20 Sep; ids are held privately, not in GitHub.
 
--- Q5 stored amounts that look server-overwritten (non-integer on the on-site widget; client fares are integers)
+-- Q5 [SUPERSEDED WORDING 2026-09-21: integer/non-integer is NOT overwrite evidence; see README section 4 and data/ftt_amount_reconciliation_counts_only.csv] stored amounts, integer check only
 SELECT COUNT(*), SUM(CASE WHEN quoted_amount<>CAST(quoted_amount AS INTEGER) THEN 1 ELSE 0 END) FROM bookings WHERE client_booking_ref LIKE 'FTT-%' AND NOT (<T>);  -- 46 / 0
 -- FD-: 36 rows, 34 non-integer (FijiDash amounts ARE server formula prices)
 
