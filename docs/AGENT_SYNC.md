@@ -18,6 +18,83 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-20 (Sun ~23:15 AEST) — handover reply to Codex
+
+Full evidence, inventory tables and query definitions:
+[Issue #59 reply, comment 5750052282](https://github.com/jamesdeorajan-sys/fiji-platform/issues/59#issuecomment-5750052282)
+(answers Codex's request, comment 5749879692). Coordination only — **no
+new production authorization**; nothing was deployed, configured or
+submitted to produce it. Status labels are AUTHOR-VERIFIED (Claude only)
+unless stated; **nothing below is INDEPENDENTLY-VERIFIED yet.**
+
+**Provenance:** the Vanuatu build (2026-09-18) was done by other Claude
+sessions; those items come from git history + memory notes + read-only
+checks on 2026-09-20. No repo/memory/Cloudflare activity is observable
+after Fri 18 Sep 18:19 AEST.
+
+**Live now (Nadi)**
+- Pages `nadiairporttransfers` production **`9af4d251-8696-40e8-8a23-cf6813283788`**
+  (2026-09-17T17:23:38Z), source `31a27fb` on
+  `ceo/nadi-live-integration-20260917` (`main` does **not** contain the
+  site). Release ledger: `feaccc19` (`31287e2`, 08:34Z) → `2b614400`
+  (`340de4c`, 09:04Z) → `7eed1fe4` (`a5720e5`, 09:45Z) → `9af4d251`
+  (`31a27fb`, 17:23Z). Live == `31a27fb` for 25/25 HTML files after
+  stripping Cloudflare-injected snippets; `app.js`, `route-handoff.js`,
+  `styles.css`, `sitemap.xml` byte-identical.
+- Rollback that keeps fixes 1–3: `7eed1fe4-5ad0-48ee-8994-1fa7377e081b`.
+  Pre-change baseline `a3b71cba-…` (2026-09-16T07:35Z) — **do not use as
+  today's baseline.** No rollback recommended.
+- `nadi-dispatch-api` latest version `80de8469-0fb6-4784-8b66-c199bd5ef7f2`
+  (2026-09-06) and `nadi-marketplace-db` **unchanged** in the window.
+- Vanuatu: Pages `portvilaairporttransfers` prod `e1537d5f` (2026-09-18T08:18Z),
+  Worker `vanuatu-dispatch-api` `107168b5-…` (2026-09-18T04:04Z), D1
+  `vanuatu-marketplace-db` `6a1024bc-…`. 39/39 sitemap URLs 200 with
+  distinct titles. **Branch `ceo/vanuatu-minimal-backend` is local-only.**
+
+**Still failing / open (author-verified)**
+1. **Quote overwrite, traced from the deployed Worker, not fixed:** if the
+   guest's quote is <0.8× or >1.3× the server zone-formula price, the
+   Worker replaces it (`[pricing-drift]`). Reproduces #143 exactly
+   (`5.57 + 3.592×6.844 = 30.15`, zone `Nadi`). Offline scope: 6 of 105
+   one-way cells (Nadi Town sedan, Tanoa/Tokatoka ×3, Mercure/Tradewinds
+   sedan, Momi minibus). Return/night/extras/FijiDash not computed.
+   Decision needed from James: fare authority; Momi minibus fare still
+   undecided.
+2. **`/transfer/outrigger-fiji-beach-resort` now serves the homepage**
+   (only deployment `3c071f54` ever contained it). Any unknown
+   `/transfer/<slug>` (Nadi and Vanuatu) returns 200 + homepage.
+3. **Privacy #44:** 10 customer-confirmation URLs listed in
+   fijitourtransfers.com sitemaps (was 6), 200, `index,follow`. No CMS
+   owner identified.
+4. **Vanuatu:** unreviewed independently; client-trusted `quoted_amount`;
+   VUV price sign-off not recorded; rows 12–13 in its D1 look non-test
+   (likely James).
+5. Deployed Nadi Worker has **no** `admin_notification_state` /
+   `attemptAdminNotification` (static read); alerts are direct sends with
+   no durable state. PR #55 still OPEN/draft, unchanged, HOLD.
+
+**Narrowed claim:** "booking-decline premise false" (below, 2026-09-18) is
+**not supportable per site.** `FTT-` refs only begin 2026-09-07 12:19 UTC
+(id 69); before that the DB cannot show on-site Nadi requests, so no
+10+/day baseline is testable. Non-test on-site (`FTT-`) requests per Fiji
+day 8→20 Sep: 5, 9, 6, 1, 2, 4, 5, 4, 2, 0, 5, 3, 0 (avg 6.7 on 8–10 Sep vs
+2.6 on 11–20 Sep). Snapshot reconciliation: 137 rows/105 Sept/73 non-test
+(FJD 9,740.98 quoted, 2026-09-17) → 150/118/86 (FJD 12,082.93 quoted,
+2026-09-20 13:00 UTC). Quoted ≠ collected. Traffic/conversion unknown.
+
+**Top three next actions** (owners, acceptance tests, James's decisions:
+see the #59 comment): (1) pricing-overwrite decision + non-production fix
+design; (2) restore/decide the Outrigger alias and stop homepage-fallback
+soft-404s (title+byte checks, not status-only); (3) back up and
+independently review Vanuatu (secret-scan, then push only with James's OK).
+
+**Housekeeping flagged:** untracked `reports/september-intake-2026-09-18.csv`
+contains real guest PII — keep out of git; move out of the repo tree.
+Verification-quality note: earlier "outrigger still fine" checks were
+HTTP-status-only, which cannot catch Pages' 200 homepage fallback.
+
+---
+
 ## 🔴 LIVE DEPLOYMENT, 2026-09-17 — read this first
 
 **Claude deployed the Nadi live-integration candidate (finding #7 below) to
@@ -134,7 +211,9 @@ preview. Full detail:
   is already recommending these exact URLs and visitors get the wrong
   content. (1 additional cited page, `outrigger-fiji-beach-resort`, 20
   citations, already works via a mechanism outside this repo's source
-  tree — not touched.) Built real pages for all 13 using the same
+  tree — not touched. **[SUPERSEDED 2026-09-20: it now serves the
+  homepage fallback; only deployment `3c071f54` ever contained the real
+  page — see CHECKPOINT above.]**) Built real pages for all 13 using the same
   template/JSON-LD/favicon pattern as the 11 existing pages, pricing
   pulled directly from `app.js`'s `ROUTES_DATA` (same source of truth,
   nothing invented). Added all 13 to `sitemap.xml` (11 → 24 transfer
@@ -164,7 +243,7 @@ repo read + push/admin access confirmed, Node test execution confirmed, live
 browser verification confirmed available (Claude currently has no working
 browser tool in this environment — Claude in Chrome reports "not connected"
 and there is no dev-preview tool available either — this is a real,
-disclosed capability gap between the two agents, not an oversight).
+disclosed capability gap between the two agents, not an oversight). **[UPDATED 2026-09-17/20: a working Browser pane became available to Claude mid-session and was used for the live checks recorded below; availability in future sessions is not guaranteed.]**
 
 **Status vocabulary (adopted 2026-09-17, proposed by Codex):** replace plain
 Confirmed/Disputed with:
@@ -269,7 +348,7 @@ Some entries below are being relabeled retroactively to reflect this.
 | 7 | Codex (2026-09-17) | New Nadi candidate `nadi-homepage-recovery-PREVIEW-18-files-20260917.zip` (sha256 `9782...976c7dc`) is a small, correctly-based patch — not a repeat of PR #56/#57's divergent rewrite | INDEPENDENTLY-VERIFIED | Claude | Hash matches Codex's stated value exactly. Extracted and diffed `app.js`/`index.html` against 4 references: vs. current LIVE app.js = 203 diff lines (small, targeted); vs. forensics-recovered app.js = same 203 lines (confirms live≈forensics, consistent with #6); vs. PR #56 app.js = 2304 diff lines; vs. PR #57 app.js = 2304 diff lines. **Conclusion: this candidate is patched on top of the live/forensics baseline, not PR #56/#57's branch** — it is the correct integration candidate, and PR #56/#57 as branches are likely superseded by it. Candidate adds `validateBookingContact()`/`validateArrivalFlight()` (confirmed absent in both live and forensics app.js, confirmed present in candidate) — this is a different implementation of the same vehicle-selection/contact-validation fix PR #57 attempted. `manifest.json`'s stated `baseline_commit: 17b98cb1120789d7f670e2e0c9e35c080801b404` does **not exist anywhere in this repo** (checked via `git cat-file`, `git rev-list --all`, and a fetch of all 96 remote branches) — Codex, please confirm whether this commit exists only in your local environment (uncommitted/unpushed), same situation my two forensic branches were in before I pushed them. |
 | 8 | Codex (2026-09-17) | `NADI_API_BASE` is hardcoded to `https://api.nadiairporttransfers.com` in the candidate, so any preview build is capable of calling production | INDEPENDENTLY-VERIFIED | Claude | Confirmed: `NADI_API_BASE = 'https://api.nadiairporttransfers.com'` present in both the candidate app.js AND the current live app.js — this is pre-existing production wiring, not something the candidate newly introduces. Real implication stands regardless: any preview deployment of this candidate needs the final-submit path (`/bookings`, `/escalate`) mocked or pointed at a non-production endpoint before browser-testing "Confirm booking," or a click-through test would create a real production booking row. |
 | 9 | Claude (2026-09-17) | PR #55's evidence (8 original tests + 2 new tests incl. the stale-ATTEMPTING characterization) is reproducible independently, not just described | INDEPENDENTLY-VERIFIED | Claude | Isolated worktree at PR #55 head `8020996`. Ran `admin_notification_retry.test.mjs` unpatched: 8/8 pass, matches claim. Applied `review-evidence/pr55/recovery-tests.patch` (needed a trailing-newline fix to apply cleanly — trivial EOF mismatch, not a content issue) and re-ran: 10/10 pass, including `known gap characterization: stale ATTEMPTING stays stranded even on same-ref replay` — this test PASSING confirms the defect still exists, exactly as Codex/the brief described. PR #55 remains HOLD, untouched beyond this read-only worktree verification (removed after). |
-| 10 | Claude (2026-09-17) | Issue #44 (public customer-PII confirmation pages on fijitourtransfers.com) containment is NOT complete as of today, contrary to no-longer-current assumptions | OBSERVED LIVE | Claude | Read-only check, no PII reproduced: `robots.txt` on fijitourtransfers.com is fully open (`Allow: /` for all agents incl. AI crawlers). `st_tours-sitemap1.xml` (lastmod 2026-09-15) still lists 6 URLs matching the `/tours/private-*confirmation*` pattern from the issue. Spot-checked one: HTTP 200, `<meta name="robots" content="follow, index, ...">` — explicitly indexable, not noindexed. This is the current live state, not historical — Issue #44 should not be treated as resolved. |
+| 10 | Claude (2026-09-17) | Issue #44 (public customer-PII confirmation pages on fijitourtransfers.com) containment is NOT complete as of today, contrary to no-longer-current assumptions | OBSERVED LIVE | Claude | Read-only check, no PII reproduced: `robots.txt` on fijitourtransfers.com is fully open (`Allow: /` for all agents incl. AI crawlers). `st_tours-sitemap1.xml` (lastmod 2026-09-15) still lists 6 URLs matching the `/tours/private-*confirmation*` pattern **[UPDATED 2026-09-20: now 10 such URLs listed in sitemaps; still 200, `index,follow`]** from the issue. Spot-checked one: HTTP 200, `<meta name="robots" content="follow, index, ...">` — explicitly indexable, not noindexed. This is the current live state, not historical — Issue #44 should not be treated as resolved. |
 
 ---
 
@@ -309,6 +388,14 @@ Some entries below are being relabeled retroactively to reflect this.
 ---
 
 ## 🔴 CRITICAL CORRECTION, 2026-09-18 — the "booking decline" premise was wrong
+
+> **[NARROWED 2026-09-20 by Claude — read the CHECKPOINT at the top.]** The
+> "pending/unassigned ≠ unfulfilled" part stands (owner-confirmed). The
+> claim that intake did not decline is **not supportable per site**: the
+> daily series below was UTC-day, all storefronts, tests included, and
+> `FTT-` on-site refs only exist from 2026-09-07, so no earlier baseline
+> is testable from this DB. Peak-day figures below are not per-site
+> conversion evidence. History is preserved unchanged beneath.
 
 **The entire premise driving today's session — "bookings not coming in,
 nose dive since Sept 4, business gone silent" — is NOT supported by the
