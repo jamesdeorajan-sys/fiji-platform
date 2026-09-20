@@ -166,7 +166,9 @@ textarea.field-input{resize:vertical;min-height:80px}
 .tbs-total{margin-top:4px;padding-top:10px;border-top:2px solid #0d9488 !important}
 .tbs-total .tbs-label,.tbs-total .tbs-value{font-family:'Sora',sans-serif;font-weight:700;font-size:1.05rem;color:#0d9488}
 .vehicle-card{background:var(--white);border:2px solid var(--border);border-radius:var(--radius-md);padding:16px;cursor:pointer;transition:var(--transition);text-align:center}
-.vehicle-card:hover,.vehicle-card.selected{border-color:var(--ocean);background:var(--ocean-light)}
+/* hover only where a real hover exists: on touch screens :hover sticks to the last-tapped card and looks "selected" */
+.vehicle-card.selected{border-color:var(--ocean);background:var(--ocean-light)}
+@media (hover:hover){.vehicle-card:hover{border-color:var(--ocean);background:var(--ocean-light)}}
 .vehicle-card.selected{box-shadow:0 0 0 3px rgba(0,102,204,.15)}
 .vehicle-icon{font-size:28px;margin-bottom:8px}
 .vehicle-name{font-family:'Sora',sans-serif;font-weight:700;font-size:.9rem;color:var(--dark);margin-bottom:2px}
@@ -186,8 +188,8 @@ textarea.field-input{resize:vertical;min-height:80px}
 .step-title{font-size:1.2rem;margin-bottom:20px;color:var(--dark)}
 .vehicle-detail-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
 .vehicle-detail-card{border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;cursor:pointer;transition:var(--transition)}
-.vehicle-detail-card:hover,.vehicle-detail-card.selected{border-color:var(--ocean)}
-.vehicle-detail-card.selected{background:var(--ocean-light)}
+@media (hover:hover){.vehicle-detail-card:hover{border-color:var(--ocean)}}
+.vehicle-detail-card.selected{border-color:var(--ocean);background:var(--ocean-light);box-shadow:0 0 0 3px rgba(0,102,204,.15)}
 .vd-icon{font-size:36px;margin-bottom:12px}
 .vd-name{font-family:'Sora',sans-serif;font-weight:700;font-size:1rem;margin-bottom:4px}
 .vd-cap{font-size:12px;color:var(--mid);margin-bottom:10px}
@@ -368,8 +370,18 @@ textarea.field-input{resize:vertical;min-height:80px}
 
 /* ─── STICKY BAR ──────────────────────────────────────────────────────────── */
 .sticky-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--dark);border-top:1px solid rgba(255,255,255,.1);padding:12px 20px}
-.sticky-bar-inner{display:flex;justify-content:space-between;align-items:center}
-.sticky-bar-inner span{color:rgba(255,255,255,.7);font-size:14px}
+/* right padding keeps the CTA clear of the fixed chat launcher (60px + 20px offset) */
+.sticky-bar{padding-right:96px}
+.sticky-bar-inner{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sticky-bar-inner span{color:rgba(255,255,255,.7);font-size:14px;min-width:0}
+/* acquisition prompt: not shown while the booking widget is on screen or after step 1 */
+body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
+/* explicit vehicle choice */
+.vehicle-selected-mark{display:none;position:absolute;top:8px;right:8px;background:var(--ocean);color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em;padding:3px 9px;border-radius:99px;z-index:2}
+.vehicle-card.selected .vehicle-selected-mark,.vehicle-detail-card.selected .vehicle-selected-mark{display:inline-block}
+.vehicle-hint{margin:0 0 14px;padding:10px 12px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:14px;line-height:1.4}
+.vehicle-hint.ok{background:#e6f0ff;color:#0a4a94}
+.vehicle-hint.warn{background:#fef3c7;color:#92400e}
 .btn-sticky{background:var(--ocean);color:#fff;padding:10px 20px;border-radius:var(--radius-sm);font-weight:600;font-size:14px;transition:var(--transition)}
 
 /* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
