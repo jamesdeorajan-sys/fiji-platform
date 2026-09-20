@@ -1,0 +1,17 @@
+# Booking-led planning stage (recovery branch) - PLANNING ONLY
+
+Supersedes worksheet completion as a prerequisite for **demand planning** only. It does **not** remove verified dispatch, conflict / capacity / economics / approval checks, or the requirement for verified data before any public offer. The one-vehicle validation tooling (`scripts/one_vehicle_day_exercise.js`) is unchanged and remains a separate stage.
+
+**Inputs:** saved booking records (arrival legs plus the return legs the records actually hold: return date, time and recorded location). **Outputs:** private prepopulated worksheets + an aggregate-only summary.
+
+**Rules enforced in code (`src/booking_led_plan.js`, `test/booking_led_plan.test.js`):**
+- Guest pickup times and booked service class are **fixed inputs**; nothing proposes changing a time or accepting another service. Different booked classes are never paired.
+- A return location becomes a zone **only** by exact (case/space-insensitive) match to the existing platform mapping (`destinations.name -> zones.name`), original text preserved. Missing, ambiguous or unmatched stays **unresolved**; the outbound destination is never silently substituted. A punctuation-insensitive containment hint may be shown as an **unverified suggestion for ops to confirm**; pairings built from it are marked `CONDITIONAL_ON_LOCATION_CONFIRMATION`. An explicit opt-in `--scenario-outbound-zone` produces a separate, clearly labelled scenario (return pickup assumed = the same booking's outbound zone) that is never part of the plan.
+- Pairings are between **different bookings** in the **same exact zone** on the same date; times are the recorded pickup times. `SOLD_SEQUENCE_ARRIVAL_THEN_RETURN` (airport -> zone, then zone -> airport) and `SOLD_SEQUENCE_RETURN_THEN_ARRIVAL`. Zone adjacency is unverified, so other zone combinations are counted, not paired.
+- Unassigned = `NEEDS_DISPATCH_ALLOCATION`; a missing vehicle never prevents listing. Differing existing assignments = `REASSIGNMENT_PROPOSAL_FOR_OPS_REVIEW` (not a rejection); one assigned = `PROPOSE_ALLOCATE_SECOND_TO_SAME_VEHICLE`; same = `SAME_VEHICLE_ALREADY_CONFIRM_TIMING`.
+- **Timing:** recorded pickup times, gaps and server-calculated distances are shown with their source. Duration is `DURATION_UNKNOWN` unless a traceable estimate (source + date + minutes) is supplied, then shown as `PROVISIONAL_ESTIMATE`. No driving speed is assumed. Every pairing's timing conclusion is `NOT_DETERMINED`. Missing duration never prevents listing a pairing; it prevents any feasibility conclusion.
+- Every pairing lists **known facts, missing inputs and the allocation decision ops must make**. Test / duplicate flags (suspected tests, retry exclusions, possible duplicate trips) are carried, not dropped; saved requests are labelled `SAVED_REQUEST_NOT_GUEST_CONFIRMED` (guest confirmation UNKNOWN; provider alert acceptance is not staff receipt).
+- **Sold vs unsold:** pairings are between already-sold saved requests. Arrivals or returns with no recorded partner are **unsold potential empty legs**, hypothetical. Neither is a discounted offer.
+- **Nothing is labelled operationally feasible** in this stage; a test asserts the string never appears in plan output.
+
+`node scripts/booking_led_plan.js --input PRIVATE.json --private-dir DIR [--windows A:B,...] [--scenario-outbound-zone]` writes private sheets (legs, pairings, potential empty legs, scenario) and prints aggregates only.
