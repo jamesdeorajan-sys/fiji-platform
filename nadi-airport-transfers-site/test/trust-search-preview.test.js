@@ -56,6 +56,11 @@ test('support/hours wording: online request, transfer hours and human response h
   assert.doesNotMatch(index, /24\/7 (?:WhatsApp|Fijian)/);
 });
 
+test('comparison table no longer claims "Instant" WhatsApp support (no response-time evidence); the row states plain availability only', () => {
+  assert.doesNotMatch(visible, /✓ Instant|Instant<\/td>/);
+  assert.match(index, /<tr><td>WhatsApp support<\/td><td class="featured-col chk">✓<\/td>/);
+});
+
 test('child seat wording is consistent: FJ$8 in the FAQ, the extras list and the comparison table', () => {
   assert.match(index, /small charge of FJ\$8/);
   assert.match(index, /<td>Child seats \(request\)<\/td><td class="featured-col chk">FJ\$8<\/td>/);
