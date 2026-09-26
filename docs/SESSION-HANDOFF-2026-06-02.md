@@ -1,3 +1,9 @@
+> **HISTORICAL POINTER — NOT CANONICAL.** As of 2026-08-24, the living
+> handoff document is `docs/vakaviti-control-plane/SESSION_HANDOFF.md` and
+> the append-only history is `docs/vakaviti-control-plane/CHANGELOG.md`.
+> This file is preserved as a historical snapshot of 2026-06-02 and is not
+> updated further.
+
 # SESSION-HANDOFF-2026-06-02.md
 # Session 34 Complete — Handoff to Session 35
 # Date: June 2, 2026
