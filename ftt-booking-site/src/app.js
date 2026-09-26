@@ -1093,8 +1093,9 @@ function startLiveFareFetch(key) {
     const complete = LIVE_FARE_CLASSES.every((k) => typeof refs[k] === 'number');
     // `at` is when the OLDEST class was last verified by the server, so a failed revalidation can never make old fares look fresh
     state.liveFares = { key, refs, refsAt, at: Math.min(...LIVE_FARE_CLASSES.map((k) => refsAt[k])), complete };
-    if (results.every(valid)) at.n = 0;
-    if (!complete && at.n < LIVE_FARE_MAX_ATTEMPTS) {
+    const allFresh = results.every(valid);
+    if (allFresh) at.n = 0;
+    if (!allFresh && at.n < LIVE_FARE_MAX_ATTEMPTS) {   // any round that did not fully verify (incl. revalidating an expired answer) backs off before the next attempt
       at.notBefore = Date.now() + LIVE_FARE_RETRY_DELAYS_MS[Math.min(at.n - 1, LIVE_FARE_RETRY_DELAYS_MS.length - 1)];
       setTimeout(() => {
         if (`${state.destZoneName}|${state.tripType}` !== key) return;

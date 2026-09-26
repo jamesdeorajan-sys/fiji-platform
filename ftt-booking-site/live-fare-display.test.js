@@ -309,3 +309,21 @@ test('review caption says "Not submitted yet" before submission; "saved online" 
   assert.doesNotMatch(html, /price-total-sub">Saved online/);
   assert.match(html, /id="bulaWaReassurance">Your request is already saved online/);
 });
+
+test('revalidating an EXPIRED answer also backs off between attempts (no burst of immediate retries)', async () => {
+  let mode = 'up';
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => { c.__calls.push({ vt }); return mode === 'up' ? TANOA.refs[vt] : null; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await settle();
+  mode = 'down';
+  await wait(230);                                          // expire
+  c.__calls.length = 0;
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(6);                                            // less than the first backoff (15 ms in this harness)
+  assert.equal(c.__calls.length, 3, 'exactly one attempt so far');
+  await wait(20);
+  assert.equal(c.__calls.length, 6, 'second attempt only after the backoff');
+  await wait(60);
+  assert.equal(c.__calls.length, 9, 'third and last attempt');
+  assert.equal(c.state.liveFareStatus, 'stale');
+});
