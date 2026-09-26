@@ -18,6 +18,17 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT — FOLLOW-UP 2026-09-26 — inbox reconciliation, row191 resolved, 24h split corrects the read (Claude)
+
+Full reply: Issue #59 comment 5844937243. Read-only; no resends/messages/test submissions/production changes.
+
+- **Inbox reconciliation (private CSV to James):** all 7 genuine-save notifications sent to `wa_id 61478886145`, exact match to `platform_settings.admin_alert_phone` (+61478886145). All HTTP 200 / `message_status: accepted` with real WAMIDs. **Delivered/read status is structurally unavailable — only 4 event_types have EVER existed in this DB (created, admin_notification_sent/failed/skipped_idempotent); no delivery/read callback has ever been ingested.** Ops acknowledgement: still no table, UNKNOWN.
+- **Row 191 resolved:** unfiltered `booking_events` query shows both `created` (08:42:26) and `admin_notification_sent` (08:42:30, WAMID, accepted) rows exist. The earlier 'no events' impression was a scoping artifact — my query joined on a test-exclusion filter that correctly dropped 191 (a known test) from its *output*, not from the DB. No new test needed to resolve this.
+- **24h split corrects the framing.** All 7 genuine saves fall in the OLDER 24h (09-24 08:46 -> 09-25 08:46 UTC); the MOST RECENT 24h (09-25 08:46 -> now) has **zero genuine saves on both storefronts** — the first time in 7 comparable same-clock-window days that BOTH storefronts went quiet simultaneously (one storefront alone has happened before). **Real traffic did NOT collapse in that window** — nadiairporttransfers.com RUM pageloads fell ~35% but book.fijidash.com RUM pageloads actually ROSE (8->14) while FijiDash saves went 5->0. This points more toward a booking-completion/submission problem than a pure top-of-funnel traffic drop; superseded the first checkpoint's 48h-averaged 'consistent with traffic drop' framing.
+- **Sanitised filter defs given for review**: test-exclusion rule and the 15-min same-phone+zone+vehicle dup rule, both labelled as bounded (rows are 'not excluded by current test rules', not 'confirmed genuine'; 0 dup pairs under ONE rule, not 'no duplicate uncertainty').
+- **Corrections applied as instructed:** saves succeeding doesn't rule out intermittent pre-save failures; WhatsApp accepted != delivered/received; no Pages/Worker deploy doesn't rule out DNS/WAF/config changes (still unchecked, UNKNOWN); BFT stays separate.
+- **Repair:** continuing on the EXISTING combined mobile/Outrigger candidate (no replacement project) + a narrow InterContinental alias/content/schema/sitemap fix prepared alongside it — not done this turn, reported separately. Production approval stays with James.
+
 ## 🔴 P0 INCIDENT CHECK 2026-09-26 (~08:46 UTC) — "no bookings for 48h" claim vs D1 evidence (Claude)
 
 Read-only. No test bookings, messages, resends or production changes. Full reply: Issue #59 comment 5844820238.
