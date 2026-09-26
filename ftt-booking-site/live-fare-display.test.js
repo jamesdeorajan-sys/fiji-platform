@@ -70,8 +70,8 @@ function makeCtx({ prices, priceSource = 'published', zone = 'Nadi', tripType = 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const settle = () => wait(25);
 
-// Live server values read on 2026-09-27 (GET /reference-fare, Nadi Airport -> zone).
-const HILTON = { static: { sedan: 49, minivan: 69, minibus: 99 }, refs: { sedan: 47.87, minivan: 69.08, minibus: 91.02 }, zone: 'Denarau', dest: 'HILTON_DENARAU' };
+// Live server values read on 2026-09-27 (GET /reference-fare, Nadi Airport -> zone; Nadi zone also read for trip_type=return).
+const HILTON = { static: { sedan: 49, minivan: 69, minibus: 99 }, refs: { sedan: 47.87, minivan: 69.08, minibus: 99.84 }, zone: 'Denarau', dest: 'HILTON_DENARAU' };
 const TANOA = { static: { sedan: 15, minivan: 25, minibus: 45 }, refs: { sedan: 30.15, minivan: 51.42, minibus: 79.46 }, zone: 'Nadi', dest: 'TANOA_INTERNATIONAL' };
 const RETURN_TANOA = { static: { sedan: 30, minivan: 50, minibus: 85 }, refs: { sedan: 55.78, minivan: 95.13, minibus: 147.0 }, zone: 'Nadi', dest: 'TANOA_INTERNATIONAL' };
 
