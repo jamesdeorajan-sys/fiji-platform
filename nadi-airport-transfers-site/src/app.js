@@ -2061,7 +2061,7 @@ function buildReviews() {
         <div>
           <div class="review-name">${r.name}</div>
           <div class="review-location">${r.location}</div>
-          <div class="review-source">${r.source} review · Verified</div>
+          <div class="review-source">${r.source} review</div>
         </div>
       </div>
     </div>`).join('');
