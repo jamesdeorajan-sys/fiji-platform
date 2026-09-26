@@ -213,7 +213,9 @@ test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line
 });
 
 test('cache-busting versions were bumped for the changed assets', () => {
-  assert.match(html, /app\.js\?v=20260921-mobile-ux/);
+  // app.js content changed again in the trust/claims revision, so its cache key moved on (see trust-search-preview.test.js)
+  assert.match(html, /app\.js\?v=20260927-trust-claims/);
+  assert.doesNotMatch(html, /app\.js\?v=20260921-mobile-ux/);
   assert.match(html, /styles\.css\?v=20260921-mobile-ux/);
 });
 
