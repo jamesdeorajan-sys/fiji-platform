@@ -1,0 +1,324 @@
+{
+ "taken_at_utc": "2026-09-26 18:09:43",
+ "source": "nadi-marketplace-db, read-only (zones, pricing_rules, zone_distance_cache for Nadi Airport pairs, fuel_index latest)",
+ "zones": [
+  {
+   "name": "Nadi",
+   "lat": -17.8033,
+   "lng": 177.4145,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Nadi Airport",
+   "lat": -17.7554,
+   "lng": 177.4432,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Wailoaloa",
+   "lat": -17.7717,
+   "lng": 177.4083,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Denarau",
+   "lat": -17.7746,
+   "lng": 177.3814,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Sonaisali",
+   "lat": -17.8225,
+   "lng": 177.3634,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Vuda Point",
+   "lat": -17.6725,
+   "lng": 177.3505,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Lautoka",
+   "lat": -17.6053,
+   "lng": 177.4503,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Momi Bay",
+   "lat": -17.9308,
+   "lng": 177.2678,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Natadola",
+   "lat": -18.101017,
+   "lng": 177.319168,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Sigatoka",
+   "lat": -18.1416,
+   "lng": 177.5049,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Coral Coast",
+   "lat": -18.2,
+   "lng": 177.7,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Pacific Harbour",
+   "lat": -18.2333,
+   "lng": 178.05,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Ba",
+   "lat": -17.5333,
+   "lng": 177.6667,
+   "remote_multiplier": 1.37
+  },
+  {
+   "name": "Rakiraki",
+   "lat": -17.3667,
+   "lng": 178.1667,
+   "remote_multiplier": 1.37
+  },
+  {
+   "name": "Suva",
+   "lat": -18.1416,
+   "lng": 178.4419,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Nausori",
+   "lat": -18.0233,
+   "lng": 178.5561,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Mamanuca Islands",
+   "lat": null,
+   "lng": null,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Yasawa Islands",
+   "lat": null,
+   "lng": null,
+   "remote_multiplier": 1
+  },
+  {
+   "name": "Beqa Lagoon",
+   "lat": null,
+   "lng": null,
+   "remote_multiplier": 1
+  }
+ ],
+ "pricing_rules": [
+  {
+   "vehicle_type": "sedan",
+   "base_rate_fjd_per_km": 3.592,
+   "flagfall_fjd": 5.57,
+   "distance_min_km": 0,
+   "distance_max_km": 15,
+   "active": 1
+  },
+  {
+   "vehicle_type": "sedan",
+   "base_rate_fjd_per_km": 1.568,
+   "flagfall_fjd": 44.19,
+   "distance_min_km": 15,
+   "distance_max_km": 35,
+   "active": 1
+  },
+  {
+   "vehicle_type": "sedan",
+   "base_rate_fjd_per_km": 1.438,
+   "flagfall_fjd": 38.75,
+   "distance_min_km": 35,
+   "distance_max_km": 70,
+   "active": 1
+  },
+  {
+   "vehicle_type": "sedan",
+   "base_rate_fjd_per_km": 1.12,
+   "flagfall_fjd": 33.65,
+   "distance_min_km": 70,
+   "distance_max_km": 160,
+   "active": 1
+  },
+  {
+   "vehicle_type": "sedan",
+   "base_rate_fjd_per_km": 1.852,
+   "flagfall_fjd": -47.67,
+   "distance_min_km": 160,
+   "distance_max_km": 300,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minivan",
+   "base_rate_fjd_per_km": 3.581,
+   "flagfall_fjd": 26.91,
+   "distance_min_km": 0,
+   "distance_max_km": 15,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minivan",
+   "base_rate_fjd_per_km": 2.622,
+   "flagfall_fjd": 43.54,
+   "distance_min_km": 15,
+   "distance_max_km": 35,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minivan",
+   "base_rate_fjd_per_km": 0.479,
+   "flagfall_fjd": 128.92,
+   "distance_min_km": 35,
+   "distance_max_km": 70,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minivan",
+   "base_rate_fjd_per_km": 1.764,
+   "flagfall_fjd": 6.22,
+   "distance_min_km": 70,
+   "distance_max_km": 160,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minivan",
+   "base_rate_fjd_per_km": 4.815,
+   "flagfall_fjd": -584.33,
+   "distance_min_km": 160,
+   "distance_max_km": 300,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minibus",
+   "base_rate_fjd_per_km": 4.133,
+   "flagfall_fjd": 51.17,
+   "distance_min_km": 0,
+   "distance_max_km": 15,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minibus",
+   "base_rate_fjd_per_km": 2.622,
+   "flagfall_fjd": 73.54,
+   "distance_min_km": 15,
+   "distance_max_km": 35,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minibus",
+   "base_rate_fjd_per_km": 0.956,
+   "flagfall_fjd": 139,
+   "distance_min_km": 35,
+   "distance_max_km": 70,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minibus",
+   "base_rate_fjd_per_km": 1.576,
+   "flagfall_fjd": 66.96,
+   "distance_min_km": 70,
+   "distance_max_km": 160,
+   "active": 1
+  },
+  {
+   "vehicle_type": "minibus",
+   "base_rate_fjd_per_km": 1.852,
+   "flagfall_fjd": 132.33,
+   "distance_min_km": 160,
+   "distance_max_km": 300,
+   "active": 1
+  }
+ ],
+ "zone_distance_cache": [
+  {
+   "zone_a": "Coral Coast",
+   "zone_b": "Nadi Airport",
+   "distance_km": 96.705
+  },
+  {
+   "zone_a": "Denarau",
+   "zone_b": "Nadi Airport",
+   "distance_km": 11.776
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Sigatoka",
+   "distance_km": 69.36
+  },
+  {
+   "zone_a": "Nadi",
+   "zone_b": "Nadi Airport",
+   "distance_km": 6.844
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Wailoaloa",
+   "distance_km": 6.902
+  },
+  {
+   "zone_a": "Ba",
+   "zone_b": "Nadi Airport",
+   "distance_km": 60.081
+  },
+  {
+   "zone_a": "Lautoka",
+   "zone_b": "Nadi Airport",
+   "distance_km": 25.431
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Suva",
+   "distance_km": 195.691
+  },
+  {
+   "zone_a": "Momi Bay",
+   "zone_b": "Nadi Airport",
+   "distance_km": 38.623
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Nausori",
+   "distance_km": 218.695
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Pacific Harbour",
+   "distance_km": 147.587
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Rakiraki",
+   "distance_km": 130.011
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Sonaisali",
+   "distance_km": 22.09
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Vuda Point",
+   "distance_km": 19.333
+  },
+  {
+   "zone_a": "Nadi Airport",
+   "zone_b": "Natadola",
+   "distance_km": 54.718
+  }
+ ],
+ "fuel_index_latest": [
+  {
+   "multiplier": 1
+  }
+ ]
+}

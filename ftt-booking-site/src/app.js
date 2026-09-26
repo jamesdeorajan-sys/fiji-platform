@@ -1021,11 +1021,16 @@ function applyLiveFares(refs) {
 function renderLiveFareNote() {
   if (typeof document === 'undefined') return;
   const status = state.liveFareStatus;
+  const since = status === 'stale' && state.liveFares && state.liveFares.at
+    ? new Date(state.liveFares.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
   const text = status === 'confirming'
     ? 'Confirming the live price. The fares shown are estimates until then.'
     : status === 'unavailable'
       ? "We couldn't confirm the live price just now, so the fares shown are estimates. Our team confirms the final price with you."
-      : '';
+      : status === 'stale'
+        ? `We couldn't refresh the live price${since ? ' since ' + since : ''}. The fares shown are the last amounts we confirmed and may have changed. Our team confirms the final price with you.`
+        : '';
   for (const anchorId of ['vehicleCards', 'vehicleDetailCards', 'priceUpdatedNote']) {
     const anchor = document.getElementById(anchorId);
     if (!anchor || !anchor.parentNode) continue;
@@ -1039,7 +1044,7 @@ function renderLiveFareNote() {
       anchor.parentNode.insertBefore(note, anchor);
     }
     note.textContent = text;
-    if (status === 'unavailable') {
+    if (status === 'unavailable' || status === 'stale') {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = ' Try again';
@@ -1088,8 +1093,7 @@ function startLiveFareFetch(key) {
 }
 function retryLiveFares() {
   state.liveFareAttempts = null;
-  state.liveFares = null;
-  state.liveFaresPending = null;
+  state.liveFaresPending = null;   // state.liveFares is deliberately kept: the last-known amounts stay displayed while retrying
   applyOrFetchLiveFares(document.getElementById('pickup')?.value, document.getElementById('destination')?.value);
 }
 function applyOrFetchLiveFares(pickupVal, destVal) {
@@ -1102,8 +1106,9 @@ function applyOrFetchLiveFares(pickupVal, destVal) {
   const started = startLiveFareFetch(key);
   const attempts = state.liveFareAttempts && state.liveFareAttempts.key === key ? state.liveFareAttempts.n : 0;
   const exhausted = !state.liveFaresPending && attempts >= LIVE_FARE_MAX_ATTEMPTS;
-  // a complete-but-stale answer is still a verified server answer while it revalidates
-  state.liveFareStatus = (lf && lf.complete) ? 'confirmed' : (exhausted && !started ? 'unavailable' : 'confirming');
+  // a complete-but-expired answer is still the last verified server answer while it revalidates; once the refresh
+  // budget is exhausted it is shown as last-known and uncertain, with Try again, never as current
+  state.liveFareStatus = (lf && lf.complete) ? ((exhausted && !started) ? 'stale' : 'confirmed') : (exhausted && !started ? 'unavailable' : 'confirming');
   renderLiveFareNote();
 }
 
@@ -2685,7 +2690,7 @@ function renderFareTiers() {
     if (submitBtn) submitBtn.disabled = false;
 
     if (realFare === null) {
-      if (state.liveFareStatus !== 'confirmed') { state.liveFareStatus = 'unavailable'; renderLiveFareNote(); }
+      if (state.liveFareStatus !== 'confirmed' && state.liveFareStatus !== 'stale') { state.liveFareStatus = 'unavailable'; renderLiveFareNote(); }
       // Can't get a reliable real number - don't show a possibly-wrong
       // floor. Standard Fare booking is unaffected either way.
       if (toggleRow) toggleRow.style.display = 'none';

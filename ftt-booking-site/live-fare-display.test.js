@@ -263,5 +263,49 @@ test('attempt budget is restored by a verified answer: a later revalidation fail
   c.applyOrFetchLiveFares('NAN', TANOA.dest);
   await wait(300);
   assert.equal(calls, 9, 'a full budget of 3 attempts x 3 classes was available again');
-  assert.equal(c.state.liveFareStatus, 'confirmed', 'the last verified fares remain the displayed, verified state while revalidation fails');
+  assert.equal(c.state.liveFareStatus, 'stale', 'budget exhausted on an expired answer: last-known fares stay shown but are marked uncertain');
+});
+
+test('expired fares whose refresh budget is exhausted expose uncertainty and Try again, and keep the last-known amounts', async () => {
+  let mode = 'up';
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => (mode === 'up' ? TANOA.refs[vt] : null) });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await settle();
+  assert.equal(c.state.liveFareStatus, 'confirmed');
+  mode = 'down';
+  await wait(230);                                          // answer expires (TTL)
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(300);                                          // refresh budget (3 attempts) used up
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.liveFareStatus, 'stale');
+  assert.deepEqual({ ...c.state.prices }, TANOA.refs, 'the last-known amounts are retained, not reverted to the static estimate');
+  const note = c.__registry.vehicleDetailCards.parentNode.children.find((x) => x.id === 'liveFareNote-vehicleDetailCards');
+  assert.match(note.textContent, /couldn't refresh the live price/);
+  assert.match(note.textContent, /last amounts we confirmed and may have changed/);
+  assert.doesNotMatch(note.textContent, /charged|collected|paid|payment/i);
+  assert.equal(note.style.display, 'block');
+  assert.equal(note.children.length, 1, 'Try again present');
+  // Try again keeps the last-known amounts on screen while it retries, and recovers when the server answers
+  c.retryLiveFares();                                       // server still down: the retry must not throw the last-known amounts away
+  c.state.prices = { ...TANOA.static };                     // the next updatePricing() pass recomputes the static fares...
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);               // ...and must re-apply the retained last-known amounts, not revert to estimates
+  assert.deepEqual({ ...c.state.prices }, TANOA.refs, 'amounts retained during the retry');
+  mode = 'up';
+  await wait(60);
+  assert.equal(c.state.liveFareStatus, 'confirmed');
+});
+
+test('a review-step lookup failure does not overwrite an already-marked stale state', async () => {
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest });
+  c.state.liveFareStatus = 'stale';
+  const fn = grabFn(js, 'renderFareTiers');
+  assert.match(fn, /liveFareStatus !== 'confirmed' && state\.liveFareStatus !== 'stale'/);
+});
+
+test('review caption says "Not submitted yet" before submission; "saved online" wording only exists on the post-save success card', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  assert.match(html, /<div class="price-total-sub">Not submitted yet · Fiji team confirms pickup<\/div>/);
+  assert.doesNotMatch(html, /price-total-sub">Saved online/);
+  assert.match(html, /id="bulaWaReassurance">Your request is already saved online/);
 });
