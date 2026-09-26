@@ -46,5 +46,27 @@ Production is still `9af4d251-8696-40e8-8a23-cf6813283788` (source `31a27fb`). R
 5. Residual `/transfer/app.js|styles.css|chat-widget.js` requests are tracked separately as residual errors, not required to be zero.
 Any failure in 1–3 → rollback.
 
+## Revision D (2026-09-26, P0 incident) — narrow InterContinental correction, added to the SAME candidate
+During the P0 "no bookings" incident check, Codex and an independent reproduction both confirmed `transfer/intercontinental-fiji-golf-resort.html` described a **nonexistent** "InterContinental Denarau" — fabricated location, FJ$49 fare, and a JSON-LD `PriceSpecification` claiming `"price":"49"` — and its Book Now link targeted a FijiDash destination code (`INTERCONTINENTAL_DENARAU`) that does not exist in FijiDash's own destination list, leaving the destination field blank and Continue permanently disabled. The real InterContinental Fiji Golf Resort & Spa is in **Natadola**, already correctly served at `intercontinental-fiji-natadola.html` (FJ$99, real `INTERCONTINENTAL_NATADOLA` code). **Not a token swap:** the wrong page's location and price were fictitious, so it is deleted outright and 301-redirected to the correct, already-existing page, rather than having its content edited in place.
+- **Commit:** `c6d62a6aaefcc07ab2debf01ef9b52874d9b01ac`, on the **same** branch `ceo/nadi-combined-release-candidate`, on top of `344d7f6` — the existing Outrigger+mobile work is preserved unchanged (`git diff 344d7f6 c6d62a6` touches only `_redirects`, `sitemap.xml`, the deleted page, and one new test file).
+- **Diff vs live production (`31a27fb`), full candidate:** exactly 7 files — `404.html` (new), `_redirects` (new), `app.js` (mobile-UX), `index.html` (mobile-UX), `sitemap.xml` (−1 entry), `styles.css` (mobile-UX), `transfer/intercontinental-fiji-golf-resort.html` (deleted). No fare, Worker, notification, chat-widget, or PR #55 file touched.
+- **Tests:** 5 new (mutation-checked: reverting the redirect rule alone fails 1 of them), full suite **105/105**.
+- **Preview** (fresh upload of the exact commit, label accurate): `https://8d96194f.fttlandingpage.pages.dev` (alias `ceo-nadi-combined-release-ca.fttlandingpage.pages.dev`), Cloudflare source `c6d62a6`.
+- **Acceptance evidence, this preview (AUTHOR-VERIFIED):**
+  | Check | Result |
+  |---|---|
+  | `/transfer/intercontinental-fiji-golf-resort` | 301 → `/transfer/intercontinental-fiji-natadola` |
+  | Final page | title "…Natadola Transfer…", sedan fare **FJ$99** (was fabricated FJ$49) |
+  | Book Now link on the final page | `dest=INTERCONTINENTAL_NATADOLA` |
+  | book.fijidash.com with that destination code (live, no submission) | destination pre-fills "InterContinental Fiji Golf Resort Natadola", Continue **enabled** — the reported blank-destination/disabled-Continue bug reproduces as fixed |
+  | Outrigger alias (existing work) | still 301 → `/transfer/coral-coast-outrigger` — unaffected |
+  | Unknown path | still 404 |
+  | Sitemap | `intercontinental-fiji-golf-resort` 0 occurrences, `intercontinental-fiji-natadola` 1 |
+  | Assets | `styles.css`/`app.js` 200, correct content-types |
+  | Cross-links | none of the other 24 route pages or the homepage reference the removed slug (checked before deleting) |
+- **Deliberately out of scope:** `transfer/natadola-intercontinental.html` is a **third**, separately-correct page for the same real property (own working content, own canonical, own sitemap entry) — a content-duplication question, not a broken-link/wrong-content one, and not reported in the incident. Left untouched.
+- **Rollback:** unchanged from above — production is still `9af4d251` (`31a27fb`); the same single rollback reverts the whole candidate including this correction, since it's one commit on the one branch.
+- **Production step:** same command as above, with `--commit-hash c6d62a6aaefcc07ab2debf01ef9b52874d9b01ac` in place of `344d7f6…`. **Not run. No production approval given.**
+
 ## Out of scope for this release
-Distance/time reconciliation (98 / 96.7 / 87.9 km), fare changes and the four unexplained fares, PR #55, the Worker, notification changes.
+Distance/time reconciliation (98 / 96.7 / 87.9 km), fare changes and the four unexplained fares, PR #55, the Worker, notification changes, `natadola-intercontinental.html` content deduplication.

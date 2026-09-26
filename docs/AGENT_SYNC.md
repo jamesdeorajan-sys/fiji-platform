@@ -18,6 +18,19 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT — REPRODUCTION 2026-09-26 — concrete failure found + repair candidate extended (Claude)
+
+Full reply on Issue #59 (this checkpoint). No production POSTs/WhatsApp sends (intercepted endpoints only, as explicitly authorised); no production deployment.
+
+- **Traffic correction accepted:** Window-B page-load counts (24 NAT/14 FD) relabelled 'recorded page loads of unidentified intent, not verified guest traffic' — my one-load-per-host subtraction didn't account for Codex's own multi-step sessions. Withdrawn: 'FD traffic rising while saves fell proves a completion problem' as a standalone conclusion from that count.
+- **Test191 traced:** Nadi NATIVE widget only (not a FijiDash handoff), flight-unknown checkbox path, one-way, next-day pickup. Says nothing about the FijiDash submission path.
+- **Source-level risk found:** Nadi's `bookingRequest()` has a real 15s `AbortController` deadline (incl. body read) with an honest fallback + escalation on timeout. **FijiDash's `submitMarketplaceBooking()` has NONE** — zero `AbortController`/`timeoutMs`/fetch-override matches anywhere in the live `app.js`.
+- **Live reproduction, intercepted `/bookings` (hangs)/`/escalate` (mocked), mobile, real route/vehicle combos, test-labelled contact only, no data reached the network:** FijiDash (NAN->Denarau/minivan, matches #184/#189 fare exactly) - stuck on 'Saving your booking...' at +21.5s, 0 escalations, no error shown, page frozen on step 4. Nadi native (NAN->Coral Coast/minivan, matches #187) - recovers at +18.5s with an honest fallback card AND fires 1 escalation. **First reproducible failure isolated to FijiDash's submit path; Nadi's own path is a clean bounded PASS.**
+- **Repair extended on the SAME branch (not a new project):** `ceo/nadi-combined-release-candidate` @ `c6d62a6aaefcc07ab2debf01ef9b52874d9b01ac` (on top of `344d7f6`, that work unchanged). Deletes the wrong InterContinental 'Denarau' page (fabricated location/FJ$49/JSON-LD price, dead FijiDash code) and 301s it to the real, correct Natadola page (FJ$99, working code) - independently reproduced fixed on book.fijidash.com. Diff vs prod `31a27fb`: exactly 7 files. 105/105 tests, mutation-checked. Preview `https://8d96194f.fttlandingpage.pages.dev`. Rollback unchanged (`9af4d251`). Full detail: `docs/evidence/2026-09-21-revenue-diagnosis/combined-release-candidate.md` Revision D. **Not deployed, no approval given.**
+- **Inbox reconciliation corrected:** search the private sheet by ref+timestamp, not WAMID-in-WhatsApp-app (unconfirmed that's searchable); WAMIDs are for provider/API correlation only. Recipient-matches-config != config-is-correct - James to confirm `+61478886145` is the actually-monitored inbox.
+- **Delivered/read gap tightened:** searched the live Worker source for any Meta-webhook route (webhook path, hub.challenge/verify-token) - none exists; only an unrelated internal `/driver/bookings/:id/status` endpoint. Does not rule out a callback landing elsewhere I haven't inspected.
+- **Exact exclusion SQL given** (full, NULL-guarded via COALESCE throughout) for independent review.
+
 ## 🔴 P0 INCIDENT — FOLLOW-UP 2026-09-26 — inbox reconciliation, row191 resolved, 24h split corrects the read (Claude)
 
 Full reply: Issue #59 comment 5844937243. Read-only; no resends/messages/test submissions/production changes.
