@@ -261,3 +261,9 @@ test('a stalled escalation call cannot delay the caller: submitMarketplaceBookin
   assert.equal(result.resultKind, 'unknown');
   assert.equal(escalateCalls, 1, 'the escalation attempt must still have been made (fire-and-forget, not skipped)');
 });
+
+test('index.html cache-busts app.js with the new version (JS is cached for 1h by _headers)', () => {
+  const html = require('fs').readFileSync(require('path').join(__dirname, 'src', 'index.html'), 'utf8');
+  assert.equal((html.match(/app\.js\?v=20260926-submit-timeout-recovery/g) || []).length, 1);
+  assert.doesNotMatch(html, /app\.js\?v=20260911b-naviti-pricing/);
+});
