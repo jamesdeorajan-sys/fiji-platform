@@ -294,7 +294,7 @@ export default {
 
     // ── Milestone 6: public guest booking intake (the missing piece cutover-plan.md flagged) ──
     if (request.method === 'POST' && url.pathname === '/bookings') {
-      return handleGuestBookingCreate(request, env);
+      return handleGuestBookingCreate(request, env, ctx);
     }
 
     // ── Milestone 15: guest price negotiation, in-house drivers only ──
@@ -1849,7 +1849,12 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
 // parameter_name on that parameter - positional-only parameters (no
 // parameter_name) get rejected with 400 "(#100) Parameter name is missing
 // or empty" even though the values and count are otherwise correct.
-async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride) {
+// Issue #59 (2026-09-27): every alert send is bounded. Previously a stalled Graph API response held the caller
+// forever, and handleGuestBookingCreate awaited the short alert before the full alert and before answering the guest,
+// so one pending send delayed the full alert AND the original booking response (whose guest-side deadline is 15 s).
+const HEALTH_ALERT_SEND_TIMEOUT_MS = 8000;
+
+async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride, timeoutMs = HEALTH_ALERT_SEND_TIMEOUT_MS) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: 'WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker.' };
   }
@@ -1857,9 +1862,13 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
   if (!cleanNumber || cleanNumber.length < 8) {
     return { attempted: false, reason: 'admin_alert_phone not set or invalid.' };
   }
+  const limitMs = Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) > 0 ? Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) : timeoutMs; // env override exists for offline tests
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), limitMs);
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
       method: 'POST',
+      signal: controller.signal,
       headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp',
@@ -1881,6 +1890,12 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
     const responseText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
   } catch (err) {
+    if (controller.signal.aborted) {
+      // Unknown outcome: Meta may still have accepted it. Reported as a failed attempt so the durable state stays
+      // retryable (a rare duplicate alert is preferable to silence).
+      console.error('[health-alert] send timed out after', limitMs, 'ms');
+      return { attempted: true, ok: false, error: 'Send timed out.', timedOut: true };
+    }
     // Real gap found while closing the same err.message-leak class the
     // pre-launch audit flagged elsewhere: this result is returned
     // directly (as admin_alerts) in the response of POST /negotiate -
@@ -1890,6 +1905,8 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
     // own browser response.
     console.error('[health-alert] send failed:', err.message);
     return { attempted: true, ok: false, error: 'Send failed.' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -3183,16 +3200,27 @@ async function recordAdminNotificationOutcome(env, bookingId, outcome, detail) {
 // `WHERE status = 'pending'`. Never claims from SENT or ATTEMPTING - a
 // second real send can never happen once one has already succeeded, or
 // while one is already in flight.
+// Issue #59 reconcile additions:
+//  - DUPLICATE-SEND PROTECTION FOR EXISTING BOOKINGS: a booking that already has an `admin_notification_sent` event
+//    (every booking created since 6 Sep, before this table existed) is seeded as SENT, never NOT_ATTEMPTED, so the first
+//    guest replay after this ships cannot re-alert ops for a booking they already received.
+//  - STALE-CLAIM RECOVERY: an ATTEMPTING row older than the lease (an isolate that died mid-attempt) can be claimed
+//    again; otherwise a crashed attempt would leave the booking permanently "in flight" and never notified.
+const ADMIN_NOTIFICATION_LEASE_SECONDS = 120;
 async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
   await env.DB.prepare(
-    `INSERT OR IGNORE INTO admin_notification_state (booking_id, client_booking_ref, state) VALUES (?, ?, 'NOT_ATTEMPTED')`
-  ).bind(bookingId, clientBookingRef).run();
+    `INSERT OR IGNORE INTO admin_notification_state (booking_id, client_booking_ref, state)
+     SELECT ?, ?, CASE WHEN EXISTS (SELECT 1 FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_sent')
+                       THEN 'SENT' ELSE 'NOT_ATTEMPTED' END`
+  ).bind(bookingId, clientBookingRef, bookingId).run();
 
   const claim = await env.DB.prepare(
     `UPDATE admin_notification_state
      SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
-     WHERE booking_id = ? AND state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')`
-  ).bind(bookingId).run();
+     WHERE booking_id = ?
+       AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
+            OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))`
+  ).bind(bookingId, `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`).run();
 
   if (claim.meta.changes === 1) return { claimed: true };
 
@@ -3228,9 +3256,37 @@ async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
 // action) recovers it with no special handling needed, since a booking
 // that never got even a NOT_ATTEMPTED row behaves identically to one that
 // did.
-async function attemptAdminNotification(env, booking) {
+async function attemptAdminNotification(env, booking, { replay = false } = {}) {
   try {
-    const claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
+    let claim;
+    try {
+      claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
+    } catch (claimErr) {
+      // Issue #59: Worker deployed BEFORE milestone36 was applied. The earlier draft swallowed this and sent NOTHING
+      // (silent loss of every alert). Fall back to the pre-existing behaviour instead: a first creation sends the full
+      // alert directly and logs the outcome; a replay logs skipped_idempotent (no durable state to consult, and no way to
+      // tell whether the original was delivered, so no duplicate risk is taken). Durable retry starts once the table exists.
+      if (!/no such table/i.test(String(claimErr && claimErr.message))) throw claimErr;
+      console.error('[admin-notification] admin_notification_state missing; using legacy direct path:', claimErr.message);
+      if (replay) {
+        await recordAdminNotificationOutcome(env, booking.id, 'skipped_idempotent', { reason: 'replay of existing client_booking_ref (durable state table not applied)' });
+        return;
+      }
+      const legacySummary = buildFullBookingAdminSummary(booking);
+      const phones = await getAdminAlertPhones(env);
+      if (phones.length === 0) await recordAdminNotificationOutcome(env, booking.id, 'failed', { reason: 'platform_settings.admin_alert_phone is not set.' });
+      for (const phone of phones) {
+        const r = await sendHealthAlertWhatsApp(env, phone, legacySummary, sqliteNow());
+        if (r.attempted && r.ok) {
+          let wamid = null;
+          try { wamid = JSON.parse(r.response || 'null')?.messages?.[0]?.id || null; } catch { /* keep response as evidence */ }
+          await recordAdminNotificationOutcome(env, booking.id, 'sent', { status: r.status, wamid, response: r.response });
+        } else {
+          await recordAdminNotificationOutcome(env, booking.id, 'failed', { reason: r.reason || r.error || 'Meta rejected the send.', status: r.status, response: r.response });
+        }
+      }
+      return;
+    }
     if (!claim.claimed) {
       const reason = claim.state === 'SENT'
         ? 'already sent - provider-confirmed success on a prior attempt'
@@ -3294,7 +3350,46 @@ async function attemptAdminNotification(env, booking) {
   }
 }
 
-async function handleGuestBookingCreate(request, env) {
+// Issue #59: the short heads-up alert, now independent of the full alert (its own bounded send, its own recorded outcome).
+// Never throws. Its result used to be discarded, so "both alerts failed" looked like "only the full alert failed".
+async function sendShortAdminAlert(env, booking) {
+  try {
+    const summary = sanitiseWhatsAppParamText(
+      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${booking.quoted_amount}.`,
+      1000
+    );
+    for (const alertPhone of await getAdminAlertPhones(env)) {
+      const r = await sendHealthAlertWhatsApp(env, alertPhone, summary, sqliteNow());
+      const ok = !!(r.attempted && r.ok);
+      await logBookingEvent(env, {
+        bookingId: booking.id,
+        eventType: ok ? 'admin_short_alert_sent' : 'admin_short_alert_failed',
+        actor: 'system',
+        metadata: ok ? { channel: 'whatsapp', status: r.status } : { channel: 'whatsapp', reason: r.reason || r.error || 'Meta rejected the send.', status: r.status, timedOut: !!r.timedOut },
+      });
+    }
+  } catch (err) {
+    console.error(`[admin-short-alert] failed for booking ${booking.id}: ${err.message}`);
+  }
+}
+
+// Issue #59: alerts never gate the guest's response. With an execution context (production) both alerts are handed to
+// waitUntil and run concurrently, so a stalled short alert cannot delay the full alert or the booking response. Without
+// one (offline tests) they run in the original order and are awaited, keeping the pre-existing deterministic behaviour.
+async function dispatchAdminNotifications(env, ctx, booking, { replay }) {
+  const jobs = () => (replay
+    ? [attemptAdminNotification(env, booking, { replay: true })]
+    : [sendShortAdminAlert(env, booking), attemptAdminNotification(env, booking)]);
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(Promise.allSettled(jobs()));
+    return;
+  }
+  if (replay) { await attemptAdminNotification(env, booking, { replay: true }); return; }
+  await sendShortAdminAlert(env, booking);
+  await attemptAdminNotification(env, booking);
+}
+
+async function handleGuestBookingCreate(request, env, ctx) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
   const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
@@ -3381,7 +3476,7 @@ async function handleGuestBookingCreate(request, env) {
     // never creating a second booking or a duplicate customer-facing
     // message. Fire-and-forget same as before: never lets a notification
     // outcome affect the (already-decided) response to this replay.
-    await attemptAdminNotification(env, result.booking);
+    await dispatchAdminNotifications(env, ctx, result.booking, { replay: true });
     return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
   }
 
@@ -3404,25 +3499,10 @@ async function handleGuestBookingCreate(request, env) {
   // restored; a lost short alert is not operationally silent the way a
   // lost full-detail notification was, since ops still gets the richer one.
   const b = result.booking;
-  const bookingSummary = sanitiseWhatsAppParamText(
-    `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`,
-    1000
-  );
-  for (const alertPhone of await getAdminAlertPhones(env)) {
-    await sendHealthAlertWhatsApp(env, alertPhone, bookingSummary, sqliteNow());
-  }
-
-  // Issue #53 (CEO P0) - the actual restoration: a SECOND, richer automatic
-  // admin notification carrying the itinerary detail ops needs to run the
-  // job, so James no longer has to depend on the guest tapping their own
-  // optional WhatsApp chat button. P0 retry fix (2026-09-14):
-  // attemptAdminNotification() now also runs from the idempotent-replay
-  // branch above, using the same durable, race-safe claim - see its own
-  // header comment for the full design. A WhatsApp failure here is
-  // recorded but never turns this already-persisted, already-broadcast
-  // booking into a guest-facing failure - the guest's success response is
-  // unaffected either way.
-  await attemptAdminNotification(env, b);
+  // Issue #59: short alert + full notification are dispatched together, never awaited in sequence before the response
+  // (see dispatchAdminNotifications). The full notification is still governed by the durable claim, so duplicate-send
+  // protection is unchanged.
+  await dispatchAdminNotifications(env, ctx, b, { replay: false });
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
 }
