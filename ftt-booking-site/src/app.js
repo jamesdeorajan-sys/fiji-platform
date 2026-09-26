@@ -2305,7 +2305,7 @@ async function submitMarketplaceBooking(ref) {
     // not routine.
     const incompleteDetail = { reason: 'incomplete-client-data', pickupZone, destinationZone, vehicleType: state.selectedVehicle, quotedAmount };
     void reportBookingSyncFailure(ref, incompleteDetail, incompleteDetail);
-    return { ok: false, resultKind: 'confirmed_rejected', error: 'missing-required-data' };
+    return { ok: false, resultKind: 'not_sent', error: 'missing-required-data' };
   }
 
   // Itinerary fields - informational only (never affect price/commission),
@@ -2392,8 +2392,10 @@ async function submitMarketplaceBooking(ref) {
       // own recovery UI from appearing, which awaiting it here risked.
       void reportBookingSyncFailure(ref, payload, data);
       trackFunnelEvent?.('booking_post_failed');
-      // A real server response (even a rejection) is a KNOWN outcome, not an unknown one.
-      return { ok: false, resultKind: 'confirmed_rejected', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
+      // A received non-success response (HTTP 5xx, malformed/truncated body on a 200, or an ok:false
+      // body) is NOT proof nothing was persisted - the API contract does not guarantee rejection
+      // happened before the INSERT, so this stays UNKNOWN, same as a timeout.
+      return { ok: false, resultKind: 'unknown', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
     trackFunnelEvent?.('booking_post_succeeded');
     return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
@@ -2404,6 +2406,7 @@ async function submitMarketplaceBooking(ref) {
     // A thrown exception (timeout, network error, offline, DNS, connection reset, aborted mid-body)
     // means we genuinely do not know whether the server received and committed this request before
     // the connection died — the request may have already saved. Never a confirmed failure.
+    // (Local incomplete-data validation above is the only 'not_sent' case: nothing left the browser.)
     return { ok: false, resultKind: 'unknown', error: err.message };
   }
 }
@@ -2427,7 +2430,7 @@ async function reportBookingSyncFailure(ref, payload, errorDetail) {
       body: JSON.stringify({
         source: 'guest',
         trigger_type: 'app_issue',
-        context: `POST /bookings failed for confirmed guest booking ${ref} (WhatsApp confirmation still sent). Payload: ${JSON.stringify(payload)}. Error: ${JSON.stringify(errorDetail)}`.slice(0, 2000),
+        context: `Booking request ${ref}: save status UNCERTAIN - the guest's browser could not confirm the server saved it (it may or may not exist; check by this reference before contacting the guest or re-entering it). Guest was shown a could-not-confirm message. Nothing here confirms a WhatsApp message was sent. Payload: ${JSON.stringify(payload)}. Error: ${JSON.stringify(errorDetail)}`.slice(0, 2000),
       }),
     }, 5000);
   } catch (err) {

@@ -124,10 +124,19 @@ test('reportBookingSyncFailure itself is bounded, with a shorter deadline than t
   assert.match(src, /,\s*5000\)/, 'escalation deadline must be explicit and shorter than the 15s save deadline');
 });
 
-test('a confirmed server rejection and a genuinely unknown outcome are returned as distinct, labelled kinds', () => {
+test('no received HTTP response is ever classified as a known/confirmed outcome; only local not-sent validation is', () => {
   const src = extractFn('submitMarketplaceBooking');
-  assert.match(src, /resultKind:\s*'confirmed_rejected'/);
-  assert.match(src, /resultKind:\s*'unknown'/);
+  assert.doesNotMatch(src, /confirmed_rejected/, 'the API contract does not prove rejection preceded persistence');
+  assert.equal((src.match(/resultKind:\s*'unknown'/g) || []).length, 2, 'non-success response branch and the catch block');
+  assert.equal((src.match(/resultKind:\s*'not_sent'/g) || []).length, 1, 'only the local incomplete-data path never left the browser');
+});
+
+test('escalation message reports the reference and UNCERTAIN save status, and does not claim confirmed failure or WhatsApp sending', () => {
+  const src = extractFn('reportBookingSyncFailure');
+  assert.doesNotMatch(src, /failed for confirmed guest booking/);
+  assert.doesNotMatch(src, /WhatsApp confirmation still sent/);
+  assert.match(src, /save status UNCERTAIN/);
+  assert.match(src, /\$\{ref\}/);
 });
 
 // ---- behavioural checks (real vm execution, short timeouts, isolated mocks) ---
@@ -164,12 +173,44 @@ test('SCENARIO: network error — rejects immediately, classified as an UNKNOWN 
   assert.match(calls[0].url, /\/bookings$/);
 });
 
-test('SCENARIO: server error (a real response, explicit rejection) — classified as CONFIRMED, not unknown', async () => {
+test('SCENARIO: server error (HTTP 500 {ok:false}) — stays UNKNOWN; a 5xx does not prove nothing was persisted', async () => {
   const calls = [];
   const ctx = run(DEFAULT_FIELDS(), serverErrorFetch(calls));
   const result = await ctx.submitMarketplaceBooking('FD-TESTREF2');
   assert.equal(result.ok, false);
-  assert.equal(result.resultKind, 'confirmed_rejected');
+  assert.equal(result.resultKind, 'unknown');
+});
+
+test('SCENARIO: HTTP 200 with truncated/malformed JSON (response.json() rejects) — stays UNKNOWN', async () => {
+  const calls = [];
+  const truncated = (url, opts) => { calls.push({ url, opts }); return Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')) }); };
+  const ctx = run(DEFAULT_FIELDS(), truncated);
+  const result = await ctx.submitMarketplaceBooking('FD-TESTREF4');
+  assert.equal(result.ok, false);
+  assert.equal(result.resultKind, 'unknown');
+});
+
+test('SCENARIO: HTTP 200 with ok:false body, and HTTP 400 with errors — both stay UNKNOWN (no contract proves pre-persistence rejection)', async () => {
+  for (const [status, body] of [[200, { ok: false }], [400, { ok: false, errors: ['x'] }]]) {
+    const calls = [];
+    const f = (url, opts) => { calls.push({ url, opts }); return Promise.resolve(jsonResponse(status, body)); };
+    const ctx = run(DEFAULT_FIELDS(), f);
+    const result = await ctx.submitMarketplaceBooking('FD-TESTREF5');
+    assert.equal(result.ok, false);
+    assert.equal(result.resultKind, 'unknown', `status ${status}`);
+  }
+});
+
+test('SCENARIO: escalation sent after an uncertain save carries the ref and uncertain wording, not "confirmed"/"WhatsApp sent"', async () => {
+  const calls = [];
+  const ctx = run(DEFAULT_FIELDS(), serverErrorFetch(calls));
+  await ctx.submitMarketplaceBooking('FD-TESTREF6');
+  const esc = calls.find((c) => /\/escalate$/.test(c.url));
+  assert.ok(esc, 'escalation must still fire, non-blocking');
+  const context = JSON.parse(esc.opts.body).context;
+  assert.match(context, /FD-TESTREF6/);
+  assert.match(context, /save status UNCERTAIN/);
+  assert.doesNotMatch(context, /confirmed guest booking|WhatsApp confirmation still sent/);
 });
 
 test('SCENARIO: success — ok with a booking id, same as before', async () => {
