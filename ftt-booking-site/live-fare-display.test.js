@@ -3,126 +3,197 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { execFileSync } = require('child_process');
 
 const js = fs.readFileSync(path.join(__dirname, 'src', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const PROD = '520ca9d';
 
-function extractFn(name) {
-  const start = js.indexOf(`function ${name}(`);
+function grabFn(src, name) {
+  const start = src.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `${name} not found`);
-  let i = js.indexOf('{', start), depth = 0;
-  for (; i < js.length; i++) {
-    if (js[i] === '{') depth++;
-    else if (js[i] === '}' && --depth === 0) return js.slice(start, i + 1);
+  let i = src.indexOf('{', start), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
   }
   throw new Error('unbalanced ' + name);
 }
-const CONSTS = ['LIVE_FARE_BAND_LOW', 'LIVE_FARE_BAND_HIGH'].map((n) => { const m = js.match(new RegExp('const ' + n + ' = [^;]+;')); assert.ok(m, n); return m[0]; }).join('\n');
-const SOURCE = CONSTS + '\n' + ['liveFareDiscounted', 'applyLiveFares', 'applyOrFetchLiveFares'].map(extractFn).join('\n\n');
+const grabConst = (n) => { const m = js.match(new RegExp('const ' + n + '\\s*= [^;]+;')); assert.ok(m, n); return m[0]; };
 
-function makeCtx({ prices, priceSource = 'published', zone = 'Nadi', tripType = 'one-way', refs, tour = false, boat = false, fetchImpl }) {
+const FAST = (src) => src
+  .replace(/const LIVE_FARE_FETCH_TIMEOUT_MS = \d+;/, 'const LIVE_FARE_FETCH_TIMEOUT_MS = 40;')
+  .replace(/const LIVE_FARE_RETRY_DELAYS_MS = \[[^\]]*\];/, 'const LIVE_FARE_RETRY_DELAYS_MS = [15, 30];')
+  .replace(/const LIVE_FARE_TTL_MS = \d+;/, 'const LIVE_FARE_TTL_MS = 200;');
+const SOURCE = FAST([
+  ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
+  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'resolveNegotiationEligibility', 'renderFareTiers'].map((n) => grabFn(js, n)),
+].join('\n\n'));
+
+function makeEl(extra = {}) {
+  const el = { style: {}, value: '', textContent: '', disabled: false, children: [], parentNode: null, ...extra };
+  let text = '';
+  delete el.textContent;
+  Object.defineProperty(el, 'textContent', { get: () => text, set: (v) => { text = v; el.children.length = 0; } }); // like the DOM: assigning text clears child nodes
+  el.setAttribute = () => {};
+  el.appendChild = (c) => { el.children.push(c); c.parentNode = el; return c; };
+  el.insertBefore = (c) => { el.children.push(c); c.parentNode = el; return c; };
+  return el;
+}
+
+// A sandbox that runs the REAL selection-time functions and the REAL renderFareTiers/calculateTotal.
+function makeCtx({ prices, priceSource = 'published', zone = 'Nadi', tripType = 'one-way', extrasTotal = 0, tour = null, passengers = 2, vehicle = 'sedan', dest = 'X_DEST', pickup = 'NAN', boat = false, fetchImpl }) {
   const calls = [];
+  const created = [];
+  const registry = {
+    pickup: makeEl({ value: pickup }), destination: makeEl({ value: dest }),
+    vehicleCards: makeEl({ parentNode: makeEl() }), vehicleDetailCards: makeEl({ parentNode: makeEl() }), priceUpdatedNote: makeEl({ parentNode: makeEl() }),
+  };
   const ctx = {
-    DISCOUNT_THRESHOLD: 50, DISCOUNT_RATE: 0.10,
-    LIVE_FARE_FETCH_TIMEOUT_MS: 50,
-    BOAT_DESTINATION_IDS: boat ? { BOAT_X: true } : {},
-    bookingHasTour: () => tour,
-    state: { prices: { ...prices }, priceSource, destZoneName: zone, tripType, liveFares: null, liveFaresPending: null },
-    updatePricing: () => { ctx.__updates++; },
-    __updates: 0, __calls: calls,
-    fetchRealReferenceFare: fetchImpl || (async (pz, dz, vt, tt) => { calls.push({ pz, dz, vt, tt }); return refs ? refs[vt] : null; }),
-    setTimeout, Promise,
+    document: {
+      getElementById: (id) => registry[id] || created.find((e) => e.id === id) || (id.startsWith('liveFareNote-') ? null : makeEl()),
+      createElement: () => { const e = makeEl(); created.push(e); return e; },
+    },
+    BOAT_DESTINATION_IDS: boat ? { [dest]: true } : {},
+    state: { prices: { ...prices }, priceSource, destZoneName: zone, tripType, extrasTotal, selectedTour: tour, passengers, selectedVehicle: vehicle, liveFares: null, liveFaresPending: null, liveFareAttempts: null, liveFareStatus: null },
+    // mirrors production: updatePricing() recomputes the static fares, then its hook re-applies / re-checks the live fares
+    updatePricing: () => { ctx.__updates++; ctx.state.prices = { ...prices }; ctx.applyOrFetchLiveFares(pickup, dest); },
+    __updates: 0, __calls: calls, __registry: registry,
+    stopNegotiationPolling: () => {}, renderPriceBlock: () => {}, formatPrice: (x) => String(x),
+    resolveConfirmedPickupZone: () => 'Nadi Airport', resolveConfirmedDestinationZone: () => ctx.state.destZoneName,
+    fetchRealReferenceFare: fetchImpl || (async (pz, dz, vt, tt) => { calls.push({ pz, dz, vt, tt }); return ctx.__refs ? ctx.__refs[vt] : null; }),
+    setTimeout, Promise, Date, isFinite, Math, Number,
   };
   vm.createContext(ctx);
   vm.runInContext(SOURCE, ctx);
   return ctx;
 }
-const settle = () => new Promise((r) => setTimeout(r, 20));
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const settle = () => wait(25);
 
-// Real values read from the live server on 2026-09-27 (GET /reference-fare, Nadi Airport -> zone, one-way).
-const NADI_REFS = { sedan: 30.15, minivan: 51.42, minibus: 79.46 };
+// Live server values read on 2026-09-27 (GET /reference-fare, Nadi Airport -> zone).
+const HILTON = { static: { sedan: 49, minivan: 69, minibus: 99 }, refs: { sedan: 47.87, minivan: 69.08, minibus: 91.02 }, zone: 'Denarau', dest: 'HILTON_DENARAU' };
+const TANOA = { static: { sedan: 15, minivan: 25, minibus: 45 }, refs: { sedan: 30.15, minivan: 51.42, minibus: 79.46 }, zone: 'Nadi', dest: 'TANOA_INTERNATIONAL' };
+const RETURN_TANOA = { static: { sedan: 30, minivan: 50, minibus: 85 }, refs: { sedan: 55.78, minivan: 95.13, minibus: 147.0 }, zone: 'Nadi', dest: 'TANOA_INTERNATIONAL' };
 
-test('Tanoa/Tokatoka-class routes: static FJ$15/25/45 is replaced by the live fare at selection time (same number the review step shows)', async () => {
-  const c = makeCtx({ prices: { sedan: 15, minivan: 25, minibus: 45 }, refs: NADI_REFS });
-  c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
+// Journey: selection (with the next updatePricing pass re-applying cached fares), then the REAL review step. Must show one number.
+async function journey(route, opts, vehicle) {
+  const c = makeCtx({ prices: route.static, zone: route.zone, dest: route.dest, vehicle, ...opts });
+  c.__refs = route.refs;
+  c.applyOrFetchLiveFares('NAN', route.dest);
   await settle();
-  assert.deepEqual(c.__calls.map((x) => x.vt).sort(), ['minibus', 'minivan', 'sedan']);
-  assert.ok(c.__calls.every((x) => x.pz === 'Nadi Airport' && x.dz === 'Nadi' && x.tt === 'one-way'));
-  assert.equal(c.__updates, 1, 're-renders once after the fetch resolves');
-  // updatePricing() is what recomputes static prices; simulate its next pass, which must now apply the cached live fares synchronously
-  c.state.prices = { sedan: 15, minivan: 25, minibus: 45 };
-  c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
-  assert.deepEqual({ ...c.state.prices }, NADI_REFS);
-  assert.equal(c.__calls.length, 3, 'no refetch and therefore no update loop');
+  c.state.prices = { ...route.static };                    // updatePricing() recomputes the static fares...
+  c.applyOrFetchLiveFares('NAN', route.dest);              // ...and its hook re-applies the cached live fares synchronously
+  const selection = c.calculateTotal(vehicle);
+  c.renderFareTiers();                                     // review step: its own fetch, unconditional replacement
+  await settle();
+  const review = c.calculateTotal(vehicle);
+  return { selection, review, c };
+}
+
+for (const [label, route, opts] of [
+  ['in-band route (Hilton: static 49/69/99 vs live 47.87/69.08/91.02)', HILTON, {}],
+  ['out-of-band route (Tanoa: static 15/25/45 vs live 30.15/51.42/79.46)', TANOA, {}],
+  ['return trip (server fare requested for return)', RETURN_TANOA, { tripType: 'return' }],
+  ['night pickup (22:00-06:00; static fares carry the client night modifier): selection and review still agree', { ...HILTON, static: { sedan: 65, minivan: 90, minibus: 130 } }, {}],
+  ['add-ons: child seat FJ$8', TANOA, { extrasTotal: 8 }],
+  ['add-ons: child seat + surfboard FJ$32', HILTON, { extrasTotal: 32 }],
+  ['with a tour in the booking', HILTON, { tour: { price: 120 }, passengers: 3 }],
+]) {
+  test(`journey consistency: ${label} - selection total equals review total for every vehicle class`, async () => {
+    for (const vehicle of ['sedan', 'minivan', 'minibus']) {
+      const { selection, review, c } = await journey(route, opts, vehicle);
+      assert.equal(selection.final, review.final, `${vehicle}: selection ${selection.final} vs review ${review.final}`);
+      assert.equal(selection.vehiclePrice, route.refs[vehicle], `${vehicle}: the server's live number is what is shown`);
+      assert.equal(selection.extras, opts.extrasTotal || 0, 'add-ons are added on top exactly as at review');
+      assert.equal(c.state.liveFareStatus, 'confirmed');
+    }
+  });
+}
+
+test('return trips request the RETURN fare from the server', async () => {
+  const { c } = await journey(RETURN_TANOA, { tripType: 'return' }, 'sedan');
+  assert.ok(c.__calls.length >= 3 && c.__calls.every((x) => x.tt === 'return'));
 });
 
-test('in-band routes are untouched (Hilton Denarau: FJ$49/69 vs live 47.87/69.08)', async () => {
-  const c = makeCtx({ prices: { sedan: 49, minivan: 69, minibus: 95 }, zone: 'Denarau', refs: { sedan: 47.87, minivan: 69.08, minibus: 91.02 } });
-  c.applyOrFetchLiveFares('NAN', 'HILTON_DENARAU');
-  await settle();
-  c.state.prices = { sedan: 49, minivan: 69, minibus: 95 };
-  c.applyOrFetchLiveFares('NAN', 'HILTON_DENARAU');
-  assert.deepEqual({ ...c.state.prices }, { sedan: 49, minivan: 69, minibus: 95 });
+test('temporary failure is retried (bounded, with backoff) and recovers without a reload', async () => {
+  let n = 0;
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => { n++; return n <= 3 ? null : TANOA.refs[vt]; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.liveFareStatus, 'confirming', 'never presented as confirmed while unresolved');
+  await wait(150);
+  assert.equal(c.state.liveFareStatus, 'confirmed');
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.deepEqual({ ...c.state.prices }, TANOA.refs);
+  assert.ok(n <= 9, `at most 3 attempts x 3 classes, saw ${n}`);
 });
 
-test('only the classes outside the server band change (Marriott Momi Bay: minibus 79 vs live 175.92, sedan/minivan in band)', async () => {
-  const c = makeCtx({ prices: { sedan: 99, minivan: 149, minibus: 79 }, zone: 'Momi Bay', refs: { sedan: 94.29, minivan: 147.42, minibus: 175.92 } });
-  c.applyOrFetchLiveFares('NAN', 'MARRIOTT_MOMI');
+test('persistent failure: bounded attempts, then an honest unresolved state with a Try again control; static fares stay marked as estimates', async () => {
+  let n = 0;
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async () => { n++; return null; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(250);
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.liveFareStatus, 'unavailable');
+  assert.equal(n, 9, 'exactly 3 attempts x 3 classes, then it stops');
+  await wait(100);
+  assert.equal(n, 9, 'no unbounded retry loop');
+  assert.deepEqual({ ...c.state.prices }, TANOA.static, 'nothing invented: static fares untouched');
+  const note = c.__registry.vehicleDetailCards.parentNode.children.find((x) => x.id === 'liveFareNote-vehicleDetailCards');
+  assert.match(note.textContent, /estimates/);
+  assert.doesNotMatch(note.textContent, /confirmed price|charged|collected|paid/i);
+  assert.equal(note.style.display, 'block');
+  assert.equal(note.children.length, 1, 'Try again button present');
+  // explicit retry starts a fresh, again-bounded round
+  c.__refs = TANOA.refs;
+  c.fetchRealReferenceFare = async (pz, dz, vt) => TANOA.refs[vt];
+  c.retryLiveFares();
   await settle();
-  c.state.prices = { sedan: 99, minivan: 149, minibus: 79 };
-  c.applyOrFetchLiveFares('NAN', 'MARRIOTT_MOMI');
-  assert.deepEqual({ ...c.state.prices }, { sedan: 99, minivan: 149, minibus: 175.92 });
+  assert.equal(c.state.liveFareStatus, 'confirmed');
 });
 
-test('the band mirrors the server rule on discounted amounts (0.8x lower and 1.3x upper edge)', () => {
-  const c = makeCtx({ prices: { sedan: 40, minivan: 0, minibus: 0 }, zone: 'Wailoaloa' });
-  c.applyLiveFares({ sedan: 30.36 });                      // 40 / 30.36 = 1.317 > 1.3 -> replaced
-  assert.equal(c.state.prices.sedan, 30.36);
-  c.state.prices.sedan = 39;
-  c.applyLiveFares({ sedan: 30.36 });                      // 39 / 30.36 = 1.285 <= 1.3 -> kept
-  assert.equal(c.state.prices.sedan, 39);
-  c.state.prices.sedan = 24.5;
-  c.applyLiveFares({ sedan: 30.15 });                      // 24.5 / 30.15 = 0.813 >= 0.8 -> kept
-  assert.equal(c.state.prices.sedan, 24.5);
-  c.state.prices.sedan = 24.0;
-  c.applyLiveFares({ sedan: 30.15 });                      // 0.796 < 0.8 -> replaced
+test('partial result: answered classes are shown, the rest stay estimates and are retried until complete', async () => {
+  let round = 0;
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => { if (vt === 'sedan') round++; return (vt === 'sedan' || round >= 2) ? TANOA.refs[vt] : null; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(6);                                           // first round answered (sedan only); the retry backoff has not fired yet
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
   assert.equal(c.state.prices.sedan, 30.15);
+  assert.equal(c.state.prices.minivan, 25, 'unanswered class not presented as live');
+  assert.equal(c.state.liveFareStatus, 'confirming');
+  await wait(120);
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.deepEqual({ ...c.state.prices }, TANOA.refs);
+  assert.equal(c.state.liveFareStatus, 'confirmed');
 });
 
-test('never touches: tours, custom addresses, boat destinations, quote-priced routes, non-airport pickups, unresolved zones', async () => {
-  const base = { prices: { sedan: 15, minivan: 25, minibus: 45 }, refs: NADI_REFS };
-  for (const [label, opts, pickup, dest] of [
-    ['tour', { ...base, tour: true }, 'NAN', 'TANOA_INTERNATIONAL'],
-    ['custom dest', base, 'NAN', 'CUSTOM_DEST'],
-    ['boat', { ...base, boat: true }, 'NAN', 'BOAT_X'],
-    ['quote-priced', { ...base, priceSource: 'quote' }, 'NAN', 'TANOA_INTERNATIONAL'],
-    ['non-airport pickup', base, 'DENARAU_PORT', 'TANOA_INTERNATIONAL'],
-    ['unresolved zone', { ...base, zone: 'NEEDS_LOOKUP' }, 'NAN', 'TANOA_INTERNATIONAL'],
-    ['no zone yet', { ...base, zone: null }, 'NAN', 'TANOA_INTERNATIONAL'],
-  ]) {
-    const c = makeCtx(opts);
-    c.applyOrFetchLiveFares(pickup, dest);
-    await settle();
-    assert.equal(c.__calls.length, 0, `${label}: no fetch`);
-    assert.deepEqual({ ...c.state.prices }, { sedan: 15, minivan: 25, minibus: 45 }, label);
-  }
-});
-
-test('fetch failure or timeout leaves the static prices exactly as they were (fail-safe)', async () => {
-  for (const fetchImpl of [async () => null, () => new Promise(() => {}), async () => { throw new Error('offline'); }]) {
-    const c = makeCtx({ prices: { sedan: 15, minivan: 25, minibus: 45 }, fetchImpl });
-    c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
-    await new Promise((r) => setTimeout(r, 120));
-    c.state.prices = { sedan: 15, minivan: 25, minibus: 45 };
-    c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
-    assert.deepEqual({ ...c.state.prices }, { sedan: 15, minivan: 25, minibus: 45 });
-  }
-});
-
-test('a slow response arriving after the guest changed destination or trip type is discarded', async () => {
+test('guest advancing before the lookup resolves: nothing blocks, static fares are labelled as estimates, and the late answer lands consistently', async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
-  const c = makeCtx({ prices: { sedan: 15, minivan: 25, minibus: 45 }, fetchImpl: async () => { await gate; return 99; } });
-  c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => { await gate; return TANOA.refs[vt]; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.liveFareStatus, 'confirming');
+  assert.match(c.__registry.vehicleCards.parentNode.children.find((x) => x.id === 'liveFareNote-vehicleCards').textContent, /estimates/);
+  c.state.selectedVehicle = 'sedan';                       // guest picks a vehicle and continues to review meanwhile
+  const early = c.calculateTotal('sedan').final;            // static, unverified
+  assert.equal(early, 15);
+  c.renderFareTiers();                                      // review step entered before the selection lookup resolved
+  release();
+  await settle();
+  assert.equal(c.calculateTotal('sedan').vehiclePrice, 30.15, 'review confirmed the live fare');
+  assert.equal(c.state.liveFareStatus, 'confirmed');
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.calculateTotal('sedan').final, 30.15);
+});
+
+test('a slow answer for a previous destination or trip type is discarded', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async () => { await gate; return 99; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
   c.state.destZoneName = 'Denarau';
   release();
   await settle();
@@ -130,21 +201,67 @@ test('a slow response arriving after the guest changed destination or trip type 
   assert.equal(c.__updates, 0);
 });
 
-test('return trips ask the server for the return fare (trip_type is passed through)', async () => {
-  const c = makeCtx({ prices: { sedan: 30, minivan: 45, minibus: 80 }, tripType: 'return', refs: { sedan: 55.8, minivan: 95.1, minibus: 147 } });
-  c.applyOrFetchLiveFares('NAN', 'TANOA_INTERNATIONAL');
+test('a verified answer is revalidated after its TTL while the last verified fares stay displayed', async () => {
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest });
+  c.__refs = TANOA.refs;
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
   await settle();
-  assert.ok(c.__calls.every((x) => x.tt === 'return'));
+  const first = c.__calls.length;
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.__calls.length, first, 'fresh answer reused, no refetch');
+  await wait(230);
+  c.__refs = { sedan: 31.0, minivan: 52.0, minibus: 80.0 };
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.prices.sedan, 30.15, 'stale-but-verified fare still shown while revalidating');
+  await settle();
+  c.state.prices = { ...TANOA.static };
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  assert.equal(c.state.prices.sedan, 31.0, 'revalidated');
 });
 
-test('source wiring: the hook runs inside updatePricing right after the static prices are set, and no fare table or Worker rule changed', () => {
-  const up = extractFn('updatePricing');
-  assert.match(up, /state\.priceSource = priced\.source;[^\n]*\n\s*applyOrFetchLiveFares\(pickupVal, destVal\);/);
-  const { execFileSync } = require('child_process');
-  const repoRoot = path.join(__dirname, '..');
-  const base = execFileSync('git', ['show', '520ca9d:ftt-booking-site/src/app.js'], { cwd: repoRoot, maxBuffer: 1e8 }).toString('utf8').replace(/\r\n/g, '\n');
-  for (const name of ['calculateTotal', 'computePrices', 'applyModifiers', 'renderFareTiers', 'submitMarketplaceBooking', 'fetchRealReferenceFare']) {
-    const grab = (src) => { const s = src.indexOf(`function ${name}(`); let i = src.indexOf('{', s), d = 0; for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}' && --d === 0) return src.slice(s, i + 1); } };
-    assert.equal(grab(js), grab(base), `${name} must be byte-identical to production 520ca9d`);
+test('never applies to custom addresses, boats, non-airport pickups, quote-priced or unresolved-zone routes', async () => {
+  for (const [label, opts, pickup, dest] of [
+    ['custom dest', {}, 'NAN', 'CUSTOM_DEST'], ['boat', { boat: true, dest: 'BOAT_X' }, 'NAN', 'BOAT_X'], ['non-airport pickup', {}, 'DENARAU_PORT', 'X_DEST'],
+    ['quote-priced', { priceSource: 'quote' }, 'NAN', 'X_DEST'], ['unresolved zone', { zone: 'NEEDS_LOOKUP' }, 'NAN', 'X_DEST'], ['no zone yet', { zone: null }, 'NAN', 'X_DEST'],
+  ]) {
+    const c = makeCtx({ prices: TANOA.static, ...opts });
+    c.__refs = TANOA.refs;
+    c.applyOrFetchLiveFares(pickup, dest);
+    await settle();
+    assert.equal(c.__calls.length, 0, `${label}: no fetch`);
+    assert.deepEqual({ ...c.state.prices }, TANOA.static, label);
+    assert.equal(c.state.liveFareStatus, 'n/a', label);
   }
+});
+
+test('wording never describes a quoted or stored amount as money charged or collected', () => {
+  const note = grabFn(js, 'renderLiveFareNote');
+  assert.doesNotMatch(note, /charged|collected|paid|payment/i);
+});
+
+test('source wiring and scope: hook in updatePricing; fare functions byte-identical to production; renderFareTiers differs only by the three inserted status lines', () => {
+  assert.match(grabFn(js, 'updatePricing'), /state\.priceSource = priced\.source;[^\n]*\n\s*applyOrFetchLiveFares\(pickupVal, destVal\);/);
+  const base = execFileSync('git', ['show', `${PROD}:ftt-booking-site/src/app.js`], { cwd: path.join(__dirname, '..'), maxBuffer: 1e8 }).toString('utf8').replace(/\r\n/g, '\n');
+  for (const name of ['calculateTotal', 'computePrices', 'applyModifiers', 'submitMarketplaceBooking', 'fetchRealReferenceFare', 'bookingRequest', 'reportBookingSyncFailure']) {
+    assert.equal(grabFn(js, name), grabFn(base, name), `${name} must be byte-identical to production ${PROD}`);
+  }
+  const stripped = grabFn(js, 'renderFareTiers').split('\n').filter((l) => !/renderLiveFareNote\(\)/.test(l)).join('\n');
+  assert.equal(stripped, grabFn(base, 'renderFareTiers'), 'renderFareTiers: only the status-note lines may differ');
+});
+
+test('attempt budget is restored by a verified answer: a later revalidation failure gets a full bounded round again', async () => {
+  let mode = 'fail-once';
+  let calls = 0;
+  const c = makeCtx({ prices: TANOA.static, zone: 'Nadi', dest: TANOA.dest, fetchImpl: async (pz, dz, vt) => { calls++; if (mode === 'fail-once' && calls <= 3) return null; return mode === 'down' ? null : TANOA.refs[vt]; } });
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(120);
+  assert.equal(c.state.liveFareStatus, 'confirmed');
+  mode = 'down';
+  calls = 0;
+  await wait(230);                                          // past the TTL
+  c.applyOrFetchLiveFares('NAN', TANOA.dest);
+  await wait(300);
+  assert.equal(calls, 9, 'a full budget of 3 attempts x 3 classes was available again');
+  assert.equal(c.state.liveFareStatus, 'confirmed', 'the last verified fares remain the displayed, verified state while revalidation fails');
 });

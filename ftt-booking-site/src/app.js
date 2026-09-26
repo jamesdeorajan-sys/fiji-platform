@@ -988,53 +988,123 @@ function renderQuoteNeedsHuman(q, routeLabel) {
   if (nextBtn) nextBtn.disabled = true; // never let a guest book against a fabricated price
 }
 
-// ─── LIVE-FARE CONSISTENCY (fare-display correction, 2026-09-27, preview) ─────
-// The vehicle cards used to show the published/estimated static fare and only
-// the review step swapped in the server's live reference fare ("Price updated
-// to reflect the current live fare"), so for some routes the guest saw one
-// number when choosing and a different one when confirming (e.g. Tanoa
-// International sedan FJ$15 then FJ$30.15). The server already replaces any
-// client amount outside 0.8x-1.3x of its own (loyalty-discounted) fare, so
-// the guest is charged the server number either way. This shows that same
-// number at selection time, ONLY where the static fare is outside that band.
-// It changes no fare rule and no server behaviour: whatever fare the server
-// returns (including after any future fare decision) is what is shown.
-const LIVE_FARE_BAND_LOW = 0.8;
-const LIVE_FARE_BAND_HIGH = 1.3;
+// ─── LIVE-FARE CONSISTENCY (fare-display correction r2, 2026-09-27, preview) ──
+// Selection used to show the static published/formula fare while the review
+// step (renderFareTiers) replaces it with the server's live /reference-fare,
+// so guests saw one number when choosing and another when confirming (Tanoa
+// sedan FJ$15 then FJ$30.15; Hilton sedan FJ$49 then FJ$47.87). This makes
+// selection show the SAME number the review step will show, by making exactly
+// the assignment renderFareTiers makes (state.prices[class] = live fare) for
+// every class the server has answered, in-band or not. It does NOT decide the
+// fare: it displays whatever the server returns now, and follows any later
+// change to the server's fares. Until the server has answered, the guest is
+// told the fares are estimates (never a static fare presented as confirmed).
+// Add-ons and trip type are handled exactly as at review (extrasTotal is added
+// by calculateTotal; the server fare is requested for the current trip type).
 const LIVE_FARE_FETCH_TIMEOUT_MS = 6000;
-function liveFareDiscounted(amount) {
-  return amount > DISCOUNT_THRESHOLD ? amount - Math.round(amount * DISCOUNT_RATE) : amount;
+const LIVE_FARE_TTL_MS = 120000;
+const LIVE_FARE_MAX_ATTEMPTS = 3;
+const LIVE_FARE_RETRY_DELAYS_MS = [2000, 5000];
+const LIVE_FARE_CLASSES = ['sedan', 'minivan', 'minibus'];
+function liveFareEligible(pickupVal, destVal) {
+  if (pickupVal !== 'NAN' || !destVal || destVal === 'CUSTOM_DEST') return false;
+  if (BOAT_DESTINATION_IDS[destVal]) return false;
+  if (state.priceSource !== 'published' && state.priceSource !== 'estimate') return false;
+  return !!state.destZoneName && state.destZoneName !== 'NEEDS_LOOKUP';
 }
 function applyLiveFares(refs) {
-  for (const k of ['sedan', 'minivan', 'minibus']) {
+  for (const k of LIVE_FARE_CLASSES) {
     const ref = refs && refs[k];
-    if (typeof ref !== 'number' || !isFinite(ref) || ref <= 0 || !state.prices[k]) continue;
-    const shown = liveFareDiscounted(state.prices[k]);
-    const server = liveFareDiscounted(ref);
-    if (shown < server * LIVE_FARE_BAND_LOW || shown > server * LIVE_FARE_BAND_HIGH) state.prices[k] = ref;
+    if (typeof ref === 'number' && isFinite(ref) && ref > 0 && state.prices[k]) state.prices[k] = ref;
   }
 }
-function applyOrFetchLiveFares(pickupVal, destVal) {
-  if (pickupVal !== 'NAN' || !destVal || destVal === 'CUSTOM_DEST') return;
-  if (BOAT_DESTINATION_IDS[destVal] || bookingHasTour()) return;
-  if (state.priceSource !== 'published' && state.priceSource !== 'estimate') return;
-  const zone = state.destZoneName;
-  if (!zone || zone === 'NEEDS_LOOKUP') return;
-  const key = `${zone}|${state.tripType}`;
-  if (state.liveFares && state.liveFares.key === key) { applyLiveFares(state.liveFares.refs); return; }
-  if (state.liveFaresPending === key) return;
+function renderLiveFareNote() {
+  if (typeof document === 'undefined') return;
+  const status = state.liveFareStatus;
+  const text = status === 'confirming'
+    ? 'Confirming the live price. The fares shown are estimates until then.'
+    : status === 'unavailable'
+      ? "We couldn't confirm the live price just now, so the fares shown are estimates. Our team confirms the final price with you."
+      : '';
+  for (const anchorId of ['vehicleCards', 'vehicleDetailCards', 'priceUpdatedNote']) {
+    const anchor = document.getElementById(anchorId);
+    if (!anchor || !anchor.parentNode) continue;
+    const noteId = 'liveFareNote-' + anchorId;
+    let note = document.getElementById(noteId);
+    if (!note) {
+      note = document.createElement('p');
+      note.id = noteId;
+      note.setAttribute('role', 'status');
+      note.style.cssText = 'margin:8px 0;font-size:13px;opacity:.85';
+      anchor.parentNode.insertBefore(note, anchor);
+    }
+    note.textContent = text;
+    if (status === 'unavailable') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = ' Try again';
+      btn.style.cssText = 'background:none;border:0;padding:0;font:inherit;text-decoration:underline;cursor:pointer';
+      btn.onclick = retryLiveFares;
+      note.appendChild(btn);
+    }
+    note.style.display = text ? 'block' : 'none';
+  }
+}
+function startLiveFareFetch(key) {
+  const at = state.liveFareAttempts && state.liveFareAttempts.key === key ? state.liveFareAttempts : (state.liveFareAttempts = { key, n: 0 });
+  if (state.liveFaresPending === key || at.n >= LIVE_FARE_MAX_ATTEMPTS || Date.now() < (at.notBefore || 0)) return false;
+  at.n += 1;
   state.liveFaresPending = key;
+  const zone = state.destZoneName;
+  const prior = state.liveFares && state.liveFares.key === key ? state.liveFares.refs : {};
   const one = (vt) => Promise.race([
     Promise.resolve().then(() => fetchRealReferenceFare('Nadi Airport', zone, vt, state.tripType)).catch(() => null),
     new Promise((resolve) => setTimeout(() => resolve(null), LIVE_FARE_FETCH_TIMEOUT_MS)),
   ]);
-  Promise.all([one('sedan'), one('minivan'), one('minibus')]).then(([sedan, minivan, minibus]) => {
+  Promise.all(LIVE_FARE_CLASSES.map(one)).then((results) => {
     if (state.liveFaresPending === key) state.liveFaresPending = null;
-    const stillCurrent = `${state.destZoneName}|${state.tripType}` === key;
-    if (!stillCurrent) return;
-    state.liveFares = { key, refs: { sedan, minivan, minibus } };
+    if (`${state.destZoneName}|${state.tripType}` !== key) return; // guest moved on; a fresh lookup starts for the new selection
+    const now = Date.now();
+    const priorAt = (state.liveFares && state.liveFares.key === key && state.liveFares.refsAt) || {};
+    const valid = (v) => typeof v === 'number' && isFinite(v) && v > 0;
+    const refs = {};
+    const refsAt = {};
+    LIVE_FARE_CLASSES.forEach((k, i) => { const ok = valid(results[i]); refs[k] = ok ? results[i] : (prior[k] ?? null); refsAt[k] = ok ? now : (priorAt[k] || 0); });
+    const complete = LIVE_FARE_CLASSES.every((k) => typeof refs[k] === 'number');
+    // `at` is when the OLDEST class was last verified by the server, so a failed revalidation can never make old fares look fresh
+    state.liveFares = { key, refs, refsAt, at: Math.min(...LIVE_FARE_CLASSES.map((k) => refsAt[k])), complete };
+    if (results.every(valid)) at.n = 0;
+    if (!complete && at.n < LIVE_FARE_MAX_ATTEMPTS) {
+      at.notBefore = Date.now() + LIVE_FARE_RETRY_DELAYS_MS[Math.min(at.n - 1, LIVE_FARE_RETRY_DELAYS_MS.length - 1)];
+      setTimeout(() => {
+        if (`${state.destZoneName}|${state.tripType}` !== key) return;
+        at.notBefore = 0;
+        applyOrFetchLiveFares(document.getElementById('pickup')?.value, document.getElementById('destination')?.value);
+      }, LIVE_FARE_RETRY_DELAYS_MS[Math.min(at.n - 1, LIVE_FARE_RETRY_DELAYS_MS.length - 1)]);
+    }
     updatePricing();
   });
+  return true;
+}
+function retryLiveFares() {
+  state.liveFareAttempts = null;
+  state.liveFares = null;
+  state.liveFaresPending = null;
+  applyOrFetchLiveFares(document.getElementById('pickup')?.value, document.getElementById('destination')?.value);
+}
+function applyOrFetchLiveFares(pickupVal, destVal) {
+  if (!liveFareEligible(pickupVal, destVal)) { state.liveFareStatus = 'n/a'; renderLiveFareNote(); return; }
+  const key = `${state.destZoneName}|${state.tripType}`;
+  const lf = state.liveFares && state.liveFares.key === key ? state.liveFares : null;
+  if (lf) applyLiveFares(lf.refs);
+  const fresh = !!lf && lf.complete && (Date.now() - lf.at) < LIVE_FARE_TTL_MS;
+  if (fresh) { state.liveFareStatus = 'confirmed'; renderLiveFareNote(); return; }
+  const started = startLiveFareFetch(key);
+  const attempts = state.liveFareAttempts && state.liveFareAttempts.key === key ? state.liveFareAttempts.n : 0;
+  const exhausted = !state.liveFaresPending && attempts >= LIVE_FARE_MAX_ATTEMPTS;
+  // a complete-but-stale answer is still a verified server answer while it revalidates
+  state.liveFareStatus = (lf && lf.complete) ? 'confirmed' : (exhausted && !started ? 'unavailable' : 'confirming');
+  renderLiveFareNote();
 }
 
 function updatePricing() {
@@ -2559,6 +2629,7 @@ async function fetchRealReferenceFare(pickupZone, destinationZone, vehicleType, 
 // (state.showFlexibleFare, flipped by toggleFlexibleFare()) - collapsed by
 // default on every fresh entry to step 4.
 function renderFareTiers() {
+  renderLiveFareNote();
   stopNegotiationPolling();
   const waitingEl = document.getElementById('negotiateWaiting');
   if (waitingEl) waitingEl.style.display = 'none';
@@ -2614,6 +2685,7 @@ function renderFareTiers() {
     if (submitBtn) submitBtn.disabled = false;
 
     if (realFare === null) {
+      if (state.liveFareStatus !== 'confirmed') { state.liveFareStatus = 'unavailable'; renderLiveFareNote(); }
       // Can't get a reliable real number - don't show a possibly-wrong
       // floor. Standard Fare booking is unaffected either way.
       if (toggleRow) toggleRow.style.display = 'none';
@@ -2626,6 +2698,7 @@ function renderFareTiers() {
     // submission) uses it - not two different fares sitting side by side.
     const priceChanged = state.prices[elig.vehicleType] !== realFare;
     state.prices[elig.vehicleType] = realFare;
+    state.liveFareStatus = 'confirmed'; renderLiveFareNote();
     renderPriceBlock();
     if (priceChanged) {
       const noteEl = document.getElementById('priceUpdatedNote');
