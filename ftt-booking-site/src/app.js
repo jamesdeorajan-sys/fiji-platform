@@ -522,6 +522,21 @@ function computePrices(pickupVal, destVal, km) {
 // explicit, flagged scope boundary.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Analytics is strictly optional (issue #59, 2026-09-27). trackFunnelEvent comes from
+// funnel-events-client.js; if that script is blocked, fails to load or throws, a bare
+// `trackFunnelEvent?.()` raises ReferenceError (optional chaining does not guard an
+// undeclared identifier), which aborted page initialization and stopped goToStep(3) and
+// confirmBooking() before submission. Every call now goes through this guard.
+function trackBookingFunnel(eventType) {
+  try {
+    if (typeof window.trackFunnelEvent === 'function') {
+      window.trackFunnelEvent(eventType);
+    }
+  } catch {
+    // Analytics must never block booking.
+  }
+}
+
 const NADI_API_BASE = 'https://api.nadiairporttransfers.com';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -931,8 +946,8 @@ function resolveLocation(which) {
   };
 }
 
-function onPickupChange()      { togglePickupPanel();   updatePricing(); updateFlightHint(); trackFunnelEvent?.('route_selected'); }
-function onDestinationChange() { toggleDestPanel();     updatePricing(); trackFunnelEvent?.('route_selected'); }
+function onPickupChange()      { togglePickupPanel();   updatePricing(); updateFlightHint(); trackBookingFunnel('route_selected'); }
+function onDestinationChange() { toggleDestPanel();     updatePricing(); trackBookingFunnel('route_selected'); }
 
 // A1: Show the friendly flight-monitoring promise inline when the pickup is
 // Nadi Airport. Hide it for hotel-departure bookings where it doesn't apply.
@@ -1351,7 +1366,7 @@ function selectVehicle(key, el) {
   if (nb) nb.disabled = false;
   // Tour bundle summary depends on which vehicle is selected — refresh it
   if (state.selectedTour) updatePricing();
-  trackFunnelEvent?.('vehicle_selected');
+  trackBookingFunnel('vehicle_selected');
 }
 function selectVehicleDetail(key, el) {
   const v = VEHICLES.find(x => x.key === key);
@@ -1535,7 +1550,7 @@ function goToStep(n) {
       alert(`This vehicle is too small: ${reasons.join(', ')}. Please pick a larger one.`);
       return;
     }
-    trackFunnelEvent?.('details_opened');
+    trackBookingFunnel('details_opened');
   }
   showStep(n);
   document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -1858,7 +1873,7 @@ function buildWhatsAppURL(ref) {
 
 // ─── CONFIRM BOOKING ─────────────────────────────────────────────────────────
 async function confirmBooking() {
-  trackFunnelEvent?.('confirm_clicked');
+  trackBookingFunnel('confirm_clicked');
   // Real gap found by an independent pre-launch review: zero double-submit
   // protection existed here. Two click events dispatched close together
   // (a fast double-click, or the classic mobile double-tap event-firing
@@ -2367,7 +2382,7 @@ async function submitMarketplaceBooking(ref) {
     ...getAttributionForPayload(),
   };
 
-  trackFunnelEvent?.('booking_post_started');
+  trackBookingFunnel('booking_post_started');
   try {
     // P0 incident fix (2026-09-26): was a bare, unbounded fetch — a stalled response left the guest
     // on "Saving your booking…" forever, with no error, no fallback, and (since escalation was
@@ -2391,18 +2406,18 @@ async function submitMarketplaceBooking(ref) {
       // comment) — an ops alert must never be able to block the guest's
       // own recovery UI from appearing, which awaiting it here risked.
       void reportBookingSyncFailure(ref, payload, data);
-      trackFunnelEvent?.('booking_post_failed');
+      trackBookingFunnel('booking_post_failed');
       // A received non-success response (HTTP 5xx, malformed/truncated body on a 200, or an ok:false
       // body) is NOT proof nothing was persisted - the API contract does not guarantee rejection
       // happened before the INSERT, so this stays UNKNOWN, same as a timeout.
       return { ok: false, resultKind: 'unknown', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
-    trackFunnelEvent?.('booking_post_succeeded');
+    trackBookingFunnel('booking_post_succeeded');
     return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
   } catch (err) {
     // P0 incident fix (2026-09-26): fire-and-forget, same reasoning as above.
     void reportBookingSyncFailure(ref, payload, { error: err.message });
-    trackFunnelEvent?.('booking_post_failed');
+    trackBookingFunnel('booking_post_failed');
     // A thrown exception (timeout, network error, offline, DNS, connection reset, aborted mid-body)
     // means we genuinely do not know whether the server received and committed this request before
     // the connection died — the request may have already saved. Never a confirmed failure.
@@ -3578,7 +3593,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // call is wrapped too as defence in depth: attribution metadata capture
   // must never be able to stop the rest of page init from running.
   try { captureAttribution(); } catch { /* never blocks page init */ }
-  trackFunnelEvent?.('booking_page_view');
+  trackBookingFunnel('booking_page_view');
 
   // CEO P0 Round 6, Track C - whatsapp_opened. Delegated listener (not an
   // inline onclick in index.html) so this stays purely additive JS, zero
@@ -3586,7 +3601,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // sendBeacon running first - the new tab opens regardless of whether
   // tracking succeeds.
   document.addEventListener('click', (e) => {
-    if (e.target.closest('#bulaWaBtn')) trackFunnelEvent?.('whatsapp_opened');
+    if (e.target.closest('#bulaWaBtn')) trackBookingFunnel('whatsapp_opened');
   });
 
   buildRoutesTable();

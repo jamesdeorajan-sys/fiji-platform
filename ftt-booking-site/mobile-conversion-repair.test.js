@@ -127,7 +127,7 @@ test('WhatsApp semantics: bulaWaReassurance frames WhatsApp as optional, not as 
 
 test('WhatsApp open != message sent: the whatsapp_opened click handler only tracks a funnel event, never writes "sent"/"notified" copy', () => {
   const handlerLine = extract(js, "document.addEventListener('click', (e) => {", '});');
-  assert.ok(handlerLine.includes("if (e.target.closest('#bulaWaBtn')) trackFunnelEvent?.('whatsapp_opened');"));
+  assert.ok(handlerLine.includes("if (e.target.closest('#bulaWaBtn')) trackBookingFunnel('whatsapp_opened');"));
   assert.ok(!/message sent/i.test(handlerLine));
   assert.ok(!/team notified/i.test(handlerLine));
 });
@@ -290,9 +290,12 @@ test('booking-core untouched: submitMarketplaceBooking()\'s payload construction
   // negotiation-offer code), so this check was silently covering ~15,500 bytes it was never meant
   // to, well past this payload's real end. Narrowed to a marker confirmed unique (exactly one
   // occurrence) that actually terminates at this payload object's own closing brace.
-  const endMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
+  // The tracking call after the payload was renamed to the guarded helper (issue #59), so the base
+  // commit's end marker is the old bare call; the payload text between the markers must stay identical.
+  const endMarker = "  };\n\n  trackBookingFunnel('booking_post_started');";
+  const baseEndMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
   const candidate = extract(js, marker, endMarker);
-  const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, endMarker);
+  const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, baseEndMarker);
   assert.strictEqual(candidate, base);
 });
 
