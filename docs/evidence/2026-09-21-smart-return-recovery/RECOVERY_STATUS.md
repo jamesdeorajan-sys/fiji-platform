@@ -154,3 +154,36 @@ Branch `ceo/smart-return-recovery-pilot` @ `f5c62a1dd08643e68013ac1e8101b79c418d
 
 **24 Sep allocation decisions ops must make (private sheet prepared):** (1) confirm the two return pickup locations (accept the suggestion or correct it) — this alone regenerates the proposal; (2) allocate a vehicle/driver to each of the 7 legs (all `NEEDS_DISPATCH_ALLOCATION`); (3) select at most one alternative per leg, or keep legs separate; (4) give real drive minutes and turnaround per leg; (5) confirm guest pickup times and services stay as booked. A tested path regenerates the day's proposal from the completed confirmation sheet (`--location-confirmations`); a dry run with a placeholder acceptance (temp files, deleted) turned the 4 alternatives from conditional to confirmed-mapping, as designed. Real regeneration awaits ops.
 
+## 19. Return-location mapping closed via the serving source (no worksheet loop)
+Branch @ `62b8ed0f576190d852da46a36883285c18fd6f46` — **240/240** (author-run; mutation-checked: removing any of the three conflict guards below fails 1 of the 8 new tests). Planning only; no production writes, booking changes, messages or public offers.
+
+**Method.** Each recorded return-pickup string is checked for an explicit, unambiguous hotel -> zone mapping in the **serving source**: the live storefront's own hotel `<option>` (`data-hotel` -> `data-area`), resolved through that same storefront's own `resolveFixedDestinationZone()` rule (area in its marketplace-zone list, or its own alias table, else `NEEDS_LOOKUP` -> unresolved). **Agreement with the recorded outbound zone is never used as evidence** (tested explicitly: a matching outbound zone does not resolve an unlisted name; a *differing* outbound zone does not block a real mapping). A resolved mapping records the storefront, its page and script SHA-256 hashes, the exact option, the zone rule (with source line), and when it was retrieved — so a later reviewer can tell whether the source has since changed.
+
+**History check.** Fetched every production deployment listed for `nadiairporttransfers.com` (30, from `nadi_pages_production_deployments_timeline.csv`, since the widget's hotel options first appeared 2026-09-07) and every production deployment of the `book.fijidash.com` Pages project (19, via `wrangler pages deployment list`). **All 30 and all 19 carry an identical hotel -> area mapping** for the hotels this window needs. This bounds, but does not eliminate, drift risk — it does not identify which deployment served a specific historical booking, and a guest can edit the pre-filled return-location field.
+
+**Result for the 6 recorded return pickups (24 Sep + the following six days):** all 6 resolve — **0 exceptions**, so **no worksheet was generated or sent** (the resolver only writes an exceptions sheet, and only for the small number of genuine exceptions: unlisted name, several areas, a storefront conflict, a platform-table conflict, no 1:1 zone, or missing text — none occurred here). Two of the six are on 24 Sep.
+
+**What this does and does not establish.** It is **geographic resolution only** — it says which zone the named hotel is in, on the record of the storefront that took the booking. It does **not** confirm the guest, the pickup time, or that this is the actual pickup arrangement (the field is the widget's pre-filled default and guests can edit it). Accordingly a pairing built on a serving-source mapping is `PLANNING_CANDIDATE_ZONE_MAPPING_RESOLVED_NOT_OPERATIONALLY_CONFIRMED` — **not** "operationally confirmed" and not feasible — and its missing-inputs list explicitly asks ops to "verify the actual pickup arrangement" and confirm guest-confirmation status, kept as separate line items from the zone question.
+
+## 20. Regenerated 24 September proposal (mapping-resolved; not operationally confirmed)
+Same aggregate shape as section 18, now with the zone question closed:
+| | 24 Sep | 24–30 Sep |
+|---|---|---|
+| Legs | 7 (5 arrival + 2 recorded return) | 19 (13 + 6) |
+| Return pickups resolved via serving-source mapping | **2 of 2** | **6 of 6** |
+| Return-location exceptions sent to ops | **0** | **0** |
+| Competing alternatives (pairings) | 4, all `..._ZONE_MAPPING_RESOLVED_NOT_OPERATIONALLY_CONFIRMED` | 5, all the same status |
+| Alternative groups / non-overlapping-leg upper bound | 1 group, upper bound **2** | 2 groups, upper bounds **1** and **2** |
+| Legs allocated or filled | **0** | **0** |
+| Unmatched requests (hypothetical positioning need) | 3 arrival-side | 10 arrival-side + 3 return-side |
+
+**"Upper bound 2" is a non-overlapping-leg ceiling, not a dispatchable schedule and not two additional bookings** — it says at most two of the four alternatives could share no leg, nothing about which two, whether a vehicle exists, or whether timing works. The statement travels with every summary.
+
+**24 September — remaining decisions (private sheets regenerated, same five with no new templates):**
+1. **Duplicate resolution:** one leg (L007) carries the retry-duplicate flag; two of the four alternatives (P002, P004) involve it and may collapse if that saved request is confirmed a duplicate.
+2. **Drive/turnaround times:** still `DURATION_UNKNOWN` for every leg — no traceable route-duration estimate exists; ops must supply real minutes.
+3. **Allocation:** all 7 legs are `NEEDS_DISPATCH_ALLOCATION` (no vehicle/driver assigned to any); where a leg has candidate alternatives (L002/L003/L004/L007), ops select at most one or keep it separate.
+4. **Pickup-arrangement verification:** the 2 return legs need the actual pickup arrangement verified (zone is geography only) and guest-confirmation status recorded for all 7.
+
+No production, fare, message or D1 action. Offer lifecycle (dispatch approval, exclusive vehicle-time claims, expiry, withdrawal, audit, D1 concurrency) remains unbuilt; the one-vehicle validation stage stays separate.
+

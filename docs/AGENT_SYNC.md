@@ -18,6 +18,13 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## ✅ CHECKPOINT 2026-09-26 — Issue #54 booking-led: return-location mapping closed via serving source (Claude)
+
+- **AUTHOR-VERIFIED**, branch @ `62b8ed0f576190d852da46a36883285c18fd6f46`, 240/240 (232 + 8 new, mutation-checked). Closed the location-mapping gap without a worksheet loop: `resolveViaServingSource()` checks each recorded return-pickup string for an explicit, unambiguous hotel->zone mapping in the LIVE storefront's own hotel options + its own zone-resolution rule (source/hashes/rule line/retrieval time recorded; agreement with the outbound zone never used as evidence). History check: 30/30 FTT and 19/19 FD production deployments carry the identical mapping since the widget's hotel options first shipped.
+- **Result:** all 6 recorded return pickups (2 on 24 Sep) resolve via the serving source — **0 exceptions**, no worksheet sent. Geographic resolution kept separate from guest confirmation and pickup-arrangement verification: mapping-resolved pairings are `..._ZONE_MAPPING_RESOLVED_NOT_OPERATIONALLY_CONFIRMED`, never called feasible or operationally confirmed. 'At most N' relabelled a non-overlapping-leg upper bound with an explicit non-additive, non-dispatchable statement.
+- **24 Sep regenerated:** 7 legs, 4 competing alternatives (1 group, upper bound 2), 0 legs allocated. Remaining decisions for ops: resolve the one retry-duplicate flag (affects 2 of 4 alternatives), supply real drive/turnaround minutes (still DURATION_UNKNOWN), allocate a vehicle to each of 7 legs, verify the actual pickup arrangement on the 2 return legs. Details RECOVERY_STATUS sections 19–20.
+- No production writes, booking changes, messages or public offers. Offer lifecycle (dispatch approval, exclusive claims, expiry, withdrawal, audit, D1 concurrency) remains unbuilt.
+
 ## ✅ CHECKPOINT 2026-09-21 (Tue, late) — Issue #54 booking-led planning rev 2 (Claude)
 
 - **INDEPENDENTLY-VERIFIED (Codex):** `9e792a25903bda05ff183799f270c78f3b2126a4` 223/223, source reviewed. Private record totals and scenario counts remain AUTHOR-VERIFIED.

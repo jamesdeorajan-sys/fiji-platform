@@ -22,16 +22,17 @@
     },
     "legs_with_passengers_and_luggage_known": 4,
     "return_location_status": {
-      "UNRESOLVED_NO_MATCH": 2
+      "RESOLVED_VIA_SERVING_SOURCE_MAPPING": 2
     },
     "return_location_match_category": {
       "EXACT_STOREFRONT_HOTEL_OPTION": 2
     },
+    "return_location_mapping_exceptions": {},
     "return_locations_with_unverified_zone_suggestion": 2,
     "return_legs_missing_time": 0,
     "distance_available": {
       "arrival_from_bookings": 5,
-      "return_from_zone_cache": 0
+      "return_from_zone_cache": 2
     },
     "confirmation": {
       "SAVED_REQUEST_NOT_GUEST_CONFIRMED": 7
@@ -45,22 +46,23 @@
     },
     "legs_with_any_uncertainty_flag": 1,
     "competing_alternatives": {
-      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.",
+      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule. The non-overlapping-leg upper bound is only the most alternatives that share no leg - it is not a dispatchable schedule and not additional bookings.",
       "pairing_alternatives": 4,
       "alternative_groups": 1,
       "alternatives_per_group": [
         4
       ],
-      "max_selectable_at_once_upper_bound_per_group": [
+      "non_overlapping_leg_upper_bound_per_group": [
         2
       ],
       "legs_allocated": 0
     },
     "potential_pairings": {
       "total": 4,
-      "confirmed_mapping": 0,
-      "conditional_on_location_confirmation": 4,
+      "confirmed_mapping": 4,
+      "conditional_on_location_confirmation": 0,
       "scenario_only_outbound_zone_assumed": 0,
+      "zone_mapping_resolved_not_operationally_confirmed": 4,
       "by_type": {
         "SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL": 4
       },
@@ -126,16 +128,17 @@
     },
     "legs_with_passengers_and_luggage_known": 10,
     "return_location_status": {
-      "UNRESOLVED_NO_MATCH": 6
+      "RESOLVED_VIA_SERVING_SOURCE_MAPPING": 6
     },
     "return_location_match_category": {
       "EXACT_STOREFRONT_HOTEL_OPTION": 6
     },
+    "return_location_mapping_exceptions": {},
     "return_locations_with_unverified_zone_suggestion": 6,
     "return_legs_missing_time": 0,
     "distance_available": {
       "arrival_from_bookings": 13,
-      "return_from_zone_cache": 0
+      "return_from_zone_cache": 6
     },
     "confirmation": {
       "SAVED_REQUEST_NOT_GUEST_CONFIRMED": 19
@@ -150,14 +153,14 @@
     },
     "legs_with_any_uncertainty_flag": 2,
     "competing_alternatives": {
-      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.",
+      "statement": "Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule. The non-overlapping-leg upper bound is only the most alternatives that share no leg - it is not a dispatchable schedule and not additional bookings.",
       "pairing_alternatives": 5,
       "alternative_groups": 2,
       "alternatives_per_group": [
         1,
         4
       ],
-      "max_selectable_at_once_upper_bound_per_group": [
+      "non_overlapping_leg_upper_bound_per_group": [
         1,
         2
       ],
@@ -165,9 +168,10 @@
     },
     "potential_pairings": {
       "total": 5,
-      "confirmed_mapping": 0,
-      "conditional_on_location_confirmation": 5,
+      "confirmed_mapping": 5,
+      "conditional_on_location_confirmation": 0,
       "scenario_only_outbound_zone_assumed": 0,
+      "zone_mapping_resolved_not_operationally_confirmed": 5,
       "by_type": {
         "SAVED_REQUEST_PAIRING_ARRIVAL_THEN_RETURN": 1,
         "SAVED_REQUEST_PAIRING_RETURN_THEN_ARRIVAL": 4
