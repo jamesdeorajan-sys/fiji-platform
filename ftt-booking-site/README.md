@@ -12,8 +12,7 @@ Source files for **nadiairporttransfers.com**.
 - `chat-widget.js` — floating chat widget (calls the chat Worker)
 - `sitemap.xml` — submitted to Google + Bing (23 URLs)
 - `_headers`, `_redirects` — Cloudflare Pages config
-- `wrangler.toml` — Cloudflare config (currently mostly stub)
-- `worker.js` — Pages-attached Worker (currently stub, real logic is client-side)
+- `404.html` — real 404 for unknown paths (Pages serves it with HTTP 404; without it Pages falls back to the homepage with HTTP 200)
 - `transfer/` — 22 hotel landing pages, each is its own SEO page
 
 ## Current version
