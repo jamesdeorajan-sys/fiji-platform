@@ -2237,6 +2237,36 @@ function resolveConfirmedPickupZone() {
 // error } instead of silently swallowing success/failure, so confirmBooking()
 // can decide which card to show rather than always assuming success. Every
 // return path below is intentional; there is no implicit-undefined exit.
+// P0 incident fix (2026-09-26) — bounded network request for the actual booking-save POST.
+// Mirrors nadiairporttransfers.com/app.js's own bookingRequest() function verbatim (same shape,
+// same default), which already exists specifically because "a connected but stalled response must
+// not leave the guest locked on Saving" — that exact protection was missing here. The deadline
+// covers response-BODY reading too (not just the initial connection), via Promise.race against the
+// whole read-and-parse chain, so a connection that opens but then stalls mid-response is caught the
+// same as one that never opens at all. A timeout is an UNKNOWN outcome, never treated as a confirmed
+// failure — see submitMarketplaceBooking()'s own handling of the rejection this throws.
+async function bookingRequest(url, options, timeoutMs = 15000) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const data = await response.json().catch(() => null);
+        return { response, data };
+      })(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('The connection timed out. Your save status is unknown.'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function submitMarketplaceBooking(ref) {
   const pickupZone = resolveConfirmedPickupZone();
   const destinationZone = resolveConfirmedDestinationZone();
@@ -2274,8 +2304,8 @@ async function submitMarketplaceBooking(ref) {
     // unresolved zone/vehicle/price data is a real gap somewhere upstream,
     // not routine.
     const incompleteDetail = { reason: 'incomplete-client-data', pickupZone, destinationZone, vehicleType: state.selectedVehicle, quotedAmount };
-    await reportBookingSyncFailure(ref, incompleteDetail, incompleteDetail);
-    return { ok: false, error: 'missing-required-data' };
+    void reportBookingSyncFailure(ref, incompleteDetail, incompleteDetail);
+    return { ok: false, resultKind: 'confirmed_rejected', error: 'missing-required-data' };
   }
 
   // Itinerary fields - informational only (never affect price/commission),
@@ -2339,12 +2369,15 @@ async function submitMarketplaceBooking(ref) {
 
   trackFunnelEvent?.('booking_post_started');
   try {
-    const res = await fetch(`${NADI_API_BASE}/bookings`, {
+    // P0 incident fix (2026-09-26): was a bare, unbounded fetch — a stalled response left the guest
+    // on "Saving your booking…" forever, with no error, no fallback, and (since escalation was
+    // awaited below, also unbounded) no ops alert either. Now goes through bookingRequest()'s 15s
+    // deadline, same as Nadi's own site.
+    const { response: res, data } = await bookingRequest(`${NADI_API_BASE}/bookings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = await res.json().catch(() => null);
     if (!res.ok || !data?.ok) {
       // CEO P0 fix (Issue #34) - this branch also covers the "network
       // timeout after server commit" case from the test list: if the
@@ -2353,16 +2386,25 @@ async function submitMarketplaceBooking(ref) {
       // client_booking_ref) hits the idempotency path server-side and
       // gets the ALREADY-CREATED booking back as a success - never a
       // second row, regardless of which side the timeout happened on.
-      await reportBookingSyncFailure(ref, payload, data);
+      // P0 incident fix (2026-09-26): fire-and-forget (was awaited), and
+      // reportBookingSyncFailure() itself is now bounded (see its own
+      // comment) — an ops alert must never be able to block the guest's
+      // own recovery UI from appearing, which awaiting it here risked.
+      void reportBookingSyncFailure(ref, payload, data);
       trackFunnelEvent?.('booking_post_failed');
-      return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
+      // A real server response (even a rejection) is a KNOWN outcome, not an unknown one.
+      return { ok: false, resultKind: 'confirmed_rejected', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
     trackFunnelEvent?.('booking_post_succeeded');
     return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
   } catch (err) {
-    await reportBookingSyncFailure(ref, payload, { error: err.message });
+    // P0 incident fix (2026-09-26): fire-and-forget, same reasoning as above.
+    void reportBookingSyncFailure(ref, payload, { error: err.message });
     trackFunnelEvent?.('booking_post_failed');
-    return { ok: false, error: err.message };
+    // A thrown exception (timeout, network error, offline, DNS, connection reset, aborted mid-body)
+    // means we genuinely do not know whether the server received and committed this request before
+    // the connection died — the request may have already saved. Never a confirmed failure.
+    return { ok: false, resultKind: 'unknown', error: err.message };
   }
 }
 
@@ -2372,9 +2414,14 @@ async function submitMarketplaceBooking(ref) {
 // this now fires BEFORE the guest has necessarily done anything else - it
 // is not conditional on them tapping WhatsApp or retrying, so ops finds
 // out about a failed handoff even if the guest just closes the tab.
+// P0 incident fix (2026-09-26): now called fire-and-forget by every caller (never awaited on the
+// guest's recovery path — see submitMarketplaceBooking()'s own comment on why), and its own fetch is
+// now bounded to a short, separate deadline via bookingRequest() so a stalled /escalate call can
+// never dangle indefinitely either. This function must never, itself, become a reason the guest is
+// left waiting.
 async function reportBookingSyncFailure(ref, payload, errorDetail) {
   try {
-    await fetch(`${NADI_API_BASE}/escalate`, {
+    await bookingRequest(`${NADI_API_BASE}/escalate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2382,10 +2429,10 @@ async function reportBookingSyncFailure(ref, payload, errorDetail) {
         trigger_type: 'app_issue',
         context: `POST /bookings failed for confirmed guest booking ${ref} (WhatsApp confirmation still sent). Payload: ${JSON.stringify(payload)}. Error: ${JSON.stringify(errorDetail)}`.slice(0, 2000),
       }),
-    });
+    }, 5000);
   } catch (err) {
     // Last line of defense - nothing more to do client-side if even the
-    // escalation call fails.
+    // escalation call fails or times out.
   }
 }
 

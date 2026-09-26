@@ -285,7 +285,12 @@ test('pricing untouched: VEHICLES, vehicleFits(), and recommendedVehicle() are b
 
 test('booking-core untouched: submitMarketplaceBooking()\'s payload construction and idempotency key handling are byte-identical to the base commit', () => {
   const marker = 'const payload = {';
-  const endMarker = '\n\n  try {';
+  // P0 incident fix (2026-09-26): the previous end marker '\n\n  try {' was not unique to this
+  // function — it coincidentally matched a much later, unrelated try block deep in the file (the
+  // negotiation-offer code), so this check was silently covering ~15,500 bytes it was never meant
+  // to, well past this payload's real end. Narrowed to a marker confirmed unique (exactly one
+  // occurrence) that actually terminates at this payload object's own closing brace.
+  const endMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
   const candidate = extract(js, marker, endMarker);
   const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, endMarker);
   assert.strictEqual(candidate, base);
