@@ -988,6 +988,55 @@ function renderQuoteNeedsHuman(q, routeLabel) {
   if (nextBtn) nextBtn.disabled = true; // never let a guest book against a fabricated price
 }
 
+// ─── LIVE-FARE CONSISTENCY (fare-display correction, 2026-09-27, preview) ─────
+// The vehicle cards used to show the published/estimated static fare and only
+// the review step swapped in the server's live reference fare ("Price updated
+// to reflect the current live fare"), so for some routes the guest saw one
+// number when choosing and a different one when confirming (e.g. Tanoa
+// International sedan FJ$15 then FJ$30.15). The server already replaces any
+// client amount outside 0.8x-1.3x of its own (loyalty-discounted) fare, so
+// the guest is charged the server number either way. This shows that same
+// number at selection time, ONLY where the static fare is outside that band.
+// It changes no fare rule and no server behaviour: whatever fare the server
+// returns (including after any future fare decision) is what is shown.
+const LIVE_FARE_BAND_LOW = 0.8;
+const LIVE_FARE_BAND_HIGH = 1.3;
+const LIVE_FARE_FETCH_TIMEOUT_MS = 6000;
+function liveFareDiscounted(amount) {
+  return amount > DISCOUNT_THRESHOLD ? amount - Math.round(amount * DISCOUNT_RATE) : amount;
+}
+function applyLiveFares(refs) {
+  for (const k of ['sedan', 'minivan', 'minibus']) {
+    const ref = refs && refs[k];
+    if (typeof ref !== 'number' || !isFinite(ref) || ref <= 0 || !state.prices[k]) continue;
+    const shown = liveFareDiscounted(state.prices[k]);
+    const server = liveFareDiscounted(ref);
+    if (shown < server * LIVE_FARE_BAND_LOW || shown > server * LIVE_FARE_BAND_HIGH) state.prices[k] = ref;
+  }
+}
+function applyOrFetchLiveFares(pickupVal, destVal) {
+  if (pickupVal !== 'NAN' || !destVal || destVal === 'CUSTOM_DEST') return;
+  if (BOAT_DESTINATION_IDS[destVal] || bookingHasTour()) return;
+  if (state.priceSource !== 'published' && state.priceSource !== 'estimate') return;
+  const zone = state.destZoneName;
+  if (!zone || zone === 'NEEDS_LOOKUP') return;
+  const key = `${zone}|${state.tripType}`;
+  if (state.liveFares && state.liveFares.key === key) { applyLiveFares(state.liveFares.refs); return; }
+  if (state.liveFaresPending === key) return;
+  state.liveFaresPending = key;
+  const one = (vt) => Promise.race([
+    Promise.resolve().then(() => fetchRealReferenceFare('Nadi Airport', zone, vt, state.tripType)).catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), LIVE_FARE_FETCH_TIMEOUT_MS)),
+  ]);
+  Promise.all([one('sedan'), one('minivan'), one('minibus')]).then(([sedan, minivan, minibus]) => {
+    if (state.liveFaresPending === key) state.liveFaresPending = null;
+    const stillCurrent = `${state.destZoneName}|${state.tripType}` === key;
+    if (!stillCurrent) return;
+    state.liveFares = { key, refs: { sedan, minivan, minibus } };
+    updatePricing();
+  });
+}
+
 function updatePricing() {
   const panel   = document.getElementById('pricingPanel');
   const empty   = document.getElementById('emptyState');
@@ -1120,6 +1169,7 @@ function updatePricing() {
   const priced    = computePrices(pickupVal, destVal, km);
   state.prices    = { sedan: priced.sedan, minivan: priced.minivan, minibus: priced.minibus };
   state.priceSource = priced.source;  // 'published' | 'estimate' | 'quote'
+  applyOrFetchLiveFares(pickupVal, destVal);
 
   const suffix   = state.tripType === 'return' ? ' (return)' : '';
   const fromName = p.name.replace(/^[✈⛵🏙📍]\s*/,'');
