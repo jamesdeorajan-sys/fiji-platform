@@ -67,7 +67,7 @@ test('pairings are COMPETING ALTERNATIVES: grouped, never additive, never alloca
   assert.equal(plan.pairings.length, 2);
   assert.equal(plan.groups.length, 1);
   assert.equal(plan.groups[0].alternatives, 2);
-  assert.equal(plan.groups[0].max_selectable_at_once_upper_bound, 1);
+  assert.equal(plan.groups[0].non_overlapping_leg_upper_bound, 1);
   const alt = plan.summary.competing_alternatives;
   assert.match(alt.statement, /not additive bookings, not savings, not inventory/);
   assert.equal(alt.legs_allocated, 0);
@@ -81,7 +81,7 @@ test('disjoint alternatives form separate groups (each can be selected) but stay
     row({ pickup_time: '10:00', destination_zone: 'Coral Coast', vehicle_class: 'minivan' }), withReturn({ pickup_date: '2026-09-22', return_time: '14:00', destination_zone: 'Coral Coast', return_pickup_location: 'Hotel Beta', vehicle_class: 'minivan' })];
   const plan = buildPlan(rows, CTX);
   assert.equal(plan.groups.length, 2);
-  assert.deepEqual(plan.summary.competing_alternatives.max_selectable_at_once_upper_bound_per_group, [1, 1]);
+  assert.deepEqual(plan.summary.competing_alternatives.non_overlapping_leg_upper_bound_per_group, [1, 1]);
   assert.equal(plan.summary.competing_alternatives.legs_allocated, 0);
 });
 

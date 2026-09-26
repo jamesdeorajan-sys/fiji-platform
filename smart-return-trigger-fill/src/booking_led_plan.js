@@ -22,6 +22,7 @@ export const DECISION = Object.freeze({
 export const LOCATION_STATUS = Object.freeze({
   RESOLVED_VIA_PLATFORM_MAPPING: 'RESOLVED_VIA_PLATFORM_MAPPING',
   RESOLVED_VIA_OPS_CONFIRMATION: 'RESOLVED_VIA_OPS_CONFIRMATION',
+  RESOLVED_VIA_SERVING_SOURCE_MAPPING: 'RESOLVED_VIA_SERVING_SOURCE_MAPPING',
   UNRESOLVED_NO_MATCH: 'UNRESOLVED_NO_MATCH',
   UNRESOLVED_AMBIGUOUS: 'UNRESOLVED_AMBIGUOUS',
   UNRESOLVED_NO_LOCATION_RECORDED: 'UNRESOLVED_NO_LOCATION_RECORDED',
@@ -81,12 +82,51 @@ export function normalizeReturnLocation(original, destinations, hotelOptions) {
   return { original, zone: null, status, category: cls.category, suggestion, evidence: cls.evidence };
 }
 
+
+const SOURCE_KEY = { FTT: 'FTT', FD: 'FD' };   // ref prefix -> serving source; NOREF rows have no known serving source
+
+/**
+ * GEOGRAPHIC resolution only. A recorded return-pickup string resolves to a zone when the SERVING SOURCE of the booking's own storefront
+ * carries an explicit, unambiguous hotel -> area mapping (option data-hotel -> data-area) and its own zone rule (resolveFixedDestinationZone) maps
+ * that area 1:1 to a marketplace zone. Name-only options, several options with different areas, a conflict with the other storefront's source or
+ * the platform table, or an area with no 1:1 zone all leave the zone UNRESOLVED (an exception for ops). Agreement with the outbound zone is never
+ * used as evidence. This is NOT confirmation of guest, time or the actual pickup arrangement.
+ */
+export function resolveViaServingSource(original, storefront, mapping, destinations) {
+  const key = SOURCE_KEY[storefront];
+  if (!mapping || !key || !mapping.sources?.[key]) return { resolved: false, exception: 'NO_SERVING_SOURCE_FOR_THIS_RECORD' };
+  const t = tokens(original); if (!t) return { resolved: false, exception: 'MISSING_TEXT' };
+  const src = mapping.sources[key];
+  const hits = src.options_with_area.filter((o) => (o.hotel && tokens(o.hotel) === t) || (!o.hotel && tokens(o.label) === t));
+  if (!hits.length) return { resolved: false, exception: 'NAME_NOT_IN_SERVING_SOURCE_WITH_AREA' };
+  const areas = [...new Set(hits.map((h) => h.area))];
+  if (areas.length > 1) return { resolved: false, exception: 'CONFLICT_SEVERAL_AREAS_IN_SERVING_SOURCE', detail: areas };
+  const area = areas[0]; const rule = src.zone_rule;
+  const zone = (rule.marketplace_zone_names ?? []).includes(area) ? area : (rule.area_zone_aliases ?? {})[area] ?? null;
+  if (!zone) return { resolved: false, exception: 'AREA_HAS_NO_ONE_TO_ONE_ZONE (NEEDS_LOOKUP)', detail: area };
+  const dups = src.name_only_options.filter((o) => tokens(o.label) === t);
+  const dupConflict = dups.filter((o) => hits.every((h) => o.lat && h.lat && (o.lat !== h.lat || o.lng !== h.lng)));
+  if (dupConflict.length) return { resolved: false, exception: 'CONFLICT_NAME_ONLY_OPTION_AT_DIFFERENT_COORDINATES' };
+  for (const [otherKey, other] of Object.entries(mapping.sources)) {
+    if (otherKey === key) continue;
+    const oh = other.options_with_area.filter((o) => (o.hotel && tokens(o.hotel) === t) || (!o.hotel && tokens(o.label) === t));
+    const oz = [...new Set(oh.map((o) => ((other.zone_rule.marketplace_zone_names ?? []).includes(o.area) ? o.area : (other.zone_rule.area_zone_aliases ?? {})[o.area] ?? o.area)))];
+    if (oz.length && (oz.length > 1 || oz[0] !== zone)) return { resolved: false, exception: 'CONFLICT_BETWEEN_STOREFRONT_SOURCES', detail: { [key]: zone, [otherKey]: oz } };
+  }
+  const platform = (destinations ?? []).filter((d) => tokens(d.name) === t);
+  if (platform.length && new Set(platform.map((x) => x.zone)).size === 1 && platform[0].zone !== zone) return { resolved: false, exception: 'CONFLICT_WITH_PLATFORM_DESTINATIONS_TABLE' };
+  return { resolved: true, zone, mapping: { storefront: src.storefront, serving_source_url: src.url, index_sha256: src.index_sha256, app_js_sha256: src.app_js_sha256, retrieved_utc: mapping.built_utc,
+    option_values: hits.map((h) => h.value), data_hotel: hits[0].hotel ?? hits[0].label, data_area: area, zone_rule: `${rule.function} line ${rule.app_js_line}: ${rule.logic}`,
+    name_only_duplicates_same_coordinates: dups.map((o) => o.value), history_check: mapping.history_check?.[key] ?? null,
+    limits: 'Geographic mapping only. Does not confirm the guest, the pickup time, or the actual pickup arrangement (the recorded text is the widget\'s pre-filled default unless the guest edited it).' } };
+}
+
 function confirmationOf(row) {
   return { status: 'SAVED_REQUEST_NOT_GUEST_CONFIRMED', guest_confirmation: 'UNKNOWN', provider_accepted_alert: row.provider_alert_accepted === true ? 'YES (delivery to staff not proven)' : 'NO_RECORD', booking_status_in_system: row.status ?? 'unknown' };
 }
 
 /** rows: sanitized saved-booking records (see tests for the shape). */
-export function buildLegs(rows, { destinations, hotelOptions, zoneDistanceCache, windowStart, windowEnd, locationCorrections, knownZones }) {
+export function buildLegs(rows, { destinations, hotelOptions, servingSourceMapping, zoneDistanceCache, windowStart, windowEnd, locationCorrections, knownZones }) {
   const legs = []; const notes = { rows_in_scope: 0 }; let n = 0;
   const inWin = (d) => d && d >= windowStart && d <= windowEnd;
   const cacheKm = (zone) => { const c = (zoneDistanceCache ?? []).find((x) => (x.zone_a === AIRPORT && x.zone_b === zone) || (x.zone_b === AIRPORT && x.zone_a === zone)); return c ? { km: c.distance_km, source: `zone_distance_cache (server cache, saved ${String(c.created_at).slice(0, 10)})` } : null; };
@@ -107,6 +147,11 @@ export function buildLegs(rows, { destinations, hotelOptions, zoneDistanceCache,
     if (r.return_date && inWin(r.return_date)) {
       used = true;
       let loc = normalizeReturnLocation(r.return_pickup_location, destinations, hotelOptions);
+      if (loc.zone == null && loc.category !== MATCH_CATEGORY.MISSING_TEXT) {
+        const via = resolveViaServingSource(r.return_pickup_location, r.store, servingSourceMapping, destinations);
+        if (via.resolved) loc = { ...loc, zone: via.zone, status: LOCATION_STATUS.RESOLVED_VIA_SERVING_SOURCE_MAPPING, geographic_resolution: via.mapping, resolved_by: 'serving-source hotel->zone mapping' };
+        else if (servingSourceMapping) loc = { ...loc, mapping_exception: via.exception, mapping_exception_detail: via.detail ?? null };
+      }
       const fix = locationCorrections?.[r.id];
       if (fix) {   // explicit ops confirmation: needs a known zone, a named confirmer and an evidence pointer; the recorded text is preserved
         const ok = (knownZones ?? []).includes(fix.zone) && typeof fix.confirmed_by === 'string' && fix.confirmed_by.trim() && typeof fix.evidence_ref === 'string' && fix.evidence_ref.trim();
@@ -114,7 +159,7 @@ export function buildLegs(rows, { destinations, hotelOptions, zoneDistanceCache,
                  : { ...loc, ops_correction_rejected: 'OPS_CORRECTION_INVALID (needs a known zone, confirmed_by and evidence_ref)' };
       }
       legs.push({ ...base, leg_id: `L${String(++n).padStart(3, '0')}`, kind: 'RETURN', date: r.return_date, time: r.return_time ?? null, start_ms: startMs(r.return_date, r.return_time),
-        from_zone: loc.zone, to_zone: AIRPORT, location: loc, booking_outbound_zone: r.destination_zone ?? null, distance: loc.zone ? cacheKm(loc.zone) : null, flight_recorded: false });
+        from_zone: loc.zone, to_zone: AIRPORT, location: loc, booking_outbound_zone: r.destination_zone ?? null, pickup_arrangement_verified: false, distance: loc.zone ? cacheKm(loc.zone) : null, flight_recorded: false });
     }
     if (used) notes.rows_in_scope++;
   }
@@ -160,6 +205,7 @@ export function buildPairings(legs, { routeDurationEstimates, conditional = true
     if (dur.status === 'DURATION_UNKNOWN') missing.push(`drive minutes ${seqA ? AIRPORT : zone}->${seqA ? zone : AIRPORT} and ${seqA ? zone : AIRPORT}->${seqA ? AIRPORT : zone} (DURATION_UNKNOWN: no traceable route-duration estimate exists)`);
     if (isScenario) missing.unshift(`SCENARIO ONLY: the recorded return pickup text on ${ret.leg_id} is unresolved; this pairing assumes it equals the same booking's outbound zone (${retZone}). Ops must confirm the real return pickup location before it counts as a candidate.`);
     if (isConditional) missing.unshift(`CONFIRM return pickup location: recorded text on ${ret.leg_id} is unresolved; suggested zone ${retZone} (unverified suggestion - ops to confirm or correct)`);
+    if (ret.location?.status === LOCATION_STATUS.RESOLVED_VIA_SERVING_SOURCE_MAPPING) missing.push(`verify the actual pickup arrangement for ${ret.leg_id} (the zone is mapped from the widget's hotel option; that is geography only - it does not confirm where or when the guest will actually be collected)`);
     missing.push('turnaround minutes between the two jobs', 'vehicle capacity for the booked class', 'vehicle/driver identity and availability');
     for (const l of [x, y]) {
       if (l.passengers == null || l.luggage == null) missing.push(`passengers/luggage for ${l.leg_id}`);
@@ -182,7 +228,8 @@ export function buildPairings(legs, { routeDurationEstimates, conditional = true
       decision, reassignment_proposal: proposal,
       allocation_decision_for_ops: 'Choose one vehicle for both legs (or keep separate); confirm timing; confirm the guests\' pickup times and services stay as booked.',
       missing_inputs: missing, uncertainty_flags: flags,
-      planning_status: isScenario ? 'SCENARIO_ONLY_NOT_A_PLANNING_CANDIDATE_UNTIL_LOCATION_CONFIRMED' : isConditional ? 'PLANNING_CANDIDATE_CONDITIONAL_ON_LOCATION_CONFIRMATION' : 'PLANNING_CANDIDATE_NOT_VERIFIED',
+      planning_status: isScenario ? 'SCENARIO_ONLY_NOT_A_PLANNING_CANDIDATE_UNTIL_LOCATION_CONFIRMED' : isConditional ? 'PLANNING_CANDIDATE_CONDITIONAL_ON_LOCATION_CONFIRMATION' : (ret.location?.status === LOCATION_STATUS.RESOLVED_VIA_SERVING_SOURCE_MAPPING ? 'PLANNING_CANDIDATE_ZONE_MAPPING_RESOLVED_NOT_OPERATIONALLY_CONFIRMED' : 'PLANNING_CANDIDATE_NOT_VERIFIED'),
+      zone_resolution: ret.location?.status ?? null,
     });
   }
   return { pairings, skipped };
@@ -218,7 +265,7 @@ export function buildAlternativeGroups(pairings) {
     const match = new Map(); const tryA = (a, seen) => { for (const r of adj[a]) { if (seen.has(r)) continue; seen.add(r); if (!match.has(r) || tryA(match.get(r), seen)) { match.set(r, a); return true; } } return false; };
     let best = 0; for (const a of left) if (tryA(a, new Set())) best++;
     for (const p of list) p.alternative_group = id;
-    out.push({ group_id: id, alternatives: list.length, legs: new Set(list.flatMap((p) => [p.first_leg, p.second_leg])).size, max_selectable_at_once_upper_bound: best });
+    out.push({ group_id: id, alternatives: list.length, legs: new Set(list.flatMap((p) => [p.first_leg, p.second_leg])).size, non_overlapping_leg_upper_bound: best });
   }
   return out;
 }
@@ -240,6 +287,7 @@ export function summarizePlan({ legs, pairings, skipped, empties, groups }, labe
     legs_with_passengers_and_luggage_known: legs.filter((l) => l.passengers != null && l.luggage != null).length,
     return_location_status: count(returns, (l) => l.location.status),
     return_location_match_category: count(returns, (l) => l.location.category ?? 'NOT_CLASSIFIED'),
+    return_location_mapping_exceptions: count(returns.filter((l) => l.location.mapping_exception), (l) => l.location.mapping_exception),
     return_locations_with_unverified_zone_suggestion: returns.filter((l) => l.location.suggestion).length,
     return_legs_missing_time: returns.filter((l) => !l.time).length,
     distance_available: { arrival_from_bookings: arrivals.filter((l) => l.distance).length, return_from_zone_cache: returns.filter((l) => l.distance).length },
@@ -247,8 +295,8 @@ export function summarizePlan({ legs, pairings, skipped, empties, groups }, labe
     provider_accepted_alert: count(legs, (l) => l.confirmation.provider_accepted_alert),
     uncertainty_flags: count(legs.flatMap((l) => l.uncertainty_flags.map((f) => ({ f }))), (x) => x.f),
     legs_with_any_uncertainty_flag: legs.filter((l) => l.uncertainty_flags.length).length,
-    competing_alternatives: { statement: 'Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule.', pairing_alternatives: pairings.length, alternative_groups: (groups ?? []).length, alternatives_per_group: (groups ?? []).map((g) => g.alternatives), max_selectable_at_once_upper_bound_per_group: (groups ?? []).map((g) => g.max_selectable_at_once_upper_bound), legs_allocated: 0 },
-    potential_pairings: { total: pairings.length, confirmed_mapping: pairings.filter((p) => !p.conditional_on_location_confirmation && !p.scenario_only_outbound_zone_assumed).length, conditional_on_location_confirmation: pairings.filter((p) => p.conditional_on_location_confirmation).length, scenario_only_outbound_zone_assumed: pairings.filter((p) => p.scenario_only_outbound_zone_assumed).length, by_type: count(pairings, (p) => p.type), by_gap_minutes_bucket: count(pairings, (p) => bucket(p.facts.recorded_pickup_gap_minutes)), by_decision: count(pairings, (p) => p.decision),
+    competing_alternatives: { statement: 'Pairings are COMPETING ALTERNATIVES that share legs. They are not additive bookings, not savings, not inventory; a pairing does not allocate or fill any leg. Ops selects and validates a schedule. The non-overlapping-leg upper bound is only the most alternatives that share no leg - it is not a dispatchable schedule and not additional bookings.', pairing_alternatives: pairings.length, alternative_groups: (groups ?? []).length, alternatives_per_group: (groups ?? []).map((g) => g.alternatives), non_overlapping_leg_upper_bound_per_group: (groups ?? []).map((g) => g.non_overlapping_leg_upper_bound), legs_allocated: 0 },
+    potential_pairings: { total: pairings.length, confirmed_mapping: pairings.filter((p) => !p.conditional_on_location_confirmation && !p.scenario_only_outbound_zone_assumed).length, conditional_on_location_confirmation: pairings.filter((p) => p.conditional_on_location_confirmation).length, scenario_only_outbound_zone_assumed: pairings.filter((p) => p.scenario_only_outbound_zone_assumed).length, zone_mapping_resolved_not_operationally_confirmed: pairings.filter((p) => p.planning_status === 'PLANNING_CANDIDATE_ZONE_MAPPING_RESOLVED_NOT_OPERATIONALLY_CONFIRMED').length, by_type: count(pairings, (p) => p.type), by_gap_minutes_bucket: count(pairings, (p) => bucket(p.facts.recorded_pickup_gap_minutes)), by_decision: count(pairings, (p) => p.decision),
       legs_with_at_least_one_candidate: Object.keys(candidatesPerLeg).length, legs_with_competing_candidates: Object.values(candidatesPerLeg).filter((v) => v > 1).length,
       duration_status: count(pairings, (p) => p.duration.status), timing_conclusion: 'NOT_DETERMINED for every pairing' },
     not_paired_reasons: skipped,

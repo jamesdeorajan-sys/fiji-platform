@@ -22,13 +22,13 @@ const run = (extra = []) => {
 
 test('CLI writes the private sheets and prints only aggregates; the location text never reaches stdout', () => {
   const { dir, stdout } = run();
-  for (const f of ['return_location_confirmation_2026-09-24_PRIVATE.csv', 'legs_2026-09-24_PRIVATE.csv', 'competing_alternatives_2026-09-24_PRIVATE.csv', 'allocation_decisions_2026-09-24_PRIVATE.csv', 'unmatched_requests_2026-09-24_PRIVATE.csv'])
+  for (const f of ['return_location_EXCEPTIONS_for_ops_2026-09-24_PRIVATE.csv', 'legs_2026-09-24_PRIVATE.csv', 'competing_alternatives_2026-09-24_PRIVATE.csv', 'allocation_decisions_2026-09-24_PRIVATE.csv', 'unmatched_requests_2026-09-24_PRIVATE.csv'])
     assert.ok(existsSync(join(dir, 'out', f)), f);
   assert.doesNotMatch(stdout, /Secret Hotel Name|9001|9002/);
   const s = JSON.parse(stdout)[0];
   assert.equal(s.potential_pairings.conditional_on_location_confirmation, 1);
   assert.equal(s.competing_alternatives.legs_allocated, 0);
-  const sheet = readFileSync(join(dir, 'out', 'return_location_confirmation_2026-09-24_PRIVATE.csv'), 'utf8');
+  const sheet = readFileSync(join(dir, 'out', 'return_location_EXCEPTIONS_for_ops_2026-09-24_PRIVATE.csv'), 'utf8');
   assert.match(sheet, /Secret Hotel Name/);          // the private sheet keeps the original text for ops
   assert.match(sheet, /EXACT_STOREFRONT_HOTEL_OPTION/);
   rmSync(dir, { recursive: true, force: true });

@@ -1,0 +1,3572 @@
+{
+ "built_utc": "2026-09-20T19:53:15Z",
+ "note": "Public storefront data only (hotel option definitions and the app's own zone-resolution rule). No customer data.",
+ "sources": {
+  "FTT": {
+   "storefront": "nadiairporttransfers.com",
+   "url": "https://nadiairporttransfers.com/",
+   "index_sha256": "3f2d9bd4f11305e348f693574d9a90e639b3cbd7638b3ded47ef70874d399c39",
+   "app_js_url": "https://nadiairporttransfers.com/app.js?v=20260917-priority-recovery",
+   "app_js_sha256": "6205305ed914ea6a4561258a3be47dd950abea1c0cbd04d0f50ae445cb61cbc7",
+   "zone_rule": {
+    "function": "resolveFixedDestinationZone(destOpt)",
+    "app_js_line": 1167,
+    "logic": "area in MARKETPLACE_ZONE_NAMES -> area; AREA_ZONE_ALIASES[area] -> zone; else NEEDS_LOOKUP",
+    "marketplace_zone_names": [
+     "Nadi",
+     "Nadi Airport",
+     "Wailoaloa",
+     "Denarau",
+     "Sonaisali",
+     "Vuda Point",
+     "Lautoka",
+     "Momi Bay",
+     "Natadola",
+     "Sigatoka",
+     "Coral Coast",
+     "Pacific Harbour",
+     "Ba",
+     "Rakiraki",
+     "Suva",
+     "Nausori"
+    ],
+    "area_zone_aliases": {
+     "Port Denarau": "Denarau"
+    }
+   },
+   "return_location_default": "syncReturnLocationDefault(): returnPickupLocation = state.destination.hotel || name, where hotel = option data-hotel (else the option label); editable by the guest",
+   "options_with_area": [
+    {
+     "value": "AQUARIUS_FIJI",
+     "label": "Aquarius Fiji (Wailoaloa)",
+     "hotel": "Aquarius Fiji",
+     "area": "Wailoaloa",
+     "lat": "-17.7290",
+     "lng": "177.4030"
+    },
+    {
+     "value": "BAMBOO_BACKPACKERS",
+     "label": "Bamboo Travellers",
+     "hotel": "Bamboo Travellers",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4020"
+    },
+    {
+     "value": "BEACH_CLUB_WAILOALOA",
+     "label": "Beach Club Wailoaloa",
+     "hotel": "Beach Club Wailoaloa",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4010"
+    },
+    {
+     "value": "BLUEWATER_LODGE",
+     "label": "Bluewater Lodge",
+     "hotel": "Bluewater Lodge",
+     "area": "Wailoaloa",
+     "lat": "-17.7340",
+     "lng": "177.4015"
+    },
+    {
+     "value": "CENTURY_FIJI",
+     "label": "Century Fiji Hotel",
+     "hotel": "Century Fiji Hotel",
+     "area": "Nadi",
+     "lat": "-17.7560",
+     "lng": "177.4502"
+    },
+    {
+     "value": "CITRUS_HOTEL",
+     "label": "Citrus Hotel Nadi",
+     "hotel": "Citrus Hotel Nadi",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4220"
+    },
+    {
+     "value": "CLUB_FIJI",
+     "label": "Club Fiji Resort",
+     "hotel": "Club Fiji Resort",
+     "area": "Wailoaloa",
+     "lat": "-17.7335",
+     "lng": "177.4012"
+    },
+    {
+     "value": "CROWNE_PLAZA_NADI_BAY",
+     "label": "Crowne Plaza Nadi Bay Resort & Spa",
+     "hotel": "Crowne Plaza Fiji Nadi Bay Resort & Spa",
+     "area": "Wailoaloa",
+     "lat": "-17.7300",
+     "lng": "177.4005"
+    },
+    {
+     "value": "FIJI_GATEWAY",
+     "label": "Fiji Gateway Hotel (opp Airport)",
+     "hotel": "Fiji Gateway Hotel",
+     "area": "Nadi",
+     "lat": "-17.7595",
+     "lng": "177.4458"
+    },
+    {
+     "value": "FIJI_ORCHID",
+     "label": "The Fiji Orchid (Sabeto)",
+     "hotel": "The Fiji Orchid",
+     "area": "Sabeto",
+     "lat": "-17.7150",
+     "lng": "177.4520"
+    },
+    {
+     "value": "GRAND_WEST_VILLAS",
+     "label": "Grand West Villas Nadi",
+     "hotel": "Grand West Villas Nadi",
+     "area": "Nadi",
+     "lat": "-17.7500",
+     "lng": "177.4470"
+    },
+    {
+     "value": "HEXAGON",
+     "label": "Hexagon International Hotel",
+     "hotel": "Hexagon International Hotel, Villas & Spa",
+     "area": "Wailoaloa",
+     "lat": "-17.7290",
+     "lng": "177.3980"
+    },
+    {
+     "value": "HORIZON_BEACH",
+     "label": "Horizon Beach Resort",
+     "hotel": "Horizon Beach Resort",
+     "area": "Wailoaloa",
+     "lat": "-17.7325",
+     "lng": "177.4008"
+    },
+    {
+     "value": "MERCURE_NADI",
+     "label": "Mercure Hotel Nadi",
+     "hotel": "Mercure Hotel Nadi",
+     "area": "Nadi",
+     "lat": "-17.7620",
+     "lng": "177.4420"
+    },
+    {
+     "value": "NADI_BAY_HOTEL",
+     "label": "Nadi Bay Resort Hotel",
+     "hotel": "Nadi Bay Resort Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7310",
+     "lng": "177.4000"
+    },
+    {
+     "value": "NADI_DOWNTOWN",
+     "label": "Nadi Downtown Hotel",
+     "hotel": "Nadi Downtown Hotel",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4180"
+    },
+    {
+     "value": "NUKU_LOALOA",
+     "label": "Nuku Loaloa Living",
+     "hotel": "Nuku Loaloa Living",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4200"
+    },
+    {
+     "value": "RAMADA_WAILOALOA",
+     "label": "Ramada Wailoaloa Beach",
+     "hotel": "Ramada Suites by Wyndham Wailoaloa Beach Fiji Nadi",
+     "area": "Wailoaloa",
+     "lat": "-17.7295",
+     "lng": "177.4015"
+    },
+    {
+     "value": "RAFFLES_GATEWAY",
+     "label": "Raffles Gateway Hotel",
+     "hotel": "Raffles Gateway Hotel",
+     "area": "Nadi",
+     "lat": "-17.7558",
+     "lng": "177.4490"
+    },
+    {
+     "value": "SMUGGLERS_COVE",
+     "label": "Smugglers Cove Beach Resort",
+     "hotel": "Smugglers Cove Beach Resort & Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7280",
+     "lng": "177.3990"
+    },
+    {
+     "value": "SUNSEEKERS",
+     "label": "Sunseekers Hotel Fiji",
+     "hotel": "Sunseekers Hotel Fiji",
+     "area": "Wailoaloa",
+     "lat": "-17.7340",
+     "lng": "177.4022"
+    },
+    {
+     "value": "TANOA_INTERNATIONAL",
+     "label": "Tanoa International Hotel",
+     "hotel": "Tanoa International Hotel",
+     "area": "Nadi",
+     "lat": "-17.7580",
+     "lng": "177.4480"
+    },
+    {
+     "value": "TOKATOKA",
+     "label": "Tokatoka Resort Hotel",
+     "hotel": "Tokatoka Resort Hotel",
+     "area": "Nadi",
+     "lat": "-17.7570",
+     "lng": "177.4495"
+    },
+    {
+     "value": "TRADEWINDS_FIJI",
+     "label": "Tradewinds Hotel Fiji",
+     "hotel": "Tradewinds Hotel Fiji",
+     "area": "Nadi",
+     "lat": "-17.7650",
+     "lng": "177.4390"
+    },
+    {
+     "value": "WAILOALOA_BEACH",
+     "label": "Wailoaloa Beach Hotel",
+     "hotel": "Wailoaloa Beach Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4015"
+    },
+    {
+     "value": "DENARAU_VILLAS",
+     "label": "Denarau Island Villas (Various)",
+     "hotel": "Denarau Island Villas",
+     "area": "Denarau",
+     "lat": "-17.7730",
+     "lng": "177.3870"
+    },
+    {
+     "value": "HILTON_DENARAU",
+     "label": "Hilton Fiji Beach Resort & Spa",
+     "hotel": "Hilton Fiji Beach Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7728",
+     "lng": "177.3866"
+    },
+    {
+     "value": "HILTON_RESIDENCES",
+     "label": "Hilton Vacation Club Residences",
+     "hotel": "Hilton Vacation Club Residences",
+     "area": "Denarau",
+     "lat": "-17.7724",
+     "lng": "177.3870"
+    },
+    {
+     "value": "INTERCONTINENTAL_DENARAU",
+     "label": "InterContinental Fiji Golf Resort & Spa",
+     "hotel": "InterContinental Fiji Golf Resort & Spa Denarau",
+     "area": "Denarau",
+     "lat": "-17.7710",
+     "lng": "177.3860"
+    },
+    {
+     "value": "RADISSON_DENARAU",
+     "label": "Radisson Blu Resort Fiji Denarau",
+     "hotel": "Radisson Blu Resort Fiji Denarau Island",
+     "area": "Denarau",
+     "lat": "-17.7740",
+     "lng": "177.3870"
+    },
+    {
+     "value": "SHERATON_DENARAU_VILLAS",
+     "label": "Sheraton Denarau Villas",
+     "hotel": "Sheraton Denarau Villas",
+     "area": "Denarau",
+     "lat": "-17.7715",
+     "lng": "177.3862"
+    },
+    {
+     "value": "SHERATON_FIJI",
+     "label": "Sheraton Fiji Golf & Beach Resort",
+     "hotel": "Sheraton Fiji Golf & Beach Resort",
+     "area": "Denarau",
+     "lat": "-17.7720",
+     "lng": "177.3865"
+    },
+    {
+     "value": "SOFITEL_DENARAU",
+     "label": "Sofitel Fiji Resort & Spa",
+     "hotel": "Sofitel Fiji Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7715",
+     "lng": "177.3870"
+    },
+    {
+     "value": "WESTIN_DENARAU",
+     "label": "The Westin Denarau Island Resort",
+     "hotel": "The Westin Denarau Island Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7730",
+     "lng": "177.3862"
+    },
+    {
+     "value": "WYNDHAM_DENARAU",
+     "label": "Wyndham Resort Denarau Island",
+     "hotel": "Wyndham Resort Denarau Island",
+     "area": "Denarau",
+     "lat": "-17.7735",
+     "lng": "177.3875"
+    },
+    {
+     "value": "DENARAU_ISLAND_RESORT",
+     "label": "Denarau Island Resort",
+     "hotel": "Denarau Island Resort",
+     "area": "Denarau",
+     "lat": "-17.7732",
+     "lng": "177.3878"
+    },
+    {
+     "value": "PORT_DENARAU_MARINA",
+     "label": "Port Denarau Marina (Ferry Terminal)",
+     "hotel": "Port Denarau Marina (Ferry Terminal)",
+     "area": "Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "DOUBLETREE_SONAISALI",
+     "label": "DoubleTree by Hilton Sonaisali",
+     "hotel": "DoubleTree by Hilton Sonaisali Island Fiji",
+     "area": "Sonaisali",
+     "lat": "-17.7895",
+     "lng": "177.3755"
+    },
+    {
+     "value": "FIRST_LANDING",
+     "label": "First Landing Beach Resort & Villas",
+     "hotel": "First Landing Beach Resort & Villas",
+     "area": "Vuda Point",
+     "lat": "-17.6970",
+     "lng": "177.3980"
+    },
+    {
+     "value": "VUDA_MARINA",
+     "label": "Vuda Marina (Yacht Haven)",
+     "hotel": "Vuda Marina",
+     "area": "Vuda Point",
+     "lat": "-17.6880",
+     "lng": "177.3835"
+    },
+    {
+     "value": "ANCHORAGE_BEACH",
+     "label": "Anchorage Beach Resort (Vuda)",
+     "hotel": "Anchorage Beach Resort",
+     "area": "Vuda Point",
+     "lat": "-17.6920",
+     "lng": "177.3950"
+    },
+    {
+     "value": "SAWENI_BEACH",
+     "label": "Saweni Beach Apartment Hotel",
+     "hotel": "Saweni Beach Apartment Hotel",
+     "area": "Saweni",
+     "lat": "-17.6650",
+     "lng": "177.4150"
+    },
+    {
+     "value": "CATHAY_LAUTOKA",
+     "label": "Cathay Hotel Lautoka",
+     "hotel": "Cathay Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6155",
+     "lng": "177.4490"
+    },
+    {
+     "value": "LAUTOKA_HOTEL",
+     "label": "Lautoka Hotel",
+     "hotel": "Lautoka Hotel",
+     "area": "Lautoka",
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "NORTHERN_CLUB",
+     "label": "Northern Club Lautoka",
+     "hotel": "Northern Club Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6128",
+     "lng": "177.4500"
+    },
+    {
+     "value": "SEA_BREEZE_LAUTOKA",
+     "label": "Sea Breeze Hotel Lautoka",
+     "hotel": "Sea Breeze Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6080",
+     "lng": "177.4490"
+    },
+    {
+     "value": "TANOA_LAUTOKA",
+     "label": "Tanoa Waterfront Hotel",
+     "hotel": "Tanoa Waterfront Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6130",
+     "lng": "177.4505"
+    },
+    {
+     "value": "WATERFRONT_LAUTOKA",
+     "label": "Waterfront Hotel Lautoka",
+     "hotel": "Waterfront Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6135",
+     "lng": "177.4502"
+    },
+    {
+     "value": "LAUTOKA_CRUISE",
+     "label": "Lautoka Cruise Terminal",
+     "hotel": "Lautoka Cruise Terminal",
+     "area": "Lautoka",
+     "lat": "-17.6079",
+     "lng": "177.4501"
+    },
+    {
+     "value": "MARRIOTT_MOMI",
+     "label": "Fiji Marriott Resort Momi Bay",
+     "hotel": "Fiji Marriott Resort Momi Bay",
+     "area": "Momi Bay",
+     "lat": "-17.8915",
+     "lng": "177.2855"
+    },
+    {
+     "value": "SEASHELL_RESORT",
+     "label": "Seashell Cove Resort (Momi)",
+     "hotel": "Seashell Coast Resort",
+     "area": "Momi Bay",
+     "lat": "-17.8950",
+     "lng": "177.2920"
+    },
+    {
+     "value": "INTERCONTINENTAL_NATADOLA",
+     "label": "InterContinental Fiji Golf Resort Natadola",
+     "hotel": "InterContinental Fiji Golf Resort & Spa Natadola",
+     "area": "Natadola",
+     "lat": "-18.0790",
+     "lng": "177.3760"
+    },
+    {
+     "value": "YATULE_RESORT",
+     "label": "Yatule Resort & Spa",
+     "hotel": "Yatule Resort & Spa",
+     "area": "Natadola",
+     "lat": "-18.0820",
+     "lng": "177.3775"
+    },
+    {
+     "value": "ROBINSON_CRUSOE",
+     "label": "Robinson Crusoe Island (Likuri)",
+     "hotel": "Robinson Crusoe Island Resort (Likuri)",
+     "area": "Natadola",
+     "lat": "-18.0250",
+     "lng": "177.3650"
+    },
+    {
+     "value": "MAUI_BAY_VILLAS",
+     "label": "Maui Bay Villas",
+     "hotel": "Maui Bay Villas",
+     "area": "Maui Bay",
+     "lat": "-18.0950",
+     "lng": "177.4500"
+    },
+    {
+     "value": "BEDARRA_INN",
+     "label": "Bedarra Beach Inn",
+     "hotel": "Bedarra Beach Inn",
+     "area": "Sigatoka",
+     "lat": "-18.1455",
+     "lng": "177.5395"
+    },
+    {
+     "value": "BEACHHOUSE_FIJI",
+     "label": "The Beachouse Fiji (Korotogo)",
+     "hotel": "The Beachouse Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.2050",
+     "lng": "177.7100"
+    },
+    {
+     "value": "GECKO_RESORT",
+     "label": "Gecko's Resort (Korotogo)",
+     "hotel": "Gecko's Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1455",
+     "lng": "177.5410"
+    },
+    {
+     "value": "KALEVU_HERITAGE_RESORT",
+     "label": "Kalevu Heritage Resort",
+     "hotel": "Kalevu Heritage Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1380",
+     "lng": "177.5060"
+    },
+    {
+     "value": "KORO_SUN_LODGE",
+     "label": "Koro Sun Lodge",
+     "hotel": "Koro Sun Lodge Sigatoka",
+     "area": "Sigatoka",
+     "lat": "-18.1450",
+     "lng": "177.5395"
+    },
+    {
+     "value": "OCEANSIDE",
+     "label": "Oceanside Resort (Korotogo)",
+     "hotel": "Oceanside Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1450",
+     "lng": "177.5400"
+    },
+    {
+     "value": "SANDY_POINT_BEACH",
+     "label": "Sandy Point Beach Cottages",
+     "hotel": "Sandy Point Beach Cottages",
+     "area": "Sigatoka",
+     "lat": "-18.1480",
+     "lng": "177.5430"
+    },
+    {
+     "value": "SIGATOKA_CLUB",
+     "label": "Sigatoka Club Hotel",
+     "hotel": "Sigatoka Club Hotel",
+     "area": "Sigatoka",
+     "lat": "-18.1430",
+     "lng": "177.5072"
+    },
+    {
+     "value": "ANCHORAGE_KOROTOGO",
+     "label": "Anchorage Beach (Korotogo)",
+     "hotel": "Anchorage Beach Resort (Korotogo)",
+     "area": "Coral Coast",
+     "lat": "-18.1480",
+     "lng": "177.5430"
+    },
+    {
+     "value": "CRUSOES_RETREAT",
+     "label": "Crusoe's Retreat",
+     "hotel": "Crusoe's Retreat",
+     "area": "Coral Coast",
+     "lat": "-18.1830",
+     "lng": "177.6210"
+    },
+    {
+     "value": "HIDEAWAY_RESORT",
+     "label": "Hideaway Resort & Spa",
+     "hotel": "Hideaway Resort & Spa Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1700",
+     "lng": "177.5910"
+    },
+    {
+     "value": "MANGO_BAY",
+     "label": "Mango Bay Resort",
+     "hotel": "Mango Bay Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1860",
+     "lng": "177.6450"
+    },
+    {
+     "value": "MATAMANOA_LODGE",
+     "label": "Matamanoa Lodge",
+     "hotel": "Matamanoa Lodge",
+     "area": "Coral Coast",
+     "lat": "-18.1900",
+     "lng": "177.6650"
+    },
+    {
+     "value": "NAVITI_RESORT",
+     "label": "The Naviti Resort",
+     "hotel": "The Naviti Resort Korolevu",
+     "area": "Coral Coast",
+     "lat": "-18.1990",
+     "lng": "177.6800"
+    },
+    {
+     "value": "OUTRIGGER_FIJI",
+     "label": "Outrigger Fiji Beach Resort",
+     "hotel": "Outrigger Fiji Beach Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1893",
+     "lng": "177.6710"
+    },
+    {
+     "value": "SHANGRI_LA_YANUCA",
+     "label": "Shangri-La Yanuca Island Fiji",
+     "hotel": "Shangri-La Yanuca Island Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1115",
+     "lng": "177.4975"
+    },
+    {
+     "value": "TAMBUA_SANDS",
+     "label": "Tambua Sands Beach Resort",
+     "hotel": "Tambua Sands Beach Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1815",
+     "lng": "177.6105"
+    },
+    {
+     "value": "TAVARUA_ISLAND",
+     "label": "Tavarua Island Resort (boat from Momi)",
+     "hotel": "Tavarua Island Resort",
+     "area": "Tavarua",
+     "lat": "-17.8530",
+     "lng": "177.1900"
+    },
+    {
+     "value": "THE_WARWICK",
+     "label": "The Warwick Fiji",
+     "hotel": "The Warwick Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1985",
+     "lng": "177.6790"
+    },
+    {
+     "value": "VAKAVITI",
+     "label": "Vakaviti Boutique Hotel",
+     "hotel": "Vakaviti Boutique Hotel",
+     "area": "Coral Coast",
+     "lat": "-18.1900",
+     "lng": "177.6650"
+    },
+    {
+     "value": "WAIDROKA_BAY",
+     "label": "Waidroka Bay Resort",
+     "hotel": "Waidroka Bay Resort",
+     "area": "Coral Coast",
+     "lat": "-18.2400",
+     "lng": "177.7900"
+    },
+    {
+     "value": "ARTS_VILLAGE",
+     "label": "Pacific Harbour Arts Village Area",
+     "hotel": "Pacific Harbour Arts Village",
+     "area": "Pacific Harbour",
+     "lat": "-18.2780",
+     "lng": "177.9050"
+    },
+    {
+     "value": "BEQA_LAGOON",
+     "label": "Beqa Lagoon Resort (boat transfer)",
+     "hotel": "Beqa Lagoon Resort",
+     "area": "Beqa Island",
+     "lat": "-18.4150",
+     "lng": "178.1500"
+    },
+    {
+     "value": "LALATI_BEQA",
+     "label": "Lalati Resort & Spa (boat transfer)",
+     "hotel": "Lalati Resort & Spa Beqa",
+     "area": "Beqa Island",
+     "lat": "-18.3950",
+     "lng": "178.1300"
+    },
+    {
+     "value": "NANUKU_RESORT",
+     "label": "Nanuku Resort (Auberge)",
+     "hotel": "Nanuku Resort Fiji (Auberge)",
+     "area": "Pacific Harbour",
+     "lat": "-18.2630",
+     "lng": "177.9200"
+    },
+    {
+     "value": "PEARL_SOUTH_PACIFIC",
+     "label": "Pearl South Pacific Resort & Spa",
+     "hotel": "Pearl South Pacific Resort & Spa",
+     "area": "Pacific Harbour",
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "ROYAL_DAVUI",
+     "label": "Royal Davui Island (boat transfer)",
+     "hotel": "Royal Davui Island Resort",
+     "area": "Beqa Island",
+     "lat": "-18.4250",
+     "lng": "178.1280"
+    },
+    {
+     "value": "UPRISING",
+     "label": "Uprising Beach Resort",
+     "hotel": "Uprising Beach Resort",
+     "area": "Pacific Harbour",
+     "lat": "-18.2730",
+     "lng": "177.9000"
+    },
+    {
+     "value": "SIGATOKA_SAND_DUNES",
+     "label": "Sigatoka Sand Dunes National Park",
+     "hotel": "Sigatoka Sand Dunes National Park",
+     "area": "Sigatoka",
+     "lat": "-18.1400",
+     "lng": "177.4860"
+    },
+    {
+     "value": "SIGATOKA_TOWN",
+     "label": "Sigatoka Town Centre",
+     "hotel": "Sigatoka Town Centre",
+     "area": "Sigatoka",
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "KULA_ECO",
+     "label": "Kula Wild Adventure Park",
+     "hotel": "Kula Wild Adventure Park",
+     "area": "Sigatoka",
+     "lat": "-18.1500",
+     "lng": "177.5050"
+    },
+    {
+     "value": "BIAUSEVU",
+     "label": "Biausevu Waterfall Village",
+     "hotel": "Biausevu Waterfall Village",
+     "area": "Sigatoka",
+     "lat": "-18.2000",
+     "lng": "177.5500"
+    },
+    {
+     "value": "NATURES_WAY",
+     "label": "Sigatoka Valley Tour Pickup",
+     "hotel": "Sigatoka Valley Tours Pickup",
+     "area": "Sigatoka",
+     "lat": "-18.1490",
+     "lng": "177.5060"
+    },
+    {
+     "value": "TAVUNI_HILL_FORT",
+     "label": "Tavuni Hill Fort",
+     "hotel": "Tavuni Hill Fort",
+     "area": "Sigatoka",
+     "lat": "-18.1300",
+     "lng": "177.5400"
+    },
+    {
+     "value": "BA_HOTEL",
+     "label": "Ba Town Hotel",
+     "hotel": "Ba Town Hotel",
+     "area": "Ba",
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "DOLPHIN_ISLAND",
+     "label": "Dolphin Island (boat transfer)",
+     "hotel": "Dolphin Island Fiji",
+     "area": "Rakiraki",
+     "lat": "-17.4080",
+     "lng": "178.0150"
+    },
+    {
+     "value": "NAMOSI_HIGHLANDS",
+     "label": "Namosi Highlands Lodge",
+     "hotel": "Namosi Highlands Lodge",
+     "area": "Namosi",
+     "lat": "-17.5800",
+     "lng": "178.1500"
+    },
+    {
+     "value": "NAVALA_VILLAGE",
+     "label": "Navala Village (cultural visit)",
+     "hotel": "Navala Village (cultural visit)",
+     "area": "Ba",
+     "lat": "-17.6100",
+     "lng": "177.8200"
+    },
+    {
+     "value": "TAVUA_HOTEL",
+     "label": "Tavua Hotel",
+     "hotel": "Tavua Hotel",
+     "area": "Tavua",
+     "lat": "-17.4400",
+     "lng": "177.8580"
+    },
+    {
+     "value": "VOLIVOLI_BEACH",
+     "label": "Volivoli Beach Resort (Rakiraki)",
+     "hotel": "Volivoli Beach Resort",
+     "area": "Rakiraki",
+     "lat": "-17.4205",
+     "lng": "178.0010"
+    },
+    {
+     "value": "WANANAVU",
+     "label": "Wananavu Beach Resort (Rakiraki)",
+     "hotel": "Wananavu Beach Resort",
+     "area": "Rakiraki",
+     "lat": "-17.4280",
+     "lng": "178.0100"
+    },
+    {
+     "value": "GRAND_PACIFIC",
+     "label": "Grand Pacific Hotel",
+     "hotel": "Grand Pacific Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "HOLIDAY_INN_SUVA",
+     "label": "Holiday Inn Suva",
+     "hotel": "Holiday Inn Suva",
+     "area": "Suva",
+     "lat": "-18.1450",
+     "lng": "178.4200"
+    },
+    {
+     "value": "HOMESTEAD_SUVA",
+     "label": "Homestead Apartment Hotel",
+     "hotel": "Homestead Apartment Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1380",
+     "lng": "178.4250"
+    },
+    {
+     "value": "NOVOTEL_LAMI",
+     "label": "Novotel Suva Lami Bay",
+     "hotel": "Novotel Suva Lami Bay",
+     "area": "Suva",
+     "lat": "-18.1080",
+     "lng": "178.4080"
+    },
+    {
+     "value": "PENINSULA_SUVA",
+     "label": "Peninsula International Hotel",
+     "hotel": "Peninsula International Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1430",
+     "lng": "178.4220"
+    },
+    {
+     "value": "QUEST_SUVA",
+     "label": "Quest Suva",
+     "hotel": "Quest Suva",
+     "area": "Suva",
+     "lat": "-18.1410",
+     "lng": "178.4225"
+    },
+    {
+     "value": "SOUTHERN_CROSS_SUVA",
+     "label": "Southern Cross Hotel Suva",
+     "hotel": "Southern Cross Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1400",
+     "lng": "178.4230"
+    },
+    {
+     "value": "SUVA_MOTOR_INN",
+     "label": "Suva Motor Inn",
+     "hotel": "Suva Motor Inn",
+     "area": "Suva",
+     "lat": "-18.1420",
+     "lng": "178.4195"
+    },
+    {
+     "value": "TAGIMOUCIA_HOUSE",
+     "label": "Tagimoucia House Hotel",
+     "hotel": "Tagimoucia House Hotel",
+     "area": "Suva",
+     "lat": "-18.1280",
+     "lng": "178.4050"
+    },
+    {
+     "value": "TANOA_PLAZA_SUVA",
+     "label": "Tanoa Plaza Hotel Suva",
+     "hotel": "Tanoa Plaza Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1400",
+     "lng": "178.4215"
+    },
+    {
+     "value": "NAUSORI_AIRPORT",
+     "label": "Nausori Airport (SUV)",
+     "hotel": "Nausori Airport (SUV)",
+     "area": "Nausori",
+     "lat": "-18.0433",
+     "lng": "178.5594"
+    },
+    {
+     "value": "PORT_DENARAU_TRANSFER",
+     "label": "Port Denarau (Yasawa Flyer pickup)",
+     "hotel": "Port Denarau Marina (Yasawa Flyer / South Sea Cruises)",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MUSKET_COVE_TRANSFER",
+     "label": "Musket Cove transfer (via Port Denarau)",
+     "hotel": "Musket Cove (Malolo Lailai) \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "LIKULIKU_TRANSFER",
+     "label": "Likuliku Lagoon transfer (via Port Denarau)",
+     "hotel": "Likuliku Lagoon (Malolo) \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "CASTAWAY_TRANSFER",
+     "label": "Castaway Island transfer (via Port Denarau)",
+     "hotel": "Castaway Island \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MANA_ISLAND_TRANSFER",
+     "label": "Mana Island transfer (via Port Denarau)",
+     "hotel": "Mana Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "TOKORIKI_TRANSFER",
+     "label": "Tokoriki Island transfer (via Port Denarau)",
+     "hotel": "Tokoriki Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "VOMO_TRANSFER",
+     "label": "Vomo Island transfer (via Port Denarau)",
+     "hotel": "Vomo Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "YASAWA_ISLAND_TRANSFER",
+     "label": "Yasawa Island transfer (via Port Denarau)",
+     "hotel": "Yasawa Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    }
+   ],
+   "name_only_options": [
+    {
+     "value": "",
+     "label": "Select pickup point...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NAN",
+     "label": "\u2708 Nadi International Airport (NAN)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7552",
+     "lng": "177.4441"
+    },
+    {
+     "value": "SUV",
+     "label": "\u2708 Nausori International Airport (SUV)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0433",
+     "lng": "178.5594"
+    },
+    {
+     "value": "DENARAU_PORT",
+     "label": "\u26f5 Port Denarau Marina (Yasawa Flyer)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "LAUTOKA_PORT",
+     "label": "\u26f5 Lautoka Port (Cruise Terminal)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6079",
+     "lng": "177.4501"
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "\ud83c\udfd9 Nadi Town Centre",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "LAUTOKA_TOWN_PU",
+     "label": "\ud83c\udfd9 Lautoka City Centre",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "SIGATOKA_TOWN_PU",
+     "label": "\ud83c\udfd9 Sigatoka Town",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "SUVA_CBD",
+     "label": "\ud83c\udfd9 Suva CBD",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4419"
+    },
+    {
+     "value": "P_CROWNE_PLAZA",
+     "label": "Crowne Plaza Nadi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7300",
+     "lng": "177.4005"
+    },
+    {
+     "value": "P_HEXAGON",
+     "label": "Hexagon International",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7290",
+     "lng": "177.3980"
+    },
+    {
+     "value": "P_RAMADA_WAILOALOA",
+     "label": "Ramada Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7295",
+     "lng": "177.4015"
+    },
+    {
+     "value": "P_SMUGGLERS",
+     "label": "Smugglers Cove",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7280",
+     "lng": "177.3990"
+    },
+    {
+     "value": "P_TANOA_INTL",
+     "label": "Tanoa International",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7580",
+     "lng": "177.4480"
+    },
+    {
+     "value": "P_TOKATOKA",
+     "label": "Tokatoka Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7570",
+     "lng": "177.4495"
+    },
+    {
+     "value": "P_RAFFLES_GATEWAY",
+     "label": "Raffles Gateway",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7558",
+     "lng": "177.4490"
+    },
+    {
+     "value": "P_FIJI_GATEWAY",
+     "label": "Fiji Gateway Hotel",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7595",
+     "lng": "177.4458"
+    },
+    {
+     "value": "P_MERCURE",
+     "label": "Mercure Nadi",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7620",
+     "lng": "177.4420"
+    },
+    {
+     "value": "P_TRADEWINDS",
+     "label": "Tradewinds Hotel Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7650",
+     "lng": "177.4390"
+    },
+    {
+     "value": "P_HILTON",
+     "label": "Hilton Fiji Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7728",
+     "lng": "177.3866"
+    },
+    {
+     "value": "P_RADISSON",
+     "label": "Radisson Blu Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7740",
+     "lng": "177.3870"
+    },
+    {
+     "value": "P_SHERATON",
+     "label": "Sheraton Fiji Golf & Beach",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7720",
+     "lng": "177.3865"
+    },
+    {
+     "value": "P_SOFITEL",
+     "label": "Sofitel Fiji Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7715",
+     "lng": "177.3870"
+    },
+    {
+     "value": "P_WESTIN",
+     "label": "The Westin Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7730",
+     "lng": "177.3862"
+    },
+    {
+     "value": "P_WYNDHAM",
+     "label": "Wyndham Resort Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7735",
+     "lng": "177.3875"
+    },
+    {
+     "value": "P_INTERCON_DENARAU",
+     "label": "InterContinental Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7710",
+     "lng": "177.3860"
+    },
+    {
+     "value": "P_DOUBLETREE",
+     "label": "DoubleTree Sonaisali",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7895",
+     "lng": "177.3755"
+    },
+    {
+     "value": "P_FIRST_LANDING",
+     "label": "First Landing Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6970",
+     "lng": "177.3980"
+    },
+    {
+     "value": "P_VUDA_MARINA",
+     "label": "Vuda Marina",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6880",
+     "lng": "177.3835"
+    },
+    {
+     "value": "P_MARRIOTT_MOMI",
+     "label": "Fiji Marriott Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8915",
+     "lng": "177.2855"
+    },
+    {
+     "value": "P_INTERCON_NATADOLA",
+     "label": "InterContinental Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0790",
+     "lng": "177.3760"
+    },
+    {
+     "value": "P_YATULE",
+     "label": "Yatule Resort & Spa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0820",
+     "lng": "177.3775"
+    },
+    {
+     "value": "P_ROBINSON_CRUSOE",
+     "label": "Robinson Crusoe Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0250",
+     "lng": "177.3650"
+    },
+    {
+     "value": "P_SHANGRI_LA",
+     "label": "Shangri-La Yanuca",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1115",
+     "lng": "177.4975"
+    },
+    {
+     "value": "P_BEDARRA",
+     "label": "Bedarra Beach Inn",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1455",
+     "lng": "177.5395"
+    },
+    {
+     "value": "P_GECKOS",
+     "label": "Gecko's Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1455",
+     "lng": "177.5410"
+    },
+    {
+     "value": "P_HIDEAWAY",
+     "label": "Hideaway Resort & Spa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5910"
+    },
+    {
+     "value": "P_TAMBUA_SANDS",
+     "label": "Tambua Sands",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1815",
+     "lng": "177.6105"
+    },
+    {
+     "value": "P_CRUSOES_RETREAT",
+     "label": "Crusoe's Retreat",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1830",
+     "lng": "177.6210"
+    },
+    {
+     "value": "P_OUTRIGGER",
+     "label": "Outrigger Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1893",
+     "lng": "177.6710"
+    },
+    {
+     "value": "P_WARWICK",
+     "label": "The Warwick Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1985",
+     "lng": "177.6790"
+    },
+    {
+     "value": "P_NAVITI",
+     "label": "The Naviti Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1990",
+     "lng": "177.6800"
+    },
+    {
+     "value": "P_MANGO_BAY",
+     "label": "Mango Bay Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1860",
+     "lng": "177.6450"
+    },
+    {
+     "value": "P_BEACHHOUSE",
+     "label": "The Beachouse Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2050",
+     "lng": "177.7100"
+    },
+    {
+     "value": "P_WAIDROKA",
+     "label": "Waidroka Bay Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2400",
+     "lng": "177.7900"
+    },
+    {
+     "value": "P_PEARL",
+     "label": "Pearl South Pacific",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "P_UPRISING",
+     "label": "Uprising Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2730",
+     "lng": "177.9000"
+    },
+    {
+     "value": "P_NANUKU",
+     "label": "Nanuku Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2630",
+     "lng": "177.9200"
+    },
+    {
+     "value": "P_ARTS_VILLAGE",
+     "label": "Pacific Harbour Arts Village",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2780",
+     "lng": "177.9050"
+    },
+    {
+     "value": "P_GRAND_PACIFIC",
+     "label": "Grand Pacific Hotel",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "P_HOLIDAY_INN_SUVA",
+     "label": "Holiday Inn Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1450",
+     "lng": "178.4200"
+    },
+    {
+     "value": "P_NOVOTEL_LAMI",
+     "label": "Novotel Suva Lami Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1080",
+     "lng": "178.4080"
+    },
+    {
+     "value": "P_TANOA_PLAZA_SUVA",
+     "label": "Tanoa Plaza Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1400",
+     "lng": "178.4215"
+    },
+    {
+     "value": "P_VOLIVOLI",
+     "label": "Volivoli Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4205",
+     "lng": "178.0010"
+    },
+    {
+     "value": "P_WANANAVU",
+     "label": "Wananavu Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4280",
+     "lng": "178.0100"
+    },
+    {
+     "value": "CUSTOM_PICKUP",
+     "label": "\ud83d\udccd Other / not listed \u2014 type your address",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "",
+     "label": "Select destination...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "CUSTOM_DEST",
+     "label": "\ud83d\udccd Other hotel / address \u2014 not listed",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "",
+     "label": "Select zone...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "Nadi / Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "DENARAU",
+     "label": "Denarau Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7726",
+     "lng": "177.3879"
+    },
+    {
+     "value": "VUDA_POINT",
+     "label": "Vuda Point",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6900",
+     "lng": "177.3790"
+    },
+    {
+     "value": "LAUTOKA",
+     "label": "Lautoka",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "MOMI_BAY",
+     "label": "Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8920",
+     "lng": "177.2850"
+    },
+    {
+     "value": "NATADOLA",
+     "label": "Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0810",
+     "lng": "177.3770"
+    },
+    {
+     "value": "SIGATOKA",
+     "label": "Sigatoka / Coral Coast (West)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "CORAL_COAST_MID",
+     "label": "Coral Coast (mid \u2014 Hideaway/Tambua)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5900"
+    },
+    {
+     "value": "CORAL_COAST_EAST",
+     "label": "Coral Coast (east \u2014 Outrigger/Warwick/Naviti)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1980",
+     "lng": "177.6790"
+    },
+    {
+     "value": "PACIFIC_HARBOUR",
+     "label": "Pacific Harbour / Beqa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "SUVA",
+     "label": "Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "BA",
+     "label": "Ba",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "RAKIRAKI",
+     "label": "Rakiraki / Volivoli",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4200",
+     "lng": "178.0000"
+    },
+    {
+     "value": "",
+     "label": "Select zone...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "Nadi / Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "DENARAU",
+     "label": "Denarau Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7726",
+     "lng": "177.3879"
+    },
+    {
+     "value": "VUDA_POINT",
+     "label": "Vuda Point",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6900",
+     "lng": "177.3790"
+    },
+    {
+     "value": "LAUTOKA",
+     "label": "Lautoka",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "MOMI_BAY",
+     "label": "Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8920",
+     "lng": "177.2850"
+    },
+    {
+     "value": "NATADOLA",
+     "label": "Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0810",
+     "lng": "177.3770"
+    },
+    {
+     "value": "SIGATOKA",
+     "label": "Sigatoka / Coral Coast (West)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "CORAL_COAST_MID",
+     "label": "Coral Coast (mid \u2014 Hideaway/Tambua)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5900"
+    },
+    {
+     "value": "CORAL_COAST_EAST",
+     "label": "Coral Coast (east \u2014 Outrigger/Warwick/Naviti)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1980",
+     "lng": "177.6790"
+    },
+    {
+     "value": "PACIFIC_HARBOUR",
+     "label": "Pacific Harbour / Beqa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "SUVA",
+     "label": "Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "BA",
+     "label": "Ba",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "RAKIRAKI",
+     "label": "Rakiraki / Volivoli",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4200",
+     "lng": "178.0000"
+    },
+    {
+     "value": "FJD",
+     "label": "FJ$ (Fijian dollar)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "AUD",
+     "label": "AU$ (Australian)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "USD",
+     "label": "US$ (US dollar)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NZD",
+     "label": "NZ$ (New Zealand)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "GBP",
+     "label": "\u00a3 (British pound)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "EUR",
+     "label": "\u20ac (Euro)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    }
+   ]
+  },
+  "FD": {
+   "storefront": "book.fijidash.com",
+   "url": "https://book.fijidash.com/",
+   "index_sha256": "070c95af87b09b076010e6b31f0440af86aefd4aa792e26006792babbd8ec79b",
+   "app_js_url": "https://book.fijidash.com/app.js?v=20260911b-naviti-pricing",
+   "app_js_sha256": "d5a1df5e81179bf9140aa513195db8d6675d69e8620164b136a80c20629cfb20",
+   "zone_rule": {
+    "function": "resolveFixedDestinationZone(destOpt)",
+    "app_js_line": 797,
+    "logic": "area in MARKETPLACE_ZONE_NAMES -> area; AREA_ZONE_ALIASES[area] -> zone; else NEEDS_LOOKUP",
+    "marketplace_zone_names": [
+     "Nadi",
+     "Nadi Airport",
+     "Wailoaloa",
+     "Denarau",
+     "Sonaisali",
+     "Vuda Point",
+     "Lautoka",
+     "Momi Bay",
+     "Natadola",
+     "Sigatoka",
+     "Coral Coast",
+     "Pacific Harbour",
+     "Ba",
+     "Rakiraki",
+     "Suva",
+     "Nausori"
+    ],
+    "area_zone_aliases": {
+     "Port Denarau": "Denarau"
+    }
+   },
+   "return_location_default": "syncReturnLocationDefault(): returnPickupLocation = state.destination.hotel || name, where hotel = option data-hotel (else the option label); editable by the guest",
+   "options_with_area": [
+    {
+     "value": "NAN",
+     "label": "\u2708 Nadi International Airport (NAN)",
+     "hotel": "Nadi International Airport (NAN)",
+     "area": "Nadi Airport",
+     "lat": "-17.7552",
+     "lng": "177.4441"
+    },
+    {
+     "value": "AQUARIUS_FIJI",
+     "label": "Aquarius Fiji (Wailoaloa)",
+     "hotel": "Aquarius Fiji",
+     "area": "Wailoaloa",
+     "lat": "-17.7290",
+     "lng": "177.4030"
+    },
+    {
+     "value": "BAMBOO_BACKPACKERS",
+     "label": "Bamboo Travellers",
+     "hotel": "Bamboo Travellers",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4020"
+    },
+    {
+     "value": "BEACH_CLUB_WAILOALOA",
+     "label": "Beach Club Wailoaloa",
+     "hotel": "Beach Club Wailoaloa",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4010"
+    },
+    {
+     "value": "BLUEWATER_LODGE",
+     "label": "Bluewater Lodge",
+     "hotel": "Bluewater Lodge",
+     "area": "Wailoaloa",
+     "lat": "-17.7340",
+     "lng": "177.4015"
+    },
+    {
+     "value": "CENTURY_FIJI",
+     "label": "Century Fiji Hotel",
+     "hotel": "Century Fiji Hotel",
+     "area": "Nadi",
+     "lat": "-17.7560",
+     "lng": "177.4502"
+    },
+    {
+     "value": "CITRUS_HOTEL",
+     "label": "Citrus Hotel Nadi",
+     "hotel": "Citrus Hotel Nadi",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4220"
+    },
+    {
+     "value": "CLUB_FIJI",
+     "label": "Club Fiji Resort",
+     "hotel": "Club Fiji Resort",
+     "area": "Wailoaloa",
+     "lat": "-17.7335",
+     "lng": "177.4012"
+    },
+    {
+     "value": "CROWNE_PLAZA_NADI_BAY",
+     "label": "Crowne Plaza Nadi Bay Resort & Spa",
+     "hotel": "Crowne Plaza Fiji Nadi Bay Resort & Spa",
+     "area": "Wailoaloa",
+     "lat": "-17.7300",
+     "lng": "177.4005"
+    },
+    {
+     "value": "FIJI_GATEWAY",
+     "label": "Fiji Gateway Hotel (opp Airport)",
+     "hotel": "Fiji Gateway Hotel",
+     "area": "Nadi",
+     "lat": "-17.7595",
+     "lng": "177.4458"
+    },
+    {
+     "value": "FIJI_ORCHID",
+     "label": "The Fiji Orchid (Sabeto)",
+     "hotel": "The Fiji Orchid",
+     "area": "Sabeto",
+     "lat": "-17.7150",
+     "lng": "177.4520"
+    },
+    {
+     "value": "GRAND_WEST_VILLAS",
+     "label": "Grand West Villas Nadi",
+     "hotel": "Grand West Villas Nadi",
+     "area": "Nadi",
+     "lat": "-17.7500",
+     "lng": "177.4470"
+    },
+    {
+     "value": "HEXAGON",
+     "label": "Hexagon International Hotel",
+     "hotel": "Hexagon International Hotel, Villas & Spa",
+     "area": "Wailoaloa",
+     "lat": "-17.7290",
+     "lng": "177.3980"
+    },
+    {
+     "value": "HORIZON_BEACH",
+     "label": "Horizon Beach Resort",
+     "hotel": "Horizon Beach Resort",
+     "area": "Wailoaloa",
+     "lat": "-17.7325",
+     "lng": "177.4008"
+    },
+    {
+     "value": "MERCURE_NADI",
+     "label": "Mercure Hotel Nadi",
+     "hotel": "Mercure Hotel Nadi",
+     "area": "Nadi",
+     "lat": "-17.7620",
+     "lng": "177.4420"
+    },
+    {
+     "value": "NADI_BAY_HOTEL",
+     "label": "Nadi Bay Resort Hotel",
+     "hotel": "Nadi Bay Resort Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7310",
+     "lng": "177.4000"
+    },
+    {
+     "value": "NADI_DOWNTOWN",
+     "label": "Nadi Downtown Hotel",
+     "hotel": "Nadi Downtown Hotel",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4180"
+    },
+    {
+     "value": "NUKU_LOALOA",
+     "label": "Nuku Loaloa Living",
+     "hotel": "Nuku Loaloa Living",
+     "area": "Nadi",
+     "lat": "-17.7780",
+     "lng": "177.4200"
+    },
+    {
+     "value": "RAMADA_WAILOALOA",
+     "label": "Ramada Wailoaloa Beach",
+     "hotel": "Ramada Suites by Wyndham Wailoaloa Beach Fiji Nadi",
+     "area": "Wailoaloa",
+     "lat": "-17.7295",
+     "lng": "177.4015"
+    },
+    {
+     "value": "RAFFLES_GATEWAY",
+     "label": "Raffles Gateway Hotel",
+     "hotel": "Raffles Gateway Hotel",
+     "area": "Nadi",
+     "lat": "-17.7558",
+     "lng": "177.4490"
+    },
+    {
+     "value": "SMUGGLERS_COVE",
+     "label": "Smugglers Cove Beach Resort",
+     "hotel": "Smugglers Cove Beach Resort & Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7280",
+     "lng": "177.3990"
+    },
+    {
+     "value": "SUNSEEKERS",
+     "label": "Sunseekers Hotel Fiji",
+     "hotel": "Sunseekers Hotel Fiji",
+     "area": "Wailoaloa",
+     "lat": "-17.7340",
+     "lng": "177.4022"
+    },
+    {
+     "value": "TANOA_INTERNATIONAL",
+     "label": "Tanoa International Hotel",
+     "hotel": "Tanoa International Hotel",
+     "area": "Nadi",
+     "lat": "-17.7580",
+     "lng": "177.4480"
+    },
+    {
+     "value": "TOKATOKA",
+     "label": "Tokatoka Resort Hotel",
+     "hotel": "Tokatoka Resort Hotel",
+     "area": "Nadi",
+     "lat": "-17.7570",
+     "lng": "177.4495"
+    },
+    {
+     "value": "TRADEWINDS_FIJI",
+     "label": "Tradewinds Hotel Fiji",
+     "hotel": "Tradewinds Hotel Fiji",
+     "area": "Nadi",
+     "lat": "-17.7650",
+     "lng": "177.4390"
+    },
+    {
+     "value": "WAILOALOA_BEACH",
+     "label": "Wailoaloa Beach Hotel",
+     "hotel": "Wailoaloa Beach Hotel",
+     "area": "Wailoaloa",
+     "lat": "-17.7320",
+     "lng": "177.4015"
+    },
+    {
+     "value": "DENARAU_VILLAS",
+     "label": "Denarau Island Villas (Various)",
+     "hotel": "Denarau Island Villas",
+     "area": "Denarau",
+     "lat": "-17.7730",
+     "lng": "177.3870"
+    },
+    {
+     "value": "HILTON_DENARAU",
+     "label": "Hilton Fiji Beach Resort & Spa",
+     "hotel": "Hilton Fiji Beach Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7728",
+     "lng": "177.3866"
+    },
+    {
+     "value": "HILTON_RESIDENCES",
+     "label": "Hilton Vacation Club Residences",
+     "hotel": "Hilton Vacation Club Residences",
+     "area": "Denarau",
+     "lat": "-17.7724",
+     "lng": "177.3870"
+    },
+    {
+     "value": "RADISSON_DENARAU",
+     "label": "Radisson Blu Resort Fiji Denarau",
+     "hotel": "Radisson Blu Resort Fiji Denarau Island",
+     "area": "Denarau",
+     "lat": "-17.7740",
+     "lng": "177.3870"
+    },
+    {
+     "value": "SHERATON_DENARAU_VILLAS",
+     "label": "Sheraton Denarau Villas",
+     "hotel": "Sheraton Denarau Villas",
+     "area": "Denarau",
+     "lat": "-17.7715",
+     "lng": "177.3862"
+    },
+    {
+     "value": "SHERATON_FIJI",
+     "label": "Sheraton Fiji Golf & Beach Resort",
+     "hotel": "Sheraton Fiji Golf & Beach Resort",
+     "area": "Denarau",
+     "lat": "-17.7720",
+     "lng": "177.3865"
+    },
+    {
+     "value": "SOFITEL_DENARAU",
+     "label": "Sofitel Fiji Resort & Spa",
+     "hotel": "Sofitel Fiji Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7715",
+     "lng": "177.3870"
+    },
+    {
+     "value": "WESTIN_DENARAU",
+     "label": "The Westin Denarau Island Resort",
+     "hotel": "The Westin Denarau Island Resort & Spa",
+     "area": "Denarau",
+     "lat": "-17.7730",
+     "lng": "177.3862"
+    },
+    {
+     "value": "WYNDHAM_DENARAU",
+     "label": "Wyndham Resort Denarau Island",
+     "hotel": "Wyndham Resort Denarau Island",
+     "area": "Denarau",
+     "lat": "-17.7735",
+     "lng": "177.3875"
+    },
+    {
+     "value": "DENARAU_ISLAND_RESORT",
+     "label": "Denarau Island Resort",
+     "hotel": "Denarau Island Resort",
+     "area": "Denarau",
+     "lat": "-17.7732",
+     "lng": "177.3878"
+    },
+    {
+     "value": "PORT_DENARAU_MARINA",
+     "label": "Port Denarau Marina (Ferry Terminal)",
+     "hotel": "Port Denarau Marina (Ferry Terminal)",
+     "area": "Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "DOUBLETREE_SONAISALI",
+     "label": "DoubleTree by Hilton Sonaisali",
+     "hotel": "DoubleTree by Hilton Sonaisali Island Fiji",
+     "area": "Sonaisali",
+     "lat": "-17.7895",
+     "lng": "177.3755"
+    },
+    {
+     "value": "FIRST_LANDING",
+     "label": "First Landing Beach Resort & Villas",
+     "hotel": "First Landing Beach Resort & Villas",
+     "area": "Vuda Point",
+     "lat": "-17.6970",
+     "lng": "177.3980"
+    },
+    {
+     "value": "VUDA_MARINA",
+     "label": "Vuda Marina (Yacht Haven)",
+     "hotel": "Vuda Marina",
+     "area": "Vuda Point",
+     "lat": "-17.6880",
+     "lng": "177.3835"
+    },
+    {
+     "value": "ANCHORAGE_BEACH",
+     "label": "Anchorage Beach Resort (Vuda)",
+     "hotel": "Anchorage Beach Resort",
+     "area": "Vuda Point",
+     "lat": "-17.6920",
+     "lng": "177.3950"
+    },
+    {
+     "value": "SAWENI_BEACH",
+     "label": "Saweni Beach Apartment Hotel",
+     "hotel": "Saweni Beach Apartment Hotel",
+     "area": "Saweni",
+     "lat": "-17.6650",
+     "lng": "177.4150"
+    },
+    {
+     "value": "CATHAY_LAUTOKA",
+     "label": "Cathay Hotel Lautoka",
+     "hotel": "Cathay Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6155",
+     "lng": "177.4490"
+    },
+    {
+     "value": "LAUTOKA_HOTEL",
+     "label": "Lautoka Hotel",
+     "hotel": "Lautoka Hotel",
+     "area": "Lautoka",
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "NORTHERN_CLUB",
+     "label": "Northern Club Lautoka",
+     "hotel": "Northern Club Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6128",
+     "lng": "177.4500"
+    },
+    {
+     "value": "SEA_BREEZE_LAUTOKA",
+     "label": "Sea Breeze Hotel Lautoka",
+     "hotel": "Sea Breeze Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6080",
+     "lng": "177.4490"
+    },
+    {
+     "value": "TANOA_LAUTOKA",
+     "label": "Tanoa Waterfront Hotel",
+     "hotel": "Tanoa Waterfront Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6130",
+     "lng": "177.4505"
+    },
+    {
+     "value": "WATERFRONT_LAUTOKA",
+     "label": "Waterfront Hotel Lautoka",
+     "hotel": "Waterfront Hotel Lautoka",
+     "area": "Lautoka",
+     "lat": "-17.6135",
+     "lng": "177.4502"
+    },
+    {
+     "value": "LAUTOKA_CRUISE",
+     "label": "Lautoka Cruise Terminal",
+     "hotel": "Lautoka Cruise Terminal",
+     "area": "Lautoka",
+     "lat": "-17.6079",
+     "lng": "177.4501"
+    },
+    {
+     "value": "MARRIOTT_MOMI",
+     "label": "Fiji Marriott Resort Momi Bay",
+     "hotel": "Fiji Marriott Resort Momi Bay",
+     "area": "Momi Bay",
+     "lat": "-17.8915",
+     "lng": "177.2855"
+    },
+    {
+     "value": "SEASHELL_RESORT",
+     "label": "Seashell Cove Resort (Momi)",
+     "hotel": "Seashell Coast Resort",
+     "area": "Momi Bay",
+     "lat": "-17.8950",
+     "lng": "177.2920"
+    },
+    {
+     "value": "INTERCONTINENTAL_NATADOLA",
+     "label": "InterContinental Fiji Golf Resort Natadola",
+     "hotel": "InterContinental Fiji Golf Resort & Spa Natadola",
+     "area": "Natadola",
+     "lat": "-18.0790",
+     "lng": "177.3760"
+    },
+    {
+     "value": "YATULE_RESORT",
+     "label": "Yatule Resort & Spa",
+     "hotel": "Yatule Resort & Spa",
+     "area": "Natadola",
+     "lat": "-18.0820",
+     "lng": "177.3775"
+    },
+    {
+     "value": "ROBINSON_CRUSOE",
+     "label": "Robinson Crusoe Island (Likuri)",
+     "hotel": "Robinson Crusoe Island Resort (Likuri)",
+     "area": "Natadola",
+     "lat": "-18.0250",
+     "lng": "177.3650"
+    },
+    {
+     "value": "MAUI_BAY_VILLAS",
+     "label": "Maui Bay Villas",
+     "hotel": "Maui Bay Villas",
+     "area": "Maui Bay",
+     "lat": "-18.0950",
+     "lng": "177.4500"
+    },
+    {
+     "value": "BEDARRA_INN",
+     "label": "Bedarra Beach Inn",
+     "hotel": "Bedarra Beach Inn",
+     "area": "Sigatoka",
+     "lat": "-18.1455",
+     "lng": "177.5395"
+    },
+    {
+     "value": "BEACHHOUSE_FIJI",
+     "label": "The Beachouse Fiji (Korotogo)",
+     "hotel": "The Beachouse Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.2050",
+     "lng": "177.7100"
+    },
+    {
+     "value": "GECKO_RESORT",
+     "label": "Gecko's Resort (Korotogo)",
+     "hotel": "Gecko's Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1455",
+     "lng": "177.5410"
+    },
+    {
+     "value": "KALEVU_HERITAGE_RESORT",
+     "label": "Kalevu Heritage Resort",
+     "hotel": "Kalevu Heritage Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1380",
+     "lng": "177.5060"
+    },
+    {
+     "value": "KORO_SUN_LODGE",
+     "label": "Koro Sun Lodge",
+     "hotel": "Koro Sun Lodge Sigatoka",
+     "area": "Sigatoka",
+     "lat": "-18.1450",
+     "lng": "177.5395"
+    },
+    {
+     "value": "OCEANSIDE",
+     "label": "Oceanside Resort (Korotogo)",
+     "hotel": "Oceanside Resort",
+     "area": "Sigatoka",
+     "lat": "-18.1450",
+     "lng": "177.5400"
+    },
+    {
+     "value": "SANDY_POINT_BEACH",
+     "label": "Sandy Point Beach Cottages",
+     "hotel": "Sandy Point Beach Cottages",
+     "area": "Sigatoka",
+     "lat": "-18.1480",
+     "lng": "177.5430"
+    },
+    {
+     "value": "SIGATOKA_CLUB",
+     "label": "Sigatoka Club Hotel",
+     "hotel": "Sigatoka Club Hotel",
+     "area": "Sigatoka",
+     "lat": "-18.1430",
+     "lng": "177.5072"
+    },
+    {
+     "value": "ANCHORAGE_KOROTOGO",
+     "label": "Anchorage Beach (Korotogo)",
+     "hotel": "Anchorage Beach Resort (Korotogo)",
+     "area": "Coral Coast",
+     "lat": "-18.1480",
+     "lng": "177.5430"
+    },
+    {
+     "value": "CRUSOES_RETREAT",
+     "label": "Crusoe's Retreat",
+     "hotel": "Crusoe's Retreat",
+     "area": "Coral Coast",
+     "lat": "-18.1830",
+     "lng": "177.6210"
+    },
+    {
+     "value": "HIDEAWAY_RESORT",
+     "label": "Hideaway Resort & Spa",
+     "hotel": "Hideaway Resort & Spa Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1700",
+     "lng": "177.5910"
+    },
+    {
+     "value": "MANGO_BAY",
+     "label": "Mango Bay Resort",
+     "hotel": "Mango Bay Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1860",
+     "lng": "177.6450"
+    },
+    {
+     "value": "MATAMANOA_LODGE",
+     "label": "Matamanoa Lodge",
+     "hotel": "Matamanoa Lodge",
+     "area": "Coral Coast",
+     "lat": "-18.1900",
+     "lng": "177.6650"
+    },
+    {
+     "value": "NAVITI_RESORT",
+     "label": "The Naviti Resort",
+     "hotel": "The Naviti Resort Korolevu",
+     "area": "Coral Coast",
+     "lat": "-18.1990",
+     "lng": "177.6800"
+    },
+    {
+     "value": "OUTRIGGER_FIJI",
+     "label": "Outrigger Fiji Beach Resort",
+     "hotel": "Outrigger Fiji Beach Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1893",
+     "lng": "177.6710"
+    },
+    {
+     "value": "SHANGRI_LA_YANUCA",
+     "label": "Shangri-La Yanuca Island Fiji",
+     "hotel": "Shangri-La Yanuca Island Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1115",
+     "lng": "177.4975"
+    },
+    {
+     "value": "TAMBUA_SANDS",
+     "label": "Tambua Sands Beach Resort",
+     "hotel": "Tambua Sands Beach Resort",
+     "area": "Coral Coast",
+     "lat": "-18.1815",
+     "lng": "177.6105"
+    },
+    {
+     "value": "TAVARUA_ISLAND",
+     "label": "Tavarua Island Resort (boat from Momi)",
+     "hotel": "Tavarua Island Resort",
+     "area": "Tavarua",
+     "lat": "-17.8530",
+     "lng": "177.1900"
+    },
+    {
+     "value": "THE_WARWICK",
+     "label": "The Warwick Fiji",
+     "hotel": "The Warwick Fiji",
+     "area": "Coral Coast",
+     "lat": "-18.1985",
+     "lng": "177.6790"
+    },
+    {
+     "value": "VAKAVITI",
+     "label": "Vakaviti Boutique Hotel",
+     "hotel": "Vakaviti Boutique Hotel",
+     "area": "Coral Coast",
+     "lat": "-18.1900",
+     "lng": "177.6650"
+    },
+    {
+     "value": "WAIDROKA_BAY",
+     "label": "Waidroka Bay Resort",
+     "hotel": "Waidroka Bay Resort",
+     "area": "Coral Coast",
+     "lat": "-18.2400",
+     "lng": "177.7900"
+    },
+    {
+     "value": "ARTS_VILLAGE",
+     "label": "Pacific Harbour Arts Village Area",
+     "hotel": "Pacific Harbour Arts Village",
+     "area": "Pacific Harbour",
+     "lat": "-18.2780",
+     "lng": "177.9050"
+    },
+    {
+     "value": "BEQA_LAGOON",
+     "label": "Beqa Lagoon Resort (boat transfer)",
+     "hotel": "Beqa Lagoon Resort",
+     "area": "Beqa Island",
+     "lat": "-18.4150",
+     "lng": "178.1500"
+    },
+    {
+     "value": "LALATI_BEQA",
+     "label": "Lalati Resort & Spa (boat transfer)",
+     "hotel": "Lalati Resort & Spa Beqa",
+     "area": "Beqa Island",
+     "lat": "-18.3950",
+     "lng": "178.1300"
+    },
+    {
+     "value": "NANUKU_RESORT",
+     "label": "Nanuku Resort (Auberge)",
+     "hotel": "Nanuku Resort Fiji (Auberge)",
+     "area": "Pacific Harbour",
+     "lat": "-18.2630",
+     "lng": "177.9200"
+    },
+    {
+     "value": "PEARL_SOUTH_PACIFIC",
+     "label": "Pearl South Pacific Resort & Spa",
+     "hotel": "Pearl South Pacific Resort & Spa",
+     "area": "Pacific Harbour",
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "ROYAL_DAVUI",
+     "label": "Royal Davui Island (boat transfer)",
+     "hotel": "Royal Davui Island Resort",
+     "area": "Beqa Island",
+     "lat": "-18.4250",
+     "lng": "178.1280"
+    },
+    {
+     "value": "UPRISING",
+     "label": "Uprising Beach Resort",
+     "hotel": "Uprising Beach Resort",
+     "area": "Pacific Harbour",
+     "lat": "-18.2730",
+     "lng": "177.9000"
+    },
+    {
+     "value": "SIGATOKA_SAND_DUNES",
+     "label": "Sigatoka Sand Dunes National Park",
+     "hotel": "Sigatoka Sand Dunes National Park",
+     "area": "Sigatoka",
+     "lat": "-18.1400",
+     "lng": "177.4860"
+    },
+    {
+     "value": "SIGATOKA_TOWN",
+     "label": "Sigatoka Town Centre",
+     "hotel": "Sigatoka Town Centre",
+     "area": "Sigatoka",
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "KULA_ECO",
+     "label": "Kula Wild Adventure Park",
+     "hotel": "Kula Wild Adventure Park",
+     "area": "Sigatoka",
+     "lat": "-18.1500",
+     "lng": "177.5050"
+    },
+    {
+     "value": "BIAUSEVU",
+     "label": "Biausevu Waterfall Village",
+     "hotel": "Biausevu Waterfall Village",
+     "area": "Sigatoka",
+     "lat": "-18.2000",
+     "lng": "177.5500"
+    },
+    {
+     "value": "NATURES_WAY",
+     "label": "Sigatoka Valley Tour Pickup",
+     "hotel": "Sigatoka Valley Tours Pickup",
+     "area": "Sigatoka",
+     "lat": "-18.1490",
+     "lng": "177.5060"
+    },
+    {
+     "value": "TAVUNI_HILL_FORT",
+     "label": "Tavuni Hill Fort",
+     "hotel": "Tavuni Hill Fort",
+     "area": "Sigatoka",
+     "lat": "-18.1300",
+     "lng": "177.5400"
+    },
+    {
+     "value": "BA_HOTEL",
+     "label": "Ba Town Hotel",
+     "hotel": "Ba Town Hotel",
+     "area": "Ba",
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "DOLPHIN_ISLAND",
+     "label": "Dolphin Island (boat transfer)",
+     "hotel": "Dolphin Island Fiji",
+     "area": "Rakiraki",
+     "lat": "-17.4080",
+     "lng": "178.0150"
+    },
+    {
+     "value": "NAMOSI_HIGHLANDS",
+     "label": "Namosi Highlands Lodge",
+     "hotel": "Namosi Highlands Lodge",
+     "area": "Namosi",
+     "lat": "-17.5800",
+     "lng": "178.1500"
+    },
+    {
+     "value": "NAVALA_VILLAGE",
+     "label": "Navala Village (cultural visit)",
+     "hotel": "Navala Village (cultural visit)",
+     "area": "Ba",
+     "lat": "-17.6100",
+     "lng": "177.8200"
+    },
+    {
+     "value": "TAVUA_HOTEL",
+     "label": "Tavua Hotel",
+     "hotel": "Tavua Hotel",
+     "area": "Tavua",
+     "lat": "-17.4400",
+     "lng": "177.8580"
+    },
+    {
+     "value": "VOLIVOLI_BEACH",
+     "label": "Volivoli Beach Resort (Rakiraki)",
+     "hotel": "Volivoli Beach Resort",
+     "area": "Rakiraki",
+     "lat": "-17.4205",
+     "lng": "178.0010"
+    },
+    {
+     "value": "WANANAVU",
+     "label": "Wananavu Beach Resort (Rakiraki)",
+     "hotel": "Wananavu Beach Resort",
+     "area": "Rakiraki",
+     "lat": "-17.4280",
+     "lng": "178.0100"
+    },
+    {
+     "value": "GRAND_PACIFIC",
+     "label": "Grand Pacific Hotel",
+     "hotel": "Grand Pacific Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "HOLIDAY_INN_SUVA",
+     "label": "Holiday Inn Suva",
+     "hotel": "Holiday Inn Suva",
+     "area": "Suva",
+     "lat": "-18.1450",
+     "lng": "178.4200"
+    },
+    {
+     "value": "HOMESTEAD_SUVA",
+     "label": "Homestead Apartment Hotel",
+     "hotel": "Homestead Apartment Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1380",
+     "lng": "178.4250"
+    },
+    {
+     "value": "NOVOTEL_LAMI",
+     "label": "Novotel Suva Lami Bay",
+     "hotel": "Novotel Suva Lami Bay",
+     "area": "Suva",
+     "lat": "-18.1080",
+     "lng": "178.4080"
+    },
+    {
+     "value": "PENINSULA_SUVA",
+     "label": "Peninsula International Hotel",
+     "hotel": "Peninsula International Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1430",
+     "lng": "178.4220"
+    },
+    {
+     "value": "QUEST_SUVA",
+     "label": "Quest Suva",
+     "hotel": "Quest Suva",
+     "area": "Suva",
+     "lat": "-18.1410",
+     "lng": "178.4225"
+    },
+    {
+     "value": "SOUTHERN_CROSS_SUVA",
+     "label": "Southern Cross Hotel Suva",
+     "hotel": "Southern Cross Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1400",
+     "lng": "178.4230"
+    },
+    {
+     "value": "SUVA_MOTOR_INN",
+     "label": "Suva Motor Inn",
+     "hotel": "Suva Motor Inn",
+     "area": "Suva",
+     "lat": "-18.1420",
+     "lng": "178.4195"
+    },
+    {
+     "value": "TAGIMOUCIA_HOUSE",
+     "label": "Tagimoucia House Hotel",
+     "hotel": "Tagimoucia House Hotel",
+     "area": "Suva",
+     "lat": "-18.1280",
+     "lng": "178.4050"
+    },
+    {
+     "value": "TANOA_PLAZA_SUVA",
+     "label": "Tanoa Plaza Hotel Suva",
+     "hotel": "Tanoa Plaza Hotel Suva",
+     "area": "Suva",
+     "lat": "-18.1400",
+     "lng": "178.4215"
+    },
+    {
+     "value": "NAUSORI_AIRPORT",
+     "label": "Nausori Airport (SUV)",
+     "hotel": "Nausori Airport (SUV)",
+     "area": "Nausori",
+     "lat": "-18.0433",
+     "lng": "178.5594"
+    },
+    {
+     "value": "PORT_DENARAU_TRANSFER",
+     "label": "Port Denarau (Yasawa Flyer pickup)",
+     "hotel": "Port Denarau Marina (Yasawa Flyer / South Sea Cruises)",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MUSKET_COVE_TRANSFER",
+     "label": "Musket Cove transfer (via Port Denarau)",
+     "hotel": "Musket Cove (Malolo Lailai) \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "LIKULIKU_TRANSFER",
+     "label": "Likuliku Lagoon transfer (via Port Denarau)",
+     "hotel": "Likuliku Lagoon (Malolo) \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "CASTAWAY_TRANSFER",
+     "label": "Castaway Island transfer (via Port Denarau)",
+     "hotel": "Castaway Island \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MANA_ISLAND_TRANSFER",
+     "label": "Mana Island transfer (via Port Denarau)",
+     "hotel": "Mana Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "TOKORIKI_TRANSFER",
+     "label": "Tokoriki Island transfer (via Port Denarau)",
+     "hotel": "Tokoriki Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "VOMO_TRANSFER",
+     "label": "Vomo Island transfer (via Port Denarau)",
+     "hotel": "Vomo Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "YASAWA_ISLAND_TRANSFER",
+     "label": "Yasawa Island transfer (via Port Denarau)",
+     "hotel": "Yasawa Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MALOLO_TRANSFER",
+     "label": "Malolo Island transfer (via Port Denarau)",
+     "hotel": "Malolo Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MATAMANOA_TRANSFER",
+     "label": "Matamanoa Island transfer (via Port Denarau)",
+     "hotel": "Matamanoa Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "SERENITY_ISLAND_TRANSFER",
+     "label": "Serenity Island transfer (via Port Denarau)",
+     "hotel": "Serenity Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "TADRAI_TRANSFER",
+     "label": "Tadrai Island transfer (via Port Denarau)",
+     "hotel": "Tadrai Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "TROPICA_TRANSFER",
+     "label": "Tropica Island transfer (via Port Denarau)",
+     "hotel": "Tropica Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "WADIGI_TRANSFER",
+     "label": "Wadigi Island transfer (via Port Denarau)",
+     "hotel": "Wadigi Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "BAREFOOT_MANTA_TRANSFER",
+     "label": "Barefoot Manta transfer (via Port Denarau)",
+     "hotel": "Barefoot Manta Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "BLUE_LAGOON_BEACH_TRANSFER",
+     "label": "Blue Lagoon Beach transfer (via Port Denarau)",
+     "hotel": "Blue Lagoon Beach Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "COCONUT_BEACH_TRANSFER",
+     "label": "Coconut Beach transfer (via Port Denarau)",
+     "hotel": "Coconut Beach Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "MANTARAY_ISLAND_TRANSFER",
+     "label": "Mantaray Island transfer (via Port Denarau)",
+     "hotel": "Mantaray Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "NANUYA_ISLAND_TRANSFER",
+     "label": "Nanuya Island transfer (via Port Denarau)",
+     "hotel": "Nanuya Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "NAVUTU_STARS_TRANSFER",
+     "label": "Navutu Stars transfer (via Port Denarau)",
+     "hotel": "Navutu Stars Fiji \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "OARSMANS_BAY_TRANSFER",
+     "label": "Oarsman's Bay Lodge transfer (via Port Denarau)",
+     "hotel": "Oarsman's Bay Lodge \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "OCTOPUS_RESORT_TRANSFER",
+     "label": "Octopus Resort transfer (via Port Denarau)",
+     "hotel": "Octopus Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "PARADISE_COVE_TRANSFER",
+     "label": "Paradise Cove transfer (via Port Denarau)",
+     "hotel": "Paradise Cove Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "TURTLE_ISLAND_TRANSFER",
+     "label": "Turtle Island transfer (via Port Denarau)",
+     "hotel": "Turtle Island \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "WAYA_ISLAND_TRANSFER",
+     "label": "Waya Island transfer (via Port Denarau)",
+     "hotel": "Waya Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "LOMANI_ISLAND_TRANSFER",
+     "label": "Lomani Island transfer (via Port Denarau)",
+     "hotel": "Lomani Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "NAMOTU_ISLAND_TRANSFER",
+     "label": "Namotu Island transfer (via Port Denarau)",
+     "hotel": "Namotu Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "PLANTATION_ISLAND_TRANSFER",
+     "label": "Plantation Island transfer (via Port Denarau)",
+     "hotel": "Plantation Island Resort \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "SIX_SENSES_FIJI_TRANSFER",
+     "label": "Six Senses Fiji transfer (via Port Denarau)",
+     "hotel": "Six Senses Fiji \u2014 boat ex Port Denarau",
+     "area": "Port Denarau",
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    }
+   ],
+   "name_only_options": [
+    {
+     "value": "",
+     "label": "Select pickup point...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NAN",
+     "label": "\u2708 Nadi International Airport (NAN)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7552",
+     "lng": "177.4441"
+    },
+    {
+     "value": "SUV",
+     "label": "\u2708 Nausori International Airport (SUV)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0433",
+     "lng": "178.5594"
+    },
+    {
+     "value": "DENARAU_PORT",
+     "label": "\u26f5 Port Denarau Marina (Yasawa Flyer)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7738",
+     "lng": "177.3895"
+    },
+    {
+     "value": "LAUTOKA_PORT",
+     "label": "\u26f5 Lautoka Port (Cruise Terminal)",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6079",
+     "lng": "177.4501"
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "\ud83c\udfd9 Nadi Town Centre",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "LAUTOKA_TOWN_PU",
+     "label": "\ud83c\udfd9 Lautoka City Centre",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "SIGATOKA_TOWN_PU",
+     "label": "\ud83c\udfd9 Sigatoka Town",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "SUVA_CBD",
+     "label": "\ud83c\udfd9 Suva CBD",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4419"
+    },
+    {
+     "value": "P_CROWNE_PLAZA",
+     "label": "Crowne Plaza Nadi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7300",
+     "lng": "177.4005"
+    },
+    {
+     "value": "P_HEXAGON",
+     "label": "Hexagon International",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7290",
+     "lng": "177.3980"
+    },
+    {
+     "value": "P_RAMADA_WAILOALOA",
+     "label": "Ramada Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7295",
+     "lng": "177.4015"
+    },
+    {
+     "value": "P_SMUGGLERS",
+     "label": "Smugglers Cove",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7280",
+     "lng": "177.3990"
+    },
+    {
+     "value": "P_TANOA_INTL",
+     "label": "Tanoa International",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7580",
+     "lng": "177.4480"
+    },
+    {
+     "value": "P_TOKATOKA",
+     "label": "Tokatoka Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7570",
+     "lng": "177.4495"
+    },
+    {
+     "value": "P_RAFFLES_GATEWAY",
+     "label": "Raffles Gateway",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7558",
+     "lng": "177.4490"
+    },
+    {
+     "value": "P_FIJI_GATEWAY",
+     "label": "Fiji Gateway Hotel",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7595",
+     "lng": "177.4458"
+    },
+    {
+     "value": "P_MERCURE",
+     "label": "Mercure Nadi",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7620",
+     "lng": "177.4420"
+    },
+    {
+     "value": "P_TRADEWINDS",
+     "label": "Tradewinds Hotel Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7650",
+     "lng": "177.4390"
+    },
+    {
+     "value": "P_HILTON",
+     "label": "Hilton Fiji Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7728",
+     "lng": "177.3866"
+    },
+    {
+     "value": "P_RADISSON",
+     "label": "Radisson Blu Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7740",
+     "lng": "177.3870"
+    },
+    {
+     "value": "P_SHERATON",
+     "label": "Sheraton Fiji Golf & Beach",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7720",
+     "lng": "177.3865"
+    },
+    {
+     "value": "P_SOFITEL",
+     "label": "Sofitel Fiji Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7715",
+     "lng": "177.3870"
+    },
+    {
+     "value": "P_WESTIN",
+     "label": "The Westin Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7730",
+     "lng": "177.3862"
+    },
+    {
+     "value": "P_WYNDHAM",
+     "label": "Wyndham Resort Denarau",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7735",
+     "lng": "177.3875"
+    },
+    {
+     "value": "P_DOUBLETREE",
+     "label": "DoubleTree Sonaisali",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7895",
+     "lng": "177.3755"
+    },
+    {
+     "value": "P_FIRST_LANDING",
+     "label": "First Landing Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6970",
+     "lng": "177.3980"
+    },
+    {
+     "value": "P_VUDA_MARINA",
+     "label": "Vuda Marina",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6880",
+     "lng": "177.3835"
+    },
+    {
+     "value": "P_MARRIOTT_MOMI",
+     "label": "Fiji Marriott Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8915",
+     "lng": "177.2855"
+    },
+    {
+     "value": "P_INTERCON_NATADOLA",
+     "label": "InterContinental Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0790",
+     "lng": "177.3760"
+    },
+    {
+     "value": "P_YATULE",
+     "label": "Yatule Resort & Spa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0820",
+     "lng": "177.3775"
+    },
+    {
+     "value": "P_ROBINSON_CRUSOE",
+     "label": "Robinson Crusoe Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0250",
+     "lng": "177.3650"
+    },
+    {
+     "value": "P_SHANGRI_LA",
+     "label": "Shangri-La Yanuca",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1115",
+     "lng": "177.4975"
+    },
+    {
+     "value": "P_BEDARRA",
+     "label": "Bedarra Beach Inn",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1455",
+     "lng": "177.5395"
+    },
+    {
+     "value": "P_GECKOS",
+     "label": "Gecko's Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1455",
+     "lng": "177.5410"
+    },
+    {
+     "value": "P_HIDEAWAY",
+     "label": "Hideaway Resort & Spa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5910"
+    },
+    {
+     "value": "P_TAMBUA_SANDS",
+     "label": "Tambua Sands",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1815",
+     "lng": "177.6105"
+    },
+    {
+     "value": "P_CRUSOES_RETREAT",
+     "label": "Crusoe's Retreat",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1830",
+     "lng": "177.6210"
+    },
+    {
+     "value": "P_OUTRIGGER",
+     "label": "Outrigger Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1893",
+     "lng": "177.6710"
+    },
+    {
+     "value": "P_WARWICK",
+     "label": "The Warwick Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1985",
+     "lng": "177.6790"
+    },
+    {
+     "value": "P_NAVITI",
+     "label": "The Naviti Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1990",
+     "lng": "177.6800"
+    },
+    {
+     "value": "P_MANGO_BAY",
+     "label": "Mango Bay Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1860",
+     "lng": "177.6450"
+    },
+    {
+     "value": "P_BEACHHOUSE",
+     "label": "The Beachouse Fiji",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2050",
+     "lng": "177.7100"
+    },
+    {
+     "value": "P_WAIDROKA",
+     "label": "Waidroka Bay Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2400",
+     "lng": "177.7900"
+    },
+    {
+     "value": "P_PEARL",
+     "label": "Pearl South Pacific",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "P_UPRISING",
+     "label": "Uprising Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2730",
+     "lng": "177.9000"
+    },
+    {
+     "value": "P_NANUKU",
+     "label": "Nanuku Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2630",
+     "lng": "177.9200"
+    },
+    {
+     "value": "P_ARTS_VILLAGE",
+     "label": "Pacific Harbour Arts Village",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2780",
+     "lng": "177.9050"
+    },
+    {
+     "value": "P_GRAND_PACIFIC",
+     "label": "Grand Pacific Hotel",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "P_HOLIDAY_INN_SUVA",
+     "label": "Holiday Inn Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1450",
+     "lng": "178.4200"
+    },
+    {
+     "value": "P_NOVOTEL_LAMI",
+     "label": "Novotel Suva Lami Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1080",
+     "lng": "178.4080"
+    },
+    {
+     "value": "P_TANOA_PLAZA_SUVA",
+     "label": "Tanoa Plaza Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1400",
+     "lng": "178.4215"
+    },
+    {
+     "value": "P_VOLIVOLI",
+     "label": "Volivoli Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4205",
+     "lng": "178.0010"
+    },
+    {
+     "value": "P_WANANAVU",
+     "label": "Wananavu Beach Resort",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4280",
+     "lng": "178.0100"
+    },
+    {
+     "value": "CUSTOM_PICKUP",
+     "label": "\ud83d\udccd Other / not listed \u2014 type your address",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "",
+     "label": "Select destination...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "CUSTOM_DEST",
+     "label": "\ud83d\udccd Other hotel / address \u2014 not listed",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "",
+     "label": "Select zone...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "Nadi / Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "DENARAU",
+     "label": "Denarau Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7726",
+     "lng": "177.3879"
+    },
+    {
+     "value": "VUDA_POINT",
+     "label": "Vuda Point",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6900",
+     "lng": "177.3790"
+    },
+    {
+     "value": "LAUTOKA",
+     "label": "Lautoka",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "MOMI_BAY",
+     "label": "Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8920",
+     "lng": "177.2850"
+    },
+    {
+     "value": "NATADOLA",
+     "label": "Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0810",
+     "lng": "177.3770"
+    },
+    {
+     "value": "SIGATOKA",
+     "label": "Sigatoka / Coral Coast (West)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "CORAL_COAST_MID",
+     "label": "Coral Coast (mid \u2014 Hideaway/Tambua)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5900"
+    },
+    {
+     "value": "CORAL_COAST_EAST",
+     "label": "Coral Coast (east \u2014 Outrigger/Warwick/Naviti)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1980",
+     "lng": "177.6790"
+    },
+    {
+     "value": "PACIFIC_HARBOUR",
+     "label": "Pacific Harbour / Beqa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "SUVA",
+     "label": "Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "BA",
+     "label": "Ba",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "RAKIRAKI",
+     "label": "Rakiraki / Volivoli",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4200",
+     "lng": "178.0000"
+    },
+    {
+     "value": "",
+     "label": "Select zone...",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NADI_TOWN",
+     "label": "Nadi / Wailoaloa",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7996",
+     "lng": "177.4096"
+    },
+    {
+     "value": "DENARAU",
+     "label": "Denarau Island",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.7726",
+     "lng": "177.3879"
+    },
+    {
+     "value": "VUDA_POINT",
+     "label": "Vuda Point",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6900",
+     "lng": "177.3790"
+    },
+    {
+     "value": "LAUTOKA",
+     "label": "Lautoka",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.6140",
+     "lng": "177.4498"
+    },
+    {
+     "value": "MOMI_BAY",
+     "label": "Momi Bay",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.8920",
+     "lng": "177.2850"
+    },
+    {
+     "value": "NATADOLA",
+     "label": "Natadola",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.0810",
+     "lng": "177.3770"
+    },
+    {
+     "value": "SIGATOKA",
+     "label": "Sigatoka / Coral Coast (West)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1434",
+     "lng": "177.5075"
+    },
+    {
+     "value": "CORAL_COAST_MID",
+     "label": "Coral Coast (mid \u2014 Hideaway/Tambua)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1700",
+     "lng": "177.5900"
+    },
+    {
+     "value": "CORAL_COAST_EAST",
+     "label": "Coral Coast (east \u2014 Outrigger/Warwick/Naviti)",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1980",
+     "lng": "177.6790"
+    },
+    {
+     "value": "PACIFIC_HARBOUR",
+     "label": "Pacific Harbour / Beqa",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.2750",
+     "lng": "177.9030"
+    },
+    {
+     "value": "SUVA",
+     "label": "Suva",
+     "hotel": null,
+     "area": null,
+     "lat": "-18.1416",
+     "lng": "178.4210"
+    },
+    {
+     "value": "BA",
+     "label": "Ba",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.5310",
+     "lng": "177.6700"
+    },
+    {
+     "value": "RAKIRAKI",
+     "label": "Rakiraki / Volivoli",
+     "hotel": null,
+     "area": null,
+     "lat": "-17.4200",
+     "lng": "178.0000"
+    },
+    {
+     "value": "FJD",
+     "label": "FJ$ (Fijian dollar)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "AUD",
+     "label": "AU$ (Australian)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "USD",
+     "label": "US$ (US dollar)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "NZD",
+     "label": "NZ$ (New Zealand)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "GBP",
+     "label": "\u00a3 (British pound)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    },
+    {
+     "value": "EUR",
+     "label": "\u20ac (Euro)",
+     "hotel": null,
+     "area": null,
+     "lat": null,
+     "lng": null
+    }
+   ]
+  }
+ },
+ "history_check": {
+  "FTT": {
+   "storefront": "nadiairporttransfers.com",
+   "production_deployments_checked": 30,
+   "since": "2026-09-07T12:45:52 (first deployment carrying the widget's hotel options)",
+   "hotels_checked": 4,
+   "result": "all 30 deployments carry identical data-hotel -> data-area for The Warwick Fiji, Sofitel Fiji Resort & Spa, The Naviti Resort Korolevu, InterContinental Fiji Golf Resort & Spa Natadola",
+   "source": "pinned deployment URLs listed in docs/evidence/2026-09-21-revenue-diagnosis/data/nadi_pages_production_deployments_timeline.csv"
+  },
+  "FD": {
+   "storefront": "book.fijidash.com",
+   "pages_project": "nadi-guest-widget-preview",
+   "production_deployments_checked": 19,
+   "hotels_checked": 5,
+   "result": "all 19 production deployments returned by `wrangler pages deployment list` carry identical data-hotel -> data-area for the four above plus Shangri-La Yanuca Island Fiji"
+  },
+  "limits": "Deployment-level history proves the mapping was stable across every production deployment listed; it does not identify which deployment served a given booking, and a guest can edit the pre-filled return location."
+ }
+}
