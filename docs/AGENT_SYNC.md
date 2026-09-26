@@ -18,6 +18,31 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT — RELEASE PREP 2026-09-26 (Claude) — full detail: Issue #59 comment 5846128532
+
+- **FijiDash candidate:** `ceo/fijidash-submit-timeout-repair` @ `520ca9de7c4f11dd04c478b6d4ea527444d5c675` (= `a5d570f` + `index.html` `app.js?v=20260926-submit-timeout-recovery`). 43/43 tests (Codex ran 42 at `a5d570f`; suite results only). Final preview `https://c4ef6998.nadi-guest-widget-preview.pages.dev`. Mobile acceptance on that preview (intercepted endpoints): timeout 15,005 ms -> honest "could not confirm" card; details retained; escalation non-blocking (mocked; real delivery untested); same-reference retry; returning-browser: HTML revalidated, JS under new `?v=` key. Limit: no real old-key cache entry seeded. Rollback: Pages project `nadi-guest-widget-preview` latest Production deployment `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246` (production branch is named `preview`). Not deployed.
+- **Nadi candidate (separate):** `c6d62a6`, 105/105 (Codex), preview `https://8d96194f.fttlandingpage.pages.dev`, rollback `9af4d251-8696-40e8-8a23-cf6813283788`. Unchanged. Not deployed.
+- **Decisions needed from James:** deploy FijiDash? deploy Nadi? (independent); two admin alerts wanted? two-decimal amounts? No approval implied.
+- **#192 recorded:** one booking, two deliberately coded alerts, normal FijiDash submission, pre-deployment (not attributable to repairs). Inbox receipt screenshot-supported (Codex); team outreach owner-reported; guest confirmation/payment unverified.
+- **FJ$14 difference explained:** `calculateTotal()` = `141.96 - Math.round(141.96*0.10)` = `127.96000000000001` = stored `quoted_amount`. Live reference-fare API = 141.96 for the route (sedan, one-way, 96.705 km); 141.96 is the only subtotal (0.01 steps to 1000) producing the stored value; discount eligible (>FJ$50, no tour); no return date; notes empty. Limit: extras/tour/custom-address flags are not stored on `bookings`, so extras=0 is inferred from arithmetic. Fare rules unchanged. Negotiation #7's 141.96 = the same undiscounted subtotal.
+
+### Issue register (recorded; does not delay the current repairs)
+
+| # | Item | Status / boundary |
+|---|------|-------------------|
+| R1 | Negotiation coverage: all 7 `negotiation_requests` have `booking_id` NULL (all expired; #7 had 0 offers) | INVESTIGATE operator notification, driver availability, offer submission, standard-booking fallback. Do NOT infer 7 lost sales - #7's guest booked normally 8m38s later. |
+| R2 | Amount formatting: raw float in stored `quoted_amount` and both admin alert texts | Display-only fix, separate approved change; stored fare/fare rules untouched. |
+| R3 | Are two admin alerts per booking needed? (short + full; only 2nd recorded in `booking_events`) | Product decision; first send's provider status is not stored. |
+| R4 | Pricing/inclusions | Register only. `bookings` does not store has_child_seat/has_surfboard/has_tour/is_custom_address, so pricing inputs cannot be re-verified from the DB. |
+| R5 | Trust/schema | Register only (not audited this round). |
+| R6 | Attribution | Register only; #192 row shows organic first/last source, attribution_source `other`. |
+| R7 | Observability | No delivery/read ingestion, no staff-acknowledgement table, no Meta webhook route in the deployed Worker; escalation context also embeds the full booking payload (see R8). |
+| R8 | Privacy | Author-observed: `reportBookingSyncFailure` puts the full booking payload (name, phone, email) in the `escalations.context` text. Not changed. |
+| R9 | BFT-specific gaps | BookFijiTransfers is a separate system not in this DB; not assessed. |
+| - | Hidden alternative confirmation headings | NOT registered as a visible defect: no runtime evidence (only one heading visible per state in the 26 Sep runs). |
+
+Operator profiles and expansion remain parked.
+
 ## 🔴 P0 INCIDENT — BOOKING #192 RECONCILED 2026-09-26 (read-only, Claude; customer details withheld)
 
 - One booking (#192), created 2026-09-26 11:33:26 UTC = 21:33 Sydney. Normal `POST /bookings` via the FijiDash widget (FD- ref, actor guest, status pending). Negotiation request #7 is NOT linked (`booking_id` NULL, expired, 0 offers), though phone/name/route/vehicle/IP match (same guest, circumstantial). Not excluded by current test rules.
