@@ -18,7 +18,15 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
-## 🔴 P0 INCIDENT — FIJIDASH PRODUCTION DEPLOYED 2026-09-26 (~12:27 UTC, Claude, James-approved, FijiDash only)
+## 🟢 CURRENT STATE — P0 INCIDENT (updated 2026-09-26 ~12:50 UTC, Claude) — read this first, do not report FijiDash as preview-only
+
+- **FijiDash: RELEASED TO PRODUCTION.** `520ca9de7c4f11dd04c478b6d4ea527444d5c675`, Pages deployment `b4fb197d-654c-4068-8e7a-5583274c9e0c`, `book.fijidash.com`, created 2026-09-26 12:17:50 UTC (22:17:50 Sydney; James's ~22:27 and an earlier ~12:27 UTC note of mine were estimates). Rollback: `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246`. Author-verified production checks; Codex independently reran 43/43 tests.
+- **Nadi `c6d62a6`: NOT deployed** (production still `9af4d251`, source `31a27fb`). Emulated-phone browser acceptance passed on `https://8d96194f.fttlandingpage.pages.dev` (Issue #59 comment 5846401453); recommendation to James: deploy, pending his approval + real-phone check.
+- **Recovery observation boundary = 2026-09-26 12:17:50 UTC.** #192 (11:33:26 UTC) predates it. At 12:42:31 UTC: 0 bookings, 0 escalations, 0 negotiation requests after the boundary (overnight Sydney; no inference). Keep separate: saved requests (DB) / staff contact (UNKNOWN; owner-reported for #192) / guest confirmation (UNKNOWN) / collected revenue (UNKNOWN, cash to driver).
+- **Historical cause: UNPROVEN.** Booking recovery: NOT claimed.
+- **Open, read-only:** JS `Cache-Control` is `max-age=14400` on both custom domains (two zones) but `3600` on `pages.dev` and in the repo `_headers`; source unidentified (Wrangler token cannot read zone settings/rulesets: code 10000); needs James to read Browser Cache TTL and Cache/Page/Transform rules per zone in the dashboard. Nothing changed.
+
+## 🔴 P0 INCIDENT — FIJIDASH PRODUCTION DEPLOYED 2026-09-26 12:17:50 UTC = 22:17:50 Sydney (Claude, James-approved, FijiDash only)
 
 - **Deployment `b4fb197d-654c-4068-8e7a-5583274c9e0c`**, Pages `nadi-guest-widget-preview`, Production (branch `preview`), commit `520ca9de7c4f11dd04c478b6d4ea527444d5c675`, live at `https://book.fijidash.com`. Pre-checks: production unchanged (`3e0cd1ee`, live app.js == `0155849`); tracked tree clean.
 - Verified on production: HTML -> `app.js?v=20260926-submit-timeout-recovery`; served JS SHA-256 == candidate; mobile recovery with intercepted endpoints: 15,014 ms timeout -> "could not confirm" card, details retained, non-blocking escalation (mocked; "save status UNCERTAIN"), same-reference retry. No live submissions (D1: nothing above #192, no escalations after 12:00 UTC); no WhatsApp sends.
@@ -27,6 +35,8 @@ instead, so the history of what was checked and by whom stays intact.
 - **Not claimed:** booking recovery, or historical root cause. Real-stall behaviour never observed. Nadi `c6d62a6` NOT deployed; its browser checks pending. No fare/Worker/D1/notification changes.
 
 ## 🔴 P0 INCIDENT — RELEASE PREP 2026-09-26 (Claude) — full detail: Issue #59 comment 5846128532
+
+> **SUPERSEDED for FijiDash: RELEASED TO PRODUCTION (`b4fb197d`, 12:17:50 UTC). Nadi `c6d62a6` remains NOT deployed.**
 
 - **FijiDash candidate:** `ceo/fijidash-submit-timeout-repair` @ `520ca9de7c4f11dd04c478b6d4ea527444d5c675` (= `a5d570f` + `index.html` `app.js?v=20260926-submit-timeout-recovery`). 43/43 tests (Codex ran 42 at `a5d570f`; suite results only). Final preview `https://c4ef6998.nadi-guest-widget-preview.pages.dev`. Mobile acceptance on that preview (intercepted endpoints): timeout 15,005 ms -> honest "could not confirm" card; details retained; escalation non-blocking (mocked; real delivery untested); same-reference retry; returning-browser: HTML revalidated, JS under new `?v=` key. Limit: no real old-key cache entry seeded. Rollback: Pages project `nadi-guest-widget-preview` latest Production deployment `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246` (production branch is named `preview`). Not deployed.
 - **Nadi candidate (separate):** `c6d62a6`, 105/105 (Codex), preview `https://8d96194f.fttlandingpage.pages.dev`, rollback `9af4d251-8696-40e8-8a23-cf6813283788`. Unchanged. Not deployed.
@@ -61,6 +71,8 @@ Operator profiles and expansion remain parked.
 
 ## 🔴 P0 INCIDENT — FIJIDASH REPAIR CORRECTED 2026-09-26 — post-send outcomes stay UNKNOWN (Claude, per Codex review of 6452ba1)
 
+> **SUPERSEDED: FijiDash is now RELEASED TO PRODUCTION (`b4fb197d`). 'Not deployed' below is historical.**
+
 - Codex independently confirmed the 12 timeout tests pass but found 2 failures: HTTP 500 `{ok:false}` and HTTP 200 with truncated JSON were classified `confirmed_rejected`. Accepted: nothing in the API contract proves rejection preceded persistence.
 - **Corrected commit `a5d570f895893375afff5d02b0a6e89ffad940aa`** on `ceo/fijidash-submit-timeout-repair` (one file `src/app.js` + tests). Every post-send non-success outcome (5xx, 4xx, 200 ok:false, 200 malformed/truncated body, timeout, network error) is now `unknown`; only local incomplete-data validation (nothing left the browser) is `not_sent`. `confirmed_rejected` removed.
 - `reportBookingSyncFailure` message no longer says "failed for confirmed guest booking ... WhatsApp confirmation still sent"; it reports the booking reference and "save status UNCERTAIN", and states nothing confirms a WhatsApp send.
@@ -68,6 +80,8 @@ Operator profiles and expansion remain parked.
 - Nadi `c6d62a6` remains a separate release candidate. Production approval stays with James.
 
 ## 🔴 P0 INCIDENT — FIJIDASH REPAIR CANDIDATE 2026-09-26 — bounded timeout, unblocked escalation, live-verified recovery (Claude)
+
+> **SUPERSEDED: FijiDash `520ca9d` is now RELEASED TO PRODUCTION (deployment `b4fb197d`, 12:17:50 UTC). 'Not deployed' / 'preview' below refers to the state when this entry was written.**
 
 Full reply: Issue #59 (this checkpoint). No production POSTs/WhatsApp sends — the live acceptance check below used the same intercepted-endpoint technique as the prior reproduction, explicitly authorised, on a PREVIEW deployment only. No resends, no guest messages. **Not deployed to production; not declared as the incident's proven historical cause; production not declared repaired.**
 
