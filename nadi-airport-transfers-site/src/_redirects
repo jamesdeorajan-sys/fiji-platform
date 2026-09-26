@@ -3,3 +3,9 @@
 # Bare /transfer hub has no page; send visitors to the homepage instead of a dead end.
 /transfer / 301
 /transfer/ / 301
+
+# 2026-09-26 P0 incident: intercontinental-fiji-golf-resort.html described a nonexistent
+# "InterContinental Denarau" (wrong location, wrong FJ$49 fare, wrong JSON-LD price) and its
+# Book Now link targeted a FijiDash destination code that doesn't exist. The real InterContinental
+# Fiji Golf Resort & Spa is in Natadola, already correctly served at intercontinental-fiji-natadola.
+/transfer/intercontinental-fiji-golf-resort /transfer/intercontinental-fiji-natadola 301
