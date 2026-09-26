@@ -2902,8 +2902,16 @@ async function createBookingRecord(env, {
         // (assertSanePricing, pricing.mjs), only meaningful for a return
         // trip (a no-op otherwise). A second computeAuthoritativePrice
         // call (identical inputs, tripType forced to 'one-way') gives an
-        // apples-to-apples comparison with the same extras on both sides,
-        // so extras don't dilute the return/one-way ratio being checked.
+        // apples-to-apples comparison of the same components.
+        // 2026-09-27 fix: the flat add-ons (child seat, surfboard) are added
+        // ONCE per booking, not multiplied by the return multiplier, so
+        // leaving them inside both totals DID dilute the ratio: a return with
+        // a large add-on on a cheap route fell below the 1.5 bound and was
+        // rejected as 'unreliable' although its transfer price was correct.
+        // The ratio check now compares the transfer components only (add-ons
+        // subtracted from both sides; night surcharge stays in both because
+        // it scales with each leg's fare), which is what the 1.5-2.2 bound
+        // was written for. The bound itself is unchanged.
         // If it fails, the booking is NOT silently created with a bad
         // price - it's blocked and routed to a real human via
         // createEscalation(), the same alert path every other
@@ -2913,16 +2921,19 @@ async function createBookingRecord(env, {
             pickupZone, destinationZone, vehicleType, tripType: 'one-way', pickupTime, hasChildSeat, hasSurfboard,
           });
           if (oneWayEquivalent.ok) {
+            const addOnsFjd = applyExtras(0, { hasChildSeat, hasSurfboard });
+            const returnTransferFjd = computeFinalTotal(serverFjd - addOnsFjd);
+            const oneWayTransferFjd = computeFinalTotal(oneWayEquivalent.transferPlusExtrasFjd - addOnsFjd);
             const saneCheck = assertSanePricing({
-              oneWayEquivalentFjd: oneWayEquivalent.transferPlusExtrasFjd,
-              finalTotalFjd: serverFjd,
+              oneWayEquivalentFjd: oneWayTransferFjd,
+              finalTotalFjd: returnTransferFjd,
               tripType,
             });
             if (!saneCheck.sane) {
               await createEscalation(env, {
                 source: 'guest',
                 triggerType: 'needs_manual_confirmation',
-                context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return total FJD ${serverFjd} vs one-way equivalent FJD ${oneWayEquivalent.transferPlusExtrasFjd}. Booking blocked, needs manual confirmation.`,
+                context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return transfer FJD ${returnTransferFjd} vs one-way transfer FJD ${oneWayTransferFjd} (add-ons FJD ${addOnsFjd} excluded from both). Booking blocked, needs manual confirmation.`,
                 sourceIp,
               });
               return { ok: false, errors: ['Could not confirm a reliable price for this booking automatically. We\'ve alerted our team and will follow up via WhatsApp to confirm your fare.'] };
