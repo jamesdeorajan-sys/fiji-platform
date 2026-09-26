@@ -18,6 +18,14 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT — BOOKING #192 RECONCILED 2026-09-26 (read-only, Claude; customer details withheld)
+
+- One booking (#192), created 2026-09-26 11:33:26 UTC = 21:33 Sydney. Normal `POST /bookings` via the FijiDash widget (FD- ref, actor guest, status pending). Negotiation request #7 is NOT linked (`booking_id` NULL, expired, 0 offers), though phone/name/route/vehicle/IP match (same guest, circumstantial). Not excluded by current test rules.
+- Two alerts = two deliberate sequential sends in `POST /bookings` (short summary, then full summary). Only the second is recorded in `booking_events`; first send's provider status is not stored. Product intent for two messages not documented - product decision.
+- Inbox receipt screenshot-supported (owner); guest outreach owner-reported; guest confirmation/payment unverified.
+- Zero-save incident: gap between genuine saves #190 -> #192 = 27h26m16s; ended with no production change; cause remains unproven.
+- **DEFECT LOGGED (display formatting, not fixed):** stored `quoted_amount` carries a float tail; both admin alert texts interpolate it raw (`Worker POST /bookings`: short summary and `buildFullBookingAdminSummary`). Stored fare unchanged; fix = format at display time, separate approved change. Guest-facing confirmation not checked.
+
 ## 🔴 P0 INCIDENT — FIJIDASH REPAIR CORRECTED 2026-09-26 — post-send outcomes stay UNKNOWN (Claude, per Codex review of 6452ba1)
 
 - Codex independently confirmed the 12 timeout tests pass but found 2 failures: HTTP 500 `{ok:false}` and HTTP 200 with truncated JSON were classified `confirmed_rejected`. Accepted: nothing in the API contract proves rejection preceded persistence.
