@@ -66,7 +66,9 @@ function gitShow(relPath) {
 test('confirmation truth: price sub-caption no longer claims instant/guaranteed confirmation', () => {
   assert.ok(!html.includes('Instant confirmation'), 'must not claim instant confirmation');
   assert.ok(!html.includes('Guaranteed driver'), 'must not claim a guaranteed driver before human confirmation');
-  assert.ok(html.includes('Saved online · Fiji team confirms pickup'));
+  // Before submission nothing is saved, so the caption says so (was 'Saved online'; the saved wording lives only on the post-save success card)
+  assert.ok(html.includes('Not submitted yet · Fiji team confirms pickup'));
+  assert.ok(!html.includes('Saved online · Fiji team confirms pickup'));
 });
 
 test('confirmation truth: bulaTitleSupported no longer frames WhatsApp as a mandatory final step', () => {
