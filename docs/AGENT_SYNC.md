@@ -18,12 +18,14 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
-## 🟢 CURRENT STATE — P0 INCIDENT (updated 2026-09-26 ~13:05 UTC, Claude) — read this first, do not report FijiDash as preview-only
+## 🟢 CURRENT STATE — P0 INCIDENT (updated 2026-09-26 ~13:25 UTC, Claude) — read this first, do not report FijiDash as preview-only
 
 - **FijiDash: RELEASED TO PRODUCTION.** `520ca9de7c4f11dd04c478b6d4ea527444d5c675`, Pages deployment `b4fb197d-654c-4068-8e7a-5583274c9e0c`, `book.fijidash.com`, created 2026-09-26 12:17:50 UTC (22:17:50 Sydney; James's ~22:27 and an earlier ~12:27 UTC note of mine were estimates). Rollback: `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246`. Author-verified production checks; Codex independently reran 43/43 tests.
 - **Nadi: RELEASED TO PRODUCTION.** `c6d62a6aaefcc07ab2debf01ef9b52874d9b01ac`, Pages `nadiairporttransfers` deployment `8d4a440c-5eb3-41c5-a66c-a2677bef8e62`, `nadiairporttransfers.com`, created 2026-09-26 12:59:30 UTC (22:59:30 Sydney). Rollback `9af4d251-8696-40e8-8a23-cf6813283788` (source `31a27fb`). Post-release: redirects, prefills, canonicals, 404/noindex (meta only), sitemap, assets and the emulated-phone flow verified (author-verified; Issue #59 Nadi-deploy comment). Real-phone checklist given to James; his physical-phone pass is pending.
 - **Recovery observation boundary = 2026-09-26 12:17:50 UTC.** #192 (11:33:26 UTC) predates it. At 12:42:31 UTC: 0 bookings, 0 escalations, 0 negotiation requests after the boundary (overnight Sydney; no inference). No bookings/escalations/negotiations after either the FijiDash (12:17:50) or Nadi (12:59:30) boundary as of 13:02 UTC. Keep separate: saved requests (DB) / staff contact (UNKNOWN; owner-reported for #192) / guest confirmation (UNKNOWN) / collected revenue (UNKNOWN, cash to driver).
 - **Historical cause: UNPROVEN.** Booking recovery: NOT claimed.
+- **Checkpoint 2026-09-26 13:20:30 UTC (23:20:30 Sydney):** 72h window 13 rows / 12 not excluded by test rules / 0 duplicate pairs; **0 rows after FijiDash 12:17:50 and 0 after Nadi 12:59:30**; 0 escalations, 0 negotiation requests since 12:17:50; #192 predates both. Recovery NOT claimed. James's real-phone result (incl. pickup + destination dropdowns) PENDING.
+- **Search/trust PREVIEW (not production):** `ceo/nadi-trust-search-preview` @ `82712c95a1bf280b1b8c22c741af83624ad494dc`, preview `https://5c15bfe9.fttlandingpage.pages.dev`, 113/113 tests, no fare/price/code change. See register R10-R14 and Issue #59 checkpoint comment.
 - **Open, read-only:** JS `Cache-Control` is `max-age=14400` on both custom domains (two zones) but `3600` on `pages.dev` and in the repo `_headers`; source unidentified (Wrangler token cannot read zone settings/rulesets: code 10000); needs James to read Browser Cache TTL and Cache/Page/Transform rules per zone in the dashboard. Nothing changed.
 
 ## 🔴 P0 INCIDENT — FIJIDASH PRODUCTION DEPLOYED 2026-09-26 12:17:50 UTC = 22:17:50 Sydney (Claude, James-approved, FijiDash only)
@@ -57,6 +59,11 @@ instead, so the history of what was checked and by whom stays intact.
 | R7 | Observability | No delivery/read ingestion, no staff-acknowledgement table, no Meta webhook route in the deployed Worker; escalation context also embeds the full booking payload (see R8). |
 | R8 | Privacy | Author-observed: `reportBookingSyncFailure` puts the full booking payload (name, phone, email) in the `escalations.context` text. Not changed. |
 | R9 | BFT-specific gaps | BookFijiTransfers is a separate system not in this DB; not assessed. |
+| R10 | Advertised vs charged fare: Nadi route pages Tanoa International / Tokatoka advertise sedan FJ$15 (minivan 25); live FijiDash step 2 shows FJ$15, review step changes to FJ$30.15 with 'Price updated to reflect the current live fare' (server reference fare 30.15). Verified 2026-09-26, no submission | OPEN - decision for James: correct advertised fare or change fare rule. No fare touched. |
+| R11 | Unsourced review/support claims on Nadi homepage (aggregateRating 4.9/500 JSON-LD, 500+ / 4.9 copy, 'Verified' label, '24/7 WhatsApp support', child seat 'Free' vs FJ$8) | Preview candidate `82712c95a1bf280b1b8c22c741af83624ad494dc` (branch `ceo/nadi-trust-search-preview`, preview `https://5c15bfe9.fttlandingpage.pages.dev`) fixes these; 'Available 24/7', star graphic and testimonial provenance still need James. NOT deployed. |
+| R12 | GSC/Bing indexing evidence | No signed-in access this session; only public robots/sitemap/canonical checks done. Needs GSC page-indexing + Bing index exports. No resubmission. |
+| R13 | Customer-page privacy (#44) | Kept open; not re-audited on 2026-09-26. |
+| R14 | JS cache discrepancy (14400 on custom domains vs 3600 repo/pages.dev) | Kept open; source unidentified; nothing changed. |
 | - | Hidden alternative confirmation headings | NOT registered as a visible defect: no runtime evidence (only one heading visible per state in the 26 Sep runs). |
 
 Operator profiles and expansion remain parked.
