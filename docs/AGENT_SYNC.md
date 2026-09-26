@@ -18,6 +18,14 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT — FIJIDASH PRODUCTION DEPLOYED 2026-09-26 (~12:27 UTC, Claude, James-approved, FijiDash only)
+
+- **Deployment `b4fb197d-654c-4068-8e7a-5583274c9e0c`**, Pages `nadi-guest-widget-preview`, Production (branch `preview`), commit `520ca9de7c4f11dd04c478b6d4ea527444d5c675`, live at `https://book.fijidash.com`. Pre-checks: production unchanged (`3e0cd1ee`, live app.js == `0155849`); tracked tree clean.
+- Verified on production: HTML -> `app.js?v=20260926-submit-timeout-recovery`; served JS SHA-256 == candidate; mobile recovery with intercepted endpoints: 15,014 ms timeout -> "could not confirm" card, details retained, non-blocking escalation (mocked; "save status UNCERTAIN"), same-reference retry. No live submissions (D1: nothing above #192, no escalations after 12:00 UTC); no WhatsApp sends.
+- Note: production edge serves JS `max-age=14400`, not 3600; old `?v=` key still served old code from edge cache; HTML revalidates and points at the new key. Real old-cache browser not tested.
+- **Rollback:** previous production `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246` (source `0155849`) intact; dashboard rollback or redeploy; not exercised.
+- **Not claimed:** booking recovery, or historical root cause. Real-stall behaviour never observed. Nadi `c6d62a6` NOT deployed; its browser checks pending. No fare/Worker/D1/notification changes.
+
 ## 🔴 P0 INCIDENT — RELEASE PREP 2026-09-26 (Claude) — full detail: Issue #59 comment 5846128532
 
 - **FijiDash candidate:** `ceo/fijidash-submit-timeout-repair` @ `520ca9de7c4f11dd04c478b6d4ea527444d5c675` (= `a5d570f` + `index.html` `app.js?v=20260926-submit-timeout-recovery`). 43/43 tests (Codex ran 42 at `a5d570f`; suite results only). Final preview `https://c4ef6998.nadi-guest-widget-preview.pages.dev`. Mobile acceptance on that preview (intercepted endpoints): timeout 15,005 ms -> honest "could not confirm" card; details retained; escalation non-blocking (mocked; real delivery untested); same-reference retry; returning-browser: HTML revalidated, JS under new `?v=` key. Limit: no real old-key cache entry seeded. Rollback: Pages project `nadi-guest-widget-preview` latest Production deployment `3e0cd1ee-723f-4c2a-a4ad-0db0edd4f246` (production branch is named `preview`). Not deployed.
