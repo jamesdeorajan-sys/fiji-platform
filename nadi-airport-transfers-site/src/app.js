@@ -2012,7 +2012,7 @@ function buildToursGrid() {
     return `
     <div class="tour-card">
       <div class="tour-thumb-wrap">
-        <img class="tour-thumb-img" src="${t.image}" alt="${t.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img class="tour-thumb-img" width="900" height="600" src="${t.image}" alt="${t.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <div class="tour-thumb-fallback" style="background:${t.bg};display:none">
           <span style="font-size:48px">${t.emoji}</span>
         </div>

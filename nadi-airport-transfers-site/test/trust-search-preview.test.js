@@ -32,7 +32,7 @@ test('the six unsourced testimonials, their platform attributions and rating gra
 });
 
 test('cache safety: app.js has a new cache key, and an old cached app.js cannot restore any review markup', () => {
-  assert.match(index, /app\.js\?v=20260927-trust-claims/);
+  assert.match(index, /app\.js\?v=20260927-seo-dims/);
   assert.doesNotMatch(index, /app\.js\?v=20260921-mobile-ux/);
   // Even if a browser still ran the OLD production app.js, its buildReviews() bails out when #reviewsGrid is absent.
   const oldApp = gitShow(PROD, 'app.js');

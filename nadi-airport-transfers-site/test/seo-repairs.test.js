@@ -25,6 +25,11 @@ test('every homepage <img> declares width and height (no layout shift)', () => {
   }
 });
 
+test('the JS-rendered tour cards (which replace the static ones at runtime) also declare width/height, and app.js is cache-busted', () => {
+  assert.match(read('app.js'), /<img class="tour-thumb-img" width="900" height="600"/);
+  assert.match(home, /app\.js\?v=20260927-seo-dims/);
+});
+
 test('no sitemap page is orphaned: each is linked from the homepage or another route page', () => {
   const sm = read('sitemap.xml');
   const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].replace('https://nadiairporttransfers.com', ''));
