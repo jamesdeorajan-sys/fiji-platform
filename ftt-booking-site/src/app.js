@@ -844,6 +844,19 @@ const ALLOWED_RESORT_NAMES = new Set([
 // already-validated route context at the moment the real booking payload
 // is built, exactly once. The textarea itself is never rewritten; this
 // only affects what gets sent to POST /bookings.
+// Issue #59: a hotel-to-airport booking row stores only the pickup ZONE (e.g. Denarau); the exact hotel the
+// guest chose is the dispatch-critical fact, so it travels in notes (same pattern as the existing
+// 'Staying at:' line). Empty for every non-hotel pickup, so arriving and custom-pickup bookings are unchanged.
+function withPickupHotelLine(notes) {
+  const pickupVal = document.getElementById('pickup')?.value;
+  if (!isHotelPickupToAirport(pickupVal, document.getElementById('destination')?.value)) return notes;
+  const label = document.getElementById('pickup')?.selectedOptions?.[0]?.textContent?.trim();
+  if (!label) return notes;
+  const line = `Pickup at: ${label}`;
+  if (notes && notes.includes(line)) return notes;
+  return notes ? `${line}\n${notes}` : line;
+}
+
 function resolveDurableNotes(rawNotesValue) {
   const trimmed = (rawNotesValue || '').trim();
   if (!state.resortNameOverride || !ALLOWED_RESORT_NAMES.has(state.resortNameOverride)) {
@@ -1098,7 +1111,7 @@ function updatePricing() {
   // MARKETPLACE_ZONE_NAMES), so this never triggers an extra async /quote
   // call for the departing flow, it just lets state.destZoneName populate
   // correctly so submitMarketplaceBooking() has a real destination_zone.
-  if ((pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destVal === 'NAN')) && destVal !== 'CUSTOM_DEST' && destVal) {
+  if ((pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destVal === 'NAN') || isHotelPickupToAirport(pickupVal, destVal)) && destVal !== 'CUSTOM_DEST' && destVal) {
     const destOpt = document.getElementById('destination')?.selectedOptions?.[0];
     const zone = resolveFixedDestinationZone(destOpt);
     if (zone === 'NEEDS_LOOKUP') {
@@ -1967,7 +1980,8 @@ async function confirmBooking() {
   // combination is out of scope (unchanged from before this fix - the
   // server has no zone data to validate those against).
   const destValForSync = document.getElementById('destination')?.value;
-  const isSupportedRoute = pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN');
+  const isSupportedRoute = pickupVal === 'NAN' || (pickupVal === 'CUSTOM_PICKUP' && destValForSync === 'NAN')
+    || (isHotelPickupToAirport(pickupVal, destValForSync) && !!resolveConfirmedPickupZone());
 
   if (!isSupportedRoute) {
     // No marketplace booking is possible for this route - WhatsApp really
@@ -2214,6 +2228,27 @@ function resolveConfirmedDestinationZone() {
   return state.destZoneName;
 }
 
+// Issue #59 (departure capture): named hotel pickups (P_*) are journeys TO Nadi Airport that used to be
+// WhatsApp-only. A P_* option carries only lat/lng, so its real booking zone is taken from the destination
+// list's entry for the SAME physical property: exactly identical coordinates, every match agreeing on one
+// zone, and that zone must be a real marketplace zone. Anything else returns null and the journey stays on
+// the WhatsApp fallback (fail closed). The pickup is never relabelled as Nadi Airport.
+function isHotelPickupToAirport(pickupVal, destVal) {
+  return /^P_/.test(pickupVal || '') && destVal === 'NAN';
+}
+function resolveFixedPickupZone(pickupOpt) {
+  const lat = pickupOpt?.dataset?.lat;
+  const lng = pickupOpt?.dataset?.lng;
+  if (!lat || !lng || !/^P_/.test(pickupOpt.value || '')) return null;
+  const matches = Array.from(document.getElementById('destination')?.options || [])
+    .filter((o) => o.value && o.dataset.lat === lat && o.dataset.lng === lng);
+  if (!matches.length) return null;
+  const zones = new Set(matches.map((o) => resolveFixedDestinationZone(o)));
+  if (zones.size !== 1) return null;
+  const zone = [...zones][0];
+  return (zone && zone !== 'NEEDS_LOOKUP' && MARKETPLACE_ZONE_NAMES.has(zone)) ? zone : null;
+}
+
 // MILESTONE 12: resolves the pickup_zone needed for POST /bookings, for
 // THIS specific confirm. Mirrors resolveConfirmedDestinationZone() above,
 // but pickup only ever has two marketplace-synced real cases: the fixed
@@ -2225,6 +2260,9 @@ function resolveConfirmedDestinationZone() {
 function resolveConfirmedPickupZone() {
   const pickupVal = document.getElementById('pickup')?.value;
   if (pickupVal === 'NAN') return 'Nadi Airport';
+  if (isHotelPickupToAirport(pickupVal, document.getElementById('destination')?.value)) {
+    return resolveFixedPickupZone(document.getElementById('pickup')?.selectedOptions?.[0]);
+  }
   if (pickupVal === 'CUSTOM_PICKUP') {
     const addr = document.getElementById('customPickupAddress')?.value.trim();
     const q = state.pickupQuoteResult;
@@ -2348,7 +2386,7 @@ async function submitMarketplaceBooking(ref) {
     payment_method: 'cash', // no payment is collected on this site today - guest pays the driver directly
     pickup_date: document.getElementById('travelDate')?.value || null,
     pickup_time: document.getElementById('travelTime')?.value || null,
-    notes: resolveDurableNotes(document.getElementById('notes')?.value),
+    notes: withPickupHotelLine(resolveDurableNotes(document.getElementById('notes')?.value)),
     trip_type: state.tripType === 'return' ? 'return' : 'one-way',
     has_child_seat: !!document.getElementById('extra-seat')?.checked,
     has_surfboard: !!document.getElementById('extra-surf')?.checked,

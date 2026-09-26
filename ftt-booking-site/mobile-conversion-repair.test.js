@@ -291,7 +291,10 @@ test('booking-core untouched: submitMarketplaceBooking()\'s payload construction
   // to, well past this payload's real end. Narrowed to a marker confirmed unique (exactly one
   // occurrence) that actually terminates at this payload object's own closing brace.
   const endMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
-  const candidate = extract(js, marker, endMarker);
+  // Issue #59 (departure capture) changes exactly one payload line on purpose: notes now goes through
+  // withPickupHotelLine() (a no-op for every non-hotel pickup). Everything else must stay identical.
+  const norm = (t) => t.replace("notes: withPickupHotelLine(resolveDurableNotes(document.getElementById('notes')?.value)),", "notes: resolveDurableNotes(document.getElementById('notes')?.value),");
+  const candidate = norm(extract(js, marker, endMarker));
   const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, endMarker);
   assert.strictEqual(candidate, base);
 });
