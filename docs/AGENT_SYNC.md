@@ -18,6 +18,18 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 INCIDENT CHECK 2026-09-26 (~08:46 UTC) — "no bookings for 48h" claim vs D1 evidence (Claude)
+
+Read-only. No test bookings, messages, resends or production changes. Full reply: Issue #59 comment 5844820238.
+
+- **Headline: for Nadi (FTT-)/FijiDash (FD-), "zero saved requests in 48h" does NOT match `nadi-marketplace-db`.** Window 2026-09-24 08:46:11 -> 2026-09-26 08:46:11 UTC: **7 genuine saves** (FD 5, FTT 2), **7/7 notified successfully** (WhatsApp accepted, 2-6s). A test booking (James's own) saved+notified successfully 4 min before extraction, proving the pipeline works right now.
+- **BFT (BookFijiTransfers) is a separate system not in this DB** — cannot confirm/refute the "BFT zero saves" report from here. Do not conflate the two claims.
+- **Staff acknowledgement: UNKNOWN, no table exists** — this is the one link the DB can't see; provider acceptance != staff receipt (consistent with all prior findings).
+- **Traffic down ~35-55%** (real saves -35%; RUM pageloads Nadi -54%, FijiDash -45%) vs prior 7d daily rate — consistent with a top-of-funnel drop, not a saves-pipeline outage.
+- **No deployment/config change** in the window on either Pages project or the Worker (last Worker deploy 2026-09-06, 20 days prior) — rules out a fresh deploy as trigger.
+- **Independently reproduced** two of Codex's live findings: legacy Outrigger URL still 200s to homepage; InterContinental "Denarau" route page's Book Now targets a FijiDash destination code (`INTERCONTINENTAL_DENARAU`) that does not exist — real property is in Natadola, already correctly served elsewhere at FJ$99 (the broken page says Denarau/FJ$49). Needs a content fix, not a token swap. Both pre-existing, not new in this window.
+- Worker error logs unobservable (observability/logpush/tail off) — genuine blind spot, not "no errors". DNS/zone-setting history not checked — UNKNOWN.
+
 ## ✅ CHECKPOINT 2026-09-26 — Issue #54 booking-led: return-location mapping closed via serving source (Claude)
 
 - **AUTHOR-VERIFIED**, branch @ `62b8ed0f576190d852da46a36883285c18fd6f46`, 240/240 (232 + 8 new, mutation-checked). Closed the location-mapping gap without a worksheet loop: `resolveViaServingSource()` checks each recorded return-pickup string for an explicit, unambiguous hotel->zone mapping in the LIVE storefront's own hotel options + its own zone-resolution rule (source/hashes/rule line/retrieval time recorded; agreement with the outbound zone never used as evidence). History check: 30/30 FTT and 19/19 FD production deployments carry the identical mapping since the widget's hotel options first shipped.
