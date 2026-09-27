@@ -1,59 +1,65 @@
-# Independent review package: `ceo/p0-notification-reconcile` @ `a4ba994183c98251c9c1992a64cbfa27b9a0d781`
+# Independent review package: `ceo/p0-notification-reconcile` @ `2125a340a5a77788b2bdd4cdb403cac0e0b77940`
 
-For Codex. NOT deployed, no migration applied. Continues PR #55 (`ceo/p0-admin-notification-retry-fix`, head `8020996`) + deployed `f33cba0` (return/add-on sanity fix, unmodified). History: `87816a5` (initial driver-broadcast bound/concurrent fix) had two Codex-reported gaps, fixed at `6272906`/`ab25dce`; that head had three further Codex-reported regressions, fixed at `30c6187`/`a4ba994` (this head). Filename kept as `REVIEW-PACKAGE-87816a5.md` for a stable link across revisions.
+For Codex. **NOT deployed, no migration applied.** Continues PR #55 (`ceo/p0-admin-notification-retry-fix`, head `8020996`) + deployed `f33cba0` (return/add-on sanity fix, unmodified). History: `87816a5` (initial driver-broadcast bound/concurrent fix) had two Codex-reported gaps, fixed at `6272906`/`ab25dce`; that head had three further Codex-reported regressions, fixed at `30c6187`/`a4ba994`; Codex independently verified that head clean (93 passed, 1 skipped, outbound networking disabled) except one test-harness leak, fixed at this head, `2125a34`. Filename kept as `REVIEW-PACKAGE-87816a5.md` for a stable link across revisions.
+
+## RELEASE COMMIT
+**`2125a340a5a77788b2bdd4cdb403cac0e0b77940`** on branch `ceo/p0-notification-reconcile`. This is a test-only commit — `nadi-marketplace/worker/worker.js` is byte-identical to the previously-verified `a4ba994`/`f75c413` head (sha256 `2780149db71c68f9d327f49f1d501ea5c6a92f0a92de826c8a29151632a6e56e`, unchanged). Nothing in the Worker source changed to fix the leak; only test files and the new `network_guard.mjs` helper did.
 
 ## Get the exact source
 ```
 git fetch origin ceo/p0-notification-reconcile
-git checkout a4ba994183c98251c9c1992a64cbfa27b9a0d781
+git checkout 2125a340a5a77788b2bdd4cdb403cac0e0b77940
 cd nadi-marketplace/worker
 sha256sum worker.js ../migrations/milestone36-admin-notification-retry-state.sql ../migrations/milestone37-driver-broadcast-claim-state.sql
 ```
-Expected: `worker.js` = `2780149db71c68f9d327f49f1d501ea5c6a92f0a92de826c8a29151632a6e56e`; `milestone36...sql` = `66b9f9cc7fa2709a1492ae173b5ff419f8122dbcc44f38defd88d56c9a363e31`; `milestone37...sql` = `9cfb79f6aa38229330dd99d7378f18456f205bef00a1f5563f63373ac12f9d76` (unchanged since it was first added).
+Expected: `worker.js` = `2780149db71c68f9d327f49f1d501ea5c6a92f0a92de826c8a29151632a6e56e`; `milestone36...sql` = `66b9f9cc7fa2709a1492ae173b5ff419f8122dbcc44f38defd88d56c9a363e31`; `milestone37...sql` = `9cfb79f6aa38229330dd99d7378f18456f205bef00a1f5563f63373ac12f9d76` (both unchanged since first added).
+
+## What changed at this head: the test-harness leak, fixed (Codex independent verification of `f75c413`)
+Codex's own run of `f75c413` was clean at the Worker-behaviour level (93 passed, 1 skipped, outbound networking disabled) and separately flagged one test-harness leak: in `driver_broadcast_recovery.test.mjs`, the "preserved: eligibility, assignment checks and the 3-attempt retry cap still hold" test called `m.restore()` (reverting the fetch mock) **before** `POST /driver/bookings/:id/accept` — that endpoint sends a real guest WhatsApp message (`sendGuestDriverAssignedWhatsApp`, awaited inline by `handleDriverAcceptBooking`) on its way to a 200 response, so the call reached the real, unmocked `fetch`.
+
+**Fixed:**
+- The mock now stays active for the entire test body (wrapped in `try/finally`), restored exactly once, after the accept call and everything else has run.
+- The initial booking creation now uses a real `ctx` (not a discarding stub) whose captured `waitUntil` work is `await`ed via `ctx.flush()` before the test proceeds, instead of letting it race in the background uncontrolled.
+- **New: `network_guard.mjs`**, wired into every offline ESM test file in this directory. `installNetworkGuard()` sets `globalThis.fetch` to a function that both throws (most code paths fail loudly) *and* independently records every unmocked call in a module-level log; a file-scoped `after()` hook asserts that log is empty once all of that file's tests finish. This is what makes an unmocked outbound attempt fail the run **even when Worker code itself catches and swallows the resulting error** (e.g. `sendHealthAlertWhatsApp`'s own `try/catch`) — the assertion doesn't depend on any individual test noticing.
+- **Verified the guard actually works**, not just trusted: the exact leak was temporarily reintroduced, the guard's `after()` hook failed the run with the real unmocked URL (`POST https://graph.facebook.com/v19.0/p/messages`) in its message, then the fix was restored and the suite reran clean.
+- `booking-handoff.test.js` (CJS, intentionally live only when `NADI_API_BASE_TEST` is set) is unchanged — offline it registers a single skip and never touches `fetch`, so no guard was needed there.
 
 ## Run the tests — explicit file list, env vars unset, never a wildcard
 Two files make real HTTP calls and must stay excluded/gated:
-- `pricing.test.js` — always makes live calls to `api.nadiairporttransfers.com` (its own header comment says so). Never include it.
-- `booking-handoff.test.js` — makes live calls **only if `NADI_API_BASE_TEST` is set** in the environment; otherwise it self-skips (this is the "1 pre-existing skip" seen throughout). **Explicitly unset it before running offline.**
+- `pricing.test.js` — always makes live calls to `api.nadiairporttransfers.com`. Never include it.
+- `booking-handoff.test.js` — makes live calls **only if `NADI_API_BASE_TEST` is set**; otherwise self-skips. **Explicitly unset it before running offline.**
 ```
 cd nadi-marketplace/worker
 unset NADI_API_BASE_TEST ADMIN_TOKEN
 node --test admin_notification_retry.test.mjs notification_reconcile.test.mjs notification_fencing.test.mjs broadcast_bounded.test.mjs departure_dispatch.test.mjs driver_broadcast_recovery.test.mjs driver_broadcast_regressions2.test.mjs pricing-steps.test.mjs return-addon-sanity.test.mjs booking-handoff.test.js
 ```
-Expected: `tests 91`, `pass 90`, `fail 0`, `skipped 1`.
+Expected: `tests 91`, `pass 90`, `fail 0`, `skipped 1`, **zero network-guard leak assertions**. Also `node --check worker.js` and `npx wrangler deploy --dry-run`.
 
-Also: `node --check worker.js` (syntax) and `npx wrangler deploy --dry-run` (bundles; do not remove `--dry-run`).
-
-Focused runs, by concern:
+## MIGRATION ROLLOUT — `milestone36` + `milestone37` (not applied; both need James's separate approval before this step)
+Apply **both** to `nadi-marketplace-db`, in either order (each has its own missing-table fallback in the Worker code, so the Worker and the migrations are order-independent of each other):
 ```
-node --test notification_reconcile.test.mjs           # base reconcile: replay re-notifies, duplicate protection, legacy seeding, short-alert independence  -> 10 tests
-node --test notification_fencing.test.mjs             # attempt-ownership fencing, monotonic SENT, concurrent replays, crash recovery, backoff/cap           -> 7 tests
-node --test broadcast_bounded.test.mjs                # driver-broadcast bound/concurrency, eligibility, first-accept protection unchanged                   -> 9 tests
-node --test driver_broadcast_recovery.test.mjs        # gap 1 (missing per-driver outcome), gap 2 (batch starvation v1), gap 3 (overlapping sweeps)          -> 6 tests
-node --test driver_broadcast_regressions2.test.mjs    # regression 1 (legacy send reconciliation), 2 (cap not atomic), 3 (candidate-window starvation v2)    -> 4 tests
-node --test departure_dispatch.test.mjs               # characterization only: dispatch of a hotel-to-airport booking (no behaviour change)                  -> 4 tests
-node --test admin_notification_retry.test.mjs         # PR #55's own original suite, kept and still passing                                                  -> 3 tests
-node --test pricing-steps.test.mjs return-addon-sanity.test.mjs booking-handoff.test.js  # pre-existing suites, unaffected (with NADI_API_BASE_TEST unset)   -> 48 tests
+cd nadi-marketplace
+npx wrangler d1 execute nadi-marketplace-db --remote --file migrations/milestone36-admin-notification-retry-state.sql
+npx wrangler d1 execute nadi-marketplace-db --remote --file migrations/milestone37-driver-broadcast-claim-state.sql
 ```
+Both are additive (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) — zero changes to `bookings`, `booking_events`, `drivers` or any existing table; safe to re-run; nothing reads either new table until the new Worker is deployed. `milestone37`'s claim logic also reconciles any `driver_broadcast_sent` history that predates it (including sends made by the *old* Worker in the gap between applying this migration and deploying the new code — see regression 1 above), so applying the migration first, ahead of the Worker deploy, is safe.
 
-## What changed at this head (three Codex-reported regressions against `6272906`/`ab25dce`, fixed)
-1. **Migration/legacy send history.** A driver already notified via a legacy `driver_broadcast_sent` event (pre-`milestone37`, or written by an old Worker in the migration-to-deploy gap) was re-sent, because the new table starts empty and the claim unconditionally seeded `NOT_ATTEMPTED`. `driver_broadcast_regressions2.test.mjs`, "REGRESSION 1 REPRO" — seeds 3 legacy sent events, applies `milestone37` mid-test, confirms the sweep now sends 0 driver messages. Fix: `claimDriverBroadcastAttempt` backfills from `booking_events` on first insert, seeding `SENT` when a historical send exists.
-2. **Retry cap not enforced atomically.** A stale `ATTEMPTING` row already at `attempt_count = 3` could still be reclaimed for a 4th send — the cap was only checked by the sweep's own pre-filter, and only for `FAILED_RETRYABLE`. "REGRESSION 2 REPRO" seeds that exact stale row and confirms 0 sends now, `attempt_count` unchanged. Fix: `attempt_count < DRIVER_BROADCAST_MAX_TRIES` is now inside the claim's own `UPDATE ... WHERE` clause.
-3. **Candidate-window starvation, still not fixed by widening `LIMIT`.** 200 already-complete pending bookings followed by a 201st needing work: with a static `ORDER BY id LIMIT 200`, the 201st is never in the window, ever — raising the number only raises the threshold. "REGRESSION 3 REPRO" reproduces exactly this and confirms the 201st is reached within 2 sweeps now. Fix: a rotating cursor in `platform_settings` (`driver_broadcast_sweep_cursor_id`, no new migration) — each tick continues from where the last stopped, wrapping around once past the highest id.
+## WORKER DEPLOY
+Deploy `worker.js` from `2125a340a5a77788b2bdd4cdb403cac0e0b77940` (or later, if amended after this review) to `nadi-dispatch-api`.
+**Rollback: version `f5640b11-39f7-42ec-810c-be6d0052a768`** (currently live, source `f33cba0`). Earlier rollback if needed: `80de8469-0fb6-4784-8b66-c199bd5ef7f2`.
+After deploy, watch for `admin_notification_superseded`, `admin_notification_duplicate_delivery`, `admin_notification_exhausted`, `driver_broadcast_failed` event rates in `booking_events`.
 
-Read `git diff 6272906 a4ba994183c98251c9c1992a64cbfa27b9a0d781 -- nadi-marketplace/worker/worker.js` for the exact code diff. `git diff f33cba0 a4ba994183c98251c9c1992a64cbfa27b9a0d781 -- nadi-marketplace/worker/worker.js` for the diff against the deployed baseline — confirm 0 lines touching `assertSanePricing`, `computeAuthoritativePrice`, `applyExtras`, `applyTripTypeMultiplier`.
-
-## What to verify (cumulative, per every prior instruction)
+## What to verify (cumulative)
 1. **Attempt-ownership fencing** (admin + driver) — `notification_fencing.test.mjs`, `driver_broadcast_recovery.test.mjs` ("OVERLAPPING" tests).
 2. **Monotonic SENT / duplicate-alert handling** — same files.
 3. **Crash recovery without a guest retry** — "worker terminated after saving" / "REGRESSION 3 REPRO" (drives `worker.scheduled` directly).
-4. **Backoff, exhaustion, and the retry cap (now atomic)** — `notification_fencing.test.mjs` + `driver_broadcast_regressions2.test.mjs` "REGRESSION 2".
-5. **Driver-broadcast recovery, retry concurrency, legacy reconciliation, and candidate-window coverage** — `broadcast_bounded.test.mjs` + `driver_broadcast_recovery.test.mjs` + `driver_broadcast_regressions2.test.mjs` together.
-6. **`UPDATE ... RETURNING` on real D1 (not production data)** — steps in `NOTIFICATION-RETRY-DESIGN.md` ("Driver broadcast" section): a scratch D1 database was created via `wrangler d1 create`, exercised, then deleted via `wrangler d1 delete`; the Worker-binding call shape was also exercised on workerd's local D1 via `wrangler dev --local` with a throwaway Worker. Neither touched `nadi-marketplace-db`. Recommend Codex repeat this independently.
+4. **Backoff, exhaustion, and the retry cap (atomic in the claim)** — `notification_fencing.test.mjs` + `driver_broadcast_regressions2.test.mjs` "REGRESSION 2".
+5. **Driver-broadcast recovery, retry concurrency, legacy reconciliation, candidate-window coverage** — `broadcast_bounded.test.mjs` + `driver_broadcast_recovery.test.mjs` + `driver_broadcast_regressions2.test.mjs` together.
+6. **`UPDATE ... RETURNING` on real D1 (not production data)** — steps in `NOTIFICATION-RETRY-DESIGN.md` ("Driver broadcast" section): a scratch D1 database was created via `wrangler d1 create`, exercised, then deleted via `wrangler d1 delete`; the Worker-binding call shape was also exercised on workerd's local D1 via `wrangler dev --local`. Neither touched `nadi-marketplace-db`. Recommend Codex repeat this independently.
+7. **Test-harness integrity** — `network_guard.mjs` is in place file-wide; recommend Codex spot-check by temporarily breaking one mock's `finally` and confirming the guard's `after()` hook fails that file's run.
 
-## Rollout order (unchanged; nothing here authorizes any of it)
-1. This independent review.
-2. Apply `milestone36-admin-notification-retry-state.sql` **and** `milestone37-driver-broadcast-claim-state.sql` to `nadi-marketplace-db` (both additive, `IF NOT EXISTS`, order-independent of the Worker deploy per each's own missing-table fallback).
-3. Deploy the Worker. Rollback `f5640b11-39f7-42ec-810c-be6d0052a768`, then `80de8469-0fb6-4784-8b66-c199bd5ef7f2`.
-4. Watch for `admin_notification_superseded`, `admin_notification_duplicate_delivery`, `admin_notification_exhausted`, `driver_broadcast_failed` event rates.
-All four steps need James's separate approval.
+## Rollout order (nothing here authorizes any of it — each step needs James's separate approval)
+1. This independent review of `2125a34`.
+2. Apply `milestone36-admin-notification-retry-state.sql` and `milestone37-driver-broadcast-claim-state.sql` to `nadi-marketplace-db` (see MIGRATION ROLLOUT above).
+3. Deploy the Worker (see WORKER DEPLOY above). Rollback `f5640b11-39f7-42ec-810c-be6d0052a768`.
+4. Watch event rates as listed above.

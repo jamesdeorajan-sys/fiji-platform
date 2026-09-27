@@ -105,6 +105,19 @@ is set in the environment (it otherwise self-skips, which is the pre-existing "1
 offline command now explicitly `unset`s `NADI_API_BASE_TEST` (and `ADMIN_TOKEN`) first. `pricing.test.js` remains
 excluded from every offline command (it always makes live calls, no env-var gate).
 
+## Test-harness network leak, fixed (Codex independent verification of f75c413)
+Codex's own run of `f75c413` was clean at the Worker-behaviour level (93 passed, 1 skipped, outbound networking
+disabled) and separately flagged one leak: `driver_broadcast_recovery.test.mjs`'s "preserved: eligibility..." test
+restored its fetch mock before `POST /driver/bookings/:id/accept`, which sends a real guest WhatsApp message on its
+way to a 200 response. Fixed by keeping the mock active for the whole test (`try/finally`) and awaiting the initial
+booking creation's captured `waitUntil` work via a real `ctx.flush()` before proceeding.
+
+**New safety net, `network_guard.mjs`:** every offline ESM test file in this directory now installs a default-deny
+`fetch` that throws *and* independently records any unmocked call, with a file-scoped `after()` assertion that the
+log is empty — this fails the run even when Worker code itself catches and swallows the network error, which a
+per-test assertion alone would not have caught. Verified by temporarily reintroducing the exact leak and confirming
+the guard's `after()` hook failed with the real unmocked URL, then restoring the fix.
+
 ## Rollout order (each step needs James's approval; none done)
 1. Independent review of source, migration and tests.
 2. Apply `milestone36-admin-notification-retry-state.sql` to `nadi-marketplace-db` (additive). Safe before the Worker: nothing reads it yet. (Verify D1 accepts `UPDATE ... RETURNING` via `.first()` on a scratch row first; D1 supports RETURNING, but this is the one statement shape not exercised by real D1 in the offline tests.)
