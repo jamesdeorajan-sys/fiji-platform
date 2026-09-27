@@ -548,7 +548,7 @@ export default {
     } else if (controller.cron === '0 12 * * 6') {
       ctx.waitUntil(checkFuelIndexUpdate(env));
     } else if (controller.cron === '*/5 * * * *') {
-      ctx.waitUntil(runHealthCheckAlert(env));
+      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env)]));
     } else if (controller.cron === '0 14 * * *') {
       ctx.waitUntil(runD1Backup(env));
     }
@@ -3219,10 +3219,14 @@ async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
      SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
      WHERE booking_id = ?
        AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
-            OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))`
-  ).bind(bookingId, `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`).run();
+            OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))
+     RETURNING attempt_count`
+  ).bind(bookingId, `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`).first();
 
-  if (claim.meta.changes === 1) return { claimed: true };
+  // ATTEMPT OWNERSHIP (fencing token): attempt_count is incremented by exactly the claim that wins, so the number this
+  // claim returns identifies THIS attempt. Failure completion below is conditional on still owning that number, so an
+  // older attempt (one whose claim went stale and was reclaimed) can never overwrite a newer attempt's result.
+  if (claim) return { claimed: true, attempt: claim.attempt_count };
 
   const current = await env.DB.prepare(`SELECT state FROM admin_notification_state WHERE booking_id = ?`).bind(bookingId).first();
   return { claimed: false, state: current ? current.state : null };
@@ -3256,7 +3260,18 @@ async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
 // action) recovers it with no special handling needed, since a booking
 // that never got even a NOT_ATTEMPTED row behaves identically to one that
 // did.
-async function attemptAdminNotification(env, booking, { replay = false } = {}) {
+// Failure classification, recorded on the state row and on every failed event. A TIMEOUT is an UNKNOWN outcome (Meta may
+// still have accepted the message), never the same thing as a confirmed provider rejection; both stay retryable, but only
+// the former can produce a duplicate alert on retry, so it is flagged possibly_delivered.
+function classifyAlertFailure(sendResult) {
+  if (sendResult.timedOut) return { outcome: 'TIMEOUT_UNKNOWN', possiblyDelivered: true };
+  if (sendResult.attempted === false) return { outcome: 'NOT_CONFIGURED', possiblyDelivered: false };
+  if (typeof sendResult.status === 'number') return { outcome: 'PROVIDER_REJECTED', possiblyDelivered: false };
+  return { outcome: 'NETWORK_ERROR', possiblyDelivered: true }; // connection error after the request may have left
+}
+
+async function attemptAdminNotification(env, booking, { replay = false, trigger } = {}) {
+  const attemptTrigger = trigger || (replay ? 'replay' : 'first');
   try {
     let claim;
     try {
@@ -3297,6 +3312,8 @@ async function attemptAdminNotification(env, booking, { replay = false } = {}) {
       return;
     }
 
+    const attempt = claim.attempt;
+    const ownership = { attempt, trigger: attemptTrigger };
     const fullSummary = buildFullBookingAdminSummary(booking);
     const notifiedPhones = await getAdminAlertPhones(env);
 
@@ -3304,49 +3321,107 @@ async function attemptAdminNotification(env, booking, { replay = false } = {}) {
     let failDetail = null;
 
     if (notifiedPhones.length === 0) {
-      failDetail = { reason: 'platform_settings.admin_alert_phone is not set.' };
-      await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
+      failDetail = { reason: 'platform_settings.admin_alert_phone is not set.', outcome: 'NOT_CONFIGURED', possibly_delivered: false };
+      await recordAdminNotificationOutcome(env, booking.id, 'failed', { ...failDetail, ...ownership });
     }
 
     for (const alertPhone of notifiedPhones) {
       const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
       if (sendResult.attempted && sendResult.ok) {
-        // Issue #53 canary #2 - pull the WAMID out into its own field rather
-        // than leaving it buried in the raw response text, so "did Meta
-        // actually accept this" is a direct field read, not a JSON-parse of
-        // a debug string. Never throws on an unexpected response shape -
-        // wamid just stays null, response is kept either way as the fallback.
+        // Issue #53 canary #2 - pull the WAMID out into its own field so "did Meta actually accept this" is a direct
+        // field read. Never throws on an unexpected response shape.
         let wamid = null;
-        try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* malformed/unexpected response body - wamid stays null, response is the fallback evidence */ }
+        try { wamid = JSON.parse(sendResult.response || 'null')?.messages?.[0]?.id || null; } catch { /* keep response as the fallback evidence */ }
         sentDetail = { status: sendResult.status, wamid, response: sendResult.response };
-        await recordAdminNotificationOutcome(env, booking.id, 'sent', sentDetail);
+        await recordAdminNotificationOutcome(env, booking.id, 'sent', { ...sentDetail, ...ownership });
       } else {
+        const c = classifyAlertFailure(sendResult);
         failDetail = {
           reason: sendResult.reason || sendResult.error || 'Meta rejected the send.',
           status: sendResult.status, response: sendResult.response,
+          outcome: c.outcome, possibly_delivered: c.possiblyDelivered,
         };
-        await recordAdminNotificationOutcome(env, booking.id, 'failed', failDetail);
+        await recordAdminNotificationOutcome(env, booking.id, 'failed', { ...failDetail, ...ownership });
       }
     }
 
-    // Durable state reflects the OVERALL outcome - SENT the moment at least
-    // one real send succeeds (never downgraded by a later recipient's own
-    // failure - today there is only ever one admin_alert_phone, but this
-    // stays correct if that ever changes), FAILED_RETRYABLE otherwise
-    // (including "no admin_alert_phone configured at all", so a retry after
-    // one gets configured can still succeed). Never written as SENT unless a
-    // real send actually succeeded - the whole point of this fix.
+    // COMPLETION IS FENCED (issue #59). Earlier draft: `UPDATE ... WHERE booking_id = ?`, so after a stale claim was
+    // reclaimed an OLDER attempt finishing late could overwrite the newer attempt's result, including downgrading SENT to
+    // FAILED_RETRYABLE (which would then trigger a needless re-alert).
+    //  - SUCCESS is monotonic: a provider-confirmed delivery from ANY attempt sets SENT and SENT is never left again
+    //    (WHERE state != 'SENT'). If the row was already SENT, this attempt also delivered: recorded as a duplicate delivery.
+    //  - FAILURE only applies if this attempt still owns the claim (state ATTEMPTING and attempt_count == my token);
+    //    otherwise it is recorded as superseded and changes nothing.
     if (sentDetail) {
-      await env.DB.prepare(
-        `UPDATE admin_notification_state SET state = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now') WHERE booking_id = ?`
+      const done = await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'SENT', last_outcome = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND state != 'SENT'`
       ).bind(sentDetail.status ?? null, sentDetail.wamid ?? null, booking.id).run();
+      if (done.meta.changes === 0) {
+        await recordAdminNotificationOutcome(env, booking.id, 'duplicate_delivery', { wamid: sentDetail.wamid, ...ownership, reason: 'booking was already SENT: this attempt also delivered an alert' });
+      }
     } else {
-      await env.DB.prepare(
-        `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_error = ?, last_provider_status = ?, updated_at = datetime('now') WHERE booking_id = ?`
-      ).bind(failDetail.reason, failDetail.status ?? null, booking.id).run();
+      const done = await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_outcome = ?, last_error = ?, last_provider_status = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND state = 'ATTEMPTING' AND attempt_count = ?`
+      ).bind(failDetail.outcome, failDetail.reason, failDetail.status ?? null, booking.id, attempt).run();
+      if (done.meta.changes === 0) {
+        await recordAdminNotificationOutcome(env, booking.id, 'superseded', { ...ownership, outcome: failDetail.outcome, reason: 'a newer attempt or a confirmed delivery owns this booking; this stale failure was not applied' });
+      }
     }
   } catch (err) {
     console.error(`[admin-notification] attempt failed for booking ${booking.id}: ${err.message}`);
+  }
+}
+
+// ── DURABLE RECOVERY (issue #59) ────────────────────────────────────────────────────────────────────────────────
+// ctx.waitUntil only extends one request's lifetime; it is not a retry scheduler, and an isolate that dies after the
+// booking insert loses its notification entirely. Recovery therefore does not depend on the guest: the existing
+// '*/5 * * * *' cron calls sweepAdminNotifications(), which re-attempts every booking from the last 24 h that has no
+// provider-confirmed alert and is either (a) untouched for >= 3 min (no state row: the worker died before/at the claim),
+// (b) FAILED_RETRYABLE and past its backoff (5, 10, 20, 40, 60 min), or (c) ATTEMPTING with a stale claim. Attempts are
+// capped; the cap raises exactly one human-visible escalation. Each attempt goes through the same atomic, fenced claim as
+// a guest replay, so the sweep and a replay can never both send.
+const ADMIN_NOTIFICATION_MAX_ATTEMPTS = 6;
+const ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS = 180;
+const ADMIN_NOTIFICATION_SWEEP_WINDOW_HOURS = 24;
+const ADMIN_NOTIFICATION_SWEEP_BATCH = 10;
+function adminNotificationBackoffSeconds(attemptCount) {
+  return Math.min(300 * 2 ** Math.max(0, attemptCount - 1), 3600);
+}
+async function sweepAdminNotifications(env) {
+  try {
+    const found = await env.DB.prepare(
+      `SELECT b.id, ns.state, ns.attempt_count, ns.last_outcome,
+              CAST(strftime('%s', 'now') - strftime('%s', ns.updated_at) AS INTEGER) AS age_s
+       FROM bookings b LEFT JOIN admin_notification_state ns ON ns.booking_id = b.id
+       WHERE b.created_at >= datetime('now', ?) AND b.created_at <= datetime('now', ?)
+         AND NOT EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.id AND e.event_type = 'admin_notification_sent')
+         AND (ns.booking_id IS NULL
+              OR ns.state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
+              OR (ns.state = 'ATTEMPTING' AND ns.updated_at < datetime('now', ?)))
+       ORDER BY b.id LIMIT ?`
+    ).bind(`-${ADMIN_NOTIFICATION_SWEEP_WINDOW_HOURS} hours`, `-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`,
+           `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`, ADMIN_NOTIFICATION_SWEEP_BATCH).all();
+    for (const row of (found && found.results) || []) {
+      const attempts = row.attempt_count || 0;
+      if (attempts >= ADMIN_NOTIFICATION_MAX_ATTEMPTS) {
+        const already = await env.DB.prepare(`SELECT 1 x FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_exhausted'`).bind(row.id).first();
+        if (!already) {
+          await recordAdminNotificationOutcome(env, row.id, 'exhausted', { attempts, last_outcome: row.last_outcome || null, reason: 'attempt cap reached without a confirmed delivery; escalated to a human' });
+          await createEscalation(env, {
+            source: 'guest', triggerType: 'app_issue', bookingId: row.id,
+            context: `Booking #${row.id}: the admin WhatsApp alert could not be delivered after ${attempts} attempts (last outcome: ${row.last_outcome || 'unknown'}). Check this booking manually; the guest may be waiting.`,
+          });
+        }
+        continue;
+      }
+      if (row.state === 'FAILED_RETRYABLE' && (row.age_s ?? 0) < adminNotificationBackoffSeconds(attempts)) continue;
+      const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(row.id).first();
+      if (booking) await attemptAdminNotification(env, booking, { trigger: 'sweep' });
+    }
+  } catch (err) {
+    console.error(`[admin-notification-sweep] failed: ${err.message}`);
   }
 }
 

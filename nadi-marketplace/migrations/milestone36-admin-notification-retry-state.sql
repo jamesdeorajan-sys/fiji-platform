@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS admin_notification_state (
   attempt_count INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   last_provider_status INTEGER,
+  last_outcome TEXT,
   wamid TEXT,
   updated_at TEXT DEFAULT (datetime('now'))
 );
