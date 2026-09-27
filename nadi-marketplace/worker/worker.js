@@ -548,7 +548,7 @@ export default {
     } else if (controller.cron === '0 12 * * 6') {
       ctx.waitUntil(checkFuelIndexUpdate(env));
     } else if (controller.cron === '*/5 * * * *') {
-      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env)]));
+      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env), sweepDriverBroadcasts(env)]));
     } else if (controller.cron === '0 14 * * *') {
       ctx.waitUntil(runD1Backup(env));
     }
@@ -1588,9 +1588,13 @@ async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyPara
   if (!cleanNumber || cleanNumber.length < 8) {
     return { attempted: false, reason: 'Phone number invalid for WhatsApp send.' };
   }
+  const limitMs = Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) > 0 ? Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) : HEALTH_ALERT_SEND_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), limitMs);
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
       method: 'POST',
+      signal: controller.signal,
       headers: { 'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp',
@@ -1609,8 +1613,14 @@ async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyPara
     const bodyText = await res.text().catch(() => '');
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
+    if (controller.signal.aborted) {
+      console.error('[whatsapp-template] send timed out after', limitMs, 'ms');
+      return { attempted: true, ok: false, error: 'Send timed out.', timedOut: true };
+    }
     console.error('[whatsapp-template] send failed:', err.message);
     return { attempted: true, ok: false, error: 'Send failed.' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -2576,17 +2586,65 @@ async function findMatchingOnlineDrivers(env, pickupZone) {
 // a new booking" so the two entry points can't silently drift apart. Same
 // query already verified in the Milestone 3 race-condition test (matching
 // zone-inclusion filter, same sendBookingBroadcastWhatsApp call).
-async function broadcastBookingToDrivers(env, booking) {
-  const matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
-
-  const results = [];
-  for (const d of matching) {
+async function broadcastBookingToDrivers(env, booking, { onlyDriverIds = null } = {}) {
+  // Eligibility is UNCHANGED (findMatchingOnlineDrivers: verified, online, zone includes the booking's pickup_zone).
+  // Issue #59: sends now run concurrently, each bounded (sendWhatsAppTemplate), and every driver's outcome is recorded so a
+  // failed message is recoverable (sweepDriverBroadcasts) and never blocks the guest response or the admin alerts.
+  let matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
+  if (onlyDriverIds) matching = matching.filter((d) => onlyDriverIds.has(d.id));
+  const results = await Promise.all(matching.map(async (d) => {
     const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
-    results.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
-  }
+    const ok = !!(whatsappResult.attempted && whatsappResult.ok);
+    const c = ok ? null : classifyAlertFailure(whatsappResult);
+    await logBookingEvent(env, {
+      bookingId: booking.id, eventType: ok ? 'driver_broadcast_sent' : 'driver_broadcast_failed', actor: 'system',
+      metadata: ok ? { driver_id: d.id, status: whatsappResult.status }
+        : { driver_id: d.id, outcome: c.outcome, possibly_delivered: c.possiblyDelivered, status: whatsappResult.status ?? null, reason: whatsappResult.reason || whatsappResult.error || 'Meta rejected the send.' },
+    });
+    return { driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult };
+  }));
 
   return { matched_drivers: matching.length, results };
 }
+
+// ── DRIVER-BROADCAST RECOVERY (issue #59) ───────────────────────────────────────────────────────────────────────────
+// A failed or never-sent driver message must not strand a booking. Rides the existing '*/5 * * * *' cron. For bookings that are
+// STILL pending and unassigned (so first-accept protection is untouched), 3 min to 60 min old:
+//  - drivers whose send FAILED and who never received a successful one are retried (max 3 tries per driver);
+//  - if NO broadcast outcome was recorded at all (the worker died before messaging anyone) the initial broadcast is performed
+//    once, to the drivers eligible now, by the same eligibility rule as the original.
+// A driver who already received the message is never messaged again. The driver job feed (GET /driver/jobs) remains an
+// independent path for any online in-zone driver.
+const DRIVER_BROADCAST_MAX_TRIES = 3;
+async function sweepDriverBroadcasts(env) {
+  try {
+    const found = await env.DB.prepare(
+      `SELECT id FROM bookings
+       WHERE status = 'pending' AND assigned_driver_id IS NULL
+         AND created_at >= datetime('now', '-60 minutes') AND created_at <= datetime('now', ?)
+       ORDER BY id LIMIT 10`
+    ).bind(`-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`).all();
+    for (const row of (found && found.results) || []) {
+      const events = (await env.DB.prepare(
+        `SELECT event_type, metadata FROM booking_events WHERE booking_id = ? AND event_type IN ('driver_broadcast_sent', 'driver_broadcast_failed')`
+      ).bind(row.id).all()).results || [];
+      const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(row.id).first();
+      if (!booking || booking.status !== 'pending' || booking.assigned_driver_id) continue;
+      if (events.length === 0) { await broadcastBookingToDrivers(env, booking); continue; }
+      const sent = new Set(); const fails = new Map();
+      for (const e of events) {
+        let id = null; try { id = JSON.parse(e.metadata || '{}').driver_id; } catch { /* ignore */ }
+        if (id == null) continue;
+        if (e.event_type === 'driver_broadcast_sent') sent.add(id); else fails.set(id, (fails.get(id) || 0) + 1);
+      }
+      const retry = new Set([...fails.keys()].filter((id) => !sent.has(id) && fails.get(id) < DRIVER_BROADCAST_MAX_TRIES));
+      if (retry.size > 0) await broadcastBookingToDrivers(env, booking, { onlyDriverIds: retry });
+    }
+  } catch (err) {
+    console.error(`[driver-broadcast-sweep] failed: ${err.message}`);
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // MILESTONE 6 — public guest booking intake. The only public,
@@ -3397,6 +3455,7 @@ async function sweepAdminNotifications(env) {
        FROM bookings b LEFT JOIN admin_notification_state ns ON ns.booking_id = b.id
        WHERE b.created_at >= datetime('now', ?) AND b.created_at <= datetime('now', ?)
          AND NOT EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.id AND e.event_type = 'admin_notification_sent')
+         AND NOT EXISTS (SELECT 1 FROM booking_events x WHERE x.booking_id = b.id AND x.event_type = 'admin_notification_exhausted')
          AND (ns.booking_id IS NULL
               OR ns.state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
               OR (ns.state = 'ATTEMPTING' AND ns.updated_at < datetime('now', ?)))
@@ -3462,6 +3521,29 @@ async function dispatchAdminNotifications(env, ctx, booking, { replay }) {
   if (replay) { await attemptAdminNotification(env, booking, { replay: true }); return; }
   await sendShortAdminAlert(env, booking);
   await attemptAdminNotification(env, booking);
+}
+
+// Issue #59: driver broadcast + short alert + full notification are three INDEPENDENT side effects of a new booking. With an
+// execution context they run concurrently after the response (a driver-message failure can no longer block the guest response
+// or the admin notification); the response still reports how many drivers matched (one cheap read). Without one (offline
+// tests) they run sequentially and awaited, in the original order, so the original response shape (with per-driver results)
+// is unchanged there.
+async function dispatchNewBookingSideEffects(env, ctx, booking) {
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    // Best-effort count only: a failed read here must never turn an already-saved booking into a guest-facing error.
+    let matched = null;
+    try { matched = (await findMatchingOnlineDrivers(env, booking.pickup_zone)).length; } catch (err) { console.error('[broadcast] matched-driver count failed:', err.message); }
+    ctx.waitUntil(Promise.allSettled([
+      broadcastBookingToDrivers(env, booking),
+      sendShortAdminAlert(env, booking),
+      attemptAdminNotification(env, booking),
+    ]));
+    return { matched_drivers: matched, deferred: true };
+  }
+  const broadcast = await broadcastBookingToDrivers(env, booking);
+  await sendShortAdminAlert(env, booking);
+  await attemptAdminNotification(env, booking);
+  return broadcast;
 }
 
 async function handleGuestBookingCreate(request, env, ctx) {
@@ -3555,7 +3637,7 @@ async function handleGuestBookingCreate(request, env, ctx) {
     return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
   }
 
-  const broadcast = await broadcastBookingToDrivers(env, result.booking);
+  // Issue #59: the driver broadcast is dispatched together with the admin alerts below (see dispatchNewBookingSideEffects).
 
   // Real ops alert, same mechanism as health-check/fuel-index/escalation
   // alerts - not exposed in the response, same discipline as the driver-
@@ -3577,7 +3659,7 @@ async function handleGuestBookingCreate(request, env, ctx) {
   // Issue #59: short alert + full notification are dispatched together, never awaited in sequence before the response
   // (see dispatchAdminNotifications). The full notification is still governed by the durable claim, so duplicate-send
   // protection is unchanged.
-  await dispatchAdminNotifications(env, ctx, b, { replay: false });
+  const broadcast = await dispatchNewBookingSideEffects(env, ctx, b);
 
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
 }
