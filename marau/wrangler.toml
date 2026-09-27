@@ -1,0 +1,25 @@
+# Marau Stage 1 (PREVIEW ONLY) — isolated Worker config.
+# account_id is the same Vakaviti Cloudflare account (595101df2c...) other
+# previews already deploy to, but every OTHER binding below is new and
+# dedicated to this preview: no production D1, no production secret, no
+# production route.
+name = "marau-stage1-preview"
+main = "worker/worker.js"
+compatibility_date = "2026-07-19"
+account_id = "595101df2c562b3c65595420d43f9fe1"
+
+# Isolated test database — created fresh for this preview, never
+# nadi-marketplace-db (0ec1cd84-...) or vakaviti-kb. See
+# docs/MARAU_STAGE1_REVIEW_PACKAGE.md for the exact creation command and
+# the migration list applied to it (smart-return-trigger-fill/migrations
+# 0001-0006 + marau/migrations 0007-0011, in that order).
+[[d1_databases]]
+binding = "DB"
+database_name = "marau-stage1-test-db"
+database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+
+# No [triggers]/crons in Stage 1 — nothing here runs on a schedule yet
+# (no hold-expiry timer exists; holds/waitlist/expiry are explicitly
+# deferred, see the mission's DEFER list).
+# No routes/custom domain bound — preview is served at the workers.dev
+# subdomain only, per "isolated preview only".
