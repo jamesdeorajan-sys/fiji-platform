@@ -58,4 +58,13 @@ Approved Stage 1 scope, independent of (deferred) credits. Restored: an install 
 | `marau/test/*.test.mjs` (Stage 1 preview, round 3 fixes included) | **76/76 pass** (65 prior, after 3 tests updated/consolidated for the reverted `confirmed_unallocated` policy and the removed grace window + 14 new in `marau_codex_fixes_round3.test.mjs`) |
 | **Total** | **323/323 pass** |
 
-See the screenshots in `marau/docs/screenshots/` for live, persistent (committed, not chat-described) evidence of the design completion items.
+## Screenshots (persistent, committed — not chat-described)
+
+Captured with Playwright (`marau/docs/screenshots/capture.mjs`, not part of the Worker/tests/deployment) against `test/local_preview_server.mjs`, at mobile width (375×812):
+
+- `01-trip.png` — Trip view: install banner, the booking switcher (one pill visible per booking, horizontally scrollable), the pickup card showing pickup time labelled explicitly "Fiji time", route, vehicle/status facts.
+- `02-deals.png` — Deals view: percentage-off badge, struck-through original price beside the current price, demonstration-data label.
+- `03-offer-detail-and-whatsapp.png` — a requested deal's status pill plus the mocked WhatsApp handoff panel (composed message, "nothing is sent" label, copy button).
+- `04-welcome-harness.png` — the synthetic-booking test harness screen, visibly separated (dashed border, monospace tag) from the branded guest experience.
+
+These are real screenshots of the actual running code (the same `worker.js` the test suite exercises, via the real SQLite-backed shim) — not a mockup and not merely described in a chat transcript.
