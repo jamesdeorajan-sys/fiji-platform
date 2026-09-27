@@ -16,10 +16,10 @@ const validPayload = () => ({
   test_data: true,
 });
 
-test('ingesting the same booking twice is idempotent (same movement_id, not duplicated)', () => {
+test('ingesting the same booking twice is idempotent (same movement_id, not duplicated)', async () => {
   const store = createMemoryStore();
-  const first = ingestMovement(store, validPayload());
-  const second = ingestMovement(store, validPayload());
+  const first = await ingestMovement(store, validPayload());
+  const second = await ingestMovement(store, validPayload());
 
   assert.equal(first.wasNew, true);
   assert.equal(second.wasNew, false);
@@ -27,24 +27,24 @@ test('ingesting the same booking twice is idempotent (same movement_id, not dupl
   assert.equal(store.listMovements().length, 1);
 });
 
-test('a different booking_reference from the same source is a distinct movement', () => {
+test('a different booking_reference from the same source is a distinct movement', async () => {
   const store = createMemoryStore();
-  ingestMovement(store, validPayload());
-  ingestMovement(store, { ...validPayload(), booking_reference: 'IDEMP-0002' });
+  await ingestMovement(store, validPayload());
+  await ingestMovement(store, { ...validPayload(), booking_reference: 'IDEMP-0002' });
   assert.equal(store.listMovements().length, 2);
 });
 
-test('missing required field throws ValidationError and writes nothing', () => {
+test('missing required field throws ValidationError and writes nothing', async () => {
   const store = createMemoryStore();
   const bad = validPayload();
   delete bad.vehicle_class;
-  assert.throws(() => ingestMovement(store, bad), ValidationError);
+  await assert.rejects(() => ingestMovement(store, bad), ValidationError);
   assert.equal(store.listMovements().length, 0);
 });
 
-test('test_data must be explicit — omitting it is rejected rather than defaulted', () => {
+test('test_data must be explicit — omitting it is rejected rather than defaulted', async () => {
   const store = createMemoryStore();
   const bad = validPayload();
   delete bad.test_data;
-  assert.throws(() => ingestMovement(store, bad), ValidationError);
+  await assert.rejects(() => ingestMovement(store, bad), ValidationError);
 });

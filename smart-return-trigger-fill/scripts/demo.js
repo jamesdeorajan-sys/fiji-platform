@@ -12,7 +12,7 @@ import { buildSyntheticMovements } from '../test/fixtures/synthetic_movements.js
 const store = createMemoryStore();
 
 for (const raw of buildSyntheticMovements()) {
-  const result = processIncomingMovement(store, raw);
+  const result = await processIncomingMovement(store, raw);
   console.log('='.repeat(70));
   console.log(`Ingested ${result.movement.booking_reference} (new: ${result.wasNew})`);
   console.log('--- ops card ---');
@@ -42,5 +42,5 @@ for (const m of allMovements) {
 console.log('\n' + '#'.repeat(70));
 console.log('7-DAY MOVEMENT BOARD (viewing as of 2026-09-20T00:00:00Z)');
 console.log('#'.repeat(70));
-const board = buildSevenDayMovementBoard(store, { nowIso: '2026-09-20T00:00:00Z' });
+const board = await buildSevenDayMovementBoard(store, { nowIso: '2026-09-20T00:00:00Z' });
 console.log(JSON.stringify(board, null, 2));

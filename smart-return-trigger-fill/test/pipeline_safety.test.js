@@ -15,13 +15,13 @@ const payload = () => ({
   test_data: true,
 });
 
-test('matcher outage does not stop the STANDARD booking flow — movement is still saved', () => {
+test('matcher outage does not stop the STANDARD booking flow — movement is still saved', async () => {
   const store = createMemoryStore();
   const throwingMatcher = () => {
     throw new Error('simulated matcher outage');
   };
 
-  const result = processIncomingMovement(store, payload(), { matchFn: throwingMatcher });
+  const result = await processIncomingMovement(store, payload(), { matchFn: throwingMatcher });
 
   assert.ok(result.movement.movement_id);
   assert.equal(store.listMovements().length, 1);
@@ -29,13 +29,13 @@ test('matcher outage does not stop the STANDARD booking flow — movement is sti
   assert.deepEqual(result.matches, []);
 });
 
-test('WhatsApp card failure cannot invalidate or roll back a saved booking', () => {
+test('WhatsApp card failure cannot invalidate or roll back a saved booking', async () => {
   const store = createMemoryStore();
   const throwingCardBuilder = () => {
     throw new Error('simulated WhatsApp/card builder failure');
   };
 
-  const result = processIncomingMovement(store, payload(), { cardFn: throwingCardBuilder });
+  const result = await processIncomingMovement(store, payload(), { cardFn: throwingCardBuilder });
 
   assert.ok(result.movement.movement_id);
   assert.equal(store.listMovements().length, 1);
@@ -43,9 +43,9 @@ test('WhatsApp card failure cannot invalidate or roll back a saved booking', () 
   assert.ok(result.whatsappError instanceof Error);
 });
 
-test('a matcher AND card outage together still leave the booking saved', () => {
+test('a matcher AND card outage together still leave the booking saved', async () => {
   const store = createMemoryStore();
-  const result = processIncomingMovement(store, payload(), {
+  const result = await processIncomingMovement(store, payload(), {
     matchFn: () => {
       throw new Error('matcher down');
     },
@@ -59,10 +59,10 @@ test('a matcher AND card outage together still leave the booking saved', () => {
   assert.ok(result.whatsappError instanceof Error);
 });
 
-test('a genuinely malformed booking still fails loudly (this is not "swallow everything")', () => {
+test('a genuinely malformed booking still fails loudly (this is not "swallow everything")', async () => {
   const store = createMemoryStore();
   const bad = payload();
   delete bad.customer_price;
-  assert.throws(() => processIncomingMovement(store, bad));
+  await assert.rejects(() => processIncomingMovement(store, bad));
   assert.equal(store.listMovements().length, 0);
 });

@@ -70,7 +70,7 @@ export async function runLiveShadowReport(confirmedBookingRows, { sourceSite, st
     // never depend on which order the input rows happened to arrive in.
     // Real matches are computed in a separate full-pool pass below,
     // matching board.js's own approach for the same reason.
-    const { movement } = processIncomingMovement(store, mapped.movementInput, { routePriceTruthLookup });
+    const { movement } = await processIncomingMovement(store, mapped.movementInput, { routePriceTruthLookup });
     evaluatedMovements.push(movement);
   }
 

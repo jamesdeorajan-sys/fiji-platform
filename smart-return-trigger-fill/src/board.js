@@ -1,23 +1,55 @@
 /* Issue #54 Stage 1 (SHADOW MODE) — 7-day movement board.
  * Read-only aggregation. No writes, no auto-publication, no send calls.
+ *
+ * Marau Stage 1 fix (2026-09-28): this function is now `async` and awaits
+ * every store call (see src/offers.js's file header for the full
+ * explanation of the underlying defect). One extra wrinkle here:
+ * src/matcher.js#computeMatchCandidates is a plain synchronous function
+ * by design (it's pure deterministic logic with no I/O of its own), and
+ * it invokes `routePriceTruthLookup(origin, destination, vehicleClass)`
+ * synchronously inline. Against createD1Store, `store.getRoutePriceTruth`
+ * returns a Promise, so a naive `(o, d, v) => store.getRoutePriceTruth(o,
+ * d, v)` closure passed straight into the matcher would hand back an
+ * unresolved Promise instead of the real entry — same class of bug as
+ * everywhere else in this file header. The fix here is to resolve every
+ * route-price-truth entry the matcher could possibly need ONCE, up front
+ * (awaited), into a plain Map, and hand the matcher a synchronous closure
+ * over that Map — so the matcher itself never has to become async or
+ * know anything about the store's I/O timing.
  */
 import { computeMatchCandidates } from './matcher.js';
 import { isReturnLockEligible, earnExperienceCreditEligibility } from './pricing.js';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOString() } = {}) {
+function routePriceTruthKey(originZone, destinationZone, vehicleClass) {
+  return `${originZone}|${destinationZone}|${vehicleClass}`;
+}
+
+export async function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOString() } = {}) {
   const windowEndIso = new Date(new Date(nowIso).getTime() + SEVEN_DAYS_MS).toISOString();
-  const movements = store.listMovements({ fromIso: nowIso, toIso: windowEndIso }).filter((m) => m.booking_status !== 'CANCELLED');
+  const rawMovements = await store.listMovements({ fromIso: nowIso, toIso: windowEndIso });
+  const movements = rawMovements.filter((m) => m.booking_status !== 'CANCELLED');
 
   const confirmedMovements = movements.filter((m) => m.booking_status === 'CONFIRMED');
+
+  // Resolve every (origin, destination, vehicle_class) tuple this board
+  // could look up, ONCE, before any synchronous matcher call — see file
+  // header. Candidates are always drawn from `movements` itself, so this
+  // covers every tuple the matcher will ever query below.
+  const routePriceTruthCache = new Map();
+  const neededTuples = new Set(movements.map((m) => routePriceTruthKey(m.pickup_zone, m.dropoff_zone, m.vehicle_class)));
+  for (const key of neededTuples) {
+    const [originZone, destinationZone, vehicleClass] = key.split('|');
+    routePriceTruthCache.set(key, await store.getRoutePriceTruth(originZone, destinationZone, vehicleClass));
+  }
+  const syncRoutePriceTruthLookup = (originZone, destinationZone, vehicleClass) =>
+    routePriceTruthCache.get(routePriceTruthKey(originZone, destinationZone, vehicleClass)) ?? null;
 
   const matchesByMovement = new Map();
   for (const m of movements) {
     const pool = movements.filter((other) => other.movement_id !== m.movement_id);
-    const candidates = computeMatchCandidates(m, pool, {
-      routePriceTruthLookup: (o, d, v) => store.getRoutePriceTruth(o, d, v),
-    });
+    const candidates = computeMatchCandidates(m, pool, { routePriceTruthLookup: syncRoutePriceTruthLookup });
     matchesByMovement.set(m.movement_id, candidates);
   }
 
@@ -41,7 +73,7 @@ export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOStr
   const seenItineraryPairs = new Set();
   for (const m of movements) {
     if (!m.linked_return_movement_id || seenItineraryPairs.has(m.itinerary_id)) continue;
-    const returnMovement = store.getMovement(m.linked_return_movement_id);
+    const returnMovement = await store.getMovement(m.linked_return_movement_id);
     if (!returnMovement) continue;
     seenItineraryPairs.add(m.itinerary_id);
 
@@ -60,9 +92,10 @@ export function buildSevenDayMovementBoard(store, { nowIso = new Date().toISOStr
     }
   }
 
-  const possibleSmartFillSpecials = store
-    .listOffers()
-    .filter((o) => ['ACTIVE', 'VALIDATED'].includes(o.status) && o.earliest_pickup >= nowIso && o.earliest_pickup <= windowEndIso);
+  const allOffers = await store.listOffers();
+  const possibleSmartFillSpecials = allOffers.filter(
+    (o) => ['ACTIVE', 'VALIDATED'].includes(o.status) && o.earliest_pickup >= nowIso && o.earliest_pickup <= windowEndIso
+  );
 
   let predictedEmptyKmTotal = 0;
   let predictedEmptyKmHasVerifiedFigure = false;

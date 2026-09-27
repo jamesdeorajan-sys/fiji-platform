@@ -5,19 +5,28 @@
  * card generation) — this is what satisfies the safety invariants
  * "matcher outage does not stop STANDARD booking flow" and "WhatsApp
  * failure must never delete or invalidate a saved booking."
+ *
+ * Marau Stage 1 fix (2026-09-28): `processIncomingMovement` is now
+ * `async` and awaits every store call (see src/offers.js's file header
+ * for the full explanation). `matchFn` (computeMatchCandidates) stays a
+ * plain synchronous function by design — see src/matcher.js and
+ * src/board.js: the caller resolves any store-backed lookup (like
+ * route-price-truth) into a plain value BEFORE calling matchFn, so the
+ * deterministic matching logic itself never has to know whether the
+ * store behind it is a Map or a real database.
  */
 import { ingestMovement } from './ledger.js';
 import { computeMatchCandidates } from './matcher.js';
 import { buildOpsCard } from './whatsapp_cards.js';
 
-export function processIncomingMovement(
+export async function processIncomingMovement(
   store,
   rawPayload,
   { routePriceTruthLookup, matchFn = computeMatchCandidates, cardFn = buildOpsCard } = {}
 ) {
   // Step 1: persist. If this throws, nothing downstream runs — a malformed
   // booking must fail loudly rather than produce a half-recorded shadow.
-  const { movement, wasNew } = ingestMovement(store, rawPayload);
+  const { movement, wasNew } = await ingestMovement(store, rawPayload);
 
   // Step 2: match (best-effort). A throw here must not undo step 1.
   // matchFn/cardFn are injectable so outage scenarios can be exercised in
@@ -25,7 +34,8 @@ export function processIncomingMovement(
   let matches = [];
   let matcherError = null;
   try {
-    const pool = store.listMovements().filter((m) => m.movement_id !== movement.movement_id);
+    const all = await store.listMovements();
+    const pool = all.filter((m) => m.movement_id !== movement.movement_id);
     matches = matchFn(movement, pool, { routePriceTruthLookup });
   } catch (err) {
     matcherError = err;
