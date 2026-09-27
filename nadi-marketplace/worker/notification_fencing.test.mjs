@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import worker from './worker.js';
+import { installNetworkGuard } from './network_guard.mjs';
+installNetworkGuard();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');

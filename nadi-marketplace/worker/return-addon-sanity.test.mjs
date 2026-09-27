@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { postBooking, bookingPayload, materialise, snap } from './test-fixtures/worker-harness.mjs';
 import * as P from './pricing.mjs';
+import { installNetworkGuard } from './network_guard.mjs';
+installNetworkGuard();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: here }).toString().trim();

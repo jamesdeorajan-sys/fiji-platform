@@ -18,6 +18,8 @@ import {
   applyTripTypeMultiplier, isNightPickup, applyNightSurcharge, applyExtras,
   applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing,
 } from './pricing.mjs';
+import { installNetworkGuard } from './network_guard.mjs';
+installNetworkGuard();
 
 // ─── Step 1: resolveDistanceKm ─────────────────────────────────────────
 test('resolveDistanceKm: boat transfers are never distance-based', () => {

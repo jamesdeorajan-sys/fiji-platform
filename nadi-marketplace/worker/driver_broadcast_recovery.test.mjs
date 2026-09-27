@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import worker from './worker.js';
+import { installNetworkGuard } from './network_guard.mjs';
+installNetworkGuard();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_SQL = readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
@@ -144,19 +146,31 @@ test('OVERLAPPING creation-time broadcast and a sweep cannot double-send either'
 });
 
 test('preserved: eligibility, assignment checks and the 3-attempt retry cap still hold', async () => {
-  const { env, db, tok } = world(); const m = meta((k, to) => (k === 'driver' && to === '6791000002' ? { ok: false, status: 400, text: async () => JSON.stringify({ error: { code: 131026 } }) } : OK()));
-  const dropped = { waitUntil: () => {} };
-  const r = await post(env, payload({ client_booking_ref: 'FD-CAPPRESERVE' }), dropped); const id = r.body.booking_id;
-  for (let i = 0; i < 5; i++) { age(db, id, 10); const c = makeCtx(); await worker.scheduled({ cron: '*/5 * * * *' }, env, c); await c.flush(); }
-  const toB = m.sent.filter((s) => s.kind === 'driver' && s.to === '6791000002').length;
-  m.restore();
-  assert.ok(toB <= 3, `driver b's failing send must stop being retried once its cap (3) is reached (got ${toB})`);
-  // out-of-zone / offline / unverified drivers are still never messaged
-  assert.ok(!m.sent.some((s) => s.kind === 'driver' && !['6791000001', '6791000002', '6791000003'].includes(s.to)));
-  const acc = await worker.fetch(new Request(`https://w.test/driver/bookings/${id}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${tok.a}` } }), env);
-  assert.equal(acc.status, 200);
-  const before = m.sent.length; const c = makeCtx(); age(db, id, 10); await worker.scheduled({ cron: '*/5 * * * *' }, env, c); await c.flush();
-  assert.equal(m.sent.length, before, 'no further driver messages once the booking is accepted (assignment check preserved)');
+  const { env, db, tok } = world();
+  // Issue #59 (Codex independent review, test-harness leak): the mock must stay active through EVERY background
+  // job this test triggers, including POST /driver/bookings/:id/accept, which sends a real guest WhatsApp message
+  // (sendGuestDriverAssignedWhatsApp, awaited inline by handleDriverAcceptBooking) on its way to a 200 response.
+  // Restoring the mock before that call previously let it reach the real, unguarded fetch. Now kept active for the
+  // whole test body and restored exactly once, in `finally`, after everything - including the accept call and every
+  // ctx.waitUntil job along the way - has actually run and been awaited/flushed.
+  const m = meta((k, to) => (k === 'driver' && to === '6791000002' ? { ok: false, status: 400, text: async () => JSON.stringify({ error: { code: 131026 } }) } : OK()));
+  try {
+    const ctx = makeCtx(); // a real ctx (not a discarding stub) so its background job is captured and awaited below, not left to race in the background
+    const r = await post(env, payload({ client_booking_ref: 'FD-CAPPRESERVE' }), ctx);
+    await ctx.flush(); // await the captured waitUntil work (initial broadcast + admin alerts) before proceeding
+    const id = r.body.booking_id;
+    for (let i = 0; i < 5; i++) { age(db, id, 10); const c = makeCtx(); await worker.scheduled({ cron: '*/5 * * * *' }, env, c); await c.flush(); }
+    const toB = m.sent.filter((s) => s.kind === 'driver' && s.to === '6791000002').length;
+    assert.ok(toB <= 3, `driver b's failing send must stop being retried once its cap (3) is reached (got ${toB})`);
+    // out-of-zone / offline / unverified drivers are still never messaged
+    assert.ok(!m.sent.some((s) => s.kind === 'driver' && !['6791000001', '6791000002', '6791000003'].includes(s.to)));
+    const acc = await worker.fetch(new Request(`https://w.test/driver/bookings/${id}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${tok.a}` } }), env); // still under the active mock
+    assert.equal(acc.status, 200);
+    const before = m.sent.length; const c = makeCtx(); age(db, id, 10); await worker.scheduled({ cron: '*/5 * * * *' }, env, c); await c.flush();
+    assert.equal(m.sent.length, before, 'no further driver messages once the booking is accepted (assignment check preserved)');
+  } finally {
+    m.restore();
+  }
 });
 
 test('missing-table fallback: without migration37 applied, initial broadcast still sends and does not throw', async () => {
