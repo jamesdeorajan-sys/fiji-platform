@@ -265,6 +265,6 @@ test('a stalled escalation call cannot delay the caller: submitMarketplaceBookin
 
 test('index.html cache-busts app.js with the new version (JS is cached for 1h by _headers)', () => {
   const html = require('fs').readFileSync(require('path').join(__dirname, 'src', 'index.html'), 'utf8');
-  assert.equal((html.match(/app\.js\?v=20260927-departure-capture/g) || []).length, 1);
+  assert.equal((html.match(/app\.js\?v=20260927-departure-subset/g) || []).length, 1);
   assert.doesNotMatch(html, /app\.js\?v=20260911b-naviti-pricing/);
 });

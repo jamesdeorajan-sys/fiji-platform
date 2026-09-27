@@ -2236,6 +2236,24 @@ function resolveConfirmedDestinationZone() {
 function isHotelPickupToAirport(pickupVal, destVal) {
   return /^P_/.test(pickupVal || '') && destVal === 'NAN';
 }
+// INTERIM CONSISTENCY GATE (issue #59) - NOT a fare decision. A departure is only saved online when the fare the guest is
+// shown is the fare the server will record. Checked offline against the real deployed Worker pricing code (snapshot
+// 2026-09-27): for these 29 hotels, all three vehicles, at a day (10:00) and a night (05:30) pickup, the amount the widget
+// displays is kept as-is by the server's 0.8x-1.3x verification. Every other hotel (Nadi/Wailoaloa cluster, Sonaisali,
+// First Landing, Suva minibus, Rakiraki) would be silently replaced by a different server fare, so it stays on the
+// WhatsApp path until James decides fare authority for departures. One-way only (return departures were not verified).
+// Regenerate whenever pricing_rules, the published fare table or the night rule change.
+const DEPARTURE_ONLINE_HOTELS = new Set([
+  'P_CROWNE_PLAZA', 'P_RAMADA_WAILOALOA', 'P_HILTON', 'P_RADISSON',
+  'P_SHERATON', 'P_SOFITEL', 'P_WESTIN', 'P_WYNDHAM',
+  'P_VUDA_MARINA', 'P_MARRIOTT_MOMI', 'P_INTERCON_NATADOLA', 'P_YATULE',
+  'P_ROBINSON_CRUSOE', 'P_SHANGRI_LA', 'P_BEDARRA', 'P_GECKOS',
+  'P_HIDEAWAY', 'P_TAMBUA_SANDS', 'P_CRUSOES_RETREAT', 'P_OUTRIGGER',
+  'P_WARWICK', 'P_NAVITI', 'P_MANGO_BAY', 'P_BEACHHOUSE',
+  'P_WAIDROKA', 'P_PEARL', 'P_UPRISING', 'P_NANUKU',
+  'P_ARTS_VILLAGE'
+]);
+
 function resolveFixedPickupZone(pickupOpt) {
   const lat = pickupOpt?.dataset?.lat;
   const lng = pickupOpt?.dataset?.lng;
@@ -2261,6 +2279,8 @@ function resolveConfirmedPickupZone() {
   const pickupVal = document.getElementById('pickup')?.value;
   if (pickupVal === 'NAN') return 'Nadi Airport';
   if (isHotelPickupToAirport(pickupVal, document.getElementById('destination')?.value)) {
+    // Fail closed to the existing WhatsApp path unless displayed fare == recorded fare is verified for this hotel.
+    if (!DEPARTURE_ONLINE_HOTELS.has(pickupVal) || state.tripType === 'return' || bookingHasTour()) return null;
     return resolveFixedPickupZone(document.getElementById('pickup')?.selectedOptions?.[0]);
   }
   if (pickupVal === 'CUSTOM_PICKUP') {

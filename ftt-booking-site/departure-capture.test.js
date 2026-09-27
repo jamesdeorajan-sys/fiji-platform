@@ -68,7 +68,7 @@ test('a hotel pickup is NEVER relabelled as Nadi Airport merely to pass eligibil
   const { api } = world({ pickupVal: 'P_HILTON', destVal: 'NAN' });
   assert.notEqual(api.resolveFixedPickupZone(PICKUPS.find((o) => o.value === 'P_HILTON')), 'Nadi Airport');
   const fn = extractFn('resolveConfirmedPickupZone');
-  assert.match(fn, /isHotelPickupToAirport\([\s\S]*?\) \{\s*return resolveFixedPickupZone\(/, 'hotel branch must return the resolved hotel zone');
+  assert.match(fn, /isHotelPickupToAirport\([\s\S]*?\) \{[\s\S]*?return resolveFixedPickupZone\(/, 'hotel branch must return the resolved hotel zone');
   assert.equal((fn.match(/'Nadi Airport'/g) || []).length, 1, "the only 'Nadi Airport' return stays the real NAN pickup");
 });
 
@@ -110,5 +110,5 @@ test('wiring: confirmBooking eligibility requires a resolved zone; negotiation e
   assert.match(app, /const isEligibleRoute = pickupVal === 'NAN' \|\| \(pickupVal === 'CUSTOM_PICKUP' && destVal === 'NAN'\);/, 'negotiation stays airport-arrival / custom-pickup only');
   assert.match(app, /pickup_zone: pickupZone,\s*\n\s*destination_zone: destinationZone,/);
   assert.match(app, /notes: withPickupHotelLine\(resolveDurableNotes\(/);
-  assert.match(html, /app\.js\?v=20260927-departure-capture/);
+  assert.match(html, /app\.js\?v=20260927-departure-subset/);
 });
