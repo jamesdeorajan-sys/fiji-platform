@@ -2593,15 +2593,33 @@ async function findMatchingOnlineDrivers(env, pickupZone) {
 // been applied yet, mirroring attemptAdminNotification()'s own missing-table fallback.
 const DRIVER_BROADCAST_LEASE_SECONDS = 120;
 async function claimDriverBroadcastAttempt(env, bookingId, driverId) {
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO driver_broadcast_attempts (booking_id, driver_id, state) VALUES (?, ?, 'NOT_ATTEMPTED')`
-  ).bind(bookingId, driverId).run();
+  // Issue #59 (Codex independent review, regression 1): a driver already notified via a legacy driver_broadcast_sent
+  // event - written before migration37 existed, or by an old Worker still running in the gap between the migration
+  // being applied and the new Worker being deployed - must be seeded SENT the first time this booking/driver pair is
+  // touched, never NOT_ATTEMPTED. Only paid on first insert (existing rows skip straight to the claim below), driven
+  // by booking_events (the permanent record) so it correctly covers ANY historical send regardless of when it
+  // happened, not just a one-time migration-time snapshot.
+  const existing = await env.DB.prepare(`SELECT 1 x FROM driver_broadcast_attempts WHERE booking_id = ? AND driver_id = ?`).bind(bookingId, driverId).first();
+  if (!existing) {
+    const rows = (await env.DB.prepare(
+      `SELECT metadata FROM booking_events WHERE booking_id = ? AND event_type = 'driver_broadcast_sent'`
+    ).bind(bookingId).all()).results || [];
+    let historicallySent = false;
+    for (const row of rows) { try { if (JSON.parse(row.metadata || '{}').driver_id === driverId) { historicallySent = true; break; } } catch { /* malformed metadata - treat as not found */ } }
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO driver_broadcast_attempts (booking_id, driver_id, state) VALUES (?, ?, ?)`
+    ).bind(bookingId, driverId, historicallySent ? 'SENT' : 'NOT_ATTEMPTED').run();
+  }
+  // Issue #59 (Codex independent review, regression 2): the cap (DRIVER_BROADCAST_MAX_TRIES) is now enforced INSIDE
+  // this atomic claim, for both branches - a stale ATTEMPTING row already at the cap (an isolate died mid-send on
+  // its final allowed try) could previously still be reclaimed and pushed to a 4th+ attempt, since only the sweep's
+  // own app-level pre-filter checked the cap, and only for FAILED_RETRYABLE, never for a reclaimed stale ATTEMPTING.
   const claim = await env.DB.prepare(
     `UPDATE driver_broadcast_attempts SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
-     WHERE booking_id = ? AND driver_id = ?
+     WHERE booking_id = ? AND driver_id = ? AND attempt_count < ?
        AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE') OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))
      RETURNING attempt_count`
-  ).bind(bookingId, driverId, `-${DRIVER_BROADCAST_LEASE_SECONDS} seconds`).first();
+  ).bind(bookingId, driverId, DRIVER_BROADCAST_MAX_TRIES, `-${DRIVER_BROADCAST_LEASE_SECONDS} seconds`).first();
   return claim ? { claimed: true, attempt: claim.attempt_count } : { claimed: false };
 }
 
@@ -2676,14 +2694,43 @@ const DRIVER_BROADCAST_MAX_TRIES = 3;
 // tick, regardless of how many completed ones precede it.
 const DRIVER_BROADCAST_SWEEP_CANDIDATES = 200; // DB rows examined (cheap: id/ordering read only)
 const DRIVER_BROADCAST_SWEEP_WORK_BUDGET = 10; // bookings actually re-broadcast to (bounds real WhatsApp sends per tick)
+// Issue #59 (Codex independent review, regression 3): a static `ORDER BY id LIMIT N` always re-examines the SAME
+// lowest-id candidates first. Once N (or more) older, fully-complete bookings exist, they permanently fill the
+// window and a booking needing real work past that point is never reached, no matter how many sweeps run -
+// "raise N" only raises the threshold, it does not remove the class of bug. Fixed with a rotating cursor
+// (persisted in the existing platform_settings key-value table, no new migration): each tick continues scanning
+// forward from where the previous one stopped, wrapping around to the start once it runs out of higher ids. This
+// guarantees every pending/unassigned booking in the age window is EXAMINED within a bounded number of ticks
+// (ceil(total / DRIVER_BROADCAST_SWEEP_CANDIDATES)), regardless of how many ahead of it are already complete -
+// completed ones are still skipped without consuming the real-work budget, they just no longer block forward
+// progress through the id space.
+const DRIVER_BROADCAST_SWEEP_CURSOR_KEY = 'driver_broadcast_sweep_cursor_id';
+async function fetchSweepCandidates(env, minAgeExpr, maxIds) {
+  const cursor = Number(await getSetting(env, DRIVER_BROADCAST_SWEEP_CURSOR_KEY, '0')) || 0;
+  const baseWhere = `status = 'pending' AND assigned_driver_id IS NULL AND created_at >= datetime('now', '-60 minutes') AND created_at <= datetime('now', ?)`;
+  const forward = (await env.DB.prepare(`SELECT id FROM bookings WHERE ${baseWhere} AND id > ? ORDER BY id LIMIT ?`).bind(minAgeExpr, cursor, maxIds).all()).results || [];
+  let rows = forward;
+  if (rows.length < maxIds) {
+    // Ran out of higher ids this tick - wrap around and top up from the start so the full candidate budget is used
+    // productively instead of returning a short batch every time the cursor nears the end of the id space.
+    const wrapped = (await env.DB.prepare(`SELECT id FROM bookings WHERE ${baseWhere} AND id <= ? ORDER BY id LIMIT ?`).bind(minAgeExpr, cursor, maxIds - rows.length).all()).results || [];
+    rows = rows.concat(wrapped);
+  }
+  return rows;
+}
+async function advanceSweepCursor(env, rows) {
+  if (rows.length === 0) return;
+  const next = Math.max(...rows.map((r) => r.id));
+  await env.DB.prepare(
+    `INSERT INTO platform_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ).bind(DRIVER_BROADCAST_SWEEP_CURSOR_KEY, String(next)).run();
+}
 async function sweepDriverBroadcasts(env) {
   try {
-    const found = await env.DB.prepare(
-      `SELECT id FROM bookings
-       WHERE status = 'pending' AND assigned_driver_id IS NULL
-         AND created_at >= datetime('now', '-60 minutes') AND created_at <= datetime('now', ?)
-       ORDER BY id LIMIT ?`
-    ).bind(`-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`, DRIVER_BROADCAST_SWEEP_CANDIDATES).all();
+    const minAgeExpr = `-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`;
+    const found = { results: await fetchSweepCandidates(env, minAgeExpr, DRIVER_BROADCAST_SWEEP_CANDIDATES) };
+    await advanceSweepCursor(env, found.results);
     let worked = 0;
     for (const row of (found && found.results) || []) {
       if (worked >= DRIVER_BROADCAST_SWEEP_WORK_BUDGET) break;
@@ -2701,8 +2748,10 @@ async function sweepDriverBroadcasts(env) {
           const st = byId.get(d.id);
           if (!st) return true; // never attempted at all - the actual gap 1 fix
           if (st.state === 'SENT') return false;
-          if (st.state === 'FAILED_RETRYABLE') return st.attempt_count < DRIVER_BROADCAST_MAX_TRIES;
-          return true; // NOT_ATTEMPTED or ATTEMPTING (the atomic claim itself decides fresh-vs-stale)
+          // FAILED_RETRYABLE or ATTEMPTING (stale or fresh): the cap applies uniformly (regression 2's fix) - a
+          // capped-out ATTEMPTING row is filtered here too, so it isn't even offered to broadcastBookingToDrivers
+          // (the atomic claim inside it enforces the same cap either way, this is just avoiding wasted work).
+          return st.attempt_count < DRIVER_BROADCAST_MAX_TRIES;
         }).map((d) => d.id);
       } catch (err) {
         if (!/no such table/i.test(String(err && err.message))) throw err;
