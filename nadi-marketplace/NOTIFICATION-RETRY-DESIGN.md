@@ -75,6 +75,36 @@ in `REVIEW-PACKAGE-87816a5.md` now names files explicitly; the full offline set 
 `node --test admin_notification_retry.test.mjs notification_reconcile.test.mjs notification_fencing.test.mjs broadcast_bounded.test.mjs departure_dispatch.test.mjs driver_broadcast_recovery.test.mjs pricing-steps.test.mjs return-addon-sanity.test.mjs booking-handoff.test.js`
 (87 tests, 86 pass, 1 pre-existing skip, as of this checkpoint).
 
+## Three regressions found by Codex's independent review of 6272906/ab25dce (fixed here)
+All three reproduced first (failing tests against 6272906), then fixed.
+
+1. **Migration/legacy send history.** A driver already notified via a legacy `driver_broadcast_sent` event (written
+   before `driver_broadcast_attempts` existed, or by an old Worker still running in the gap between the migration
+   being applied and the new Worker being deployed) got re-sent, because the new table starts empty and the claim
+   unconditionally seeded `NOT_ATTEMPTED`. Fixed: `claimDriverBroadcastAttempt` now backfills from `booking_events`
+   on first insert for a `(booking, driver)` pair (only once - existing rows skip straight to the claim), seeding
+   `SENT` when a historical send exists. Driven by the permanent event log rather than a one-time migration-time
+   snapshot, so it correctly reconciles a send from any point in time, including the migration-to-deploy gap.
+2. **Retry cap not enforced atomically.** The claim's `UPDATE` only checked `state`, never `attempt_count`; a stale
+   `ATTEMPTING` row already at the cap (an isolate died mid-send on its final allowed try) could still be reclaimed
+   and pushed past `DRIVER_BROADCAST_MAX_TRIES`. Fixed: the claim's own `WHERE` clause now includes
+   `attempt_count < DRIVER_BROADCAST_MAX_TRIES`, so the cap is enforced in the same atomic statement that performs
+   the claim - for a freshly-failed row and a stale-reclaimed one alike.
+3. **Candidate-window starvation, still not fixed by widening `LIMIT`.** `ORDER BY id LIMIT N` always re-examines
+   the same lowest-id rows; once N (or more) already-complete older bookings exist, they permanently occupy the
+   window and a booking needing work past that point is never reached, no matter how many sweeps run. Fixed with a
+   **rotating cursor** stored in the existing `platform_settings` key-value table (`driver_broadcast_sweep_cursor_id`
+   — no new migration): each tick fetches `id > cursor` first, wraps around to `id <= cursor` to fill out the batch
+   if fewer than `DRIVER_BROADCAST_SWEEP_CANDIDATES` remain ahead, then advances the cursor to the highest id
+   examined. This guarantees every pending/unassigned booking in the age window is *examined* within a bounded
+   number of ticks (`ceil(total / DRIVER_BROADCAST_SWEEP_CANDIDATES)`), regardless of how many already-complete
+   ones precede it — 200 complete bookings followed by a 201st needing work is reached within 2 sweeps.
+
+**Test hygiene, also from this review:** `booking-handoff.test.js` makes real HTTP calls when `NADI_API_BASE_TEST`
+is set in the environment (it otherwise self-skips, which is the pre-existing "1 skip" seen throughout). Every
+offline command now explicitly `unset`s `NADI_API_BASE_TEST` (and `ADMIN_TOKEN`) first. `pricing.test.js` remains
+excluded from every offline command (it always makes live calls, no env-var gate).
+
 ## Rollout order (each step needs James's approval; none done)
 1. Independent review of source, migration and tests.
 2. Apply `milestone36-admin-notification-retry-state.sql` to `nadi-marketplace-db` (additive). Safe before the Worker: nothing reads it yet. (Verify D1 accepts `UPDATE ... RETURNING` via `.first()` on a scratch row first; D1 supports RETURNING, but this is the one statement shape not exercised by real D1 in the offline tests.)
