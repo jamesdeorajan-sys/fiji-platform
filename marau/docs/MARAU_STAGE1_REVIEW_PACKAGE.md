@@ -2,6 +2,8 @@
 
 Status: isolated preview build complete, tested, NOT deployed to any real Cloudflare account resource. No production decision has been made or implied by this work. James and Codex review this before anything is deployed.
 
+**Update:** Codex's independent review of the state described below (`a7b712e`) found 5 acceptance failures (2 P0, 3 P1). All 5 are reproduced with a regression test and fixed on this same branch — see `docs/MARAU_STAGE1_CODEX_FIXES.md` for the full write-up, and the "since a7b712e" commits below for the exact SHAs. Migrations 0012-0014 and several new worker modules described in this document's §4/§7 below were added by that follow-up work; read this file for the original architecture and `MARAU_STAGE1_CODEX_FIXES.md` for what changed and why.
+
 ## 1. Exact SHAs and branch
 
 - Base (Issue #54's existing engine, unchanged): `ceo/smart-return-recovery-pilot` @ `62b8ed0f576190d852da46a36883285c18fd6f46`

@@ -78,17 +78,36 @@ test('assist defers to the human handoff for anything outside its known vocabula
   assert.ok(res.data.answer.includes('WhatsApp'));
 });
 
-// Unit-level proof that ranking never fabricates a figure and zone-matches
-// correctly, independent of the HTTP layer.
-test('rankOffersForGuest: zone-matching offers rank first; every price is copied verbatim', () => {
+// Unit-level proof that ranking never fabricates a figure, zone-matches
+// correctly, and (per the P1 fix) only ever surfaces an ACTIVE, unexpired,
+// in-stock, floor-respecting offer — never VALIDATED/DISCOVERED, never
+// expired — independent of the HTTP layer.
+test('rankOffersForGuest: zone-matching offers rank first; every price is copied verbatim; VALIDATED/DISCOVERED/expired never surface', () => {
   const bookings = [{ pickup_zone: 'NAD_AIRPORT', destination_zone: 'DENARAU' }];
+  const nowIso = '2026-10-01T12:00:00Z';
+  const base = { vehicle_class: 'SEDAN', inventory_count: 1, absolute_floor: 10 };
   const offers = [
-    { offer_id: 'o1', status: 'ACTIVE', origin_zone: 'SUVA', destination_zone: 'PACIFIC_HARBOUR', vehicle_class: 'SEDAN', standard_price: 40, smart_match_price: null, earliest_pickup: '2026-10-01T00:00:00Z' },
-    { offer_id: 'o2', status: 'VALIDATED', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', vehicle_class: 'SEDAN', standard_price: 60, smart_match_price: 24, earliest_pickup: '2026-10-02T00:00:00Z' },
-    { offer_id: 'o3', status: 'DISCOVERED', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', vehicle_class: 'SEDAN', standard_price: 60, smart_match_price: 10, earliest_pickup: '2026-10-01T00:00:00Z' },
+    { ...base, offer_id: 'o1', status: 'ACTIVE', origin_zone: 'SUVA', destination_zone: 'PACIFIC_HARBOUR', standard_price: 40, smart_match_price: null, earliest_pickup: '2026-10-01T00:00:00Z', expires_at: '2026-10-05T00:00:00Z' },
+    { ...base, offer_id: 'o2', status: 'VALIDATED', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', standard_price: 60, smart_match_price: 24, earliest_pickup: '2026-10-02T00:00:00Z', expires_at: '2026-10-05T00:00:00Z' },
+    { ...base, offer_id: 'o3', status: 'DISCOVERED', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', standard_price: 60, smart_match_price: 10, earliest_pickup: '2026-10-01T00:00:00Z', expires_at: '2026-10-05T00:00:00Z' },
+    { ...base, offer_id: 'o4', status: 'ACTIVE', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', standard_price: 60, smart_match_price: 20, earliest_pickup: '2026-10-01T00:00:00Z', expires_at: '2026-09-30T00:00:00Z' },
   ];
-  const ranked = rankOffersForGuest(offers, bookings);
-  assert.equal(ranked.length, 2, 'a DISCOVERED (not yet approved) offer must never be surfaced');
+  const ranked = rankOffersForGuest(offers, bookings, nowIso);
+  assert.equal(ranked.length, 1, 'only o1 is ACTIVE, unexpired and zone-independent-eligible; o2 is VALIDATED (not public approval), o3 is DISCOVERED, o4 is expired');
+  assert.equal(ranked[0].offer_id, 'o1');
+  assert.equal(ranked[0].price, 40);
+});
+
+test('rankOffersForGuest: among eligible offers, zone-matching still ranks first', () => {
+  const bookings = [{ pickup_zone: 'NAD_AIRPORT', destination_zone: 'DENARAU' }];
+  const nowIso = '2026-10-01T12:00:00Z';
+  const base = { vehicle_class: 'SEDAN', inventory_count: 1, absolute_floor: 10, status: 'ACTIVE', expires_at: '2026-10-05T00:00:00Z' };
+  const offers = [
+    { ...base, offer_id: 'o1', origin_zone: 'SUVA', destination_zone: 'PACIFIC_HARBOUR', standard_price: 40, smart_match_price: null, earliest_pickup: '2026-10-01T00:00:00Z' },
+    { ...base, offer_id: 'o2', origin_zone: 'DENARAU', destination_zone: 'NAD_AIRPORT', standard_price: 60, smart_match_price: 24, earliest_pickup: '2026-10-02T00:00:00Z' },
+  ];
+  const ranked = rankOffersForGuest(offers, bookings, nowIso);
+  assert.equal(ranked.length, 2);
   assert.equal(ranked[0].offer_id, 'o2', 'zone-matching offer must rank first');
   assert.equal(ranked[0].price, 24);
   assert.equal(ranked[1].price, 40);

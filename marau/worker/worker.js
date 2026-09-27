@@ -4,30 +4,32 @@
  * binding (env.DB) must point at a dedicated, isolated test database —
  * never nadi-marketplace-db. It never calls a real WhatsApp API, a real
  * AI provider, or any other external network endpoint: WhatsApp handoffs
- * are constructed and returned as data for the guest app to render as a
- * link, never sent by this Worker; AI assistance is the fully
- * deterministic, no-network module in ./ai_assist.js. See
- * docs/MARAU_STAGE1_REVIEW_PACKAGE.md for the full isolation statement,
- * exact SHAs and migration list this was built and tested against.
+ * are constructed and returned as data for the guest app to show in a
+ * mock panel, never sent by this Worker and never navigated to; AI
+ * assistance is the fully deterministic, no-network module in
+ * ./ai_assist.js. See docs/MARAU_STAGE1_REVIEW_PACKAGE.md for the full
+ * isolation statement, exact SHAs and migration list this was built and
+ * tested against, and docs/MARAU_STAGE1_CODEX_FIXES.md for the five
+ * findings fixed in this revision.
  *
  * Reuses (never replaces) Issue #54's existing engine: the movement
  * ledger, matcher, pricing guardrails and offer state machine all come
  * from ../../smart-return-trigger-fill/src/*.js, unmodified except for
  * the async-store defect fix (see that package's own commit history).
- * This file adds only what Issue #54 never built: guest identity/session,
- * a synthetic booking flow, idempotent deal requests, the vehicle/time
- * exclusivity guard across DIFFERENT offers (vehicle_time_claims), booking
- * change requests, an authenticated ops confirm/decline interface, and
- * bounded AI assistance.
  */
 import { createD1Store } from '../../smart-return-trigger-fill/src/db.js';
 import { discoverOffer, validateOffer, activateOffer, holdOffer, fillOffer, expireOffer } from '../../smart-return-trigger-fill/src/offers.js';
 import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
 import { buildAssistResponse } from './ai_assist.js';
 import { GUEST_APP_HTML, ADMIN_APP_HTML } from './pages.js';
+import { evaluateOfferEligibility } from './offer_eligibility.js';
+import { composeDealHandoffMessage, composeTripHandoffMessage } from './whatsapp_handoff.js';
+import { findPayloadMismatch } from './booking_conflict.js';
+import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } from './vehicle_allocation.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
+const LINK_REQUEST_TTL_MS = 10 * 60 * 1000; // 10 minutes, mirrors the deal-hold-adjacent language elsewhere
 
 function nowIso() {
   return new Date().toISOString();
@@ -60,6 +62,10 @@ function normalizePhone(phone) {
   return String(phone).replace(/[^0-9+]/g, '');
 }
 
+function sixDigitCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function validateBookingInput(body) {
   const errors = [];
   if (!body || typeof body !== 'object') return ['request body must be a JSON object'];
@@ -80,17 +86,10 @@ function validateBookingInput(body) {
   return errors;
 }
 
-async function findOrCreateGuestSession(env, { guest_email, guest_phone, whatsapp_available }) {
-  const contactKey = normalizePhone(guest_phone);
-  const existing = await env.DB
-    .prepare('SELECT * FROM guest_sessions WHERE guest_contact_key = ? AND access_token_revoked = 0 ORDER BY created_at DESC LIMIT 1')
-    .bind(contactKey)
-    .first();
-  if (existing) return existing;
-
+async function createGuestSession(env, { guest_email, guest_phone, whatsapp_available }) {
   const session = {
     session_id: `gs_${cryptoRandomId()}`,
-    guest_contact_key: contactKey,
+    guest_contact_key: normalizePhone(guest_phone),
     guest_email,
     guest_phone,
     whatsapp_available: whatsapp_available === true ? 1 : whatsapp_available === false ? 0 : null,
@@ -119,6 +118,50 @@ async function findOrCreateGuestSession(env, { guest_email, guest_phone, whatsap
     )
     .run();
   return session;
+}
+
+/**
+ * FIX (P0): a booking submission used to hand out an EXISTING session's
+ * access token whenever the supplied phone alone matched one — a new
+ * booking could silently inherit a stranger's session (and their prior
+ * bookings) just by guessing/knowing their phone number. Every
+ * submission now ALWAYS gets its own brand-new session. If a phone match
+ * against a DIFFERENT, still-valid session exists, this also opens a
+ * `guest_link_requests` row so the two can be linked later — but only
+ * after the NEW session's holder proves they can read a verification
+ * code that is itself only ever readable by someone already
+ * authenticated as the OLD session (see handleListLinkRequests). Nothing
+ * here grants access to the old session's data.
+ */
+async function createSessionAndOfferLink(env, body) {
+  const contactKey = normalizePhone(body.guest_phone);
+  const session = await createGuestSession(env, body);
+
+  const candidate = await env.DB
+    .prepare('SELECT * FROM guest_sessions WHERE guest_contact_key = ? AND access_token_revoked = 0 AND session_id != ? ORDER BY created_at DESC LIMIT 1')
+    .bind(contactKey, session.session_id)
+    .first();
+
+  let linkOffer = null;
+  if (candidate) {
+    const linkRequestId = `link_${cryptoRandomId()}`;
+    const expiresAt = new Date(Date.now() + LINK_REQUEST_TTL_MS).toISOString();
+    await env.DB
+      .prepare(
+        `INSERT INTO guest_link_requests (link_request_id, new_session_id, candidate_session_id, verification_code, status, expires_at, created_at)
+         VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`
+      )
+      .bind(linkRequestId, session.session_id, candidate.session_id, sixDigitCode(), expiresAt, nowIso())
+      .run();
+    linkOffer = {
+      link_request_id: linkRequestId,
+      message:
+        'We found an earlier Marau session on this phone number. To see those bookings here too, open that earlier session’s access link and check for a verification code there, then confirm it from this one.',
+      expires_at: expiresAt,
+    };
+  }
+
+  return { session, linkOffer };
 }
 
 async function requireGuestSession(request, env) {
@@ -153,11 +196,44 @@ async function handleCreateBooking(request, env) {
   if (errors.length > 0) return json({ error: 'validation failed', details: errors }, 400);
 
   const clientBookingRef = body.client_booking_ref || `MARAU-${cryptoRandomId()}`;
-  const session = await findOrCreateGuestSession(env, body);
 
-  const insertResult = await env.DB
+  // FIX (P1): a resubmitted client_booking_ref must return the SAME
+  // booking only if the payload actually matches — otherwise this key
+  // was either reused by mistake for a different booking, or is being
+  // replayed with tampered data, and either way must be rejected rather
+  // than silently served or silently overwritten.
+  const existingBooking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
+  if (existingBooking) {
+    const comparison = findPayloadMismatch(existingBooking, body);
+    if (!comparison.matches) {
+      return json(
+        {
+          error: 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH',
+          detail: 'This booking reference was already used for a different booking.',
+          mismatched_fields: comparison.mismatched_fields,
+        },
+        409
+      );
+    }
+    const session = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(existingBooking.guest_session_id).first();
+    return json(
+      {
+        booking_reference: existingBooking.client_booking_ref,
+        status: existingBooking.status,
+        message: 'Awaiting human confirmation',
+        access_token: session.access_token,
+        was_new_booking: false,
+        demonstration_data: true,
+      },
+      200
+    );
+  }
+
+  const { session, linkOffer } = await createSessionAndOfferLink(env, body);
+
+  await env.DB
     .prepare(
-      `INSERT OR IGNORE INTO marau_test_bookings
+      `INSERT INTO marau_test_bookings
         (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 1, ?, ?)`
     )
@@ -176,21 +252,17 @@ async function handleCreateBooking(request, env) {
     )
     .run();
 
-  // Idempotent retry: a duplicate client_booking_ref returns the SAME
-  // booking and the SAME access token, never a second row or a second
-  // token — this is the "duplicate/retry recovery" acceptance criterion.
-  const booking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
-
   return json(
     {
-      booking_reference: booking.client_booking_ref,
-      status: booking.status,
+      booking_reference: clientBookingRef,
+      status: 'pending',
       message: 'Awaiting human confirmation',
       access_token: session.access_token,
-      was_new_booking: insertResult.meta.changes === 1,
+      was_new_booking: true,
       demonstration_data: true,
+      link_offer: linkOffer,
     },
-    insertResult.meta.changes === 1 ? 201 : 200
+    201
   );
 }
 
@@ -216,6 +288,98 @@ async function handleRevokeTrip(request, env) {
   if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
   await env.DB.prepare('UPDATE guest_sessions SET access_token_revoked = 1 WHERE session_id = ?').bind(session.session_id).run();
   return json({ revoked: true });
+}
+
+// ---------------------------------------------------------------------
+// Verified-ownership linking (P0 fix). Delivery is MOCKED: the
+// verification code is only ever readable by GET /preview/trip/link-requests,
+// which requires the CANDIDATE (old) session's own access token — i.e.
+// only whoever already holds the earlier session can ever see the code,
+// standing in for "only the real phone/email owner receives it" without
+// a real SMS/email provider. It is NEVER included in the booking
+// response that triggered it (see handleCreateBooking above).
+// ---------------------------------------------------------------------
+
+async function handleListLinkRequests(request, env) {
+  const session = await requireGuestSession(request, env);
+  if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
+
+  const now = nowIso();
+  await env.DB
+    .prepare(`UPDATE guest_link_requests SET status = 'EXPIRED' WHERE status = 'PENDING' AND expires_at <= ? AND candidate_session_id = ?`)
+    .bind(now, session.session_id)
+    .run();
+
+  const { results } = await env.DB
+    .prepare(`SELECT * FROM guest_link_requests WHERE candidate_session_id = ? AND status = 'PENDING' ORDER BY created_at DESC`)
+    .bind(session.session_id)
+    .all();
+
+  return json({
+    link_requests: results.map((r) => ({
+      link_request_id: r.link_request_id,
+      verification_code: r.verification_code,
+      expires_at: r.expires_at,
+      note: 'PREVIEW MOCK DELIVERY — in production this code is sent to the phone/email being verified, never returned this way to the requester.',
+    })),
+  });
+}
+
+async function handleRevokeLinkRequest(request, env, linkRequestId) {
+  const session = await requireGuestSession(request, env);
+  if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
+
+  const linkRequest = await env.DB.prepare('SELECT * FROM guest_link_requests WHERE link_request_id = ?').bind(linkRequestId).first();
+  if (!linkRequest || linkRequest.candidate_session_id !== session.session_id) {
+    return json({ error: 'link request not found' }, 404);
+  }
+  if (linkRequest.status !== 'PENDING') {
+    return json({ error: 'ALREADY_DECIDED', current_status: linkRequest.status }, 409);
+  }
+  await env.DB.prepare(`UPDATE guest_link_requests SET status = 'REVOKED' WHERE link_request_id = ?`).bind(linkRequestId).run();
+  return json({ link_request_id: linkRequestId, status: 'REVOKED' });
+}
+
+async function handleConfirmLink(request, env) {
+  const session = await requireGuestSession(request, env);
+  if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid JSON body' }, 400);
+  }
+  if (!body || !body.link_request_id || !body.verification_code) {
+    return json({ error: 'link_request_id and verification_code are required' }, 400);
+  }
+
+  const linkRequest = await env.DB.prepare('SELECT * FROM guest_link_requests WHERE link_request_id = ?').bind(body.link_request_id).first();
+  if (!linkRequest || linkRequest.new_session_id !== session.session_id) {
+    return json({ error: 'link request not found for this session' }, 404);
+  }
+  if (linkRequest.status !== 'PENDING') {
+    return json({ error: 'ALREADY_DECIDED', current_status: linkRequest.status }, 409);
+  }
+  if (linkRequest.expires_at <= nowIso()) {
+    await env.DB.prepare(`UPDATE guest_link_requests SET status = 'EXPIRED' WHERE link_request_id = ?`).bind(body.link_request_id).run();
+    return json({ error: 'LINK_REQUEST_EXPIRED' }, 409);
+  }
+  if (String(body.verification_code) !== linkRequest.verification_code) {
+    return json({ error: 'INVALID_CODE' }, 400);
+  }
+
+  await env.DB
+    .prepare('UPDATE marau_test_bookings SET guest_session_id = ? WHERE guest_session_id = ?')
+    .bind(session.session_id, linkRequest.candidate_session_id)
+    .run();
+  await env.DB.prepare('UPDATE guest_sessions SET access_token_revoked = 1 WHERE session_id = ?').bind(linkRequest.candidate_session_id).run();
+  await env.DB
+    .prepare(`UPDATE guest_link_requests SET status = 'VERIFIED', verified_at = ? WHERE link_request_id = ?`)
+    .bind(nowIso(), body.link_request_id)
+    .run();
+
+  return json({ link_request_id: body.link_request_id, status: 'VERIFIED', merged_into_session_id: session.session_id });
 }
 
 async function handleChangeRequest(request, env, bookingId) {
@@ -250,28 +414,31 @@ async function handleChangeRequest(request, env, bookingId) {
 }
 
 // ---------------------------------------------------------------------
-// Deals (public browse; authenticated request)
+// Deals (public browse; authenticated request). Every touchpoint uses
+// the SAME evaluateOfferEligibility() — see offer_eligibility.js for the
+// fix this closes (expired/VALIDATED-only offers no longer surface).
 // ---------------------------------------------------------------------
 
 async function handleListDeals(env) {
-  const { results } = await env.DB
-    .prepare(`SELECT * FROM smart_offers WHERE status IN ('ACTIVE', 'VALIDATED') ORDER BY earliest_pickup ASC`)
-    .all();
+  const now = nowIso();
+  const { results } = await env.DB.prepare(`SELECT * FROM smart_offers ORDER BY earliest_pickup ASC`).all();
 
-  const deals = results.map((o) => ({
-    offer_id: o.offer_id,
-    origin_zone: o.origin_zone,
-    destination_zone: o.destination_zone,
-    vehicle_class: o.vehicle_class,
-    capacity: o.capacity,
-    total_price: o.smart_match_price ?? o.standard_price,
-    standard_price: o.standard_price,
-    conditions: `Confirmed by operator before travel. Capacity ${o.capacity}. Vehicle: ${o.vehicle_class}.`,
-    earliest_pickup: o.earliest_pickup,
-    latest_pickup: o.latest_pickup,
-    expires_at: o.expires_at,
-    label: o.test_data ? 'DEMONSTRATION DATA — preview only, not a real offer' : undefined,
-  }));
+  const deals = results
+    .filter((o) => evaluateOfferEligibility(o, now).eligible)
+    .map((o) => ({
+      offer_id: o.offer_id,
+      origin_zone: o.origin_zone,
+      destination_zone: o.destination_zone,
+      vehicle_class: o.vehicle_class,
+      capacity: o.capacity,
+      total_price: o.smart_match_price ?? o.standard_price,
+      standard_price: o.standard_price,
+      conditions: `Confirmed by operator before travel. Capacity ${o.capacity}. Vehicle: ${o.vehicle_class}.`,
+      earliest_pickup: o.earliest_pickup,
+      latest_pickup: o.latest_pickup,
+      expires_at: o.expires_at,
+      label: o.test_data ? 'DEMONSTRATION DATA — preview only, not a real offer' : undefined,
+    }));
 
   return json({ deals, demonstration_data: true });
 }
@@ -284,12 +451,12 @@ async function handleRequestDeal(request, env, offerId) {
   const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(offerId).first();
   if (!offer) return json({ error: 'offer not found' }, 404);
 
-  const isExpired = offer.expires_at && new Date(offer.expires_at) <= new Date();
-  if (isExpired || !['ACTIVE', 'VALIDATED'].includes(offer.status)) {
-    if (isExpired && offer.status !== 'EXPIRED' && offer.status !== 'FILLED') {
+  const eligibility = evaluateOfferEligibility(offer, nowIso());
+  if (!eligibility.eligible) {
+    if (eligibility.reason === 'EXPIRED' && offer.status !== 'EXPIRED' && offer.status !== 'FILLED') {
       await expireOffer(store, offerId);
     }
-    return json({ error: 'STALE_OR_EXPIRED_OFFER', detail: `offer status is ${offer.status}, expires_at ${offer.expires_at}` }, 409);
+    return json({ error: 'STALE_OR_UNAPPROVED_OFFER', reason: eligibility.reason, detail: eligibility.detail }, 409);
   }
 
   const idempotencyKey = `${session.session_id}:${offerId}`;
@@ -304,13 +471,8 @@ async function handleRequestDeal(request, env, offerId) {
     .run();
 
   const dealRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE idempotency_key = ?').bind(idempotencyKey).first();
-
   const opsNumber = env.MARAU_OPS_WHATSAPP_TEST_NUMBER || '+15556414099';
-  const whatsappHandoff = {
-    to: opsNumber,
-    message: `Marau deal request ${dealRequest.request_id}: guest wants offer ${offer.offer_id} (${offer.origin_zone} -> ${offer.destination_zone}, ${offer.vehicle_class}) at ${offer.smart_match_price ?? offer.standard_price}. Reply to confirm or decline in the ops console.`,
-    note: 'This message is constructed for you to send yourself — Marau never sends it automatically, and opening WhatsApp is not a confirmation.',
-  };
+  const whatsappHandoff = composeDealHandoffMessage({ opsNumber, dealRequestId: dealRequest.request_id, offer });
 
   return json(
     {
@@ -321,6 +483,28 @@ async function handleRequestDeal(request, env, offerId) {
     },
     insertResult.meta.changes === 1 ? 201 : 200
   );
+}
+
+// ---------------------------------------------------------------------
+// WhatsApp handoff (mock only — see whatsapp_handoff.js). FIX: the main
+// "Talk to our team" button used to only show a toast; it now composes a
+// real message (booking reference + trip details) shown in the guest
+// app's mock panel, exactly like the deal handoff, and neither one ever
+// navigates to WhatsApp.
+// ---------------------------------------------------------------------
+
+async function handleTripWhatsappHandoff(request, env) {
+  const session = await requireGuestSession(request, env);
+  if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
+
+  const { results: bookings } = await env.DB
+    .prepare('SELECT * FROM marau_test_bookings WHERE guest_session_id = ? ORDER BY pickup_datetime ASC')
+    .bind(session.session_id)
+    .all();
+  const soonest = bookings[0] || null;
+  const opsNumber = env.MARAU_OPS_WHATSAPP_TEST_NUMBER || '+15556414099';
+
+  return json({ whatsapp_handoff: composeTripHandoffMessage({ opsNumber, booking: soonest }) });
 }
 
 // ---------------------------------------------------------------------
@@ -342,11 +526,9 @@ async function handleAssist(request, env) {
     .prepare('SELECT * FROM marau_test_bookings WHERE guest_session_id = ? ORDER BY pickup_datetime ASC')
     .bind(session.session_id)
     .all();
-  const { results: offers } = await env.DB
-    .prepare(`SELECT * FROM smart_offers WHERE status IN ('ACTIVE', 'VALIDATED')`)
-    .all();
+  const { results: offers } = await env.DB.prepare(`SELECT * FROM smart_offers`).all();
 
-  return json(buildAssistResponse({ question: body.question, bookings, offers }));
+  return json(buildAssistResponse({ question: body.question, bookings, offers, nowIso: nowIso() }));
 }
 
 // ---------------------------------------------------------------------
@@ -370,8 +552,22 @@ async function handleAdminListDealRequests(env) {
   return json({ deal_requests: results });
 }
 
+/**
+ * The concurrency-critical path. Two layers of exclusivity, both
+ * required, both rolled back on any later failure so a failed attempt
+ * never leaves a phantom lock:
+ *   1. vehicle_time_claims (0010) — the SAME movement can't be claimed
+ *      by two different offers (unchanged from the original build).
+ *   2. vehicle_allocations (0014) — the SAME real vehicle can't have two
+ *      OVERLAPPING windows claimed at all, regardless of which movement
+ *      or offer they came from, and regardless of whether the other side
+ *      is an offer or an ordinary booking (see handleAdminDecideBooking).
+ * A movement with no recorded vehicle_windows row is UNKNOWN and blocks
+ * confirmation outright (checked before either claim is attempted).
+ */
 async function handleAdminConfirmDealRequest(env, requestId) {
   const store = createD1Store({ SMART_RETURN_DB: env.DB });
+  const now = nowIso();
 
   const dealRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
   if (!dealRequest) return json({ error: 'deal request not found' }, 404);
@@ -382,59 +578,93 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(dealRequest.offer_id).first();
   if (!offer) return json({ error: 'offer no longer exists' }, 404);
 
-  const isExpired = offer.expires_at && new Date(offer.expires_at) <= new Date();
-  if (isExpired || !['ACTIVE', 'VALIDATED'].includes(offer.status)) {
-    if (isExpired && offer.status !== 'EXPIRED' && offer.status !== 'FILLED') {
+  const eligibility = evaluateOfferEligibility(offer, now);
+  if (!eligibility.eligible) {
+    if (eligibility.reason === 'EXPIRED' && offer.status !== 'EXPIRED' && offer.status !== 'FILLED') {
       await expireOffer(store, offer.offer_id);
     }
-    return json({ error: 'STALE_OR_EXPIRED_OFFER', detail: `offer status is ${offer.status}` }, 409);
+    return json({ error: 'STALE_OR_UNAPPROVED_OFFER', reason: eligibility.reason, detail: eligibility.detail }, 409);
   }
 
-  // The exclusivity guard: claim the real vehicle/time slot BEFORE moving
-  // the offer's own status. If another offer for the same
-  // source_movement_id already claimed it, this throws a constraint
-  // violation and nothing else in this function runs.
+  const vehicleWindow = await findVehicleWindow(env, 'MOVEMENT', offer.source_movement_id);
+  if (!vehicleWindow) {
+    return json(
+      { error: 'VEHICLE_UNKNOWN', detail: 'No recorded vehicle/availability for this offer’s movement — cannot safely confirm.' },
+      409
+    );
+  }
+
+  let claimedMovement = false;
+  let allocationId = null;
+
+  const rollback = async () => {
+    if (allocationId) await releaseVehicleAllocation(env, allocationId);
+    if (claimedMovement) {
+      await env.DB.prepare('DELETE FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).run();
+    }
+  };
+
   try {
-    await env.DB
+    const claimResult = await env.DB
       .prepare(
-        `INSERT INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
+        `INSERT OR IGNORE INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
          VALUES (?, ?, ?, ?)`
       )
-      .bind(offer.source_movement_id, offer.offer_id, dealRequest.request_id, nowIso())
+      .bind(offer.source_movement_id, offer.offer_id, requestId, now)
       .run();
-  } catch (err) {
-    if (err.isConstraintViolation) {
+    if (claimResult.meta.changes !== 1) {
       return json(
-        {
-          error: 'VEHICLE_TIME_ALREADY_CLAIMED',
-          detail: 'Another offer for the same vehicle/time slot has already been confirmed. This request is unchanged — decline it or contact the guest with an alternative.',
-        },
+        { error: 'VEHICLE_TIME_ALREADY_CLAIMED', detail: 'This exact movement has already been claimed by another offer.' },
         409
       );
     }
+    claimedMovement = true;
+
+    allocationId = `va_${cryptoRandomId()}`;
+    const allocation = await claimVehicleAllocation(env, {
+      allocationId,
+      vehicleId: vehicleWindow.vehicle_id,
+      windowStart: vehicleWindow.window_start,
+      windowEnd: vehicleWindow.window_end,
+      subjectType: 'DEAL_REQUEST',
+      subjectId: requestId,
+      nowIso: now,
+    });
+    if (!allocation.success) {
+      allocationId = null; // nothing was actually inserted — see claimVehicleAllocation's own contract
+      await rollback();
+      return json(
+        { error: 'VEHICLE_TIME_ALREADY_CLAIMED', detail: 'This vehicle already has an overlapping commitment during this window.' },
+        409
+      );
+    }
+
+    const held = await holdOffer(store, offer.offer_id);
+    if (!held.success) {
+      await rollback();
+      return json({ error: 'OFFER_STATE_CONFLICT', detail: held.reason }, 409);
+    }
+    const filled = await fillOffer(store, offer.offer_id, { movement_id: offer.source_movement_id });
+    if (!filled.success) {
+      await rollback();
+      return json({ error: 'OFFER_STATE_CONFLICT', detail: filled.reason || 'fill failed' }, 409);
+    }
+
+    await env.DB
+      .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ?`)
+      .bind('marau-ops-preview', now, now, requestId)
+      .run();
+
+    return json({
+      request_id: requestId,
+      status: 'CONFIRMED',
+      offer: filled.offer,
+      vehicle_allocation: { allocation_id: allocationId, vehicle_id: vehicleWindow.vehicle_id, window_start: vehicleWindow.window_start, window_end: vehicleWindow.window_end },
+    });
+  } catch (err) {
+    await rollback();
     throw err;
   }
-
-  // Only reachable if this request won the exclusivity claim above.
-  if (offer.status === 'VALIDATED') {
-    await activateOffer(store, offer.offer_id);
-  }
-  const held = await holdOffer(store, offer.offer_id);
-  if (!held.success) {
-    return json({ error: 'OFFER_STATE_CONFLICT', detail: held.reason }, 409);
-  }
-  const filled = await fillOffer(store, offer.offer_id, { movement_id: offer.source_movement_id });
-
-  await env.DB
-    .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ?`)
-    .bind('marau-ops-preview', nowIso(), nowIso(), requestId)
-    .run();
-
-  return json({
-    request_id: requestId,
-    status: 'CONFIRMED',
-    offer: filled.offer,
-  });
 }
 
 async function handleAdminDeclineDealRequest(env, requestId) {
@@ -459,9 +689,42 @@ async function handleAdminDecideBooking(env, bookingId, decision) {
   const booking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
   if (!booking) return json({ error: 'booking not found' }, 404);
   if (booking.status !== 'pending') return json({ error: 'ALREADY_DECIDED', current_status: booking.status }, 409);
+
+  const now = nowIso();
+  let allocationId = null;
+
+  if (decision === 'confirm') {
+    // Ordinary bookings only participate in the vehicle/time exclusivity
+    // guard if a vehicle assignment is actually on record for them — an
+    // ordinary booking with no recorded vehicle is unaffected (this
+    // mirrors the fact that, until ops assigns a vehicle, a booking has
+    // no known conflict to check), unlike offer confirmation, where an
+    // unknown vehicle is a hard block (an offer is specifically claiming
+    // capacity from an ALREADY-assigned movement).
+    const vehicleWindow = await findVehicleWindow(env, 'BOOKING', String(bookingId));
+    if (vehicleWindow) {
+      allocationId = `va_${cryptoRandomId()}`;
+      const allocation = await claimVehicleAllocation(env, {
+        allocationId,
+        vehicleId: vehicleWindow.vehicle_id,
+        windowStart: vehicleWindow.window_start,
+        windowEnd: vehicleWindow.window_end,
+        subjectType: 'BOOKING',
+        subjectId: String(bookingId),
+        nowIso: now,
+      });
+      if (!allocation.success) {
+        return json(
+          { error: 'VEHICLE_TIME_ALREADY_CLAIMED', detail: 'This vehicle already has an overlapping commitment during this window.' },
+          409
+        );
+      }
+    }
+  }
+
   const nextStatus = decision === 'confirm' ? 'confirmed' : 'declined';
-  await env.DB.prepare('UPDATE marau_test_bookings SET status = ?, updated_at = ? WHERE id = ?').bind(nextStatus, nowIso(), bookingId).run();
-  return json({ id: bookingId, status: nextStatus });
+  await env.DB.prepare('UPDATE marau_test_bookings SET status = ?, updated_at = ? WHERE id = ?').bind(nextStatus, now, bookingId).run();
+  return json({ id: bookingId, status: nextStatus, vehicle_allocation: allocationId });
 }
 
 async function handleAdminListChangeRequests(env) {
@@ -532,6 +795,12 @@ export default {
       if (method === 'POST' && pathname === '/preview/bookings') return handleCreateBooking(request, env);
       if (method === 'GET' && pathname === '/preview/trip') return handleGetTrip(request, env);
       if (method === 'POST' && pathname === '/preview/trip/revoke') return handleRevokeTrip(request, env);
+      if (method === 'POST' && pathname === '/preview/trip/whatsapp-handoff') return handleTripWhatsappHandoff(request, env);
+
+      if (method === 'GET' && pathname === '/preview/trip/link-requests') return handleListLinkRequests(request, env);
+      const revokeLinkMatch = pathname.match(/^\/preview\/trip\/link-requests\/([^/]+)\/revoke$/);
+      if (method === 'POST' && revokeLinkMatch) return handleRevokeLinkRequest(request, env, revokeLinkMatch[1]);
+      if (method === 'POST' && pathname === '/preview/trip/link') return handleConfirmLink(request, env);
 
       const changeReqMatch = pathname.match(/^\/preview\/bookings\/(\d+)\/change-request$/);
       if (method === 'POST' && changeReqMatch) return handleChangeRequest(request, env, Number(changeReqMatch[1]));

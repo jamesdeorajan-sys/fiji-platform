@@ -25,7 +25,17 @@
  * guest_session_id before any real key is wired in. None of that exists
  * yet — this file is the bounded placeholder that keeps that door open
  * without opening it.
+ *
+ * FIX (P1, Codex review): this module used to run its OWN eligibility
+ * check (`status === 'ACTIVE' || status === 'VALIDATED'`, no expiry
+ * check at all), separate from GET /preview/deals's check — an expired
+ * offer that was still marked ACTIVE in storage could be recommended
+ * here even after it had disappeared from the public list, or vice
+ * versa. It now imports the SAME evaluateOfferEligibility() worker.js
+ * uses everywhere else, so there is exactly one definition of "eligible
+ * to show a guest" in the whole codebase.
  */
+import { evaluateOfferEligibility } from './offer_eligibility.js';
 
 export const AI_DISCLOSURE =
   'This is Marau’s automated assistant, not a person. It only uses your booking details and approved offers — nothing is invented.';
@@ -39,14 +49,15 @@ function zonesOf(booking) {
 }
 
 /**
- * Ranks already-approved offers (status ACTIVE or VALIDATED, never
- * DISCOVERED/HELD/FILLED/EXPIRED) against the guest's own bookings. Every
- * field in the output is copied verbatim from a real offer row — nothing
- * is computed, guessed, or invented.
+ * Ranks already-approved, currently-eligible offers (see
+ * offer_eligibility.js — ACTIVE, not expired, priced at/above floor,
+ * has inventory) against the guest's own bookings. Every field in the
+ * output is copied verbatim from a real offer row — nothing is computed,
+ * guessed, or invented.
  */
-export function rankOffersForGuest(offers, bookings) {
+export function rankOffersForGuest(offers, bookings, nowIso = new Date().toISOString()) {
   const knownZones = new Set(bookings.flatMap(zonesOf));
-  const eligible = offers.filter((o) => o.status === 'ACTIVE' || o.status === 'VALIDATED');
+  const eligible = offers.filter((o) => evaluateOfferEligibility(o, nowIso).eligible);
 
   const scored = eligible.map((offer) => {
     const zoneMatch = knownZones.has(offer.origin_zone) || knownZones.has(offer.destination_zone);
@@ -117,9 +128,9 @@ export function answerRoutineQuestion(question, bookings) {
   };
 }
 
-export function buildAssistResponse({ question, bookings, offers }) {
+export function buildAssistResponse({ question, bookings, offers, nowIso = new Date().toISOString() }) {
   const answer = answerRoutineQuestion(question, bookings);
-  const ranked = rankOffersForGuest(offers, bookings);
+  const ranked = rankOffersForGuest(offers, bookings, nowIso);
   return {
     ai: true,
     disclosure: AI_DISCLOSURE,

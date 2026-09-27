@@ -86,29 +86,12 @@ test('retrying the same client_booking_ref is idempotent — no duplicate row, s
   assert.equal(trip.data.bookings.length, 1, 'a retried submit must not create a second booking row');
 });
 
-test('a second booking from the SAME guest phone reuses the existing trip link — one guest, one session', async () => {
-  const env = makeEnv();
-  const phone = '+15005550199';
-  const first = await call(env, '/preview/bookings', withJson('POST', synthGuest({ guest_phone: phone, client_booking_ref: 'MULTI-A' })));
-  const second = await call(env, '/preview/bookings', withJson('POST', synthGuest({ guest_phone: phone, client_booking_ref: 'MULTI-B' })));
-  assert.equal(first.data.access_token, second.data.access_token, 'same phone must resolve to the same session/access token');
-
-  const trip = await call(env, '/preview/trip', { headers: authed(first.data.access_token) });
-  assert.equal(trip.data.bookings.length, 2);
-});
-
-test('the soonest pickup is always first, regardless of booking order', async () => {
-  const env = makeEnv();
-  const phone = '+15005550222';
-  const later = new Date(Date.now() + 72 * 3600_000).toISOString().slice(0, 16);
-  const soon = new Date(Date.now() + 6 * 3600_000).toISOString().slice(0, 16);
-  await call(env, '/preview/bookings', withJson('POST', synthGuest({ guest_phone: phone, pickup_datetime: later, client_booking_ref: 'ORDER-LATER' })));
-  const res = await call(env, '/preview/bookings', withJson('POST', synthGuest({ guest_phone: phone, pickup_datetime: soon, client_booking_ref: 'ORDER-SOON' })));
-
-  const trip = await call(env, '/preview/trip', { headers: authed(res.data.access_token) });
-  assert.equal(trip.data.bookings[0].client_booking_ref, 'ORDER-SOON');
-  assert.equal(trip.data.bookings[1].client_booking_ref, 'ORDER-LATER');
-});
+// NOTE: "same phone automatically reuses an existing session" and
+// "multi-booking ordering" are now covered in marau_codex_fixes.test.mjs,
+// rewritten against the corrected verified-linking behaviour — see that
+// file's P0 GUEST ACCESS section for why the old versions of these two
+// tests here directly encoded the vulnerability Codex found and have
+// been removed rather than patched in place.
 
 // ---------------------------------------------------------------------
 // Secure / revocable access
@@ -189,7 +172,8 @@ test('a stale/expired offer is rejected on request', async () => {
   const created = await call(env, '/preview/bookings', withJson('POST', guest));
   const res = await call(env, `/preview/deals/${offer.offer_id}/request`, { method: 'POST', headers: authed(created.data.access_token) });
   assert.equal(res.status, 409);
-  assert.equal(res.data.error, 'STALE_OR_EXPIRED_OFFER');
+  assert.equal(res.data.error, 'STALE_OR_UNAPPROVED_OFFER');
+  assert.equal(res.data.reason, 'EXPIRED');
 });
 
 // ---------------------------------------------------------------------

@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installNetworkGuard } from './network_guard.mjs';
-import { makeEnv, seedCompetingOffersForSameVehicle, synthGuest } from './fixtures.mjs';
+import { makeEnv, seedCompetingOffersForSameMovement, synthGuest } from './fixtures.mjs';
 import worker from '../worker/worker.js';
 
 installNetworkGuard();
@@ -44,7 +44,7 @@ async function bookAndRequest(env, offerId) {
 
 test('two different offers for the same real vehicle/time: only ONE confirmation can ever win', async () => {
   const env = makeEnv();
-  const { offerA, offerB } = await seedCompetingOffersForSameVehicle(env);
+  const { offerA, offerB } = await seedCompetingOffersForSameMovement(env);
   assert.equal(offerA.source_movement_id, offerB.source_movement_id, 'fixture sanity check: both offers must share one vehicle/movement');
   assert.notEqual(offerA.offer_id, offerB.offer_id);
 
@@ -80,7 +80,7 @@ test('two different offers for the same real vehicle/time: only ONE confirmation
 
 test('the loser can still be explicitly declined by ops after losing the vehicle/time race', async () => {
   const env = makeEnv();
-  const { offerA, offerB } = await seedCompetingOffersForSameVehicle(env);
+  const { offerA, offerB } = await seedCompetingOffersForSameMovement(env);
   const guestA = await bookAndRequest(env, offerA.offer_id);
   const guestB = await bookAndRequest(env, offerB.offer_id);
 
@@ -95,7 +95,7 @@ test('the loser can still be explicitly declined by ops after losing the vehicle
 
 test('confirming an already-decided deal request is rejected, not silently repeated', async () => {
   const env = makeEnv();
-  const { offerA } = await seedCompetingOffersForSameVehicle(env);
+  const { offerA } = await seedCompetingOffersForSameMovement(env);
   const guest = await bookAndRequest(env, offerA.offer_id);
 
   const first = await call(env, `/preview/admin/deal-requests/${guest.requestId}/confirm`, { method: 'POST', headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
@@ -108,7 +108,7 @@ test('confirming an already-decided deal request is rejected, not silently repea
 
 test('five simultaneous confirmations for the same vehicle/time (across three different offers) still yield exactly one winner', async () => {
   const env = makeEnv();
-  const { offerA, offerB } = await seedCompetingOffersForSameVehicle(env);
+  const { offerA, offerB } = await seedCompetingOffersForSameMovement(env);
   // Add a third competing offer sharing offerA's movement, via a second
   // fixture call reusing offerA's movement id would require exposing it —
   // simpler and equally valid: request the SAME offerA from two different

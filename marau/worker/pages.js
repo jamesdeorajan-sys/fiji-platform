@@ -4,9 +4,32 @@
  * carried over from marau-app-prototype.html (the approved design
  * reference), rewired from localStorage-simulated data to the real
  * /preview/* API. No Lagi reference anywhere — Lagi is excluded from this
- * stage per the mission. WhatsApp only ever appears as a plain link the
- * guest or operator clicks themselves; nothing here sends anything.
+ * stage per the mission.
+ *
+ * FIX (P1, Codex review): WhatsApp handoffs — both the main "Talk to our
+ * team" button (which used to only show a toast, doing nothing useful)
+ * and the per-deal handoff (which used to build a real, clickable
+ * `https://wa.me/...` link) — are now shown ONLY in an in-page mock
+ * panel with a copy button. Neither path constructs a wa.me URL or
+ * navigates anywhere; grep this file for "wa.me" to confirm.
+ *
+ * FIX (P1, Codex review): the booking form now generates and persists a
+ * client-side idempotency key BEFORE its first submit, via
+ * ../worker/client_idempotency.js's two functions, embedded verbatim
+ * below (see EMBEDDED_CLIENT_IDEMPOTENCY) so the exact code this file's
+ * own tests exercise is what runs in the browser.
  */
+import { getOrCreateClientBookingRef, clearClientBookingRef, defaultRandomSource } from './client_idempotency.js';
+
+// Splicing these functions' own source into the emitted <script> means
+// the browser runs literally the same code marau/test/*.test.mjs already
+// unit-tests against a fake storage — not a hand-copied duplicate that
+// could silently drift out of sync with it.
+const EMBEDDED_CLIENT_IDEMPOTENCY = `
+${getOrCreateClientBookingRef.toString()}
+${clearClientBookingRef.toString()}
+${defaultRandomSource.toString()}
+`;
 
 const SHARED_STYLE = `
 <style>
@@ -52,11 +75,14 @@ const SHARED_STYLE = `
   .deal-card .was { text-decoration: line-through; color: var(--muted); font-size: 13px; margin-left: 6px; }
   .toast { position: fixed; left: 16px; right: 16px; bottom: 70px; background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 10px; text-align:center; opacity:0; transform: translateY(8px); transition: .2s; pointer-events:none; }
   .toast.show { opacity: 1; transform: translateY(0); }
-  a.wa-link { word-break: break-word; }
   table { width:100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align:left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  code { font-size: 12px; background: var(--shallows); padding: 1px 5px; border-radius: 6px; }
+  code { font-size: 12px; background: var(--shallows); padding: 1px 5px; border-radius: 6px; word-break: break-all; }
   .banner { background: var(--frangipani); color: var(--frang-ink); border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight:600; margin-bottom: 12px; }
+  .mock-wa { border: 1px dashed var(--lagoon); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--shallows); }
+  .mock-wa .label { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--lagoon); }
+  .mock-wa .msg { background: var(--surface); border-radius: 8px; padding: 10px; margin: 8px 0; font-size: 13px; white-space: pre-wrap; }
+  .link-code { font-size: 24px; font-weight: 800; letter-spacing: .08em; text-align: center; padding: 10px; background: var(--shallows); border-radius: 10px; margin: 6px 0; }
 </style>`;
 
 export const GUEST_APP_HTML = `<!doctype html>
@@ -99,6 +125,8 @@ ${SHARED_STYLE}
   </section>
 
   <section id="view-trip" class="view">
+    <div class="panel" id="linkOfferPanel" style="display:none"></div>
+    <div class="panel" id="linkInboxPanel" style="display:none"></div>
     <div class="panel" id="tripPanel"><p class="muted">Loading your trip…</p></div>
     <div class="panel">
       <h2>Ask Marau</h2>
@@ -106,7 +134,8 @@ ${SHARED_STYLE}
       <input id="assistQ" placeholder="e.g. when is my pickup?">
       <button class="btn btn-light btn-block" id="assistBtn" type="button">Ask</button>
       <div id="assistAnswer" class="small" style="margin-top:8px"></div>
-      <a class="btn btn-light btn-block" id="humanHandoffLink" href="#" target="_blank" rel="noopener">Talk to our team on WhatsApp</a>
+      <button class="btn btn-light btn-block" id="humanHandoffBtn" type="button">Talk to our team on WhatsApp</button>
+      <div id="tripHandoffPanel"></div>
     </div>
     <button class="btn btn-light btn-block" id="revokeBtn" type="button">Revoke this device's access</button>
   </section>
@@ -127,10 +156,45 @@ ${SHARED_STYLE}
 <div class="toast" id="toast"></div>
 
 <script>
+${EMBEDDED_CLIENT_IDEMPOTENCY}
 (function () {
   var API = '';
   var els = {};
-  ['bookingForm','startError','tripPanel','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffLink','aiDisclosure','toast'].forEach(function(id){ els[id] = document.getElementById(id); });
+  ['bookingForm','startError','tripPanel','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel'].forEach(function(id){ els[id] = document.getElementById(id); });
+
+  // Shown for BOTH the main "Talk to our team" handoff and a per-deal
+  // handoff — never a live link, never navigation. "container" is the
+  // element to render into; "handoff" is { to, message, note }.
+  function renderMockWhatsApp(container, handoff) {
+    if (!container || !handoff) return;
+    var msgId = 'wa-msg-' + Math.random().toString(36).slice(2);
+    container.innerHTML = '<div class="mock-wa">' +
+      '<div class="label">Preview mock — nothing is sent</div>' +
+      '<p class="small muted">' + handoff.note + '</p>' +
+      '<p class="small"><strong>To:</strong> ' + handoff.to + '</p>' +
+      '<div class="msg" id="' + msgId + '"></div>' +
+      '<button class="btn btn-light btn-block" data-copy="' + msgId + '" type="button">Copy message</button>' +
+      '</div>';
+    container.querySelector('#' + msgId).textContent = handoff.message;
+    var copyBtn = container.querySelector('[data-copy]');
+    copyBtn.addEventListener('click', function () {
+      var text = handoff.message;
+      var done = function () { toast('Message copied.'); };
+      var fail = function () {
+        var range = document.createRange();
+        range.selectNodeContents(document.getElementById(msgId));
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        toast('Copy failed — message selected instead.');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(fail);
+      } else {
+        fail();
+      }
+    });
+  }
 
   function toast(msg) {
     els.toast.textContent = msg;
@@ -192,6 +256,53 @@ ${SHARED_STYLE}
     els.tripPanel.innerHTML = html;
   }
 
+  var pendingLinkOffer = null;
+
+  function renderLinkOffer() {
+    if (!pendingLinkOffer) { els.linkOfferPanel.style.display = 'none'; return; }
+    els.linkOfferPanel.style.display = 'block';
+    els.linkOfferPanel.innerHTML = '<h2>Link an earlier booking?</h2>' +
+      '<p class="small muted">' + pendingLinkOffer.message + '</p>' +
+      '<label for="linkCode">Verification code</label>' +
+      '<input id="linkCode" inputmode="numeric" maxlength="6" placeholder="6-digit code">' +
+      '<button class="btn btn-primary btn-block" id="linkConfirmBtn" type="button">Confirm link</button>' +
+      '<p id="linkError" class="small" style="color:var(--hibiscus)"></p>';
+    document.getElementById('linkConfirmBtn').addEventListener('click', function () {
+      var code = document.getElementById('linkCode').value.trim();
+      authFetch('/preview/trip/link', { method: 'POST', body: JSON.stringify({ link_request_id: pendingLinkOffer.link_request_id, verification_code: code }) }).then(function (res) {
+        if (!res.ok) { document.getElementById('linkError').textContent = res.data.error || 'Could not link.'; return; }
+        pendingLinkOffer = null;
+        toast('Linked — your earlier bookings now show here too.');
+        loadTrip();
+      });
+    });
+  }
+
+  // The verification code for a link request targeting THIS session only
+  // ever appears here — GET /preview/trip/link-requests requires this
+  // session's own access token, standing in for "only the real phone/
+  // email owner receives it" without a real SMS/email provider.
+  function loadLinkInbox() {
+    authFetch('/preview/trip/link-requests').then(function (res) {
+      if (!res.ok) { els.linkInboxPanel.style.display = 'none'; return; }
+      var rows = res.data.link_requests || [];
+      if (rows.length === 0) { els.linkInboxPanel.style.display = 'none'; return; }
+      els.linkInboxPanel.style.display = 'block';
+      els.linkInboxPanel.innerHTML = '<h2>A device is trying to link to this trip</h2>' +
+        rows.map(function (r) {
+          return '<p class="small muted">' + r.note + '</p>' +
+            '<div class="link-code">' + r.verification_code + '</div>' +
+            '<p class="small muted">Share this code with the other device, or revoke it if you don’t recognize this.</p>' +
+            '<button class="btn btn-light btn-block" data-revoke-link="' + r.link_request_id + '" type="button">Revoke</button>';
+        }).join('<hr style="border:none;border-top:1px solid var(--line);margin:12px 0">');
+      els.linkInboxPanel.querySelectorAll('[data-revoke-link]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          authFetch('/preview/trip/link-requests/' + btn.dataset.revokeLink + '/revoke', { method: 'POST' }).then(function () { loadLinkInbox(); });
+        });
+      });
+    });
+  }
+
   function loadTrip() {
     if (!getToken()) {
       showView('start');
@@ -200,6 +311,8 @@ ${SHARED_STYLE}
     authFetch('/preview/trip').then(function (res) {
       if (!res.ok) { clearToken(); showView('start'); return; }
       renderTrip(res.data);
+      renderLinkOffer();
+      loadLinkInbox();
       showView('trip');
     });
   }
@@ -207,7 +320,14 @@ ${SHARED_STYLE}
   els.bookingForm.addEventListener('submit', function (e) {
     e.preventDefault();
     els.startError.textContent = '';
+    // Generated ONCE, before the first network attempt, and persisted —
+    // a reload or a retried submit (timeout, double-click) reuses this
+    // SAME reference instead of minting a new one each time, so the
+    // server's own idempotency (client_booking_ref) actually gets the
+    // chance to recognize a retry rather than always seeing a fresh key.
+    var clientBookingRef = getOrCreateClientBookingRef(sessionStorage, defaultRandomSource);
     var body = {
+      client_booking_ref: clientBookingRef,
       guest_email: document.getElementById('f-email').value,
       guest_phone: document.getElementById('f-phone').value,
       whatsapp_available: document.getElementById('f-wa').checked,
@@ -221,7 +341,9 @@ ${SHARED_STYLE}
       .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
       .then(function (res) {
         if (!res.ok) { els.startError.textContent = (res.data.details || [res.data.error]).join('; '); return; }
+        clearClientBookingRef(sessionStorage); // this attempt is done — a genuinely NEW booking later gets a fresh key
         setToken(res.data.access_token);
+        pendingLinkOffer = res.data.link_offer || null;
         toast('Saved. Reference ' + res.data.booking_reference + ' — ' + res.data.message);
         loadTrip();
       })
@@ -254,14 +376,10 @@ ${SHARED_STYLE}
         var offerId = btn.dataset.offer;
         authFetch('/preview/deals/' + encodeURIComponent(offerId) + '/request', { method: 'POST' }).then(function (res) {
           if (!res.ok) { toast(res.data.error || 'Could not request this deal.'); return; }
-          var handoff = res.data.whatsapp_handoff;
           var target = els.dealsList.querySelector('[data-handoff="' + offerId + '"]');
           btn.disabled = true;
           btn.textContent = 'Requested (' + res.data.status + ')';
-          if (target && handoff) {
-            target.innerHTML = '<p class="muted">' + handoff.note + '</p>' +
-              '<a class="btn btn-light btn-block wa-link" target="_blank" rel="noopener" href="https://wa.me/' + handoff.to.replace(/[^0-9]/g, '') + '?text=' + encodeURIComponent(handoff.message) + '">Open WhatsApp to reach our team</a>';
-          }
+          renderMockWhatsApp(target, res.data.whatsapp_handoff);
         });
       });
     });
@@ -282,9 +400,11 @@ ${SHARED_STYLE}
     });
   });
 
-  els.humanHandoffLink.addEventListener('click', function (e) {
-    e.preventDefault();
-    toast('Use "Request this deal" or the assistant to reach our team with your booking details.');
+  els.humanHandoffBtn.addEventListener('click', function () {
+    authFetch('/preview/trip/whatsapp-handoff', { method: 'POST' }).then(function (res) {
+      if (!res.ok) { toast(res.data.error || 'Could not compose a message.'); return; }
+      renderMockWhatsApp(els.tripHandoffPanel, res.data.whatsapp_handoff);
+    });
   });
 
   loadTrip();
