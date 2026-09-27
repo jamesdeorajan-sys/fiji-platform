@@ -2,6 +2,8 @@
 
 Codex independently reproduced 323/323 passing tests at commit `4d44fbd` and inspected the committed screenshots. This round closes the three remaining acceptance gaps named in the mission ("MARAU — STAGE 1 RELEASE COMPLETION"), then re-attempts isolated Cloudflare D1 and browser acceptance. No new features, no production changes, no live sends.
 
+> **CORRECTION (round 5, `MARAU_STAGE1_CODEX_FIXES_ROUND5.md`):** this document's "Remaining release blockers" section originally claimed *"no code-level blocker remains"* for confirmation integrity. That was wrong — a fifth independent review found a genuine concurrency gap in exactly this area (an admin's `reconcile-confirmation` call was mistaken for exclusive ownership of a still-in-flight confirm attempt, letting the original resume and commit `CONFIRMED` after reconcile had already unwound its allocation). Fixed in round 5 via attempt-level fencing; see that document for the full write-up. Left here, uncorrected in place, per this repo's own convention of marking prior entries superseded rather than rewriting them.
+
 ## 1. Confirmation integrity
 
 **Finding:** Codex rejected `INSERT INTO confirmation_attempts` with a SQLite trigger. Result: uncaught error, guest Trip **CONFIRMED**, offer **ACTIVE**, zero allocations and zero audit rows. A late failure plus failed offer compensation also left the guest Trip CONFIRMED with zero allocations.

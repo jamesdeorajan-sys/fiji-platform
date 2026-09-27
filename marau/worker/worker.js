@@ -806,14 +806,84 @@ async function handleAdminListDealRequests(env) {
     .all();
   const stalledByRequest = new Map(stalledAttempts.map((a) => [a.request_id, a]));
 
+  // FIX (bounded round-5 correction, finding 2 — interrupted claims
+  // discoverable): a claim can exist with NO confirmation_attempts row at
+  // all (an interruption before the very first audit write ever
+  // happened) — the query above finds nothing for that case, which
+  // previously left this list silently disagreeing with the
+  // confirm/decline gate's own (now corrected) CONFIRMATION_INTERRUPTED
+  // response for the exact same request. Any REQUESTED request that
+  // holds a decision claim is surfaced here too, regardless of whether
+  // an attempt row exists.
+  const { results: openClaims } = await env.DB.prepare('SELECT request_id FROM deal_decision_claims').all();
+  const claimedRequestIds = new Set(openClaims.map((c) => c.request_id));
+
   const enriched = results.map((r) => {
     const stalled = stalledByRequest.get(r.request_id);
-    return stalled
-      ? { ...r, reconciliation_needed: true, stalled_phase: stalled.phase, stalled_detail: stalled.error_detail }
-      : { ...r, reconciliation_needed: false };
+    if (stalled) {
+      return { ...r, reconciliation_needed: true, stalled_phase: stalled.phase, stalled_detail: stalled.error_detail };
+    }
+    if (r.status === 'REQUESTED' && claimedRequestIds.has(r.request_id)) {
+      return { ...r, reconciliation_needed: true, stalled_phase: null, stalled_detail: 'A decision claim exists but no confirmation attempt record was ever created for it.' };
+    }
+    return { ...r, reconciliation_needed: false };
   });
 
   return json({ deal_requests: enriched });
+}
+
+/**
+ * FIX (bounded round-5 correction, finding 2 — interrupted claims
+ * discoverable): whenever a decision claim's own INSERT fails for a
+ * request whose OWN status is still 'REQUESTED' (guaranteed by the
+ * caller checking that immediately before attempting the claim), nothing
+ * has actually been decided yet — the winning side is either still
+ * genuinely in progress or died before finishing. This is ALWAYS an
+ * interrupted-or-in-progress situation, never legitimately
+ * "ALREADY_DECIDED" — that label used to leak out even when NO
+ * confirmation_attempts row existed at all for the stuck claim (an
+ * interruption before the very first audit write ever happened), which
+ * directly contradicted the ops list's own `reconciliation_needed` flag
+ * for the exact same request. This is detectable purely from claim +
+ * request state; a confirmation_attempts row is not required for it to
+ * be discoverable, and the response always names the same actionable
+ * recovery path regardless.
+ */
+async function describeStuckClaim(env, requestId) {
+  const priorAttempt = await env.DB
+    .prepare('SELECT * FROM confirmation_attempts WHERE request_id = ? ORDER BY created_at DESC LIMIT 1')
+    .bind(requestId)
+    .first();
+  return { requestId, priorAttempt };
+}
+
+function interruptedOrAlreadyDecidedResponse({ requestId, priorAttempt }) {
+  return {
+    error: 'CONFIRMATION_INTERRUPTED',
+    detail: priorAttempt
+      ? `A previous confirmation attempt stalled at phase ${priorAttempt.phase} and needs admin reconciliation before this request can be decided again.`
+      : 'A decision claim exists for this request but no confirmation attempt record was ever created — an earlier attempt was interrupted before it could record any state. Needs admin reconciliation.',
+    recovery_action: `POST /preview/admin/deal-requests/${requestId}/reconcile-confirmation`,
+  };
+}
+
+/**
+ * Thrown by the confirm handler's fenced phase-advance (`advance()`) when
+ * the CAS `UPDATE confirmation_attempts SET phase = <next> WHERE
+ * attempt_id = ? AND phase = <expected current>` affects zero rows — the
+ * phase has changed under this attempt from somewhere else (an admin's
+ * concurrent `reconcile-confirmation` call winning the same CAS race, or
+ * this same attempt's own rollback() already having fenced it). The
+ * caller MUST treat this as "ownership has been taken away" and abort
+ * immediately without any further writes — never fall back to its own
+ * rollback(), which would race whoever now legitimately owns the attempt.
+ */
+class ConfirmationFencedError extends Error {
+  constructor(fromPhase, toPhase) {
+    super(`FENCED: lost ownership advancing ${fromPhase} -> ${toPhase} — a concurrent reconcile or rollback already took this attempt`);
+    this.fromPhase = fromPhase;
+    this.toPhase = toPhase;
+  }
 }
 
 /**
@@ -891,21 +961,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     .bind(requestId, now)
     .run();
   if (claim.meta.changes !== 1) {
-    const priorAttempt = await env.DB
-      .prepare('SELECT * FROM confirmation_attempts WHERE request_id = ? ORDER BY created_at DESC LIMIT 1')
-      .bind(requestId)
-      .first();
-    if (priorAttempt && !['DONE', 'ROLLED_BACK'].includes(priorAttempt.phase)) {
-      return json(
-        {
-          error: 'CONFIRMATION_INTERRUPTED',
-          detail: `A previous confirmation attempt stalled at phase ${priorAttempt.phase} and needs admin reconciliation before this request can be decided again.`,
-          recovery_action: `POST /preview/admin/deal-requests/${requestId}/reconcile-confirmation`,
-        },
-        409
-      );
-    }
-    return json({ error: 'ALREADY_DECIDED', detail: 'Another decision (confirm or decline) already won this request.' }, 409);
+    return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
   }
 
   // From here on, this attempt holds the claim — any early return MUST
@@ -951,15 +1007,38 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   }
 
   let attemptId = null;
+  let phase = null; // the last phase THIS process successfully advanced to
   let claimedMovement = false;
   let allocationId = null;
 
-  async function setAttemptPhase(phase, errorDetail) {
-    if (!attemptId) return;
-    await env.DB
-      .prepare(`UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ? WHERE attempt_id = ?`)
-      .bind(phase, errorDetail ?? null, nowIso(), attemptId)
+  // FIX (bounded round-5 correction, finding 1 — confirmation/
+  // reconciliation concurrency): every forward-progress phase transition
+  // is now a CAS — `UPDATE ... WHERE attempt_id = ? AND phase = <the
+  // phase THIS process last successfully wrote>`. Admin authentication on
+  // a concurrent reconcile-confirmation call is NOT the same thing as
+  // exclusive ownership of this specific in-flight attempt — Codex's
+  // repro paused this handler immediately after its vehicle_allocations
+  // INSERT committed, called reconcile (which fenced the phase and
+  // unwound the allocation/movement claim), then resumed this handler,
+  // which — before this fix — had no way to know anything had changed
+  // and went on to write CONFIRMED anyway, leaving a FILLED offer with
+  // zero allocations/claims behind it. Now: if reconcile (or this same
+  // attempt's own rollback(), see below) wins the phase-CAS first, EVERY
+  // subsequent advance() call here fails its own CAS and throws
+  // ConfirmationFencedError — caught below, and the ONLY correct
+  // response is to abort immediately without writing anything further
+  // (never fall back to this attempt's own rollback(), which would race
+  // whoever now legitimately owns the attempt).
+  async function advance(toPhase, errorDetail) {
+    const fromPhase = phase;
+    const result = await env.DB
+      .prepare(`UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = ?`)
+      .bind(toPhase, errorDetail ?? null, nowIso(), attemptId, fromPhase)
       .run();
+    if (result.meta.changes !== 1) {
+      throw new ConfirmationFencedError(fromPhase, toPhase);
+    }
+    phase = toPhase;
   }
 
   // Fully compensates every write this attempt made. deal_requests.status
@@ -967,7 +1046,35 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   // first place (see the file header) — so there is nothing to revert
   // there. Each step is independently try/caught so one failing
   // compensating write never prevents the others from running.
+  //
+  // This ALSO fences itself first: a self-triggered rollback (a normal
+  // business-conflict rejection, e.g. the offer got held elsewhere) must
+  // not blindly compensate resources a CONCURRENT reconcile call has
+  // already taken ownership of and started compensating itself — that
+  // would race the same deletes/reverts twice. If the fence CAS
+  // (`phase -> 'ROLLING_BACK'`) loses, this attempt has already been
+  // superseded and must not touch anything further; reconcile owns it now.
   async function rollback() {
+    // `phase` is still null when the confirmation_attempts row's own
+    // INSERT itself never succeeded (e.g. Codex's exact repro — a
+    // trigger rejecting that INSERT) — there is no row to fence at all,
+    // and per the invariant that this INSERT is the very first write
+    // inside the try block, nothing else could have happened yet either
+    // (claimedMovement is false, allocationId is null). Fencing only
+    // applies once a row genuinely exists to own.
+    let holdsFence = false;
+    if (phase !== null) {
+      const fenced = await env.DB
+        .prepare(`UPDATE confirmation_attempts SET phase = 'ROLLING_BACK', updated_at = ? WHERE attempt_id = ? AND phase = ?`)
+        .bind(nowIso(), attemptId, phase)
+        .run();
+      if (fenced.meta.changes !== 1) {
+        return { fullyRolledBack: false, supersededByReconcile: true };
+      }
+      phase = 'ROLLING_BACK';
+      holdsFence = true;
+    }
+
     const failures = [];
     try {
       if (env.__TEST_FAIL_ROLLBACK_STEP__ === 'offer_status') throw new Error('INJECTED_ROLLBACK_FAILURE(offer_status)');
@@ -993,7 +1100,9 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       }
     }
     if (failures.length > 0) {
-      await setAttemptPhase('ROLLBACK_FAILED', failures.join('; '));
+      if (holdsFence) {
+        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = 'ROLLING_BACK'`).bind(failures.join('; '), nowIso(), attemptId).run();
+      }
       // Deliberately do NOT free the decision claim — its true state
       // can't be safely assumed, so a further attempt must not be able
       // to race in. Only the admin reconcile endpoint may resolve this.
@@ -1004,10 +1113,14 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     // (still 'REQUESTED'), genuinely safe to retry.
     try {
       await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-      await setAttemptPhase('ROLLED_BACK', null);
+      if (holdsFence) {
+        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ? AND phase = 'ROLLING_BACK'`).bind(nowIso(), attemptId).run();
+      }
       return { fullyRolledBack: true };
     } catch (e) {
-      await setAttemptPhase('ROLLBACK_FAILED', 'claim_release: ' + e.message);
+      if (holdsFence) {
+        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ?`).bind('claim_release: ' + e.message, nowIso(), attemptId).run();
+      }
       return { fullyRolledBack: false };
     }
   }
@@ -1018,8 +1131,9 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       .prepare(`INSERT INTO confirmation_attempts (attempt_id, request_id, offer_id, phase, created_at, updated_at) VALUES (?, ?, ?, 'STARTED', ?, ?)`)
       .bind(attemptId, requestId, offer.offer_id, now, now)
       .run();
+    phase = 'STARTED';
 
-    await setAttemptPhase('CLAIMING_MOVEMENT');
+    await advance('CLAIMING_MOVEMENT');
     const movementClaim = await env.DB
       .prepare(
         `INSERT OR IGNORE INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
@@ -1032,7 +1146,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       // was touched, so freeing the decision claim directly is enough;
       // no offer/allocation state exists yet to compensate.
       await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-      await setAttemptPhase('ROLLED_BACK', 'VEHICLE_TIME_ALREADY_CLAIMED');
+      await advance('ROLLED_BACK', 'VEHICLE_TIME_ALREADY_CLAIMED');
       return json(
         { error: 'VEHICLE_TIME_ALREADY_CLAIMED', detail: 'This exact movement has already been claimed by another offer.' },
         409
@@ -1040,7 +1154,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     }
     claimedMovement = true;
 
-    await setAttemptPhase('CLAIMING_VEHICLE');
+    await advance('CLAIMING_VEHICLE');
     allocationId = `va_${cryptoRandomId()}`;
     const allocation = await claimVehicleAllocation(env, {
       allocationId,
@@ -1064,14 +1178,23 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       );
     }
 
-    await setAttemptPhase('HOLDING_OFFER');
+    // Test-only pause hook, exercised by the round-5 concurrency
+    // regression to reproduce Codex's exact repro: "pause immediately
+    // after vehicle_allocations INSERT commits but before its awaited
+    // result returns; call reconcile-confirmation; resume original
+    // confirmation." Never present on any real env.
+    if (typeof env.__TEST_PAUSE_AFTER_ALLOCATION__ === 'function') {
+      await env.__TEST_PAUSE_AFTER_ALLOCATION__();
+    }
+
+    await advance('HOLDING_OFFER');
     const held = await holdOffer(store, offer.offer_id);
     if (!held.success) {
       const result = await rollback();
       return json({ error: 'OFFER_STATE_CONFLICT', detail: held.reason, reconciliation_needed: !result.fullyRolledBack }, 409);
     }
 
-    await setAttemptPhase('FILLING_OFFER');
+    await advance('FILLING_OFFER');
     const filled = await fillOffer(store, offer.offer_id, { movement_id: offer.source_movement_id });
     if (!filled.success) {
       const result = await rollback();
@@ -1084,10 +1207,12 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       env.__TEST_INJECT_FAILURE_BEFORE_FINAL_UPDATE__();
     }
 
-    await setAttemptPhase('DONE');
+    await advance('DONE');
 
-    // ONLY NOW — after every real side effect and the durable audit trail
-    // have fully succeeded — does the guest-visible status ever change.
+    // ONLY NOW — after every real side effect, the fenced phase advance
+    // to DONE, and the durable audit trail have fully succeeded — does
+    // the guest-visible status ever change. Reaching DONE via the CAS
+    // above is itself proof no concurrent reconcile call won the race.
     await env.DB
       .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
       .bind('marau-ops-preview', nowIso(), nowIso(), requestId)
@@ -1100,7 +1225,31 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       vehicle_allocation: { allocation_id: allocationId, vehicle_id: vehicleWindow.vehicle_id, window_start: vehicleWindow.window_start, window_end: vehicleWindow.window_end },
     });
   } catch (err) {
+    if (err instanceof ConfirmationFencedError) {
+      // Ownership was taken away from under us (a concurrent
+      // reconcile-confirmation call, or this same attempt's own
+      // rollback() already fenced it) — abort immediately. Do NOT call
+      // rollback() here: whoever won the fence already owns compensation
+      // for this attempt, and racing it would risk double-releasing the
+      // same resources.
+      return json(
+        {
+          error: 'CONFIRMATION_SUPERSEDED',
+          detail: `This confirmation attempt lost ownership advancing from ${err.fromPhase} to ${err.toPhase} — a concurrent admin reconciliation (or this attempt's own conflict-triggered rollback) already took over. No further state was written by this attempt.`,
+        },
+        409
+      );
+    }
     const result = await rollback();
+    if (result.supersededByReconcile) {
+      return json(
+        {
+          error: 'CONFIRMATION_SUPERSEDED',
+          detail: 'This confirmation attempt failed and, on trying to roll itself back, found a concurrent admin reconciliation had already taken ownership. No further state was written by this attempt.',
+        },
+        409
+      );
+    }
     return json(
       {
         error: 'CONFIRMATION_FAILED',
@@ -1130,21 +1279,7 @@ async function handleAdminDeclineDealRequest(env, requestId) {
     .bind(requestId, now)
     .run();
   if (claim.meta.changes !== 1) {
-    const priorAttempt = await env.DB
-      .prepare('SELECT * FROM confirmation_attempts WHERE request_id = ? ORDER BY created_at DESC LIMIT 1')
-      .bind(requestId)
-      .first();
-    if (priorAttempt && !['DONE', 'ROLLED_BACK'].includes(priorAttempt.phase)) {
-      return json(
-        {
-          error: 'CONFIRMATION_INTERRUPTED',
-          detail: `A previous confirmation attempt stalled at phase ${priorAttempt.phase} and needs admin reconciliation before this request can be decided again.`,
-          recovery_action: `POST /preview/admin/deal-requests/${requestId}/reconcile-confirmation`,
-        },
-        409
-      );
-    }
-    return json({ error: 'ALREADY_DECIDED', detail: 'Another decision (confirm or decline) already won this request.' }, 409);
+    return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
   }
 
   try {
@@ -1175,6 +1310,22 @@ async function handleAdminDeclineDealRequest(env, requestId) {
  * confirmation genuinely completed (just finish marking it) or it did
  * not (fully unwind whatever partial state exists). Never leaves the
  * request in an ambiguous state after running.
+ *
+ * FIX (bounded round-5 correction, finding 1 — confirmation/
+ * reconciliation concurrency): admin authentication on THIS call is not
+ * the same thing as exclusive ownership of a specific in-flight confirm
+ * attempt. Before inspecting or touching ANY real state, this handler
+ * must WIN a fencing CAS — `UPDATE confirmation_attempts SET phase =
+ * 'RECONCILING' WHERE attempt_id = ? AND phase = <the phase just read>`
+ * — against the SAME `phase` column the confirm handler's own advance()
+ * calls are gated on (see handleAdminConfirmDealRequest). If this call
+ * loses that race (the original attempt had already moved the phase on
+ * by the time this fence is attempted), the original is still genuinely
+ * progressing — this call must NOT inspect or touch anything, and
+ * instead re-reads fresh state to report what actually happened. Only
+ * once the fence is WON is it safe to assume the original attempt's next
+ * write will fail its own CAS and abort, making concurrent inspection
+ * and compensation here safe.
  */
 async function handleAdminReconcileConfirmation(env, requestId) {
   const store = createD1Store({ SMART_RETURN_DB: env.DB });
@@ -1197,8 +1348,11 @@ async function handleAdminReconcileConfirmation(env, requestId) {
   }
 
   if (claim.decision === 'DECLINE') {
-    // A decline that stalled before its own (single, simple) UPDATE — just
-    // finish it.
+    // Decline has no multi-step phase progression to fence (it never
+    // creates a confirmation_attempts row at all — see
+    // handleAdminDeclineDealRequest) — a stalled decline can only have
+    // died between the claim INSERT and its own single UPDATE, before
+    // touching anything else. Safe to just finish it directly.
     await env.DB
       .prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
       .bind('marau-ops-preview (reconciled)', now, now, requestId)
@@ -1207,8 +1361,48 @@ async function handleAdminReconcileConfirmation(env, requestId) {
     return json({ resolved: 'DECLINED' });
   }
 
-  // decision === 'CONFIRM' — inspect what ACTUALLY happened, not the
-  // stale phase marker.
+  // decision === 'CONFIRM'.
+  if (!attempt) {
+    // No confirmation_attempts row was ever created for this claim.
+    // confirmation_attempts is the FIRST write the confirm handler makes
+    // inside its try block, before any other state-touching write — so
+    // if this row genuinely never exists, nothing beyond the claim
+    // itself could possibly have happened yet. Safe to just free the
+    // claim directly; no fencing/compensation needed. (A vanishingly
+    // narrow window — a crash between the claim INSERT and this row
+    // being created — is not fully closed by this fix; see
+    // MARAU_STAGE1_CODEX_FIXES_ROUND5.md for the honest scope note.)
+    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    return json({ resolved: 'ROLLED_BACK_TO_REQUESTED', detail: 'No confirmation attempt record ever existed for this claim — freed for a fresh attempt.' });
+  }
+
+  // Win exclusive ownership of THIS SPECIFIC attempt generation before
+  // touching anything. If we lose, the original is still genuinely
+  // progressing (or finished between our read and this fence attempt) —
+  // re-read fresh state rather than assume anything.
+  const fence = await env.DB
+    .prepare(`UPDATE confirmation_attempts SET phase = 'RECONCILING', updated_at = ? WHERE attempt_id = ? AND phase = ?`)
+    .bind(now, attempt.attempt_id, attempt.phase)
+    .run();
+  if (fence.meta.changes !== 1) {
+    const fresh = await env.DB.prepare('SELECT * FROM confirmation_attempts WHERE attempt_id = ?').bind(attempt.attempt_id).first();
+    if (fresh && (fresh.phase === 'DONE' || fresh.phase === 'ROLLED_BACK')) {
+      const freshRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
+      return json({
+        resolved: freshRequest.status === 'REQUESTED' ? 'ROLLED_BACK_TO_REQUESTED' : 'ALREADY_TERMINAL',
+        status: freshRequest.status,
+        detail: 'The attempt reached a terminal outcome between being read and being fenced by this call — nothing further was done here.',
+      });
+    }
+    return json({
+      resolved: 'ATTEMPT_STILL_ACTIVE',
+      detail: 'The confirmation attempt is still genuinely in progress — its phase advanced between being read and this call’s attempt to fence it. It is not stalled; no action was taken. Call again if it later appears stuck.',
+    });
+  }
+
+  // We now exclusively own this attempt generation — the original's own
+  // advance()/rollback() calls will fail their CAS from here on and abort
+  // without writing anything further. Safe to inspect real state.
   const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(dealRequest.offer_id).first();
   const movementClaimed = offer
     ? await env.DB.prepare('SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).first()
@@ -1223,7 +1417,7 @@ async function handleAdminReconcileConfirmation(env, requestId) {
       .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
       .bind('marau-ops-preview (reconciled)', now, now, requestId)
       .run();
-    if (attempt) await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
+    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(now, attempt.attempt_id).run();
     return json({ resolved: 'CONFIRMED' });
   }
 
@@ -1255,12 +1449,12 @@ async function handleAdminReconcileConfirmation(env, requestId) {
   }
 
   if (failures.length > 0) {
-    if (attempt) await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ?`).bind(failures.join('; '), now, attempt.attempt_id).run();
+    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(failures.join('; '), now, attempt.attempt_id).run();
     return json({ resolved: 'RECONCILIATION_FAILED', detail: failures.join('; ') }, 500);
   }
 
   await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-  if (attempt) await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
+  await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(now, attempt.attempt_id).run();
   return json({ resolved: 'ROLLED_BACK_TO_REQUESTED' });
 }
 

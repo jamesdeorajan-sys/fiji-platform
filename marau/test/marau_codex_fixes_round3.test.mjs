@@ -139,7 +139,22 @@ test('finding 2: a concurrent confirm and decline on the SAME request — exactl
   const losers = outcomes.filter((r) => r.status === 409);
   assert.equal(winners.length, 1, 'exactly one of confirm/decline may succeed — the original defect returned 200/200 here');
   assert.equal(losers.length, 1);
-  assert.equal(losers[0].data.error, 'ALREADY_DECIDED');
+  // NOTE (bounded round-5 correction, finding 2): the loser's exact error
+  // code now depends on timing — if the winner (typically decline, which
+  // does far less async work than confirm) has ALREADY finished writing
+  // its terminal status by the time the loser's claim-insert fails, the
+  // loser correctly sees ALREADY_DECIDED; if the winner is still
+  // mid-flight (confirm has several more awaits ahead of it: movement
+  // claim, vehicle allocation, hold, fill), the loser correctly sees
+  // CONFIRMATION_INTERRUPTED instead — nothing has actually been decided
+  // yet at that exact moment, so claiming ALREADY_DECIDED would itself be
+  // inaccurate. Either is a legitimate, correctly-labelled outcome; what
+  // this test actually guarantees (mutual exclusivity, and the final
+  // stored state agreeing with whichever side truly won) is unaffected.
+  assert.ok(
+    ['ALREADY_DECIDED', 'CONFIRMATION_INTERRUPTED'].includes(losers[0].data.error),
+    `unexpected loser error code: ${losers[0].data.error}`
+  );
 
   // The final stored state must agree with whichever one actually won —
   // never left disagreeing with both responses claiming success.

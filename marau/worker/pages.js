@@ -31,7 +31,7 @@
  * guest-facing copy (finding 5).
  */
 import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptSecret, clearAttemptSecret, defaultRandomSource } from './client_idempotency.js';
-import { formatFijiDateTime } from './fiji_time.js';
+import { formatFijiDateTime, toFijiWallClockInputValue } from './fiji_time.js';
 import { selectDefaultBooking, ACTIVE_BOOKING_STATUSES } from './booking_selection.js';
 
 // Splicing these functions' own source into the emitted <script> means
@@ -54,6 +54,7 @@ ${getOrCreateAttemptSecret.toString()}
 ${clearAttemptSecret.toString()}
 ${defaultRandomSource.toString()}
 ${formatFijiDateTime.toString()}
+${toFijiWallClockInputValue.toString()}
 const ACTIVE_BOOKING_STATUSES = ${JSON.stringify(ACTIVE_BOOKING_STATUSES)};
 ${selectDefaultBooking.toString()}
 `;
@@ -470,7 +471,13 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     }
 
     document.getElementById('changeBtn').addEventListener('click', function () {
-      var newTime = prompt('New pickup date/time (YYYY-MM-DDTHH:MM), Fiji time:', active.pickup_datetime.slice(0, 16));
+      // FIX (bounded round-5 correction, finding 3): the default must be
+      // the ACTUAL Fiji wall-clock representation of the stored UTC
+      // instant, not a raw slice of the UTC string itself — an unedited
+      // submission must be a genuine no-op (normalizePickupDatetime is
+      // idempotent on this value specifically because it IS the correct
+      // Fiji-local reading, not a mislabelled UTC one).
+      var newTime = prompt('New pickup date/time (YYYY-MM-DDTHH:MM), Fiji time:', toFijiWallClockInputValue(active.pickup_datetime));
       if (!newTime) return;
       authFetch('/preview/bookings/' + active.id + '/change-request', { method: 'POST', body: JSON.stringify({ requested_fields: { pickup_datetime: newTime } }) }).then(function (res) {
         toast(res.ok ? 'Change requested — awaiting operator approval.' : (res.data.error || 'Could not request a change.'));

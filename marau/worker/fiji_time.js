@@ -94,3 +94,34 @@ export function formatFijiDateTime(iso) {
   var time = new Intl.DateTimeFormat('en-US', { timeZone: 'Pacific/Fiji', hour: 'numeric', minute: '2-digit' }).format(d);
   return { day: day, time: time };
 }
+
+/**
+ * FIX (bounded round-5 correction, finding 3): the change-request prompt
+ * default used to be `active.pickup_datetime.slice(0, 16)` — a raw slice
+ * of the STORED UTC ISO string, presented to the guest as if it were
+ * already Fiji time. It is not: for a booking stored as Fiji-noon-1-Oct
+ * ("2026-10-01T00:00:00.000Z" UTC), the slice produces "2026-10-01T00:00"
+ * — midnight — labelled "Fiji time" in the very same prompt. Submitting
+ * that UNCHANGED value then gets fed back through normalizePickupDatetime
+ * (which correctly treats a naive value as Fiji wall-clock time),
+ * shifting the real booking 12 hours EARLIER purely from an unedited
+ * resubmission.
+ *
+ * This is the true inverse of fijiWallClockToUtcIso: given a real UTC
+ * instant, produce the naive "YYYY-MM-DDTHH:MM" string that actually
+ * represents that instant in Fiji local wall-clock time — so an unedited
+ * prompt default, fed straight back through normalizePickupDatetime, is a
+ * genuine no-op. Self-contained for the same .toString()-splicing reason
+ * as every other function in this file — no outer-scope constant
+ * referenced from inside the body.
+ */
+export function toFijiWallClockInputValue(iso) {
+  var d = new Date(iso);
+  var parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Pacific/Fiji', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  var map = {};
+  for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+  var hour = map.hour === '24' ? '00' : map.hour; // some ICU builds emit "24" for midnight under hour12:false
+  return map.year + '-' + map.month + '-' + map.day + 'T' + hour + ':' + map.minute;
+}
