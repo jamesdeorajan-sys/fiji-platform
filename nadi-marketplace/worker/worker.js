@@ -2586,16 +2586,63 @@ async function findMatchingOnlineDrivers(env, pickupZone) {
 // a new booking" so the two entry points can't silently drift apart. Same
 // query already verified in the Milestone 3 race-condition test (matching
 // zone-inclusion filter, same sendBookingBroadcastWhatsApp call).
+// Issue #59 (Codex review of 87816a5, gap 3): an atomic, race-safe per-(booking,driver) claim - the SAME contract
+// claimAdminNotificationAttempt/admin_notification_state (milestone36) already gives the admin alert - so two
+// concurrent sweep ticks, or a sweep overlapping the booking's own creation-time broadcast, can never both send
+// the same driver the same message. Falls back (best-effort, no cross-process fencing) if milestone37 has not
+// been applied yet, mirroring attemptAdminNotification()'s own missing-table fallback.
+const DRIVER_BROADCAST_LEASE_SECONDS = 120;
+async function claimDriverBroadcastAttempt(env, bookingId, driverId) {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO driver_broadcast_attempts (booking_id, driver_id, state) VALUES (?, ?, 'NOT_ATTEMPTED')`
+  ).bind(bookingId, driverId).run();
+  const claim = await env.DB.prepare(
+    `UPDATE driver_broadcast_attempts SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
+     WHERE booking_id = ? AND driver_id = ?
+       AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE') OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))
+     RETURNING attempt_count`
+  ).bind(bookingId, driverId, `-${DRIVER_BROADCAST_LEASE_SECONDS} seconds`).first();
+  return claim ? { claimed: true, attempt: claim.attempt_count } : { claimed: false };
+}
+
 async function broadcastBookingToDrivers(env, booking, { onlyDriverIds = null } = {}) {
   // Eligibility is UNCHANGED (findMatchingOnlineDrivers: verified, online, zone includes the booking's pickup_zone).
-  // Issue #59: sends now run concurrently, each bounded (sendWhatsAppTemplate), and every driver's outcome is recorded so a
-  // failed message is recoverable (sweepDriverBroadcasts) and never blocks the guest response or the admin alerts.
+  // Issue #59: sends run concurrently, each bounded (sendWhatsAppTemplate) and each atomically claimed per driver, so a
+  // failed OR never-attempted message is recoverable (sweepDriverBroadcasts), never blocks the guest response or the
+  // admin alerts, and can never be sent twice even under an overlapping sweep or a concurrent creation-time call.
   let matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
   if (onlyDriverIds) matching = matching.filter((d) => onlyDriverIds.has(d.id));
   const results = await Promise.all(matching.map(async (d) => {
+    let claim;
+    try {
+      claim = await claimDriverBroadcastAttempt(env, booking.id, d.id);
+    } catch (err) {
+      if (!/no such table/i.test(String(err && err.message))) throw err;
+      console.error('[driver-broadcast] driver_broadcast_attempts missing; using legacy unfenced path:', err.message);
+      claim = { claimed: true, attempt: 1, legacy: true };
+    }
+    if (!claim.claimed) {
+      // Already SENT, or another process is actively (freshly) attempting this exact driver right now - do nothing.
+      return { driver_id: d.id, driver_name: d.name, whatsapp: { attempted: false, reason: 'already sent or a claim is already in flight' }, skipped: true };
+    }
     const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
     const ok = !!(whatsappResult.attempted && whatsappResult.ok);
     const c = ok ? null : classifyAlertFailure(whatsappResult);
+    if (ok) {
+      if (!claim.legacy) {
+        await env.DB.prepare(
+          `UPDATE driver_broadcast_attempts SET state = 'SENT', last_outcome = 'SENT', last_error = NULL, updated_at = datetime('now')
+           WHERE booking_id = ? AND driver_id = ? AND state != 'SENT'`
+        ).bind(booking.id, d.id).run();
+      }
+    } else if (!claim.legacy) {
+      // Fenced exactly like the admin-notification completion: only applies if THIS attempt still owns the claim, so a
+      // stale attempt finishing late can never overwrite a newer attempt's (possibly successful) result.
+      await env.DB.prepare(
+        `UPDATE driver_broadcast_attempts SET state = 'FAILED_RETRYABLE', last_outcome = ?, last_error = ?, last_provider_status = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND driver_id = ? AND state = 'ATTEMPTING' AND attempt_count = ?`
+      ).bind(c.outcome, whatsappResult.reason || whatsappResult.error || 'Meta rejected the send.', whatsappResult.status ?? null, booking.id, d.id, claim.attempt).run();
+    }
     await logBookingEvent(env, {
       bookingId: booking.id, eventType: ok ? 'driver_broadcast_sent' : 'driver_broadcast_failed', actor: 'system',
       metadata: ok ? { driver_id: d.id, status: whatsappResult.status }
@@ -2608,37 +2655,77 @@ async function broadcastBookingToDrivers(env, booking, { onlyDriverIds = null } 
 }
 
 // ── DRIVER-BROADCAST RECOVERY (issue #59) ───────────────────────────────────────────────────────────────────────────
-// A failed or never-sent driver message must not strand a booking. Rides the existing '*/5 * * * *' cron. For bookings that are
-// STILL pending and unassigned (so first-accept protection is untouched), 3 min to 60 min old:
-//  - drivers whose send FAILED and who never received a successful one are retried (max 3 tries per driver);
-//  - if NO broadcast outcome was recorded at all (the worker died before messaging anyone) the initial broadcast is performed
-//    once, to the drivers eligible now, by the same eligibility rule as the original.
-// A driver who already received the message is never messaged again. The driver job feed (GET /driver/jobs) remains an
-// independent path for any online in-zone driver.
+// A failed or never-attempted driver message must not strand a booking. Rides the existing '*/5 * * * *' cron. For
+// bookings that are STILL pending and unassigned (so first-accept protection is untouched), 3 min to 60 min old:
+//  - a driver with NO recorded outcome at all (gap 1: the isolate died mid-broadcast, after some drivers but before
+//    others) is retried exactly like one that explicitly failed - both are "missing", read from the durable
+//    driver_broadcast_attempts table, not from booking_events (which only records attempts that actually ran);
+//  - drivers whose send FAILED and who never received a successful one are retried, up to DRIVER_BROADCAST_MAX_TRIES;
+//  - if there is nothing outstanding for a booking, it is skipped WITHOUT consuming a recovery-work slot (gap 2: a
+//    batch of already-complete older bookings can no longer starve a newer booking that still needs its initial
+//    broadcast - see DRIVER_BROADCAST_SWEEP_CANDIDATES/_WORK_BUDGET below).
+// A driver who already received the message is never messaged again (claimDriverBroadcastAttempt is also what makes
+// this and an overlapping sweep tick safe together - see its own comment). The driver job feed (GET /driver/jobs)
+// remains an independent path for any online in-zone driver.
 const DRIVER_BROADCAST_MAX_TRIES = 3;
+// The DB query window (candidates fetched) is separate from the recovery-work budget (real broadcastBookingToDrivers
+// calls actually made per tick). A booking whose broadcast is already fully complete for every currently-eligible
+// driver is skipped without consuming a work-budget slot, so it can never crowd out a booking that genuinely still
+// needs sends - not just less often, structurally: as long as the number of stuck/complete bookings inside the
+// candidate window is under DRIVER_BROADCAST_SWEEP_CANDIDATES, a booking needing work is always reached in the same
+// tick, regardless of how many completed ones precede it.
+const DRIVER_BROADCAST_SWEEP_CANDIDATES = 200; // DB rows examined (cheap: id/ordering read only)
+const DRIVER_BROADCAST_SWEEP_WORK_BUDGET = 10; // bookings actually re-broadcast to (bounds real WhatsApp sends per tick)
 async function sweepDriverBroadcasts(env) {
   try {
     const found = await env.DB.prepare(
       `SELECT id FROM bookings
        WHERE status = 'pending' AND assigned_driver_id IS NULL
          AND created_at >= datetime('now', '-60 minutes') AND created_at <= datetime('now', ?)
-       ORDER BY id LIMIT 10`
-    ).bind(`-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`).all();
+       ORDER BY id LIMIT ?`
+    ).bind(`-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`, DRIVER_BROADCAST_SWEEP_CANDIDATES).all();
+    let worked = 0;
     for (const row of (found && found.results) || []) {
-      const events = (await env.DB.prepare(
-        `SELECT event_type, metadata FROM booking_events WHERE booking_id = ? AND event_type IN ('driver_broadcast_sent', 'driver_broadcast_failed')`
-      ).bind(row.id).all()).results || [];
+      if (worked >= DRIVER_BROADCAST_SWEEP_WORK_BUDGET) break;
       const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(row.id).first();
       if (!booking || booking.status !== 'pending' || booking.assigned_driver_id) continue;
-      if (events.length === 0) { await broadcastBookingToDrivers(env, booking); continue; }
-      const sent = new Set(); const fails = new Map();
-      for (const e of events) {
-        let id = null; try { id = JSON.parse(e.metadata || '{}').driver_id; } catch { /* ignore */ }
-        if (id == null) continue;
-        if (e.event_type === 'driver_broadcast_sent') sent.add(id); else fails.set(id, (fails.get(id) || 0) + 1);
+      const eligible = await findMatchingOnlineDrivers(env, booking.pickup_zone);
+      if (eligible.length === 0) continue;
+      let missingIds;
+      try {
+        const states = (await env.DB.prepare(
+          `SELECT driver_id, state, attempt_count FROM driver_broadcast_attempts WHERE booking_id = ?`
+        ).bind(row.id).all()).results || [];
+        const byId = new Map(states.map((x) => [x.driver_id, x]));
+        missingIds = eligible.filter((d) => {
+          const st = byId.get(d.id);
+          if (!st) return true; // never attempted at all - the actual gap 1 fix
+          if (st.state === 'SENT') return false;
+          if (st.state === 'FAILED_RETRYABLE') return st.attempt_count < DRIVER_BROADCAST_MAX_TRIES;
+          return true; // NOT_ATTEMPTED or ATTEMPTING (the atomic claim itself decides fresh-vs-stale)
+        }).map((d) => d.id);
+      } catch (err) {
+        if (!/no such table/i.test(String(err && err.message))) throw err;
+        // Legacy fallback (migration37 not applied): no durable per-driver state table to consult, so fall back to
+        // the same booking_events-derived computation the pre-milestone37 sweep used - still respects who has
+        // already been sent (never re-messaged) even though it cannot distinguish "never attempted" from "no
+        // recorded outcome" (that distinction, gap 1's actual fix, needs the table).
+        const events = (await env.DB.prepare(
+          `SELECT event_type, metadata FROM booking_events WHERE booking_id = ? AND event_type IN ('driver_broadcast_sent', 'driver_broadcast_failed')`
+        ).bind(row.id).all()).results || [];
+        const sentIds = new Set(); const failCounts = new Map();
+        for (const e of events) {
+          let did = null; try { did = JSON.parse(e.metadata || '{}').driver_id; } catch { /* ignore */ }
+          if (did == null) continue;
+          if (e.event_type === 'driver_broadcast_sent') sentIds.add(did); else failCounts.set(did, (failCounts.get(did) || 0) + 1);
+        }
+        missingIds = events.length === 0
+          ? eligible.map((d) => d.id)
+          : eligible.filter((d) => !sentIds.has(d.id) && (failCounts.get(d.id) || 0) < DRIVER_BROADCAST_MAX_TRIES).map((d) => d.id);
       }
-      const retry = new Set([...fails.keys()].filter((id) => !sent.has(id) && fails.get(id) < DRIVER_BROADCAST_MAX_TRIES));
-      if (retry.size > 0) await broadcastBookingToDrivers(env, booking, { onlyDriverIds: retry });
+      if (missingIds.length === 0) continue; // nothing outstanding - does NOT consume the work budget (the gap 2 fix)
+      await broadcastBookingToDrivers(env, booking, { onlyDriverIds: new Set(missingIds) });
+      worked++;
     }
   } catch (err) {
     console.error(`[driver-broadcast-sweep] failed: ${err.message}`);

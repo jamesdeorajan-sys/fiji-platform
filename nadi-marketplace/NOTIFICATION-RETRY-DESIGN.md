@@ -37,6 +37,44 @@ Reproduced first: with the driver-template sends stalled, `POST /bookings` never
 * Also: exhausted notification rows are excluded from the sweep batch (they could otherwise occupy all 10 slots).
 * Validation against a real D1 engine (not production): a scratch D1 database was created, exercised with synthetic rows and deleted; `UPDATE ... RETURNING attempt_count` returns the token, a fresh claim returns no row, a stale claim is reclaimed (token 2), the old attempt's failure completion changes 0 rows, `SENT` is never downgraded. The Worker-binding shape (`.first()` on `UPDATE ... RETURNING`, `.run().meta.changes`) was exercised on workerd's local D1 via `wrangler dev --local`.
 
+## Codex-reproduced gaps in the driver broadcast (issue #59, fixed on top of 87816a5)
+Both reproduced first (failing tests against 87816a5, in `driver_broadcast_recovery.test.mjs`), then fixed.
+
+1. **Partial broadcast interruption.** The sweep only recovered drivers with a recorded `driver_broadcast_failed`
+   event; a driver the Worker never even attempted (isolate died between one driver's send resolving and the next
+   one starting) had no event at all and was silently skipped forever. Fixed with a new durable per-`(booking,
+   driver)` claim table, `driver_broadcast_attempts` (migration `milestone37-driver-broadcast-claim-state.sql`,
+   additive, `IF NOT EXISTS`, NOT applied), read the same way the admin-notification retry state already is: a
+   driver with no row at all is treated as "missing" exactly like one that explicitly failed.
+2. **Driver recovery batch starvation.** The sweep's `SELECT ... ORDER BY id LIMIT 10` treated every fetched
+   candidate as consuming one of the 10 recovery slots, even when its broadcast was already fully complete. Ten
+   older, done-but-still-pending bookings therefore permanently occupied the query window and an eleventh booking
+   needing its initial broadcast was never reached, including after repeated sweeps. Fixed by separating the DB
+   query window (`DRIVER_BROADCAST_SWEEP_CANDIDATES = 200`, cheap id-only reads) from the recovery-work budget
+   (`DRIVER_BROADCAST_SWEEP_WORK_BUDGET = 10`, real re-broadcast calls actually made): a booking with nothing
+   outstanding is skipped without consuming the work budget, so a booking that does need work is reached in the
+   same tick regardless of how many completed ones precede it, as long as the candidate window covers them.
+3. **Found while fixing the above: no atomicity across concurrent sweep ticks, or a sweep overlapping the
+   booking's own creation-time broadcast.** The old "read booking_events, decide who's missing, send" sequence had
+   no cross-process fencing. Fixed by giving `driver_broadcast_attempts` the same atomic
+   `UPDATE ... RETURNING attempt_count` claim `admin_notification_state` already has
+   (`claimDriverBroadcastAttempt`): two overlapping sweeps, or a sweep overlapping the initial broadcast, can now
+   only ever claim and message a given driver once (`notification_fencing`-style tests: two full concurrent
+   `worker.scheduled` ticks against the same booking send each of 3 eligible drivers exactly once; an overlapping
+   creation-time broadcast and sweep against the same stalled driver never exceed one send either).
+Legacy fallback (migration37 not applied): `claimDriverBroadcastAttempt` catches `no such table` and attempts
+unfenced (best-effort, matching the pre-fix behaviour - gap 1 is NOT fixed in this mode, since there is no durable
+per-driver state to distinguish "never attempted" from "nothing to report"); the sweep falls back to the same
+booking_events-derived computation the pre-fix sweep used. Covered by its own test.
+Preserved and re-tested: eligibility (verified + online + zone), the zone check and first-accept protection on
+`/driver/bookings/:id/accept`, the 3-attempt retry cap, and that no further sends happen once a booking is accepted.
+
+**Test hygiene note:** `pricing.test.js` makes real HTTP calls to `api.nadiairporttransfers.com` (documented in its
+own header comment) and must NEVER be included in an offline wildcard run (`*.test.mjs`/`*.test.js`). Every command
+in `REVIEW-PACKAGE-87816a5.md` now names files explicitly; the full offline set is:
+`node --test admin_notification_retry.test.mjs notification_reconcile.test.mjs notification_fencing.test.mjs broadcast_bounded.test.mjs departure_dispatch.test.mjs driver_broadcast_recovery.test.mjs pricing-steps.test.mjs return-addon-sanity.test.mjs booking-handoff.test.js`
+(87 tests, 86 pass, 1 pre-existing skip, as of this checkpoint).
+
 ## Rollout order (each step needs James's approval; none done)
 1. Independent review of source, migration and tests.
 2. Apply `milestone36-admin-notification-retry-state.sql` to `nadi-marketplace-db` (additive). Safe before the Worker: nothing reads it yet. (Verify D1 accepts `UPDATE ... RETURNING` via `.first()` on a scratch row first; D1 supports RETURNING, but this is the one statement shape not exercised by real D1 in the offline tests.)
