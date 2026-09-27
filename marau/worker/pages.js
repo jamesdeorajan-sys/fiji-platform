@@ -31,6 +31,8 @@
  * guest-facing copy (finding 5).
  */
 import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptSecret, clearAttemptSecret, defaultRandomSource } from './client_idempotency.js';
+import { formatFijiDateTime } from './fiji_time.js';
+import { selectDefaultBooking, ACTIVE_BOOKING_STATUSES } from './booking_selection.js';
 
 // Splicing these functions' own source into the emitted <script> means
 // the browser runs literally the same code marau/test/*.test.mjs already
@@ -38,12 +40,22 @@ import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptS
 // could silently drift out of sync with it (marau_codex_fixes_round3.test.mjs
 // proves this exact splicing mechanism works, after a real embedding bug —
 // a shared constant that didn't survive extraction — was found and fixed).
+//
+// FOURTH REVIEW additions: formatFijiDateTime (fiji_time.js) and
+// selectDefaultBooking/ACTIVE_BOOKING_STATUSES (booking_selection.js) are
+// spliced the SAME way — both were written with no outer-scope constant
+// referenced from inside a function body, honouring the exact lesson
+// from the round-3 STORAGE_KEY bug. A regression test reproduces this
+// embedding mechanism for these too (not just an ES-module import).
 const EMBEDDED_CLIENT_IDEMPOTENCY = `
 ${getOrCreateClientBookingRef.toString()}
 ${clearClientBookingRef.toString()}
 ${getOrCreateAttemptSecret.toString()}
 ${clearAttemptSecret.toString()}
 ${defaultRandomSource.toString()}
+${formatFijiDateTime.toString()}
+const ACTIVE_BOOKING_STATUSES = ${JSON.stringify(ACTIVE_BOOKING_STATUSES)};
+${selectDefaultBooking.toString()}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -178,7 +190,8 @@ export const GUEST_APP_HTML = `<!doctype html>
 <meta name="theme-color" content="#0F5E63">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Marau">
@@ -333,17 +346,41 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   }
 
+  // FIX (fourth independent review, finding 3 — installed-app acceptance):
+  // an installed PWA relaunches at the static manifest start_url ("/"),
+  // with NO "#tok=" fragment and no sessionStorage carried over from the
+  // browser tab that installed it (a new top-level launch context gets
+  // fresh session storage). sessionStorage-only persistence therefore
+  // could not survive install → close → reopen at all — the guest would
+  // land back on the synthetic-entry "start" screen every time, unable
+  // to reach their own trip. localStorage is per-ORIGIN, device-local
+  // storage that DOES survive that relaunch, so the token is now ALSO
+  // persisted there (never in the shared manifest.json itself — that
+  // file is static and identical for every guest). Revoke/clear removes
+  // it from BOTH storages so a revoked token is fully gone from the
+  // device state we control; server-side revocation (access_token_revoked)
+  // remains the authoritative check regardless of what is cached here.
   function getToken() {
     var m = location.hash.match(/tok=([^&]+)/);
-    if (m) { try { sessionStorage.setItem('marau_tok', m[1]); } catch (e) {} return m[1]; }
-    try { return sessionStorage.getItem('marau_tok'); } catch (e) { return null; }
+    if (m) {
+      try { sessionStorage.setItem('marau_tok', m[1]); } catch (e) {}
+      try { localStorage.setItem('marau_tok', m[1]); } catch (e) {}
+      return m[1];
+    }
+    try {
+      var fromSession = sessionStorage.getItem('marau_tok');
+      if (fromSession) return fromSession;
+    } catch (e) {}
+    try { return localStorage.getItem('marau_tok'); } catch (e) { return null; }
   }
   function setToken(tok) {
     try { sessionStorage.setItem('marau_tok', tok); } catch (e) {}
+    try { localStorage.setItem('marau_tok', tok); } catch (e) {}
     location.hash = 'tok=' + tok;
   }
   function clearToken() {
     try { sessionStorage.removeItem('marau_tok'); } catch (e) {}
+    try { localStorage.removeItem('marau_tok'); } catch (e) {}
     location.hash = '';
   }
 
@@ -367,19 +404,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 
   var STATUS_LABEL = { pending: 'Awaiting human confirmation', confirmed: 'Confirmed', confirmed_unallocated: 'Confirmed — vehicle pending assignment', declined: 'Declined', cancelled: 'Cancelled' };
   var STATUS_PILL = { pending: 'warn', confirmed: '', confirmed_unallocated: 'warn', declined: 'bad', cancelled: 'bad' };
-  var FIJI_TZ = 'Pacific/Fiji';
-
-  // Explicit Fiji time (finding 5) — a guest opening this from anywhere
-  // else in the world must never see their OWN device's local time
-  // silently substituted for the actual pickup time. Uses the IANA zone
-  // (handles Fiji's own DST rules automatically) rather than a hardcoded
-  // UTC+12 offset, and always labels it so it's unambiguous.
-  function formatFijiDateTime(iso) {
-    var d = new Date(iso);
-    var day = new Intl.DateTimeFormat('en-US', { timeZone: FIJI_TZ, weekday: 'long', month: 'short', day: 'numeric' }).format(d);
-    var time = new Intl.DateTimeFormat('en-US', { timeZone: FIJI_TZ, hour: 'numeric', minute: '2-digit' }).format(d);
-    return { day: day, time: time };
-  }
+  // formatFijiDateTime and selectDefaultBooking/ACTIVE_BOOKING_STATUSES
+  // are spliced in above (EMBEDDED_CLIENT_IDEMPOTENCY) from fiji_time.js
+  // and booking_selection.js — the SAME functions the server and the
+  // test suite use, not a hand-duplicated copy that could drift.
 
   var selectedBookingId = null;
 
@@ -390,7 +418,14 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       return;
     }
     var sorted = bookings.slice().sort(function (a, b) { return new Date(a.pickup_datetime) - new Date(b.pickup_datetime); });
-    var active = sorted.find(function (b) { return b.id === selectedBookingId; }) || sorted[0];
+    // FIX (fourth independent review, finding 2 — pickup accuracy): the
+    // DEFAULT selection now uses the shared selectDefaultBooking rule
+    // (soonest upcoming ACTIVE booking; never an old cancelled/declined
+    // one) — the exact same rule the server's WhatsApp summary uses, so
+    // the two can never disagree. Full history stays selectable via the
+    // switcher below regardless of status.
+    var defaultBooking = selectDefaultBooking(sorted, new Date().toISOString());
+    var active = sorted.find(function (b) { return b.id === selectedBookingId; }) || defaultBooking || sorted[0];
     selectedBookingId = active.id;
 
     var fiji = formatFijiDateTime(active.pickup_datetime);
@@ -411,7 +446,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     }
 
     els.pickupCard.innerHTML = switcher + '<article class="pickup panel" aria-label="Pickup">' +
-      '<p class="sub">' + (active.id === sorted[0].id ? 'Next pickup' : 'Selected booking') + ' · booking ' + active.client_booking_ref + '</p>' +
+      '<p class="sub">' + (defaultBooking && active.id === defaultBooking.id ? 'Next pickup' : 'Selected booking') + ' · booking ' + active.client_booking_ref + '</p>' +
       '<p class="when">' + fiji.time + '<span class="small" style="opacity:.75;font-weight:600;margin-left:8px">Fiji time</span></p>' +
       '<p class="sub">' + fiji.day + '</p>' +
       '<div class="route">' +
@@ -620,7 +655,12 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   });
 
   els.humanHandoffBtn.addEventListener('click', function () {
-    authFetch('/preview/trip/whatsapp-handoff', { method: 'POST' }).then(function (res) {
+    // FIX (fourth independent review, finding 2): send the CURRENTLY
+    // SELECTED booking (the switcher's own state) so the WhatsApp summary
+    // always matches what the guest is actually looking at, rather than
+    // always the server's own independent default.
+    var payload = selectedBookingId ? JSON.stringify({ booking_id: selectedBookingId }) : JSON.stringify({});
+    authFetch('/preview/trip/whatsapp-handoff', { method: 'POST', body: payload }).then(function (res) {
       if (!res.ok) { toast(res.data.error || 'Could not compose a message.'); return; }
       renderMockWhatsApp(els.tripHandoffPanel, res.data.whatsapp_handoff);
     });

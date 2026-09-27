@@ -54,7 +54,37 @@ async function seedDemoData() {
   });
   const res = await worker.fetch(req, env);
   const data = await res.json();
+
+  // ROUND 4 DEMO: an OLD, CANCELLED booking with an EARLIER pickup time
+  // than the real upcoming one — this is the exact case Codex's finding
+  // 2 found broken (the render function picked this one as "Next
+  // pickup"). Seeded directly (same technique the round-4 regression
+  // tests use) so the screenshot proves the fix against a realistic trip
+  // that has real history, not just a single clean booking.
+  const trip = await (await worker.fetch(new Request('http://demo.local/preview/trip', { headers: { authorization: `Bearer ${data.access_token}` } }), env)).json();
+  const firstBookingId = trip.bookings[0].id;
+  const oldRow = await env.DB
+    .prepare(
+      `INSERT INTO marau_test_bookings
+        (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at)
+       VALUES (?, (SELECT guest_session_id FROM marau_test_bookings WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, 'cancelled', 1, ?, ?)`
+    )
+    .bind(
+      'DEMO-OLD-CANCELLED-1',
+      firstBookingId,
+      'demo.guest@example.test',
+      '+15005551234',
+      'Sofitel Denarau',
+      'Nadi Airport',
+      'Sedan',
+      new Date(Date.now() - 30 * 3600_000).toISOString(),
+      45,
+      new Date(Date.now() - 40 * 3600_000).toISOString(),
+      new Date(Date.now() - 40 * 3600_000).toISOString()
+    )
+    .run();
   console.log('[demo] seeded booking, access_token:', data.access_token);
+  console.log('[demo] seeded an OLD CANCELLED booking (earlier pickup_datetime) to demonstrate the pickup-accuracy fix');
   return data.access_token;
 }
 

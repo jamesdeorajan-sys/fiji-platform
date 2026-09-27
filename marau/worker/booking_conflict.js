@@ -7,10 +7,21 @@
  * and not silently overwritten.
  */
 
+import { normalizePickupDatetime } from './fiji_time.js';
+
 const COMPARABLE_FIELDS = ['guest_email', 'guest_phone', 'pickup_zone', 'destination_zone', 'vehicle_type', 'pickup_datetime', 'quoted_amount'];
 
+// FIX (fourth independent review, finding 2 — Fiji time): this used to
+// re-parse pickup_datetime with plain `new Date(value).toISOString()` —
+// fine for the ALREADY-STORED value (already a real UTC instant), but
+// WRONG for the freshly incoming raw request body, whose naive
+// "YYYY-MM-DDTHH:MM" is meant as Fiji wall-clock time, not server-local
+// time. Comparing a naively-reparsed incoming value against the
+// correctly Fiji-normalized stored value made every genuine retry look
+// like a payload mismatch (a 12-hour difference). Both sides must go
+// through the SAME normalization used when a value is actually stored.
 function normalizeForCompare(value, field) {
-  if (field === 'pickup_datetime') return new Date(value).toISOString();
+  if (field === 'pickup_datetime') return normalizePickupDatetime(value);
   if (field === 'quoted_amount') return Number(value);
   return String(value);
 }

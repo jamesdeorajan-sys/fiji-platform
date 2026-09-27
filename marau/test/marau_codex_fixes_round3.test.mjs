@@ -207,6 +207,21 @@ test('finding 3: a late failure (after every real side effect already succeeded)
   assert.equal(retry.status, 200);
 });
 
+// NOTE: this test originally asserted deal_requests.status === 'CONFIRMED'
+// after a rollback-compensation failure — that was round 3's own design
+// (the request's status flipped to CONFIRMED as the FIRST write, before
+// any real side effect). Round 4's independent review found the exact
+// hole that design left open (Codex failed the very next write —
+// INSERT INTO confirmation_attempts — and found the guest Trip showing
+// CONFIRMED with zero real side effects behind it) and required a
+// non-final claim state instead: deal_requests.status now NEVER changes
+// from 'REQUESTED' until every real side effect has fully succeeded (see
+// worker.js#handleAdminConfirmDealRequest and migration 0019). This test
+// is updated to assert THAT — status stays 'REQUESTED', never a
+// guest-visible lie — while everything else it originally proved
+// (partial rollback still recorded as ROLLBACK_FAILED, the other two
+// compensating steps still complete independently, reconciliation is
+// needed) is unchanged and still exercised.
 test('finding 3: when a COMPENSATING write itself fails, the request is NOT silently marked safe — it is flagged for manual reconciliation, durably', async () => {
   const env = makeEnv();
   const { offer } = await seedActiveOffer(env);
@@ -229,10 +244,17 @@ test('finding 3: when a COMPENSATING write itself fails, the request is NOT sile
   assert.equal(attempts.results[0].phase, 'ROLLBACK_FAILED');
   assert.match(attempts.results[0].error_detail, /allocation/);
 
-  // Deliberately NOT reverted to REQUESTED — its true state can't be
-  // safely assumed, so it must not look like nothing happened.
+  // deal_requests.status was NEVER changed from 'REQUESTED' in the first
+  // place (round 4's fix) — there is nothing to "revert" here, and
+  // critically the guest Trip never showed a false CONFIRMED at any
+  // point. The durable confirmation_attempts row (asserted above) and the
+  // still-held deal_decision_claims row (asserted next) are what tell a
+  // human reconciliation is needed.
   const requestAfter = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
-  assert.equal(requestAfter.status, 'CONFIRMED');
+  assert.equal(requestAfter.status, 'REQUESTED');
+
+  const claim = await env.DB.prepare('SELECT * FROM deal_decision_claims WHERE request_id = ?').bind(requested.data.request_id).first();
+  assert.ok(claim, 'the claim must still be held — this is what blocks a further attempt until admin reconciliation');
 
   // Offer status and the movement claim — the OTHER two compensating
   // steps — must still have been reverted even though the allocation
