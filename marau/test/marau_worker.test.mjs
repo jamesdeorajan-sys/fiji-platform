@@ -248,8 +248,12 @@ test('opening a WhatsApp handoff never confirms a booking — only the authentic
   const bookingId = listPending.data.bookings[0].id;
   const confirm = await call(env, `/preview/admin/bookings/${bookingId}/confirm`, { method: 'POST', headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
   assert.equal(confirm.status, 200);
-  assert.equal(confirm.data.status, 'confirmed');
+  // No vehicle_windows row was seeded for this booking, so confirmation
+  // is explicitly 'confirmed_unallocated', not plain 'confirmed' — see
+  // the second-review fix in marau_codex_fixes.test.mjs for why these
+  // must never be conflated.
+  assert.equal(confirm.data.status, 'confirmed_unallocated');
 
   const tripAfter = await call(env, '/preview/trip', { headers: authed(token) });
-  assert.equal(tripAfter.data.bookings[0].status, 'confirmed');
+  assert.equal(tripAfter.data.bookings[0].status, 'confirmed_unallocated');
 });

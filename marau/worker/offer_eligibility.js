@@ -17,6 +17,13 @@
  * state machine reserves for "approved and live" (activateOffer moves
  * VALIDATED -> ACTIVE). Every previous Marau call site treated VALIDATED
  * as good enough to show/recommend/request — this file requires ACTIVE.
+ *
+ * FIX (second independent review): a NULL absolute_floor used to be
+ * treated as "no floor to violate," which is exactly backwards — Issue
+ * #54's own COMMERCIAL_PRICING_STATUS.HOLD_UNKNOWN_ECONOMICS exists
+ * because an unknown floor/cost basis must HOLD, never pass by default
+ * (see smart-return-trigger-fill/src/matcher.js). A genuine, finite
+ * absolute_floor is now required for eligibility at all.
  */
 
 export function evaluateOfferEligibility(offer, nowIso = new Date().toISOString()) {
@@ -44,7 +51,11 @@ export function evaluateOfferEligibility(offer, nowIso = new Date().toISOString(
     return { eligible: false, reason: 'INVALID_PRICE' };
   }
 
-  if (offer.absolute_floor != null && price < offer.absolute_floor) {
+  if (!(Number.isFinite(offer.absolute_floor) && offer.absolute_floor >= 0)) {
+    return { eligible: false, reason: 'UNKNOWN_FLOOR', detail: 'absolute_floor is missing or invalid — an unknown floor can never be treated as satisfied' };
+  }
+
+  if (price < offer.absolute_floor) {
     return { eligible: false, reason: 'BELOW_FLOOR', detail: `price ${price} is below absolute_floor ${offer.absolute_floor}` };
   }
 

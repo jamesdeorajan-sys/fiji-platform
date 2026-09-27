@@ -1,23 +1,24 @@
 /* Marau Stage 1 (PREVIEW ONLY) — guest app + ops console, served as plain
  * HTML/CSS/JS strings from the same Worker (no separate build step, no
- * separate Pages project needed for this stage). Visual language is
- * carried over from marau-app-prototype.html (the approved design
- * reference), rewired from localStorage-simulated data to the real
- * /preview/* API. No Lagi reference anywhere — Lagi is excluded from this
- * stage per the mission.
+ * separate Pages project needed for this stage).
  *
- * FIX (P1, Codex review): WhatsApp handoffs — both the main "Talk to our
- * team" button (which used to only show a toast, doing nothing useful)
- * and the per-deal handoff (which used to build a real, clickable
- * `https://wa.me/...` link) — are now shown ONLY in an in-page mock
- * panel with a copy button. Neither path constructs a wa.me URL or
- * navigates anywhere; grep this file for "wa.me" to confirm.
+ * DESIGN (queued requirement, applied after correctness passed review):
+ * palette, Familjen Grotesk/Onest typography, the brand mark and the
+ * prominent pickup card are ported directly from the approved design
+ * reference, marau-app-prototype.html — same CSS custom properties, same
+ * font pairing, same `.pickup`/`.route`/`.facts`/`.deal` component shapes.
+ * Gamified tasks/credit-earning/install-banner are NOT ported — those
+ * features (credits, book-ahead rewards) are explicitly deferred per the
+ * mission and never built here. The synthetic booking-creation form is
+ * deliberately styled as a separate, plainly-labelled test harness
+ * (dashed border, monospace accents), NOT the branded guest experience —
+ * a real Marau guest always lands on their Trip directly from a booking
+ * link and never sees this screen at all.
  *
- * FIX (P1, Codex review): the booking form now generates and persists a
- * client-side idempotency key BEFORE its first submit, via
- * ../worker/client_idempotency.js's two functions, embedded verbatim
- * below (see EMBEDDED_CLIENT_IDEMPOTENCY) so the exact code this file's
- * own tests exercise is what runs in the browser.
+ * No Lagi reference anywhere — Lagi is excluded from this stage per the
+ * mission. WhatsApp only ever appears as a composed message in an in-page
+ * mock panel with a copy button — no wa.me URL, no navigation, anywhere
+ * (see whatsapp_handoff.js and renderMockWhatsApp() below).
  */
 import { getOrCreateClientBookingRef, clearClientBookingRef, defaultRandomSource } from './client_idempotency.js';
 
@@ -31,58 +32,122 @@ ${clearClientBookingRef.toString()}
 ${defaultRandomSource.toString()}
 `;
 
+const FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">`;
+
+// Palette, type scale and component shapes ported verbatim (selectors
+// renamed only where Marau's markup differs) from marau-app-prototype.html.
 const SHARED_STYLE = `
 <style>
-  :root {
-    --ink:#152A2E; --muted:#56696C; --paper:#F2F6F5; --surface:#FFFFFF;
-    --lagoon:#0F5E63; --lagoon-ink:#FFFFFF; --shallows:#D3EBE6; --line:#D7E2E0;
-    --hibiscus:#C4304A; --frangipani:#F3C33C; --frang-ink:#3A2D00;
+:root{
+  --ink:#152A2E; --muted:#56696C; --paper:#F2F6F5; --surface:#FFFFFF;
+  --lagoon:#0F5E63; --lagoon-ink:#FFFFFF; --shallows:#D3EBE6; --line:#D7E2E0;
+  --hibiscus:#C4304A; --frangipani:#F3C33C; --frang-ink:#3A2D00;
+  --shadow:0 1px 0 rgba(21,42,46,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#E4EFED; --muted:#9BB1B3; --paper:#0C1819; --surface:#132527;
+    --lagoon:#4DB0AA; --lagoon-ink:#06201F; --shallows:#1A3739; --line:#243B3D;
+    --hibiscus:#F0687E; --frangipani:#F3C33C; --frang-ink:#2A2000; --shadow:none;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --ink:#E4EFED; --muted:#9BB1B3; --paper:#0C1819; --surface:#132527;
-      --lagoon:#4DB0AA; --lagoon-ink:#06201F; --shallows:#1A3739; --line:#243B3D;
-      --hibiscus:#F0687E; --frangipani:#F3C33C; --frang-ink:#2A2000;
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--paper); color:var(--ink); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 90px; }
-  h1 { font-size: 20px; margin: 4px 0 12px; }
-  h2 { font-size: 15px; margin: 0 0 8px; }
-  p { line-height: 1.45; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-  .pill { display:inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--shallows); color: var(--lagoon); }
-  .pill.warn { background: #FCEBCD; color: var(--frang-ink); }
-  .pill.bad { background: #FBE1E6; color: var(--hibiscus); }
-  label { display:block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
-  input, select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 15px; }
-  .btn { display:inline-block; text-align:center; padding: 11px 16px; border-radius: 12px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration:none; }
-  .btn-primary { background: var(--lagoon); color: var(--lagoon-ink); }
-  .btn-light { background: var(--shallows); color: var(--lagoon); }
-  .btn-block { display:block; width:100%; margin-top: 10px; }
-  .row { display:flex; gap:8px; }
-  .row > * { flex:1; }
-  .tabs { position: fixed; left:0; right:0; bottom:0; display:flex; background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)); }
-  .tab { flex:1; border:none; background:none; padding: 8px 4px; font-size: 12px; font-weight:700; color: var(--muted); cursor:pointer; }
-  .tab[aria-selected="true"] { color: var(--lagoon); }
-  .view { display:none; }
-  .view.active { display:block; }
-  .deal-card { border:1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-  .deal-card .price { font-size: 18px; font-weight: 800; }
-  .deal-card .was { text-decoration: line-through; color: var(--muted); font-size: 13px; margin-left: 6px; }
-  .toast { position: fixed; left: 16px; right: 16px; bottom: 70px; background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 10px; text-align:center; opacity:0; transform: translateY(8px); transition: .2s; pointer-events:none; }
-  .toast.show { opacity: 1; transform: translateY(0); }
-  table { width:100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align:left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  code { font-size: 12px; background: var(--shallows); padding: 1px 5px; border-radius: 6px; word-break: break-all; }
-  .banner { background: var(--frangipani); color: var(--frang-ink); border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight:600; margin-bottom: 12px; }
-  .mock-wa { border: 1px dashed var(--lagoon); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--shallows); }
-  .mock-wa .label { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--lagoon); }
-  .mock-wa .msg { background: var(--surface); border-radius: 8px; padding: 10px; margin: 8px 0; font-size: 13px; white-space: pre-wrap; }
-  .link-code { font-size: 24px; font-weight: 800; letter-spacing: .08em; text-align: center; padding: 10px; background: var(--shallows); border-radius: 10px; margin: 6px 0; }
+}
+:root[data-theme="dark"]{
+  --ink:#E4EFED; --muted:#9BB1B3; --paper:#0C1819; --surface:#132527;
+  --lagoon:#4DB0AA; --lagoon-ink:#06201F; --shallows:#1A3739; --line:#243B3D;
+  --hibiscus:#F0687E; --frangipani:#F3C33C; --frang-ink:#2A2000; --shadow:none;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 "Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:"Familjen Grotesk","Onest",system-ui,sans-serif;margin:0;line-height:1.15;letter-spacing:-.01em}
+h1{font-size:1.5rem;font-weight:700}
+h2{font-size:1.05rem;font-weight:600}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--frangipani);outline-offset:2px;border-radius:6px}
+
+.app{max-width:480px;margin:0 auto;padding:12px 16px 110px}
+.top{display:flex;align-items:center;justify-content:space-between;padding:8px 0 16px}
+.brand{font-family:"Familjen Grotesk",sans-serif;font-weight:700;font-size:1.15rem;display:flex;align-items:baseline;gap:8px}
+.brand-sub{font-family:"Onest",sans-serif;font-weight:400;font-size:.72rem;color:var(--muted)}
+.brand-mark{width:28px;height:28px;border-radius:50%;background:var(--lagoon);position:relative;overflow:hidden;flex:none}
+.brand-mark::after{content:"";position:absolute;left:-4px;right:-4px;bottom:6px;height:6px;border-radius:6px;background:var(--frangipani);transform:rotate(-8deg)}
+.preview-pill{border:0;background:var(--frangipani);color:var(--frang-ink);font-weight:600;border-radius:999px;padding:6px 12px;font-size:.78rem;letter-spacing:.02em;text-transform:uppercase}
+.sample-note{font-size:.8rem;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:8px 12px;margin-bottom:16px}
+
+.view{display:none}
+.view.active{display:block}
+.stack{display:grid;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+.muted{color:var(--muted)}
+.small{font-size:.875rem}
+
+/* Prominent pickup card, ported from the design reference */
+.pickup{background:var(--lagoon);color:var(--lagoon-ink);border:0;border-radius:22px;padding:20px}
+.pickup .sub{opacity:.85;font-size:.95rem}
+.pickup .when{font-family:"Familjen Grotesk",sans-serif;font-size:clamp(1.4rem,7vw,1.9rem);font-weight:700;line-height:1.1;margin:4px 0 2px}
+.route{margin-top:16px;display:grid;gap:0}
+.stop{display:grid;grid-template-columns:22px 1fr;gap:12px;position:relative;padding-bottom:14px}
+.stop:last-child{padding-bottom:0}
+.stop .dot{width:14px;height:14px;border-radius:50%;border:3px solid currentColor;margin-top:4px;margin-left:4px;background:transparent}
+.stop.fill .dot{background:currentColor}
+.stop:not(:last-child)::before{content:"";position:absolute;left:10px;top:20px;bottom:0;border-left:2px dashed currentColor;opacity:.5}
+.stop strong{display:block;font-weight:600}
+.stop span{font-size:.875rem;opacity:.85}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.fact{background:rgba(255,255,255,.14);border-radius:12px;padding:10px 12px;font-size:.85rem}
+.fact b{display:block;font-weight:600;font-size:.95rem}
+.pickup-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+
+.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:600;min-height:44px;font-size:15px;text-align:center}
+.btn-primary{background:var(--lagoon);color:var(--lagoon-ink)}
+.btn-light{background:var(--shallows);color:var(--lagoon)}
+.btn-onlagoon{background:rgba(255,255,255,.18);color:var(--lagoon-ink)}
+.btn-block{display:block;width:100%;margin-top:10px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+input,select{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font-size:15px;min-height:44px}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--surface);border-top:1px solid var(--line);padding:6px max(8px,env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom));z-index:10}
+.tab{flex:1;border:none;background:none;padding:8px 4px;font-size:12px;font-weight:700;color:var(--muted)}
+.tab[aria-selected="true"]{color:var(--lagoon)}
+
+/* Deals — pct/price treatment ported from the design reference */
+.deal{background:var(--surface);border:1px solid var(--line);border-radius:20px;overflow:hidden;margin-bottom:12px}
+.deal-top{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px 16px 10px}
+.deal-kind{font-size:.78rem;font-weight:600;color:var(--lagoon)}
+.deal-route{font-weight:700;font-size:1rem;margin-top:2px}
+.pct{font-family:"Familjen Grotesk",sans-serif;font-weight:700;font-size:1.9rem;line-height:1;color:var(--hibiscus);text-align:right}
+.pct small{display:block;font-size:.72rem;font-family:"Onest",sans-serif;font-weight:500;color:var(--muted)}
+.why{margin:0 16px;padding:9px 12px;background:var(--paper);border-radius:10px;font-size:.85rem}
+.deal-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px 16px;flex-wrap:wrap}
+.price s{color:var(--muted);font-size:.85rem;margin-right:6px}
+.price b{font-size:1.25rem;font-family:"Familjen Grotesk",sans-serif}
+.meta{font-size:.78rem;color:var(--muted)}
+
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--shallows);color:var(--lagoon)}
+.pill.warn{background:#FCEBCD;color:var(--frang-ink)}
+.pill.bad{background:#FBE1E6;color:var(--hibiscus)}
+
+.harness{border:1.5px dashed var(--muted);border-radius:16px;padding:16px;background:var(--surface)}
+.harness .tag{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 6px;margin-bottom:8px}
+
+.toast{position:fixed;left:16px;right:16px;bottom:70px;background:var(--ink);color:var(--paper);padding:10px 14px;border-radius:10px;text-align:center;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:30}
+.toast.show{opacity:1;transform:translateY(0)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+code{font-size:12px;background:var(--shallows);padding:1px 5px;border-radius:6px;word-break:break-all}
+.banner{background:var(--frangipani);color:var(--frang-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
+.mock-wa{border:1px dashed var(--lagoon);border-radius:12px;padding:12px;margin-top:8px;background:var(--shallows)}
+.mock-wa .label{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lagoon)}
+.mock-wa .msg{background:var(--surface);border-radius:8px;padding:10px;margin:8px 0;font-size:13px;white-space:pre-wrap}
+.link-code{font-size:24px;font-weight:800;letter-spacing:.08em;text-align:center;padding:10px;background:var(--shallows);border-radius:10px;margin:6px 0}
 </style>`;
 
 export const GUEST_APP_HTML = `<!doctype html>
@@ -90,24 +155,30 @@ export const GUEST_APP_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Marau — your trip</title>
+<meta name="theme-color" content="#0F5E63">
+<title>Marau by Vakaviti AI</title>
+${FONT_LINK}
 ${SHARED_STYLE}
 </head>
 <body>
-<div class="wrap">
-  <h1>Marau <span class="muted small">— PREVIEW / DEMONSTRATION DATA</span></h1>
-  <div class="banner">This is an isolated preview build. Nothing here is a real booking, message or payment.</div>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Marau<span class="brand-sub"> by Vakaviti AI</span></div>
+    <span class="preview-pill">Preview</span>
+  </header>
+  <p class="sample-note">Isolated preview build. Nothing here is a real booking, message or payment — every screen carries its own demonstration-data label.</p>
 
   <section id="view-start" class="view">
-    <div class="panel">
-      <h2>Start a trip</h2>
-      <p class="small muted">Save a booking request. You'll get secure access to Marau immediately — no need to wait for confirmation.</p>
+    <div class="harness">
+      <span class="tag">PREVIEW TEST HARNESS</span>
+      <h2>Create a synthetic booking</h2>
+      <p class="small muted" style="margin-top:6px">A real Marau guest never sees this screen — they land straight on their Trip from a booking-confirmation link. This form exists only so this preview can be explored from a cold start. Save a request below to get secure access immediately.</p>
       <form id="bookingForm">
         <label for="f-email">Email</label>
         <input id="f-email" type="email" required autocomplete="email">
         <label for="f-phone">Mobile number</label>
         <input id="f-phone" type="tel" required autocomplete="tel">
-        <label><input id="f-wa" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px"> This number can receive WhatsApp</label>
+        <label><input id="f-wa" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> This number can receive WhatsApp</label>
         <div class="row">
           <div><label for="f-pickup">Pickup zone</label><input id="f-pickup" required value="Nadi Airport"></div>
           <div><label for="f-dest">Destination zone</label><input id="f-dest" required value="Denarau"></div>
@@ -116,7 +187,7 @@ ${SHARED_STYLE}
           <div><label for="f-vehicle">Vehicle type</label><input id="f-vehicle" required value="Sedan"></div>
           <div><label for="f-amount">Quoted amount</label><input id="f-amount" type="number" min="0" step="0.01" required value="45"></div>
         </div>
-        <label for="f-when">Pickup date & time</label>
+        <label for="f-when">Pickup date &amp; time</label>
         <input id="f-when" type="datetime-local" required>
         <button class="btn btn-primary btn-block" type="submit">Save booking request</button>
       </form>
@@ -125,27 +196,29 @@ ${SHARED_STYLE}
   </section>
 
   <section id="view-trip" class="view">
-    <div class="panel" id="linkOfferPanel" style="display:none"></div>
-    <div class="panel" id="linkInboxPanel" style="display:none"></div>
-    <div class="panel" id="tripPanel"><p class="muted">Loading your trip…</p></div>
-    <div class="panel">
+    <div id="linkOfferPanel" class="panel" style="display:none"></div>
+    <div id="linkInboxPanel" class="panel" style="display:none"></div>
+    <div id="pickupCard"></div>
+    <section class="panel" id="dealRequestsPanel" style="display:none">
+      <h2>Your deal requests</h2>
+      <div id="dealRequestsList" style="margin-top:8px"></div>
+    </section>
+    <section class="panel">
       <h2>Ask Marau</h2>
-      <p class="small muted" id="aiDisclosure"></p>
-      <input id="assistQ" placeholder="e.g. when is my pickup?">
+      <p class="small muted" id="aiDisclosure" style="margin-top:4px"></p>
+      <input id="assistQ" placeholder="e.g. when is my pickup?" style="margin-top:8px">
       <button class="btn btn-light btn-block" id="assistBtn" type="button">Ask</button>
       <div id="assistAnswer" class="small" style="margin-top:8px"></div>
       <button class="btn btn-light btn-block" id="humanHandoffBtn" type="button">Talk to our team on WhatsApp</button>
       <div id="tripHandoffPanel"></div>
-    </div>
+    </section>
     <button class="btn btn-light btn-block" id="revokeBtn" type="button">Revoke this device's access</button>
   </section>
 
   <section id="view-deals" class="view">
-    <div class="panel">
-      <h2>Deals</h2>
-      <p class="small muted">Open browsing — every current deal is shown here, demonstration data only.</p>
-      <div id="dealsList"><p class="muted">Loading deals…</p></div>
-    </div>
+    <h1>Deals</h1>
+    <p class="muted small" style="margin-top:6px">Open browsing — every current deal is shown here, demonstration data only.</p>
+    <div id="dealsList" style="margin-top:14px"><p class="muted">Loading deals…</p></div>
   </section>
 </div>
 
@@ -160,7 +233,14 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 (function () {
   var API = '';
   var els = {};
-  ['bookingForm','startError','tripPanel','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel'].forEach(function(id){ els[id] = document.getElementById(id); });
+  ['bookingForm','startError','pickupCard','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel','dealRequestsPanel','dealRequestsList'].forEach(function(id){ els[id] = document.getElementById(id); });
+
+  function toast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { els.toast.classList.remove('show'); }, 2600);
+  }
 
   // Shown for BOTH the main "Talk to our team" handoff and a per-deal
   // handoff — never a live link, never navigation. "container" is the
@@ -196,13 +276,6 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   }
 
-  function toast(msg) {
-    els.toast.textContent = msg;
-    els.toast.classList.add('show');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(function () { els.toast.classList.remove('show'); }, 2600);
-  }
-
   function getToken() {
     var m = location.hash.match(/tok=([^&]+)/);
     if (m) { try { sessionStorage.setItem('marau_tok', m[1]); } catch (e) {} return m[1]; }
@@ -235,25 +308,65 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     t.addEventListener('click', function () { showView(t.dataset.view); });
   });
 
-  function renderTrip(data) {
+  var STATUS_LABEL = { pending: 'Awaiting human confirmation', confirmed: 'Confirmed', confirmed_unallocated: 'Confirmed — vehicle pending assignment', declined: 'Declined', cancelled: 'Cancelled' };
+  var STATUS_PILL = { pending: 'warn', confirmed: '', confirmed_unallocated: 'warn', declined: 'bad', cancelled: 'bad' };
+
+  function renderPickupCard(data) {
     var bookings = data.bookings || [];
     if (bookings.length === 0) {
-      els.tripPanel.innerHTML = '<p class="muted">No bookings yet on this trip.</p>';
+      els.pickupCard.innerHTML = '<div class="panel"><p class="muted">No bookings yet on this trip.</p></div>';
       return;
     }
     var sorted = bookings.slice().sort(function (a, b) { return new Date(a.pickup_datetime) - new Date(b.pickup_datetime); });
-    var html = '';
-    sorted.forEach(function (b, i) {
-      var pillClass = b.status === 'confirmed' ? '' : b.status === 'declined' || b.status === 'cancelled' ? 'bad' : 'warn';
-      var label = b.status === 'pending' ? 'Awaiting human confirmation' : b.status;
-      html += '<div style="' + (i > 0 ? 'margin-top:14px;padding-top:14px;border-top:1px solid var(--line)' : '') + '">' +
-        '<p class="sub muted small">Booking ' + b.client_booking_ref + '</p>' +
-        '<p style="font-weight:700;font-size:16px">' + b.pickup_zone + ' → ' + b.destination_zone + '</p>' +
-        '<p class="small muted">' + new Date(b.pickup_datetime).toLocaleString() + ' · ' + b.vehicle_type + '</p>' +
-        '<span class="pill ' + pillClass + '">' + label + '</span>' +
-        '</div>';
+    var soonest = sorted[0];
+    var when = new Date(soonest.pickup_datetime);
+    var dayLabel = when.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    var timeLabel = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    var pillClass = STATUS_PILL[soonest.status] || 'warn';
+    var statusLabel = STATUS_LABEL[soonest.status] || soonest.status;
+
+    var switcher = '';
+    if (sorted.length > 1) {
+      switcher = '<p class="small" style="opacity:.85;margin-top:10px">+' + (sorted.length - 1) + ' more booking' + (sorted.length > 2 ? 's' : '') + ' on this trip</p>';
+    }
+
+    els.pickupCard.innerHTML = '<article class="pickup panel" aria-label="Next pickup">' +
+      '<p class="sub">Next pickup · booking ' + soonest.client_booking_ref + '</p>' +
+      '<p class="when">' + timeLabel + '</p>' +
+      '<p class="sub">' + dayLabel + '</p>' +
+      '<div class="route">' +
+        '<div class="stop fill"><span class="dot"></span><div><strong>' + soonest.pickup_zone + '</strong><span>Pickup</span></div></div>' +
+        '<div class="stop"><span class="dot"></span><div><strong>' + soonest.destination_zone + '</strong><span>Destination</span></div></div>' +
+      '</div>' +
+      '<div class="facts">' +
+        '<div class="fact">Vehicle<b>' + soonest.vehicle_type + '</b></div>' +
+        '<div class="fact">Status<b>' + statusLabel + '</b></div>' +
+      '</div>' +
+      '<div class="pickup-actions"><button class="btn btn-onlagoon" id="changeBtn" type="button">Request a change</button></div>' +
+      switcher +
+      '</article>';
+
+    document.getElementById('changeBtn').addEventListener('click', function () {
+      var newTime = prompt('New pickup date/time (YYYY-MM-DDTHH:MM):', soonest.pickup_datetime.slice(0, 16));
+      if (!newTime) return;
+      authFetch('/preview/bookings/' + soonest.id + '/change-request', { method: 'POST', body: JSON.stringify({ requested_fields: { pickup_datetime: newTime } }) }).then(function (res) {
+        toast(res.ok ? 'Change requested — awaiting operator approval.' : (res.data.error || 'Could not request a change.'));
+      });
     });
-    els.tripPanel.innerHTML = html;
+    void pillClass;
+  }
+
+  var DEAL_REQUEST_PILL = { REQUESTED: 'warn', CONFIRMED: '', DECLINED: 'bad', WITHDRAWN: 'bad' };
+  function renderDealRequests(dealRequests) {
+    if (!dealRequests || dealRequests.length === 0) { els.dealRequestsPanel.style.display = 'none'; return; }
+    els.dealRequestsPanel.style.display = 'block';
+    els.dealRequestsList.innerHTML = dealRequests.map(function (r) {
+      return '<div style="border-bottom:1px solid var(--line);padding:10px 0">' +
+        '<p style="font-weight:700">' + r.origin_zone + ' → ' + r.destination_zone + ' <span class="pill ' + (DEAL_REQUEST_PILL[r.status] || '') + '">' + r.status + '</span></p>' +
+        '<p class="small muted">Requested at $' + Number(r.requested_price).toFixed(2) + (r.current_price !== r.requested_price ? ' · now $' + Number(r.current_price).toFixed(2) : '') + ' · ' + r.vehicle_class + '</p>' +
+        '<p class="small muted">Ref: ' + r.offer_id + ' (movement ' + r.source_movement_id + ')</p>' +
+        '</div>';
+    }).join('');
   }
 
   var pendingLinkOffer = null;
@@ -262,7 +375,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     if (!pendingLinkOffer) { els.linkOfferPanel.style.display = 'none'; return; }
     els.linkOfferPanel.style.display = 'block';
     els.linkOfferPanel.innerHTML = '<h2>Link an earlier booking?</h2>' +
-      '<p class="small muted">' + pendingLinkOffer.message + '</p>' +
+      '<p class="small muted" style="margin-top:6px">' + pendingLinkOffer.message + '</p>' +
       '<label for="linkCode">Verification code</label>' +
       '<input id="linkCode" inputmode="numeric" maxlength="6" placeholder="6-digit code">' +
       '<button class="btn btn-primary btn-block" id="linkConfirmBtn" type="button">Confirm link</button>' +
@@ -290,7 +403,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       els.linkInboxPanel.style.display = 'block';
       els.linkInboxPanel.innerHTML = '<h2>A device is trying to link to this trip</h2>' +
         rows.map(function (r) {
-          return '<p class="small muted">' + r.note + '</p>' +
+          return '<p class="small muted" style="margin-top:6px">' + r.note + '</p>' +
             '<div class="link-code">' + r.verification_code + '</div>' +
             '<p class="small muted">Share this code with the other device, or revoke it if you don’t recognize this.</p>' +
             '<button class="btn btn-light btn-block" data-revoke-link="' + r.link_request_id + '" type="button">Revoke</button>';
@@ -310,7 +423,8 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     }
     authFetch('/preview/trip').then(function (res) {
       if (!res.ok) { clearToken(); showView('start'); return; }
-      renderTrip(res.data);
+      renderPickupCard(res.data);
+      renderDealRequests(res.data.deal_requests);
       renderLinkOffer();
       loadLinkInbox();
       showView('trip');
@@ -322,9 +436,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     els.startError.textContent = '';
     // Generated ONCE, before the first network attempt, and persisted —
     // a reload or a retried submit (timeout, double-click) reuses this
-    // SAME reference instead of minting a new one each time, so the
-    // server's own idempotency (client_booking_ref) actually gets the
-    // chance to recognize a retry rather than always seeing a fresh key.
+    // SAME reference instead of minting a new one each time.
     var clientBookingRef = getOrCreateClientBookingRef(sessionStorage, defaultRandomSource);
     var body = {
       client_booking_ref: clientBookingRef,
@@ -337,12 +449,19 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       quoted_amount: Number(document.getElementById('f-amount').value),
       pickup_datetime: document.getElementById('f-when').value,
     };
-    fetch('/preview/bookings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    var tok = getToken();
+    var headers = { 'content-type': 'application/json' };
+    if (tok) headers.authorization = 'Bearer ' + tok;
+    fetch('/preview/bookings', { method: 'POST', headers: headers, body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
       .then(function (res) {
         if (!res.ok) { els.startError.textContent = (res.data.details || [res.data.error]).join('; '); return; }
         clearClientBookingRef(sessionStorage); // this attempt is done — a genuinely NEW booking later gets a fresh key
-        setToken(res.data.access_token);
+        if (res.data.access_token) {
+          setToken(res.data.access_token);
+        } else if (res.data.recovery_offer) {
+          setToken(res.data.recovery_offer.access_token);
+        }
         pendingLinkOffer = res.data.link_offer || null;
         toast('Saved. Reference ' + res.data.booking_reference + ' — ' + res.data.message);
         loadTrip();
@@ -361,14 +480,19 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   function renderDeals(deals) {
     if (deals.length === 0) { els.dealsList.innerHTML = '<p class="muted">No deals available right now.</p>'; return; }
     els.dealsList.innerHTML = deals.map(function (d) {
-      return '<div class="deal-card">' +
-        '<p class="small muted">' + (d.label || '') + '</p>' +
-        '<p style="font-weight:700">' + d.origin_zone + ' → ' + d.destination_zone + '</p>' +
-        '<p class="price">$' + d.total_price.toFixed(2) + (d.standard_price && d.standard_price !== d.total_price ? '<span class="was">$' + d.standard_price.toFixed(2) + '</span>' : '') + '</p>' +
-        '<p class="small muted">' + d.conditions + '</p>' +
-        '<p class="small muted">Expires ' + new Date(d.expires_at).toLocaleString() + '</p>' +
-        '<button class="btn btn-primary btn-block" data-offer="' + d.offer_id + '">Request this deal</button>' +
-        '<div class="small" data-handoff="' + d.offer_id + '" style="margin-top:8px"></div>' +
+      var pctOff = d.standard_price ? Math.round((1 - d.total_price / d.standard_price) * 100) : null;
+      return '<div class="deal">' +
+        '<div class="deal-top">' +
+          '<div><div class="deal-kind">' + (d.label || 'Deal') + '</div><div class="deal-route">' + d.origin_zone + ' → ' + d.destination_zone + '</div></div>' +
+          (pctOff ? '<div class="pct">' + pctOff + '%<small>off</small></div>' : '') +
+        '</div>' +
+        '<p class="why">' + d.conditions + '</p>' +
+        '<div class="deal-foot">' +
+          '<span class="price">' + (d.standard_price && d.standard_price !== d.total_price ? '<s>$' + d.standard_price.toFixed(2) + '</s>' : '') + '<b>$' + d.total_price.toFixed(2) + '</b></span>' +
+          '<span class="meta">Expires ' + new Date(d.expires_at).toLocaleString() + '</span>' +
+        '</div>' +
+        '<div style="padding:0 16px 16px"><button class="btn btn-primary btn-block" data-offer="' + d.offer_id + '">Request this deal</button>' +
+        '<div class="small" data-handoff="' + d.offer_id + '" style="margin-top:8px"></div></div>' +
         '</div>';
     }).join('');
     els.dealsList.querySelectorAll('[data-offer]').forEach(function (btn) {
@@ -396,7 +520,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       var offersHtml = (res.data.ranked_offers || []).slice(0, 3).map(function (o) {
         return '<li>' + o.origin_zone + ' → ' + o.destination_zone + ' — $' + Number(o.price).toFixed(2) + ' (' + o.reason + ')</li>';
       }).join('');
-      els.assistAnswer.innerHTML = '<p>' + res.data.answer + '</p>' + (offersHtml ? '<ul>' + offersHtml + '</ul>' : '');
+      els.assistAnswer.innerHTML = '<p>' + res.data.answer + '</p>' + (offersHtml ? '<ul style="margin:8px 0 0;padding-left:1.1em">' + offersHtml + '</ul>' : '');
     });
   });
 
@@ -419,32 +543,37 @@ export const ADMIN_APP_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0F5E63">
 <title>Marau ops (preview)</title>
+${FONT_LINK}
 ${SHARED_STYLE}
 </head>
 <body>
-<div class="wrap" style="padding-bottom:24px">
-  <h1>Marau ops console <span class="muted small">— PREVIEW / TEST ONLY</span></h1>
+<div class="app" style="max-width:640px;padding-bottom:24px">
+  <header class="top">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Marau ops<span class="brand-sub"> console</span></div>
+    <span class="preview-pill">Test only</span>
+  </header>
   <div class="banner">Authenticated test interface. Confirming here is the ONLY action that ever confirms anything — WhatsApp is never sent by this system.</div>
 
   <div class="panel" id="loginPanel">
     <h2>Ops test token</h2>
-    <input id="tokenInput" placeholder="paste the test admin token">
+    <input id="tokenInput" placeholder="paste the test admin token" style="margin-top:8px">
     <button class="btn btn-primary btn-block" id="loginBtn" type="button">Use this token</button>
   </div>
 
   <div id="consolePanel" style="display:none">
     <div class="panel">
       <h2>Deal requests awaiting a decision</h2>
-      <div id="dealRequests"></div>
+      <div id="dealRequests" style="margin-top:8px"></div>
     </div>
     <div class="panel">
       <h2>Bookings awaiting confirmation</h2>
-      <div id="bookings"></div>
+      <div id="bookings" style="margin-top:8px"></div>
     </div>
     <div class="panel">
       <h2>Change requests awaiting a decision</h2>
-      <div id="changeRequests"></div>
+      <div id="changeRequests" style="margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -513,7 +642,7 @@ ${SHARED_STYLE}
           '<div class="row"><button class="btn btn-primary" data-confirm="' + b.id + '">Confirm</button><button class="btn btn-light" data-decline="' + b.id + '">Decline</button></div>' +
           '</div>';
       }).join('');
-      els.bookings.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function () { api('/preview/admin/bookings/' + b.dataset.confirm + '/confirm', { method: 'POST' }).then(loadBookings); }); });
+      els.bookings.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function () { api('/preview/admin/bookings/' + b.dataset.confirm + '/confirm', { method: 'POST' }).then(function (res) { toast(res.ok ? ('Status: ' + res.data.status) : (res.data.error || 'Could not confirm.')); loadBookings(); }); }); });
       els.bookings.querySelectorAll('[data-decline]').forEach(function (b) { b.addEventListener('click', function () { api('/preview/admin/bookings/' + b.dataset.decline + '/decline', { method: 'POST' }).then(loadBookings); }); });
     });
   }

@@ -30,6 +30,15 @@ import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } f
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
 const LINK_REQUEST_TTL_MS = 10 * 60 * 1000; // 10 minutes, mirrors the deal-hold-adjacent language elsewhere
+// FIX (second review, findings 2+3): how long a matching resubmit of the
+// SAME client_booking_ref is treated as "still the same live submission
+// attempt" (a genuine double-click, reload, or client timeout retry) and
+// so gets direct access back — versus a LATER, separate replay of the
+// same reference and field values, which must go through the recovery
+// flow instead (see handleCreateBooking). 60s comfortably covers a real
+// retry without leaving a wide window an unauthenticated replay could
+// exploit.
+const RETRY_GRACE_MS = 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -185,6 +194,42 @@ function requireAdmin(request, env) {
 // Bookings
 // ---------------------------------------------------------------------
 
+/**
+ * FIX (second review, finding 2 — concurrency): the old version SELECTed
+ * for an existing booking, and ONLY IF NOT FOUND created a session and
+ * did a plain INSERT. Two truly simultaneous submissions of the SAME
+ * client_booking_ref both saw "not found," both created their OWN
+ * session, and both attempted the plain INSERT — one succeeded, the
+ * other threw an UNCAUGHT UNIQUE-constraint error (client_booking_ref is
+ * UNIQUE), leaving an orphaned, never-referenced guest_sessions row
+ * behind for the loser. This version ALWAYS creates a session first (the
+ * FK requires one to exist before the booking row can), then attempts an
+ * `INSERT OR IGNORE` — the winner is decided atomically by SQLite/D1
+ * itself, never by an earlier read. Whichever request loses that race
+ * DELETEs its own now-unused session (and any link-offer row opened
+ * against it) rather than leaving it behind.
+ *
+ * FIX (second review, finding 3 — authorization): a matching resubmit
+ * used to return the EXISTING booking's access_token unconditionally —
+ * meaning anyone who merely knew (or guessed, or observed in a log) a
+ * client_booking_ref and its field values could recover full private
+ * trip access, with no proof they were the original submitter. That is
+ * now split into two cases:
+ *   - Within RETRY_GRACE_MS of the original row's created_at (a genuine
+ *     same-attempt retry: reload, timeout, double-click — no meaningful
+ *     time for an external replay to have been staged), OR the caller
+ *     already presents a valid Authorization bearer for that EXACT
+ *     session (harmless — they already have full access): direct access
+ *     is returned, preserving "immediate access to a newly saved
+ *     request."
+ *   - Otherwise: NO access_token is returned. Instead a `recovery_offer`
+ *     is issued, reusing the SAME verified-ownership linking mechanism as
+ *     a phone match (see createSessionAndOfferLink/handleListLinkRequests/
+ *     handleConfirmLink) — the verification code is only ever readable by
+ *     whoever already holds the ORIGINAL session's own token, so a bare
+ *     replay of public-looking reference+details data gets a session with
+ *     zero bookings and nothing usable until the real code is supplied.
+ */
 async function handleCreateBooking(request, env) {
   let body;
   try {
@@ -197,43 +242,11 @@ async function handleCreateBooking(request, env) {
 
   const clientBookingRef = body.client_booking_ref || `MARAU-${cryptoRandomId()}`;
 
-  // FIX (P1): a resubmitted client_booking_ref must return the SAME
-  // booking only if the payload actually matches — otherwise this key
-  // was either reused by mistake for a different booking, or is being
-  // replayed with tampered data, and either way must be rejected rather
-  // than silently served or silently overwritten.
-  const existingBooking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
-  if (existingBooking) {
-    const comparison = findPayloadMismatch(existingBooking, body);
-    if (!comparison.matches) {
-      return json(
-        {
-          error: 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH',
-          detail: 'This booking reference was already used for a different booking.',
-          mismatched_fields: comparison.mismatched_fields,
-        },
-        409
-      );
-    }
-    const session = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(existingBooking.guest_session_id).first();
-    return json(
-      {
-        booking_reference: existingBooking.client_booking_ref,
-        status: existingBooking.status,
-        message: 'Awaiting human confirmation',
-        access_token: session.access_token,
-        was_new_booking: false,
-        demonstration_data: true,
-      },
-      200
-    );
-  }
-
   const { session, linkOffer } = await createSessionAndOfferLink(env, body);
 
-  await env.DB
+  const insertResult = await env.DB
     .prepare(
-      `INSERT INTO marau_test_bookings
+      `INSERT OR IGNORE INTO marau_test_bookings
         (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 1, ?, ?)`
     )
@@ -252,20 +265,118 @@ async function handleCreateBooking(request, env) {
     )
     .run();
 
+  if (insertResult.meta.changes === 1) {
+    return json(
+      {
+        booking_reference: clientBookingRef,
+        status: 'pending',
+        message: 'Awaiting human confirmation',
+        access_token: session.access_token,
+        was_new_booking: true,
+        demonstration_data: true,
+        link_offer: linkOffer,
+      },
+      201
+    );
+  }
+
+  // We lost the race for this client_booking_ref (or it was a genuine,
+  // simple retry of an already-existing one) — our own session was never
+  // actually used for anything real. Clean it up rather than leaving an
+  // orphan. Any guest_link_requests row referencing this session — as
+  // EITHER new_session_id (our own cross-phone link offer) OR
+  // candidate_session_id (the OTHER, concurrently-racing request may have
+  // found OUR session as its own phone-match candidate before we lost the
+  // ref race) — must be deleted first, since either column is a foreign
+  // key on this session; deleting the session before that would fail the
+  // constraint rather than cleanly remove it.
+  await env.DB.prepare('DELETE FROM guest_link_requests WHERE new_session_id = ? OR candidate_session_id = ?').bind(session.session_id, session.session_id).run();
+  await env.DB.prepare('DELETE FROM guest_sessions WHERE session_id = ?').bind(session.session_id).run();
+
+  const existingBooking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
+  const comparison = findPayloadMismatch(existingBooking, body);
+  if (!comparison.matches) {
+    return json(
+      {
+        error: 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH',
+        detail: 'This booking reference was already used for a different booking.',
+        mismatched_fields: comparison.mismatched_fields,
+      },
+      409
+    );
+  }
+
+  const presentedToken = bearerToken(request);
+  const presentedSession = presentedToken
+    ? await env.DB.prepare('SELECT * FROM guest_sessions WHERE access_token = ? AND access_token_revoked = 0').bind(presentedToken).first()
+    : null;
+  const ageMs = Date.now() - new Date(existingBooking.created_at).getTime();
+  const withinRetryGrace = Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= RETRY_GRACE_MS;
+  const ownsExistingSession = Boolean(presentedSession) && presentedSession.session_id === existingBooking.guest_session_id;
+
+  if (withinRetryGrace || ownsExistingSession) {
+    const existingSession = ownsExistingSession
+      ? presentedSession
+      : await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(existingBooking.guest_session_id).first();
+    return json(
+      {
+        booking_reference: existingBooking.client_booking_ref,
+        status: existingBooking.status,
+        message: 'Awaiting human confirmation',
+        access_token: existingSession.access_token,
+        was_new_booking: false,
+        demonstration_data: true,
+      },
+      200
+    );
+  }
+
+  // No proof of ownership, and this is not a same-attempt retry — do NOT
+  // hand back access to an existing trip just because the caller knew (or
+  // guessed, or replayed) the reference and matching field values. Offer
+  // recovery instead, through the same verified-ownership mechanism a
+  // phone match uses: a fresh, otherwise-empty session that can only ever
+  // be merged with the real trip once the code — readable solely via the
+  // ORIGINAL session's own token — is supplied.
+  const recoverySession = await createGuestSession(env, body);
+  const linkRequestId = `link_${cryptoRandomId()}`;
+  const expiresAt = new Date(Date.now() + LINK_REQUEST_TTL_MS).toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO guest_link_requests (link_request_id, new_session_id, candidate_session_id, verification_code, status, expires_at, created_at)
+       VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`
+    )
+    .bind(linkRequestId, recoverySession.session_id, existingBooking.guest_session_id, sixDigitCode(), expiresAt, nowIso())
+    .run();
+
   return json(
     {
-      booking_reference: clientBookingRef,
-      status: 'pending',
-      message: 'Awaiting human confirmation',
-      access_token: session.access_token,
-      was_new_booking: true,
+      booking_reference: existingBooking.client_booking_ref,
+      status: existingBooking.status,
+      message: 'This request was already recorded. If this is your booking, open your original access link, check for a verification code there, and confirm it from this device to regain access.',
+      was_new_booking: false,
       demonstration_data: true,
-      link_offer: linkOffer,
+      recovery_offer: {
+        link_request_id: linkRequestId,
+        access_token: recoverySession.access_token,
+        expires_at: expiresAt,
+      },
     },
-    201
+    200
   );
 }
 
+/**
+ * FIX (second review, finding 6 — the omitted sixth finding): the trip
+ * view used to return only `bookings`. It now also returns the guest's
+ * OWN deal requests in every state (REQUESTED, CONFIRMED, DECLINED,
+ * WITHDRAWN), each carrying the AUTHORITATIVE current offer fields
+ * (joined live from smart_offers, not copied at request time) alongside
+ * the PRICE PROVENANCE the guest actually saw when they requested it
+ * (`requested_price`/`requested_floor` — see migration 0015 and
+ * handleRequestDeal), and `source_movement_id` so the shadow-leg source
+ * this deal traces back to is never lost ("preserved source lineage").
+ */
 async function handleGetTrip(request, env) {
   const session = await requireGuestSession(request, env);
   if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
@@ -275,11 +386,41 @@ async function handleGetTrip(request, env) {
     .bind(session.session_id)
     .all();
 
+  const { results: dealRequests } = await env.DB
+    .prepare(
+      `SELECT dr.request_id, dr.status, dr.requested_price, dr.requested_floor, dr.created_at, dr.decided_at,
+              o.offer_id, o.origin_zone, o.destination_zone, o.vehicle_class, o.source_movement_id,
+              o.status AS offer_status, o.smart_match_price AS current_smart_match_price, o.standard_price AS current_standard_price,
+              o.expires_at AS offer_expires_at
+       FROM deal_requests dr
+       JOIN smart_offers o ON o.offer_id = dr.offer_id
+       WHERE dr.guest_session_id = ?
+       ORDER BY dr.created_at DESC`
+    )
+    .bind(session.session_id)
+    .all();
+
   return json({
     guest_email: session.guest_email,
     guest_phone: session.guest_phone,
     whatsapp_available: session.whatsapp_available === 1 ? true : session.whatsapp_available === 0 ? false : null,
     bookings,
+    deal_requests: dealRequests.map((r) => ({
+      request_id: r.request_id,
+      status: r.status,
+      offer_id: r.offer_id,
+      source_movement_id: r.source_movement_id,
+      origin_zone: r.origin_zone,
+      destination_zone: r.destination_zone,
+      vehicle_class: r.vehicle_class,
+      requested_price: r.requested_price,
+      requested_floor: r.requested_floor,
+      current_price: r.current_smart_match_price ?? r.current_standard_price,
+      offer_status: r.offer_status,
+      offer_expires_at: r.offer_expires_at,
+      created_at: r.created_at,
+      decided_at: r.decided_at,
+    })),
   });
 }
 
@@ -461,13 +602,18 @@ async function handleRequestDeal(request, env, offerId) {
 
   const idempotencyKey = `${session.session_id}:${offerId}`;
   const requestId = `dr_${cryptoRandomId()}`;
+  // Snapshot the exact price/floor the guest was shown and agreed to —
+  // "approved-price provenance" (second review, finding 5). Confirmation
+  // re-checks the offer's CURRENT price/floor against this snapshot and
+  // refuses to confirm if either has moved since the request.
+  const requestedPrice = offer.smart_match_price ?? offer.standard_price;
   const insertResult = await env.DB
     .prepare(
       `INSERT OR IGNORE INTO deal_requests
-        (request_id, offer_id, guest_session_id, idempotency_key, status, whatsapp_handoff_prepared, test_data, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'REQUESTED', 1, 1, ?, ?)`
+        (request_id, offer_id, guest_session_id, idempotency_key, status, whatsapp_handoff_prepared, requested_price, requested_floor, test_data, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'REQUESTED', 1, ?, ?, 1, ?, ?)`
     )
-    .bind(requestId, offerId, session.session_id, idempotencyKey, nowIso(), nowIso())
+    .bind(requestId, offerId, session.session_id, idempotencyKey, requestedPrice, offer.absolute_floor, nowIso(), nowIso())
     .run();
 
   const dealRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE idempotency_key = ?').bind(idempotencyKey).first();
@@ -564,6 +710,30 @@ async function handleAdminListDealRequests(env) {
  *      is an offer or an ordinary booking (see handleAdminDecideBooking).
  * A movement with no recorded vehicle_windows row is UNKNOWN and blocks
  * confirmation outright (checked before either claim is attempted).
+ *
+ * FIX (second review, finding 1 — atomicity): the previous rollback()
+ * only ever deleted the allocation/claim rows — it never reverted the
+ * OFFER's own status. Codex injected a failure at the final `deal_requests`
+ * UPDATE (after holdOffer/fillOffer had already succeeded) and found the
+ * offer left FILLED, the request left REQUESTED, the allocation rolled
+ * back to zero, and a retry permanently rejected (409) because
+ * evaluateOfferEligibility requires ACTIVE — an unrecoverable, silently
+ * inconsistent state. rollback() now ALSO reverts the offer's status back
+ * to ACTIVE from either FILLED or HELD (via the SAME generic
+ * store.casOfferStatus() primitive holdOffer/fillOffer use internally —
+ * calling it directly for a transition outside those helpers' own
+ * forward-only graph is exactly what a compensating action is), so a
+ * failure at ANY step, including the very last write, leaves the offer
+ * back in its pre-attempt state and the request retryable. A test-only
+ * hook (`env.__TEST_INJECT_FAILURE_BEFORE_FINAL_UPDATE__`, never present
+ * outside marau_codex_fixes.test.mjs) reproduces the exact injection
+ * point Codex used.
+ *
+ * FIX (second review, finding 5 — stale price): re-checks the offer's
+ * CURRENT price/floor against the snapshot taken at request time
+ * (deal_requests.requested_price/requested_floor — see handleRequestDeal
+ * and migration 0015) BEFORE claiming anything. A price or floor that
+ * moved since the guest saw and requested it is never silently honoured.
  */
 async function handleAdminConfirmDealRequest(env, requestId) {
   const store = createD1Store({ SMART_RETURN_DB: env.DB });
@@ -586,6 +756,20 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     return json({ error: 'STALE_OR_UNAPPROVED_OFFER', reason: eligibility.reason, detail: eligibility.detail }, 409);
   }
 
+  const currentPrice = offer.smart_match_price ?? offer.standard_price;
+  if (dealRequest.requested_price != null && currentPrice !== dealRequest.requested_price) {
+    return json(
+      { error: 'PRICE_CHANGED_SINCE_REQUEST', detail: `price was ${dealRequest.requested_price} when requested, is now ${currentPrice}` },
+      409
+    );
+  }
+  if (dealRequest.requested_floor != null && offer.absolute_floor !== dealRequest.requested_floor) {
+    return json(
+      { error: 'PRICE_CHANGED_SINCE_REQUEST', detail: `absolute_floor was ${dealRequest.requested_floor} when requested, is now ${offer.absolute_floor}` },
+      409
+    );
+  }
+
   const vehicleWindow = await findVehicleWindow(env, 'MOVEMENT', offer.source_movement_id);
   if (!vehicleWindow) {
     return json(
@@ -598,6 +782,12 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   let allocationId = null;
 
   const rollback = async () => {
+    // Revert the offer's own status FIRST — whichever of these two
+    // matches its actual current state applies; the other is a harmless
+    // no-op (casOfferStatus only ever writes when the expected status
+    // matches).
+    await store.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
+    await store.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
     if (allocationId) await releaseVehicleAllocation(env, allocationId);
     if (claimedMovement) {
       await env.DB.prepare('DELETE FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).run();
@@ -650,6 +840,13 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       return json({ error: 'OFFER_STATE_CONFLICT', detail: filled.reason || 'fill failed' }, 409);
     }
 
+    // Test-only fault injection, exercised by
+    // marau_codex_fixes.test.mjs's late-failure regression — never set on
+    // any real env.
+    if (typeof env.__TEST_INJECT_FAILURE_BEFORE_FINAL_UPDATE__ === 'function') {
+      env.__TEST_INJECT_FAILURE_BEFORE_FINAL_UPDATE__();
+    }
+
     await env.DB
       .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ?`)
       .bind('marau-ops-preview', now, now, requestId)
@@ -663,7 +860,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     });
   } catch (err) {
     await rollback();
-    throw err;
+    return json({ error: 'CONFIRMATION_FAILED', detail: 'The confirmation could not be completed and has been fully rolled back — safe to retry.' }, 500);
   }
 }
 
@@ -685,6 +882,19 @@ async function handleAdminListBookings(env) {
   return json({ bookings: results });
 }
 
+/**
+ * FIX (second review, finding 4 — consistency): an ordinary booking with
+ * NO recorded vehicle_windows row used to be confirmed with the SAME
+ * plain 'confirmed' status as one that had actually been allocated a
+ * real vehicle/time slot — silently conflating "operationally accepted,
+ * vehicle not yet known" with "allocated." Stage 1 does not require
+ * every ordinary booking to already have a known vehicle (unlike an
+ * OFFER confirmation, which is specifically claiming capacity from an
+ * ALREADY-assigned movement and so hard-blocks on VEHICLE_UNKNOWN), so
+ * this still permits confirming without one — but the resulting status
+ * is now the distinct, explicit 'confirmed_unallocated' (migration 0016),
+ * never silently written as plain 'confirmed'.
+ */
 async function handleAdminDecideBooking(env, bookingId, decision) {
   const booking = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
   if (!booking) return json({ error: 'booking not found' }, 404);
@@ -692,15 +902,9 @@ async function handleAdminDecideBooking(env, bookingId, decision) {
 
   const now = nowIso();
   let allocationId = null;
+  let nextStatus = 'declined';
 
   if (decision === 'confirm') {
-    // Ordinary bookings only participate in the vehicle/time exclusivity
-    // guard if a vehicle assignment is actually on record for them — an
-    // ordinary booking with no recorded vehicle is unaffected (this
-    // mirrors the fact that, until ops assigns a vehicle, a booking has
-    // no known conflict to check), unlike offer confirmation, where an
-    // unknown vehicle is a hard block (an offer is specifically claiming
-    // capacity from an ALREADY-assigned movement).
     const vehicleWindow = await findVehicleWindow(env, 'BOOKING', String(bookingId));
     if (vehicleWindow) {
       allocationId = `va_${cryptoRandomId()}`;
@@ -719,10 +923,12 @@ async function handleAdminDecideBooking(env, bookingId, decision) {
           409
         );
       }
+      nextStatus = 'confirmed';
+    } else {
+      nextStatus = 'confirmed_unallocated';
     }
   }
 
-  const nextStatus = decision === 'confirm' ? 'confirmed' : 'declined';
   await env.DB.prepare('UPDATE marau_test_bookings SET status = ?, updated_at = ? WHERE id = ?').bind(nextStatus, now, bookingId).run();
   return json({ id: bookingId, status: nextStatus, vehicle_allocation: allocationId });
 }
