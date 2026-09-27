@@ -1,0 +1,21 @@
+-- Marau Stage 1 (PREVIEW/TEST ONLY) — a client-generated attempt secret,
+-- separate from client_booking_ref.
+--
+-- FIX for a THIRD independent review finding: the round-2 fix used a
+-- 60-second "retry grace window" on the booking's own created_at to
+-- decide whether an unauthenticated resubmit of a matching
+-- client_booking_ref + payload was "probably the same attempt." Codex
+-- replayed a FRESH reference/payload within that window and got the
+-- access token back — proving a time window is not proof of anything;
+-- an attacker who captures the reference and payload (both are
+-- business-shaped values a real system may log, display, or otherwise
+-- expose) can replay them just as easily inside 60 seconds as outside it.
+--
+-- attempt_secret is a SEPARATE, client-generated random value (see
+-- worker/client_idempotency.js), sent once with the first submission and
+-- never returned in any API response. A resubmission only recovers
+-- direct access if it presents the SAME attempt_secret the original
+-- request carried — proof the caller holds the same client-side state
+-- the original submitter did, not merely knowledge of public-looking
+-- reference/payload data. Timing plays no role in the decision at all.
+ALTER TABLE marau_test_bookings ADD COLUMN attempt_secret TEXT;

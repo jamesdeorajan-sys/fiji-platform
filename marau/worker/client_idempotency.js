@@ -1,4 +1,5 @@
-/* Marau Stage 1 (PREVIEW ONLY) — client-side booking idempotency key.
+/* Marau Stage 1 (PREVIEW ONLY) — client-side booking idempotency key and
+ * attempt secret.
  *
  * FIX for a P1 Codex finding: submitting the guest app's booking form
  * twice (a double-click, a reload-and-resubmit, a client timeout retry)
@@ -9,40 +10,45 @@
  * client_booking_ref, already tested) only ever works if the SAME key is
  * sent twice — it was never given the chance to.
  *
- * This function is the ONE place that key is generated. It is written as
- * a plain, dependency-injected function (a storage object and a random
- * source are passed in, not read from globals) specifically so it can be
- * unit-tested directly in Node with a fake storage AND embedded verbatim
- * into the guest app's browser-side <script> — see pages.js, which
- * imports this file and splices `getOrCreateClientBookingRef.toString()`
- * and `clearClientBookingRef.toString()` into the emitted HTML, so the
- * browser runs the EXACT same source this file's own tests exercise,
- * not a hand-copied duplicate that could drift out of sync.
+ * FIX (third independent review, finding 1): a resubmission used to be
+ * allowed direct access if it landed within a 60-second "retry grace
+ * window" of the original save. Codex replayed a FRESH reference/payload
+ * within that window and still got the access token back — a time
+ * window proves nothing, since an attacker who captured the reference
+ * and payload (both business-shaped, potentially loggable/visible
+ * values) can replay them just as easily inside the window as outside
+ * it. `attempt_secret` is a SEPARATE random value with no timing
+ * component at all: generated once per booking attempt, sent with the
+ * first submission, and compared server-side on any resubmission — see
+ * worker.js#handleCreateBooking. Only presenting the SAME secret (proof
+ * of holding the same client-side state the original submitter did)
+ * recovers direct access; timing is irrelevant.
  *
- * Behaviour: the FIRST call (nothing pending) generates a fresh, random
- * reference and persists it. Every call after that, until
- * clearClientBookingRef() runs (only after a genuinely successful save —
- * see pages.js), returns the SAME persisted value — this is what makes a
- * reload or a retried submit reuse the original attempt's key instead of
- * minting a new one. Scoping: the key is stored under a single
- * fixed-name slot ("one booking attempt in flight at a time" per
- * device/tab), not derived from guest-supplied data (email/phone), so it
- * can't be predicted or reused across a DIFFERENT guest's attempt.
+ * Every function here is fully self-contained (no shared module-level
+ * `const` referenced from inside a function body) ON PURPOSE: pages.js
+ * embeds each function's own source via `.toString()` into the guest
+ * app's browser-side <script>, and a shared outer constant does NOT
+ * survive that splicing — a previous version of this file referenced
+ * such a constant and would have thrown `ReferenceError` the first time
+ * a real browser called it, undetected because the test suite only ever
+ * imports these functions as normal ES modules (where the shared
+ * constant IS in scope) rather than re-parsing the spliced source the
+ * way the browser actually runs it. Fixed here by inlining each storage
+ * key as a literal inside its own function.
  */
 
-const STORAGE_KEY = 'marau_pending_booking_ref';
-
 export function getOrCreateClientBookingRef(storage, randomSource) {
+  var key = 'marau_pending_booking_ref';
   var existing;
   try {
-    existing = storage.getItem(STORAGE_KEY);
+    existing = storage.getItem(key);
   } catch (e) {
     existing = null;
   }
   if (existing) return existing;
   var ref = 'MARAU-' + randomSource();
   try {
-    storage.setItem(STORAGE_KEY, ref);
+    storage.setItem(key, ref);
   } catch (e) {
     // Storage unavailable (private mode, blocked site data, etc.) — the
     // caller still gets a usable ref for this single request, it just
@@ -53,7 +59,41 @@ export function getOrCreateClientBookingRef(storage, randomSource) {
 
 export function clearClientBookingRef(storage) {
   try {
-    storage.removeItem(STORAGE_KEY);
+    storage.removeItem('marau_pending_booking_ref');
+  } catch (e) {
+    // best-effort
+  }
+}
+
+/**
+ * A second, INDEPENDENT random value from the same booking attempt — see
+ * the file header. Persisted and cleared on the exact same lifecycle as
+ * the booking reference (generated once before the first submit, kept
+ * until a successful save, then cleared), but never derived from or
+ * combined with the reference itself, so knowing one never reveals the
+ * other.
+ */
+export function getOrCreateAttemptSecret(storage, randomSource) {
+  var key = 'marau_pending_attempt_secret';
+  var existing;
+  try {
+    existing = storage.getItem(key);
+  } catch (e) {
+    existing = null;
+  }
+  if (existing) return existing;
+  var secret = randomSource() + '-' + randomSource();
+  try {
+    storage.setItem(key, secret);
+  } catch (e) {
+    // best-effort, see getOrCreateClientBookingRef
+  }
+  return secret;
+}
+
+export function clearAttemptSecret(storage) {
+  try {
+    storage.removeItem('marau_pending_attempt_secret');
   } catch (e) {
     // best-effort
   }

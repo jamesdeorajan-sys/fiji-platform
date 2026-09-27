@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installNetworkGuard } from './network_guard.mjs';
-import { makeEnv, seedActiveOffer, synthGuest } from './fixtures.mjs';
+import { makeEnv, seedActiveOffer, synthGuest, seedVehicleWindowForBooking } from './fixtures.mjs';
 import worker from '../worker/worker.js';
 
 installNetworkGuard();
@@ -71,9 +71,13 @@ test('a successfully saved booking immediately grants access — no waiting for 
   assert.equal(trip.data.bookings[0].status, 'pending');
 });
 
-test('retrying the same client_booking_ref is idempotent — no duplicate row, same access token', async () => {
+test('retrying the same client_booking_ref WITH the same attempt_secret is idempotent — no duplicate row, same access token', async () => {
+  // A genuine client-side retry (reload, timeout, double-click) sends the
+  // SAME attempt_secret both times — see client_idempotency.js and the
+  // third-review fix in worker.js#handleCreateBooking. Timing is no
+  // longer part of this decision at all.
   const env = makeEnv();
-  const guest = synthGuest({ client_booking_ref: 'DUP-REF-001' });
+  const guest = synthGuest({ client_booking_ref: 'DUP-REF-001', attempt_secret: 'same-device-retry-secret-1' });
   const first = await call(env, '/preview/bookings', withJson('POST', guest));
   const second = await call(env, '/preview/bookings', withJson('POST', guest));
   assert.equal(first.status, 201);
@@ -246,14 +250,19 @@ test('opening a WhatsApp handoff never confirms a booking — only the authentic
 
   const listPending = await call(env, '/preview/admin/bookings', { headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
   const bookingId = listPending.data.bookings[0].id;
+  // A vehicle must be on record before an ordinary booking can be
+  // confirmed at all (third independent review, finding 6 — confirming
+  // with no known vehicle is a policy decision James hasn't approved yet,
+  // so it's refused rather than silently confirmed under any status).
+  await seedVehicleWindowForBooking(env, bookingId, {
+    vehicleId: 'VEH-WHATSAPP-HANDOFF-TEST',
+    windowStart: new Date(Date.now() + 4 * 3600_000).toISOString(),
+    windowEnd: new Date(Date.now() + 6 * 3600_000).toISOString(),
+  });
   const confirm = await call(env, `/preview/admin/bookings/${bookingId}/confirm`, { method: 'POST', headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
   assert.equal(confirm.status, 200);
-  // No vehicle_windows row was seeded for this booking, so confirmation
-  // is explicitly 'confirmed_unallocated', not plain 'confirmed' — see
-  // the second-review fix in marau_codex_fixes.test.mjs for why these
-  // must never be conflated.
-  assert.equal(confirm.data.status, 'confirmed_unallocated');
+  assert.equal(confirm.data.status, 'confirmed');
 
   const tripAfter = await call(env, '/preview/trip', { headers: authed(token) });
-  assert.equal(tripAfter.data.bookings[0].status, 'confirmed_unallocated');
+  assert.equal(tripAfter.data.bookings[0].status, 'confirmed');
 });

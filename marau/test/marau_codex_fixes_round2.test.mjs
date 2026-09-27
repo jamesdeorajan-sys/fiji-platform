@@ -96,8 +96,12 @@ test('late-failure atomicity: reverting FILLED->ACTIVE does not resurrect a genu
 // =======================================================================
 
 test('concurrency: two truly simultaneous submissions of the SAME client_booking_ref recover cleanly — one winner, no crash, no orphan session', async () => {
+  // Both concurrent requests carry the SAME attempt_secret, exactly as a
+  // real browser would (generated once, before either request fires) —
+  // see the third-review fix, which otherwise requires proof of ownership
+  // for any resubmit regardless of timing.
   const env = makeEnv();
-  const guest = synthGuest({ client_booking_ref: 'RACE-KEY-1' });
+  const guest = synthGuest({ client_booking_ref: 'RACE-KEY-1', attempt_secret: 'concurrent-race-secret-1' });
 
   const [first, second] = await Promise.all([
     call(env, '/preview/bookings', withJson('POST', guest)),
@@ -188,17 +192,15 @@ test('authorization: the recovery offer completes through the SAME verified-owne
   assert.equal(mergedTrip.data.bookings.length, 1);
 });
 
-test('authorization: a resubmit WITHIN the retry grace window still gets direct access (a genuine reload/timeout retry, not a later replay)', async () => {
-  const env = makeEnv();
-  const guest = synthGuest({ client_booking_ref: 'FRESH-RETRY-1' });
-  const original = await call(env, '/preview/bookings', withJson('POST', guest));
-
-  // No time manipulation — this row is fresh, well inside the grace window.
-  const retry = await call(env, '/preview/bookings', withJson('POST', guest)); // still no Authorization header
-  assert.equal(retry.status, 200);
-  assert.equal(retry.data.access_token, original.data.access_token, 'a same-attempt retry must still recover the token directly');
-  assert.equal(retry.data.recovery_offer, undefined);
-});
+// NOTE: an earlier version of this test asserted that a FRESH,
+// no-Authorization-header resubmit (inside a 60s "retry grace window")
+// still got direct access. A third independent review replayed exactly
+// this — a fresh reference/payload, no auth — and still received the
+// token, proving timing alone is not proof of anything. That grace
+// window has been removed entirely; see marau_codex_fixes_round3.test.mjs
+// for the corrected behaviour (only a matching attempt_secret or the
+// caller's own valid token ever recovers direct access, regardless of
+// how quickly the resubmit followed the original).
 
 test('authorization: presenting the CORRECT session’s own token on a resubmit always works, regardless of age', async () => {
   const env = makeEnv();
@@ -290,7 +292,16 @@ test('stale price: an unchanged price/floor confirms normally', async () => {
 // 4 (side-by-side proof). CONFIRMED vs. CONFIRMED_UNALLOCATED
 // =======================================================================
 
-test('unknown-vehicle rule: an allocated booking and an unallocated one are never conflated in their final status', async () => {
+// NOTE: this test originally proved that an allocated booking confirms
+// as 'confirmed' while an unallocated one confirms as the distinct
+// 'confirmed_unallocated'. A third independent review found that
+// introducing 'confirmed_unallocated' at all was itself a silent policy
+// change needing James's explicit approval first — see
+// marau_codex_fixes_round3.test.mjs, which replaces this test: an
+// unallocated booking confirmation now REFUSES
+// (409 VEHICLE_ALLOCATION_DECISION_PENDING) and the booking stays
+// 'pending', rather than confirming under any status.
+test('unknown-vehicle rule: an allocated booking still confirms normally', async () => {
   const env = makeEnv();
   const vehicleId = 'VEH-ROUND2-DISTINCT';
   const windowStart = new Date(Date.now() + 4 * 3600_000).toISOString();
@@ -301,12 +312,6 @@ test('unknown-vehicle rule: an allocated booking and an unallocated one are neve
   await seedVehicleWindowForBooking(env, allocatedBookingId, { vehicleId, windowStart, windowEnd });
   const allocatedConfirm = await call(env, `/preview/admin/bookings/${allocatedBookingId}/confirm`, { method: 'POST', headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
   assert.equal(allocatedConfirm.data.status, 'confirmed');
-
-  const unallocatedGuest = await call(env, '/preview/bookings', withJson('POST', synthGuest()));
-  const unallocatedBookingId = (await call(env, '/preview/trip', { headers: authed(unallocatedGuest.data.access_token) })).data.bookings[0].id;
-  const unallocatedConfirm = await call(env, `/preview/admin/bookings/${unallocatedBookingId}/confirm`, { method: 'POST', headers: authed(env.MARAU_ADMIN_TEST_TOKEN) });
-  assert.equal(unallocatedConfirm.data.status, 'confirmed_unallocated');
-  assert.notEqual(allocatedConfirm.data.status, unallocatedConfirm.data.status);
 });
 
 // =======================================================================

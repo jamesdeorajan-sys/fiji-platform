@@ -19,16 +19,30 @@
  * mission. WhatsApp only ever appears as a composed message in an in-page
  * mock panel with a copy button — no wa.me URL, no navigation, anywhere
  * (see whatsapp_handoff.js and renderMockWhatsApp() below).
+ *
+ * THIRD REVIEW — correctness: the booking form now also generates and
+ * sends `attempt_secret` (see client_idempotency.js and worker.js#
+ * handleCreateBooking) — the "separate secure attempt/recovery capability"
+ * that replaces the removed time-window heuristic.
+ *
+ * THIRD REVIEW — design completion: an install invitation (finding 4,
+ * independent of deferred credits), Fiji-time pickup display with a real
+ * booking switcher, and internal offer/movement IDs removed from
+ * guest-facing copy (finding 5).
  */
-import { getOrCreateClientBookingRef, clearClientBookingRef, defaultRandomSource } from './client_idempotency.js';
+import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptSecret, clearAttemptSecret, defaultRandomSource } from './client_idempotency.js';
 
 // Splicing these functions' own source into the emitted <script> means
 // the browser runs literally the same code marau/test/*.test.mjs already
 // unit-tests against a fake storage — not a hand-copied duplicate that
-// could silently drift out of sync with it.
+// could silently drift out of sync with it (marau_codex_fixes_round3.test.mjs
+// proves this exact splicing mechanism works, after a real embedding bug —
+// a shared constant that didn't survive extraction — was found and fixed).
 const EMBEDDED_CLIENT_IDEMPOTENCY = `
 ${getOrCreateClientBookingRef.toString()}
 ${clearClientBookingRef.toString()}
+${getOrCreateAttemptSecret.toString()}
+${clearAttemptSecret.toString()}
 ${defaultRandomSource.toString()}
 `;
 
@@ -148,6 +162,12 @@ code{font-size:12px;background:var(--shallows);padding:1px 5px;border-radius:6px
 .mock-wa .label{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lagoon)}
 .mock-wa .msg{background:var(--surface);border-radius:8px;padding:10px;margin:8px 0;font-size:13px;white-space:pre-wrap}
 .link-code{font-size:24px;font-weight:800;letter-spacing:.08em;text-align:center;padding:10px;background:var(--shallows);border-radius:10px;margin:6px 0}
+.install{display:flex;gap:14px;align-items:center;background:var(--shallows);border-radius:18px;padding:14px 16px;margin-bottom:14px}
+.install p{font-size:.9rem}
+.install .btn{white-space:nowrap;margin-top:0}
+.switcher{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;margin-bottom:10px}
+.switcher button{flex:none;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:.85rem;font-weight:600;color:var(--ink);white-space:nowrap}
+.switcher button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 </style>`;
 
 export const GUEST_APP_HTML = `<!doctype html>
@@ -156,6 +176,12 @@ export const GUEST_APP_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F5E63">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Marau">
 <title>Marau by Vakaviti AI</title>
 ${FONT_LINK}
 ${SHARED_STYLE}
@@ -167,6 +193,11 @@ ${SHARED_STYLE}
     <span class="preview-pill">Preview</span>
   </header>
   <p class="sample-note">Isolated preview build. Nothing here is a real booking, message or payment — every screen carries its own demonstration-data label.</p>
+
+  <div class="install" id="installBanner" style="display:none">
+    <p><strong>Add Marau to your home screen</strong><br><span class="muted">Get back to your trip in one tap, with pickup and deal updates.</span></p>
+    <button class="btn btn-primary" id="installBtn" type="button">Add</button>
+  </div>
 
   <section id="view-start" class="view">
     <div class="harness">
@@ -233,7 +264,33 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 (function () {
   var API = '';
   var els = {};
-  ['bookingForm','startError','pickupCard','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel','dealRequestsPanel','dealRequestsList'].forEach(function(id){ els[id] = document.getElementById(id); });
+  ['bookingForm','startError','pickupCard','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel','dealRequestsPanel','dealRequestsList','installBanner','installBtn'].forEach(function(id){ els[id] = document.getElementById(id); });
+
+  // Home-screen installation (finding 4) — independent of credits, which
+  // stay deferred. Chrome/Android fire beforeinstallprompt when the
+  // manifest+icon are valid and the page qualifies; Safari/iOS never
+  // fires it, so the banner falls back to manual "Share > Add to Home
+  // Screen" guidance there. Hidden entirely once already installed
+  // (standalone display mode).
+  var deferredInstallPrompt = null;
+  var alreadyInstalled = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+  if (!alreadyInstalled && els.installBanner) {
+    els.installBanner.style.display = 'flex';
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+  });
+  if (els.installBtn) {
+    els.installBtn.addEventListener('click', function () {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(function () { deferredInstallPrompt = null; });
+      } else {
+        toast('Use your browser’s Share or menu button, then "Add to Home Screen".');
+      }
+    });
+  }
 
   function toast(msg) {
     els.toast.textContent = msg;
@@ -310,6 +367,21 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 
   var STATUS_LABEL = { pending: 'Awaiting human confirmation', confirmed: 'Confirmed', confirmed_unallocated: 'Confirmed — vehicle pending assignment', declined: 'Declined', cancelled: 'Cancelled' };
   var STATUS_PILL = { pending: 'warn', confirmed: '', confirmed_unallocated: 'warn', declined: 'bad', cancelled: 'bad' };
+  var FIJI_TZ = 'Pacific/Fiji';
+
+  // Explicit Fiji time (finding 5) — a guest opening this from anywhere
+  // else in the world must never see their OWN device's local time
+  // silently substituted for the actual pickup time. Uses the IANA zone
+  // (handles Fiji's own DST rules automatically) rather than a hardcoded
+  // UTC+12 offset, and always labels it so it's unambiguous.
+  function formatFijiDateTime(iso) {
+    var d = new Date(iso);
+    var day = new Intl.DateTimeFormat('en-US', { timeZone: FIJI_TZ, weekday: 'long', month: 'short', day: 'numeric' }).format(d);
+    var time = new Intl.DateTimeFormat('en-US', { timeZone: FIJI_TZ, hour: 'numeric', minute: '2-digit' }).format(d);
+    return { day: day, time: time };
+  }
+
+  var selectedBookingId = null;
 
   function renderPickupCard(data) {
     var bookings = data.bookings || [];
@@ -318,38 +390,54 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       return;
     }
     var sorted = bookings.slice().sort(function (a, b) { return new Date(a.pickup_datetime) - new Date(b.pickup_datetime); });
-    var soonest = sorted[0];
-    var when = new Date(soonest.pickup_datetime);
-    var dayLabel = when.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-    var timeLabel = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    var pillClass = STATUS_PILL[soonest.status] || 'warn';
-    var statusLabel = STATUS_LABEL[soonest.status] || soonest.status;
+    var active = sorted.find(function (b) { return b.id === selectedBookingId; }) || sorted[0];
+    selectedBookingId = active.id;
+
+    var fiji = formatFijiDateTime(active.pickup_datetime);
+    var pillClass = STATUS_PILL[active.status] || 'warn';
+    var statusLabel = STATUS_LABEL[active.status] || active.status;
 
     var switcher = '';
     if (sorted.length > 1) {
-      switcher = '<p class="small" style="opacity:.85;margin-top:10px">+' + (sorted.length - 1) + ' more booking' + (sorted.length > 2 ? 's' : '') + ' on this trip</p>';
+      // A real switcher (finding 5) — every other booking is individually
+      // selectable, not just a "+N more" hint.
+      switcher = '<div class="switcher" role="tablist" aria-label="Your bookings">' +
+        sorted.map(function (b) {
+          var f = formatFijiDateTime(b.pickup_datetime);
+          var label = f.day + ' · ' + b.pickup_zone + ' → ' + b.destination_zone;
+          return '<button data-booking="' + b.id + '" aria-pressed="' + (b.id === active.id ? 'true' : 'false') + '">' + label + '</button>';
+        }).join('') +
+        '</div>';
     }
 
-    els.pickupCard.innerHTML = '<article class="pickup panel" aria-label="Next pickup">' +
-      '<p class="sub">Next pickup · booking ' + soonest.client_booking_ref + '</p>' +
-      '<p class="when">' + timeLabel + '</p>' +
-      '<p class="sub">' + dayLabel + '</p>' +
+    els.pickupCard.innerHTML = switcher + '<article class="pickup panel" aria-label="Pickup">' +
+      '<p class="sub">' + (active.id === sorted[0].id ? 'Next pickup' : 'Selected booking') + ' · booking ' + active.client_booking_ref + '</p>' +
+      '<p class="when">' + fiji.time + '<span class="small" style="opacity:.75;font-weight:600;margin-left:8px">Fiji time</span></p>' +
+      '<p class="sub">' + fiji.day + '</p>' +
       '<div class="route">' +
-        '<div class="stop fill"><span class="dot"></span><div><strong>' + soonest.pickup_zone + '</strong><span>Pickup</span></div></div>' +
-        '<div class="stop"><span class="dot"></span><div><strong>' + soonest.destination_zone + '</strong><span>Destination</span></div></div>' +
+        '<div class="stop fill"><span class="dot"></span><div><strong>' + active.pickup_zone + '</strong><span>Pickup</span></div></div>' +
+        '<div class="stop"><span class="dot"></span><div><strong>' + active.destination_zone + '</strong><span>Destination</span></div></div>' +
       '</div>' +
       '<div class="facts">' +
-        '<div class="fact">Vehicle<b>' + soonest.vehicle_type + '</b></div>' +
+        '<div class="fact">Vehicle<b>' + active.vehicle_type + '</b></div>' +
         '<div class="fact">Status<b>' + statusLabel + '</b></div>' +
       '</div>' +
       '<div class="pickup-actions"><button class="btn btn-onlagoon" id="changeBtn" type="button">Request a change</button></div>' +
-      switcher +
       '</article>';
 
+    if (sorted.length > 1) {
+      els.pickupCard.querySelectorAll('[data-booking]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          selectedBookingId = Number(btn.dataset.booking);
+          renderPickupCard(data);
+        });
+      });
+    }
+
     document.getElementById('changeBtn').addEventListener('click', function () {
-      var newTime = prompt('New pickup date/time (YYYY-MM-DDTHH:MM):', soonest.pickup_datetime.slice(0, 16));
+      var newTime = prompt('New pickup date/time (YYYY-MM-DDTHH:MM), Fiji time:', active.pickup_datetime.slice(0, 16));
       if (!newTime) return;
-      authFetch('/preview/bookings/' + soonest.id + '/change-request', { method: 'POST', body: JSON.stringify({ requested_fields: { pickup_datetime: newTime } }) }).then(function (res) {
+      authFetch('/preview/bookings/' + active.id + '/change-request', { method: 'POST', body: JSON.stringify({ requested_fields: { pickup_datetime: newTime } }) }).then(function (res) {
         toast(res.ok ? 'Change requested — awaiting operator approval.' : (res.data.error || 'Could not request a change.'));
       });
     });
@@ -360,11 +448,13 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   function renderDealRequests(dealRequests) {
     if (!dealRequests || dealRequests.length === 0) { els.dealRequestsPanel.style.display = 'none'; return; }
     els.dealRequestsPanel.style.display = 'block';
+    // No internal offer_id/source_movement_id in guest-facing copy
+    // (finding 5) — those stay in the underlying data for the assistant
+    // and for ops, never rendered as visible text here.
     els.dealRequestsList.innerHTML = dealRequests.map(function (r) {
       return '<div style="border-bottom:1px solid var(--line);padding:10px 0">' +
         '<p style="font-weight:700">' + r.origin_zone + ' → ' + r.destination_zone + ' <span class="pill ' + (DEAL_REQUEST_PILL[r.status] || '') + '">' + r.status + '</span></p>' +
         '<p class="small muted">Requested at $' + Number(r.requested_price).toFixed(2) + (r.current_price !== r.requested_price ? ' · now $' + Number(r.current_price).toFixed(2) : '') + ' · ' + r.vehicle_class + '</p>' +
-        '<p class="small muted">Ref: ' + r.offer_id + ' (movement ' + r.source_movement_id + ')</p>' +
         '</div>';
     }).join('');
   }
@@ -436,10 +526,14 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     els.startError.textContent = '';
     // Generated ONCE, before the first network attempt, and persisted —
     // a reload or a retried submit (timeout, double-click) reuses this
-    // SAME reference instead of minting a new one each time.
+    // SAME reference AND the same attempt_secret instead of minting new
+    // ones each time. attempt_secret (not timing) is what proves a
+    // resubmit is the same attempt — see worker.js#handleCreateBooking.
     var clientBookingRef = getOrCreateClientBookingRef(sessionStorage, defaultRandomSource);
+    var attemptSecret = getOrCreateAttemptSecret(sessionStorage, defaultRandomSource);
     var body = {
       client_booking_ref: clientBookingRef,
+      attempt_secret: attemptSecret,
       guest_email: document.getElementById('f-email').value,
       guest_phone: document.getElementById('f-phone').value,
       whatsapp_available: document.getElementById('f-wa').checked,
@@ -457,6 +551,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       .then(function (res) {
         if (!res.ok) { els.startError.textContent = (res.data.details || [res.data.error]).join('; '); return; }
         clearClientBookingRef(sessionStorage); // this attempt is done — a genuinely NEW booking later gets a fresh key
+        clearAttemptSecret(sessionStorage);
         if (res.data.access_token) {
           setToken(res.data.access_token);
         } else if (res.data.recovery_offer) {
