@@ -43,7 +43,7 @@
  * extra clause is entirely absent from its query.
  */
 export async function claimVehicleAllocation(env, { allocationId, vehicleId, windowStart, windowEnd, subjectType, subjectId, nowIso, ownership }) {
-  const ownershipClause = ownership ? ' AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)' : '';
+  const ownershipClause = ownership ? " AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id=c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')" : '';
   const ownershipArgs = ownership ? [ownership.requestId, ownership.attemptToken] : [];
   const result = await env.DB
     .prepare(
@@ -88,9 +88,9 @@ export async function releaseVehicleAllocation(env, allocationId, ownership) {
   }
   const result = await env.DB
     .prepare(
-      `DELETE FROM vehicle_allocations WHERE allocation_id = ? AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+      `DELETE FROM vehicle_allocations WHERE allocation_id = ? AND subject_type = 'DEAL_REQUEST' AND subject_id = ? AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id=c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')`
     )
-    .bind(allocationId, ownership.requestId, ownership.attemptToken)
+    .bind(allocationId, ownership.requestId, ownership.requestId, ownership.attemptToken)
     .run();
   return { released: result.meta.changes === 1 };
 }

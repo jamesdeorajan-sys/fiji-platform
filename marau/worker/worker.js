@@ -886,19 +886,9 @@ class ConfirmationFencedError extends Error {
 }
 
 /**
- * FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX" —
- * statement-level ownership enforcement): a narrowly-scoped ADAPTER
- * around the shared Issue #54 store, used ONLY for this confirm flow's
- * offer hold/fill/revert calls. It does not change casOfferStatus's
- * contract or bypass any state-machine rule (the SAME expected-status ->
- * next-status transition the shared engine's own
- * smart-return-trigger-fill/src/db.js#casOfferStatus performs, mirrored
- * here exactly) — it only adds ONE extra `AND EXISTS (...)` condition to
- * the SAME WHERE clause, so the offer transition and the ownership check
- * are the SAME atomic UPDATE statement. This is what makes hold/fill
- * unable to ever "succeed for real" once ownership has been taken away —
- * there is no window where the transition completes only to be discovered
- * stale afterward; it simply never completes at all once fenced.
+ * Marau-only adapter retaining the shared engine's status transitions.
+ * SQL checks pending request, current owner, and immutable offer owner
+ * together. Recovery can rotate its token without losing resource identity.
  */
 function createOwnershipFencedStore(env, requestId, attemptToken) {
   return {
@@ -906,17 +896,22 @@ function createOwnershipFencedStore(env, requestId, attemptToken) {
       return env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(offerId).first();
     },
     async casOfferStatus(offerId, expectedStatus, nextStatus, patch = {}) {
+      const acquiring = expectedStatus === 'ACTIVE' && nextStatus === 'HELD';
       const patchCols = Object.keys(patch);
-      const setClause = ['status = ?', 'updated_at = ?', ...patchCols.map((c) => `${c} = ?`)].join(', ');
-      const values = [nextStatus, nowIso(), ...patchCols.map((c) => patch[c]), offerId, expectedStatus, requestId, attemptToken];
-      const result = await env.DB
-        .prepare(
-          `UPDATE smart_offers SET ${setClause}
-           WHERE offer_id = ? AND status = ?
-             AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
-        )
-        .bind(...values)
-        .run();
+      // Resource identity is immutable across recovery takeovers. A request
+      // ownership token alone is NOT proof that this attempt held this offer.
+      const marker = nextStatus === 'ACTIVE' ? 'NULL' :
+        '(SELECT journal_attempt_id FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)';
+      const sets = ['status = ?', 'updated_at = ?', `marau_attempt_id = ${marker}`, ...patchCols.map(c => `${c} = ?`)];
+      const args = [nextStatus, nowIso(), ...(nextStatus === 'ACTIVE' ? [] : [requestId, attemptToken]),
+        ...patchCols.map(c => patch[c]), offerId, expectedStatus, requestId, attemptToken];
+      const result = await env.DB.prepare(`UPDATE smart_offers SET ${sets.join(', ')}
+        WHERE offer_id = ? AND status = ? AND EXISTS (
+          SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id
+          WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED'
+            AND c.journal_attempt_id IS NOT NULL
+            AND ${acquiring ? 'smart_offers.marau_attempt_id IS NULL' : 'smart_offers.marau_attempt_id = c.journal_attempt_id'}
+        )`).bind(...args).run();
       const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(offerId).first();
       return { success: result.meta.changes === 1, offer };
     },
@@ -1005,47 +1000,12 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   // offer in a state (e.g. still FILLED) that would make those checks
   // fail with a confusing, unrelated error instead of naming the real
   // problem: an earlier confirmation is stuck and needs reconciliation.
+  const attemptToken = `at_${cryptoRandomId()}`;
   const claim = await env.DB
-    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at, attempt_token) VALUES (?, 'CONFIRM', ?, NULL)`)
-    .bind(requestId, now)
+    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at, attempt_token, journal_attempt_id) SELECT ?, 'CONFIRM', ?, ?, ? WHERE EXISTS (SELECT 1 FROM deal_requests WHERE request_id = ? AND status = 'REQUESTED')`)
+    .bind(requestId, now, attemptToken, attemptToken, requestId)
     .run();
   if (claim.meta.changes !== 1) {
-    return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
-  }
-
-  // FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX" —
-  // statement-level ownership enforcement): the round-5 design used
-  // confirmation_attempts.phase, checked only at specific advance() call
-  // sites, as the fencing signal — but the ACTUAL resource-mutating
-  // statements happened BETWEEN those checks, leaving real windows a
-  // concurrent reconcile-confirmation call could exploit (see migration
-  // 0021's header for the two exact repros this closes). attempt_token,
-  // established here, is now the SINGLE ownership primitive for this
-  // entire attempt: every subsequent resource-mutating statement below
-  // requires this EXACT token to still be recorded in
-  // deal_decision_claims, embedded as an `AND EXISTS (...)` clause in the
-  // SAME atomic SQL statement as the mutation itself — there is no
-  // separate check-then-act gap.
-  //
-  // FIX (seventh independent review, "recovery retry loses original
-  // attempt identity"): attempt_token ROTATES — every reconcile takeover
-  // replaces it with that reconciler's own recovery token (see
-  // handleAdminReconcileConfirmation). journal_attempt_id (migration
-  // 0022) is set ONCE, right here, and NEVER changes again — it is the
-  // journal's stable identity, kept explicitly separate from the
-  // replaceable ownership token. A SECOND reconcile call, after a first
-  // one failed mid-compensation, must still be able to find the SAME
-  // journal row — looking it up via the (by then rotated) attempt_token
-  // would find nothing and wrongly read as "nothing happened."
-  const attemptToken = `at_${cryptoRandomId()}`;
-  const owned = await env.DB
-    .prepare(`UPDATE deal_decision_claims SET attempt_token = ?, journal_attempt_id = ? WHERE request_id = ? AND attempt_token IS NULL`)
-    .bind(attemptToken, attemptToken, requestId)
-    .run();
-  if (owned.meta.changes !== 1) {
-    // Vanishingly unlikely (this row was just inserted by US, above,
-    // synchronously) but stay honest: some concurrent process already
-    // holds or has already resolved this claim.
     return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
   }
 
@@ -1114,18 +1074,20 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   let claimedMovement = false;
   let allocationId = null;
 
-  // Best-effort, ownership-checked observability only — NOT load-bearing
-  // for correctness (attempt_token is what enforces correctness now).
-  // Harmless no-op once ownership is gone (the EXISTS clause just yields
-  // zero affected rows).
+  // Audit writes use stable identity and current ownership. Zero affected
+  // rows are explicit failures; post-commit callers report audit repair
+  // rather than invoking compensation.
   async function setPhase(toPhase, errorDetail) {
-    await env.DB
-      .prepare(
-        `UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ?
-         WHERE attempt_id = ? AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
-      )
-      .bind(toPhase, errorDetail ?? null, nowIso(), attemptToken, requestId, attemptToken)
-      .run();
+    const result = await env.DB.prepare(
+      `UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ?
+       WHERE attempt_id = ? AND request_id = ? AND EXISTS (
+         SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ? AND journal_attempt_id = confirmation_attempts.attempt_id)`
+    ).bind(toPhase, errorDetail ?? null, nowIso(), attemptToken, requestId, requestId, attemptToken).run();
+    if (result.meta.changes === 1) return;
+    if (!(await stillOwnsAttempt(env, requestId, attemptToken))) throw new ConfirmationFencedError('writing the audit phase');
+    const row = await env.DB.prepare('SELECT 1 FROM confirmation_attempts WHERE attempt_id = ?').bind(attemptToken).first();
+    if (!row && ['ROLLED_BACK', 'ROLLBACK_FAILED'].includes(toPhase)) return;
+    throw new Error('AUDIT_WRITE_NOT_APPLIED');
   }
 
   // Fully compensates every write this attempt made. deal_requests.status
@@ -1167,7 +1129,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
           .prepare(
             `DELETE FROM vehicle_time_claims
              WHERE source_movement_id = ? AND claimed_by_request_id = ?
-               AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+               AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')`
           )
           .bind(offer.source_movement_id, requestId, requestId, attemptToken)
           .run();
@@ -1175,8 +1137,13 @@ async function handleAdminConfirmDealRequest(env, requestId) {
         failures.push('movement_claim: ' + e.message);
       }
     }
+    const remainingOffer = await env.DB.prepare('SELECT 1 FROM smart_offers WHERE offer_id = ? AND marau_attempt_id = ?').bind(offer.offer_id, attemptToken).first();
+    const remainingAllocation = await env.DB.prepare("SELECT 1 FROM vehicle_allocations WHERE subject_type = 'DEAL_REQUEST' AND subject_id = ?").bind(requestId).first();
+    const remainingMovement = await env.DB.prepare('SELECT 1 FROM vehicle_time_claims WHERE claimed_by_request_id = ?').bind(requestId).first();
+    if (remainingOffer || remainingAllocation || remainingMovement) failures.push('resource compensation incomplete');
+    if (!(await stillOwnsAttempt(env, requestId, attemptToken))) return { fullyRolledBack: false };
     if (failures.length > 0) {
-      await setPhase('ROLLBACK_FAILED', failures.join('; '));
+      try { await setPhase('ROLLBACK_FAILED', failures.join('; ')); } catch { /* Keep the claim for recovery if its audit also fails. */ }
       // Deliberately do NOT free the decision claim — its true state
       // can't be safely assumed, so a further attempt must not be able
       // to race in. Only the admin reconcile endpoint may resolve this.
@@ -1191,7 +1158,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     // ownership was ALREADY gone by this point, this is simply a
     // harmless no-op that reports itself honestly rather than claiming
     // success it didn't achieve).
-    await setPhase('ROLLED_BACK', null);
+    try { await setPhase('ROLLED_BACK', null); } catch { return { fullyRolledBack: false }; }
     const released = await releaseOwnership();
     return { fullyRolledBack: released };
   }
@@ -1215,7 +1182,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       .prepare(
         `INSERT INTO confirmation_attempts (attempt_id, request_id, offer_id, phase, created_at, updated_at)
          SELECT ?, ?, ?, 'STARTED', ?, ?
-         WHERE EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+         WHERE EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')`
       )
       .bind(attemptToken, requestId, offer.offer_id, now, now, requestId, attemptToken)
       .run();
@@ -1229,7 +1196,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
         `INSERT INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
          SELECT ?, ?, ?, ?
          WHERE NOT EXISTS (SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ?)
-           AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+           AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')`
       )
       .bind(offer.source_movement_id, offer.offer_id, requestId, now, offer.source_movement_id, requestId, attemptToken)
       .run();
@@ -1336,7 +1303,7 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       .prepare(
         `UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ?
          WHERE request_id = ? AND status = 'REQUESTED'
-           AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+           AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')`
       )
       .bind('marau-ops-preview', nowIso(), nowIso(), requestId, requestId, attemptToken)
       .run();
@@ -1426,9 +1393,10 @@ async function handleAdminDeclineDealRequest(env, requestId) {
 
   // Same mutual-exclusion gate as confirm: a single cheap INSERT, racing
   // directly against handleAdminConfirmDealRequest's identical claim.
+  const decisionToken = `dt_${cryptoRandomId()}`;
   const claim = await env.DB
-    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at) VALUES (?, 'DECLINE', ?)`)
-    .bind(requestId, now)
+    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at, attempt_token) SELECT ?, 'DECLINE', ?, ? WHERE EXISTS (SELECT 1 FROM deal_requests WHERE request_id = ? AND status = 'REQUESTED')`)
+    .bind(requestId, now, decisionToken, requestId)
     .run();
   if (claim.meta.changes !== 1) {
     return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
@@ -1436,287 +1404,164 @@ async function handleAdminDeclineDealRequest(env, requestId) {
 
   try {
     const result = await env.DB
-      .prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
-      .bind('marau-ops-preview', now, now, requestId)
+      .prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED' AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ? AND decision = 'DECLINE')`)
+      .bind('marau-ops-preview', now, now, requestId, requestId, decisionToken)
       .run();
     if (result.meta.changes !== 1) {
       // Shouldn't happen given the checks above, but stay honest if it does.
-      await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-      return json({ error: 'ALREADY_DECIDED', current_status: dealRequest.status }, 409);
+      await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, decisionToken).run();
+      return json({ error: 'ALREADY_DECIDED', current_status: (await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requestId).first()).status }, 409);
     }
     return json({ request_id: requestId, status: 'DECLINED' });
   } catch (err) {
     // Nothing else was touched by a decline — freeing the claim is the
     // whole rollback.
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, decisionToken).run();
     return json({ error: 'DECLINE_FAILED', detail: 'Could not record the decline — safe to retry.' }, 500);
   }
 }
 
 /**
- * The actionable, ownership-fenced (admin-only) recovery path for a
- * confirmation attempt that was interrupted before reaching a terminal
- * state. Inspects the REAL current state directly — never trusts the
- * recorded `phase` alone, which is observational only — and always
- * resolves to a definite outcome. Never leaves the request in an
- * ambiguous state after running.
- *
- * FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX"):
- * admin authentication on THIS call is not the same thing as exclusive
- * ownership of a specific in-flight confirm attempt. Reconciliation must
- * ATOMICALLY take ownership using its OWN unique recovery token — a CAS
- * on `deal_decision_claims.attempt_token` (`old token -> this call's own
- * recoveryToken`), never merely nulling the old one — which is exactly
- * what makes two CONCURRENT reconcile calls mutually exclusive.
- *
- * FIX (seventh independent review): TWO further gaps found via real SQL
- * fault injection:
- *
- * (a) "Post-confirmation audit failure" — this handler's own audit-repair
- * path (see the ALREADY_TERMINAL branch below) exists precisely because
- * the confirm handler's commit boundary can leave a genuinely CONFIRMED
- * request with a journal that never reached DONE (see
- * handleAdminConfirmDealRequest's own commit-boundary fix). Repairing
- * that is a PURE LABEL FIX — no resource is touched, no ownership
- * takeover is needed, because the request is ALREADY, verifiably
- * terminal.
- *
- * (b) "Recovery retry loses original attempt identity" — attempt_token
- * ROTATES with every reconcile takeover; looking up the journal via
- * `claim.attempt_token` after a FIRST reconcile attempt had already
- * failed mid-compensation (rotating the token to ITS OWN recovery token)
- * found nothing, and "no journal found" was wrongly treated as proof
- * nothing had happened — deleting the claim while the offer was still
- * genuinely HELD and its allocation/movement-claim rows still genuinely
- * existed. Fixed two ways, together: (1) the journal is now looked up by
- * `claim.journal_attempt_id` — a STABLE identity set once by the confirm
- * handler and never rotated by any reconciler (migration 0022); (2) real
- * resource state (offer status, allocation, movement claim) is now
- * ALWAYS inspected directly, regardless of whether a journal row can be
- * found at all — "missing journal cannot mean nothing happened" is now
- * enforced structurally, not assumed.
- *
- * Every one of THIS handler's own writes — the CONFIRMED-finish write,
- * the DECLINED-finish write, and every journal phase update — now also
- * carries `AND EXISTS (... attempt_token = recoveryToken)`, so a
- * STAGGERED second reconciler that raced in and took over ownership
- * mid-way through this call's own work causes every one of THIS call's
- * remaining writes to affect zero rows and be treated as lost, rather
- * than silently overwriting whatever the new owner is doing.
+ * Recovery owns a replaceable token, but resource/journal identity remains
+ * the original journal_attempt_id. Every write checks the current owner in
+ * the same SQL statement. CONFIRMED is the commit boundary in both paths;
+ * audit failures after it are repair work, never compensation work.
  */
 async function handleAdminReconcileConfirmation(env, requestId) {
-  const now = nowIso();
-
-  const dealRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
-  if (!dealRequest) return json({ error: 'deal request not found' }, 404);
-
+  const request = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
+  if (!request) return json({ error: 'deal request not found' }, 404);
   const claim = await env.DB.prepare('SELECT * FROM deal_decision_claims WHERE request_id = ?').bind(requestId).first();
+  const superseded = () => json({ resolved: 'ATTEMPT_STILL_ACTIVE', detail: 'A conditional recovery write did not apply. Re-read the current decision and owner before retrying; this call stopped writing.' }, 409);
+  const journalId = claim?.journal_attempt_id;
 
-  if (dealRequest.status !== 'REQUESTED') {
-    // AUDIT-REPAIR PATH (seventh review, finding (a)): the request is
-    // ALREADY, verifiably terminal — no resource is at risk, so no
-    // ownership takeover is needed. If its journal exists but never
-    // reached a terminal phase (e.g. the confirm handler's own
-    // post-commit audit write failed and was reported honestly with
-    // audit_warning), fix ONLY the label here — a pure, resource-free
-    // repair, never touching offer/allocation/claim/decision state.
-    const journalAttemptId = claim ? claim.journal_attempt_id : null;
-    if (journalAttemptId) {
-      const attempt = await env.DB.prepare('SELECT * FROM confirmation_attempts WHERE attempt_id = ?').bind(journalAttemptId).first();
-      if (attempt && !['DONE', 'ROLLED_BACK', 'ROLLBACK_FAILED'].includes(attempt.phase)) {
-        const repairedPhase = dealRequest.status === 'CONFIRMED' ? 'DONE' : 'ROLLED_BACK';
-        await env.DB.prepare('UPDATE confirmation_attempts SET phase = ?, error_detail = NULL, updated_at = ? WHERE attempt_id = ?').bind(repairedPhase, now, attempt.attempt_id).run();
-        return json({ resolved: 'ALREADY_TERMINAL', status: dealRequest.status, audit_repaired: true });
-      }
+  async function writeJournal(token, phase, error, expectedStatus) {
+    if (!journalId) return false;
+    const result = await env.DB.prepare(`UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ?
+      WHERE attempt_id = ? AND request_id = ? AND EXISTS (
+        SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id
+        WHERE c.request_id = ? AND c.attempt_token IS ? AND c.journal_attempt_id = confirmation_attempts.attempt_id
+          AND r.status = ?)
+    `).bind(phase, error ?? null, nowIso(), journalId, requestId, requestId, token, expectedStatus).run();
+    if (result.meta.changes !== 1) throw new Error('AUDIT_WRITE_NOT_APPLIED_OR_SUPERSEDED');
+    return true;
+  }
+  async function finishAudit(token, status) {
+    try {
+      const repaired = await writeJournal(token, status === 'CONFIRMED' ? 'DONE' : 'ROLLED_BACK', null, status);
+      return repaired ? { audit_repaired: true } : { audit_warning: 'Terminal decision is intact; original journal identity is unavailable and needs review.' };
+    } catch (err) {
+      return { audit_warning: `Terminal decision is intact; audit repair remains outstanding: ${err.message}` };
     }
-    return json({ resolved: 'ALREADY_TERMINAL', status: dealRequest.status });
-  }
-  if (!claim) {
-    return json({ resolved: 'NOTHING_TO_RECONCILE', detail: 'No decision claim exists for this request — it is simply still awaiting a decision.' });
   }
 
-  // Take exclusive ownership via this call's OWN unique recovery token —
-  // a CAS from whatever attempt_token value was just read (which may be
-  // NULL if the confirm handler died before even establishing
-  // ownership). SQL's `column = NULL` never matches, so NULL needs its
-  // own branch.
+  if (request.status !== 'REQUESTED') {
+    // No resources may be changed after the authoritative terminal write.
+    return json({ resolved: 'ALREADY_TERMINAL', status: request.status,
+      ...(claim ? await finishAudit(claim.attempt_token, request.status) : {}) });
+  }
+  if (!claim) return json({ resolved: 'NOTHING_TO_RECONCILE' });
+
   const recoveryToken = `rt_${cryptoRandomId()}`;
-  const takeoverWhereClause = claim.attempt_token === null ? 'attempt_token IS NULL' : 'attempt_token = ?';
-  const takeoverArgs = claim.attempt_token === null ? [] : [claim.attempt_token];
-  const takeover = await env.DB
-    .prepare(`UPDATE deal_decision_claims SET attempt_token = ? WHERE request_id = ? AND ${takeoverWhereClause}`)
-    .bind(recoveryToken, requestId, ...takeoverArgs)
-    .run();
-  if (takeover.meta.changes !== 1) {
-    // Lost the race — re-read fresh state rather than assume anything.
-    const freshClaim = await env.DB.prepare('SELECT * FROM deal_decision_claims WHERE request_id = ?').bind(requestId).first();
-    const freshRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
-    if (!freshClaim) {
-      return json({
-        resolved: freshRequest.status === 'REQUESTED' ? 'ROLLED_BACK_TO_REQUESTED' : 'ALREADY_TERMINAL',
-        status: freshRequest.status,
-        detail: 'The attempt reached a terminal outcome (or was fully rolled back) between being read and this call attempting to take over ownership — nothing further was done here.',
-      });
-    }
-    return json({
-      resolved: 'ATTEMPT_STILL_ACTIVE',
-      detail: 'Ownership changed hands between being read and this call’s attempt to take it over — either the original attempt is still genuinely progressing, or another concurrent reconciliation already won it. It is not stalled from this call’s point of view; no action was taken. Call again if it later appears stuck.',
-    });
-  }
+  const takeover = await env.DB.prepare(`UPDATE deal_decision_claims SET attempt_token = ?
+    WHERE request_id = ? AND attempt_token IS ? AND journal_attempt_id IS ?
+      AND EXISTS (SELECT 1 FROM deal_requests WHERE request_id = ? AND status = 'REQUESTED')
+  `).bind(recoveryToken, requestId, claim.attempt_token, journalId ?? null, requestId).run();
+  if (takeover.meta.changes !== 1) return superseded();
 
-  // We now exclusively own recovery for this claim via recoveryToken.
-  const recoveryOwnership = { requestId, attemptToken: recoveryToken };
-
-  // A staggered SECOND reconciler may have raced in and re-taken
-  // ownership mid-way through THIS call's own subsequent writes — each
-  // one below re-verifies recoveryToken is still current, in the SAME
-  // atomic statement as the write itself, so a lost race here causes
-  // that specific write to affect zero rows rather than silently
-  // clobbering the new owner's own work.
-  // The queries this wraps each reference request_id TWICE (the main
-  // WHERE and the ownership EXISTS subquery) and attempt_token once, in
-  // that order, as the last three placeholders after the query's own
-  // args.
-  async function ownedUpdate(sql, args) {
-    return env.DB.prepare(sql).bind(...args, requestId, requestId, recoveryToken).run();
-  }
-
-  if (claim.decision === 'DECLINE') {
-    // Decline never establishes attempt_token ownership for itself at
-    // all (it has no multi-step resource work to fence — a single
-    // UPDATE, already affected-row-checked) — a stalled decline can only
-    // have died between the claim INSERT and that one UPDATE, before
-    // touching anything else. Safe to just finish it directly.
-    const finished = await ownedUpdate(
-      `UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ?
-       WHERE request_id = ? AND status = 'REQUESTED' AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`,
-      ['marau-ops-preview (reconciled)', now, now]
-    );
-    if (finished.meta.changes !== 1) {
-      return json({ resolved: 'ATTEMPT_STILL_ACTIVE', detail: 'Ownership or request status changed under this call before it could finish the decline — nothing further was done here.' });
-    }
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
-    return json({ resolved: 'DECLINED' });
-  }
-
-  // decision === 'CONFIRM'. Look up the journal by journal_attempt_id —
-  // the STABLE identity set once by the confirm handler and never
-  // rotated by any reconciler (unlike attempt_token, which we just
-  // rotated to recoveryToken above). This is what makes the journal
-  // findable across any number of staggered reconcile attempts.
-  const attempt = claim.journal_attempt_id
-    ? await env.DB.prepare('SELECT * FROM confirmation_attempts WHERE attempt_id = ?').bind(claim.journal_attempt_id).first()
-    : null;
-
-  // Inspect REAL current state directly, regardless of whether a journal
-  // row could be found — "missing journal cannot mean nothing happened."
-  const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(dealRequest.offer_id).first();
-  const movementClaimed = offer
-    ? await env.DB.prepare('SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).first()
-    : null;
-  const allocation = await env.DB.prepare(`SELECT * FROM vehicle_allocations WHERE subject_type = 'DEAL_REQUEST' AND subject_id = ?`).bind(requestId).first();
-  const offerFilled = Boolean(offer) && offer.status === 'FILLED';
-  const offerHeld = Boolean(offer) && offer.status === 'HELD';
-
-  if (!movementClaimed && !allocation && !offerHeld && !offerFilled) {
-    // Genuinely nothing real to unwind — verified directly against
-    // actual resource state, not inferred from journal absence. Safe to
-    // fully release.
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
-    return json({ resolved: 'ROLLED_BACK_TO_REQUESTED', detail: 'No real resource state exists for this claim — freed for a fresh attempt.' });
-  }
-
-  if (offer && movementClaimed && allocation && offerFilled) {
-    // Every real side effect actually succeeded — only the final marking
-    // (or the audit write) was interrupted. Finish it. Ownership- AND
-    // affected-row-checked: this is the one and only other writer
-    // allowed to mark CONFIRMED, and only once real state has been
-    // verified AND this call still owns recovery.
-    const finished = await ownedUpdate(
-      `UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ?
-       WHERE request_id = ? AND status = 'REQUESTED' AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`,
-      ['marau-ops-preview (reconciled)', now, now]
-    );
-    if (finished.meta.changes !== 1) {
-      return json({ resolved: 'ATTEMPT_STILL_ACTIVE', detail: 'Ownership or request status changed under this call before it could finish the confirmation — nothing further was done here.' });
-    }
-    if (attempt) {
-      await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
-    }
-    return json({ resolved: 'CONFIRMED' });
-  }
-
-  // Partial state exists — fully unwind whatever DOES exist so the
-  // request becomes cleanly retryable. Requirement: "compensation must
-  // verify both current recovery ownership and ownership of the resource
-  // being undone" — every compensating write below is scoped to THIS
-  // request_id/movement/allocation AND checks recoveryOwnership (this
-  // call's own, possibly-since-rotated token) in the same statement, so
-  // it can never reset another attempt's offer or delete an allocation
-  // that doesn't belong to this exact recovery, and a staggered second
-  // reconciler taking over mid-unwind causes these to correctly no-op
-  // rather than double-compensate. Each step is independently
-  // try/caught so one failing compensating write never prevents the
-  // others from running.
+  const ownership = { requestId, attemptToken: recoveryToken };
   const fencedStore = createOwnershipFencedStore(env, requestId, recoveryToken);
-  const failures = [];
-  if (offerHeld || offerFilled) {
+  async function release() {
+    const result = await env.DB.prepare(`DELETE FROM deal_decision_claims
+      WHERE request_id = ? AND attempt_token = ? AND EXISTS (
+        SELECT 1 FROM deal_requests WHERE request_id = ? AND status = 'REQUESTED')
+    `).bind(requestId, recoveryToken, requestId).run();
+    return result.meta.changes === 1;
+  }
+  async function inspect() {
+    const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(request.offer_id).first();
+    const movements = (await env.DB.prepare('SELECT * FROM vehicle_time_claims WHERE claimed_by_request_id = ?').bind(requestId).all()).results;
+    const allocations = (await env.DB.prepare("SELECT * FROM vehicle_allocations WHERE subject_type = 'DEAL_REQUEST' AND subject_id = ?").bind(requestId).all()).results;
+    const ownsOffer = Boolean(offer && journalId && offer.marau_attempt_id === journalId);
+    // Legacy/unattributed held resources must not be inferred to be ours.
+    const unknownOffer = Boolean(offer && ['HELD', 'FILLED'].includes(offer.status) && !offer.marau_attempt_id);
+    return { offer, movements, allocations, ownsOffer, unknownOffer };
+  }
+  async function fail(detail) {
+    if (!(await stillOwnsAttempt(env, requestId, recoveryToken))) return superseded();
+    let auditWarning;
     try {
-      await fencedStore.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
-      await fencedStore.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
-    } catch (e) {
-      failures.push('offer_status: ' + e.message);
-    }
+      const exists = journalId && await env.DB.prepare('SELECT 1 FROM confirmation_attempts WHERE attempt_id = ? AND request_id = ?').bind(journalId, requestId).first();
+      if (exists) await writeJournal(recoveryToken, 'ROLLBACK_FAILED', detail, 'REQUESTED');
+    } catch (err) { auditWarning = err.message; }
+    return json({ resolved: 'RECONCILIATION_FAILED', reconciliation_needed: true, detail,
+      ...(auditWarning ? { audit_warning: auditWarning } : {}) }, 500);
   }
-  if (allocation) {
-    try {
-      const released = await releaseVehicleAllocation(env, allocation.allocation_id, recoveryOwnership);
-      if (!released.released) failures.push('allocation: ownership check failed to match while releasing');
-    } catch (e) {
-      failures.push('allocation: ' + e.message);
+  try {
+    if (claim.decision === 'DECLINE') {
+      const done = await env.DB.prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ?
+        WHERE request_id = ? AND status = 'REQUESTED' AND EXISTS (
+          SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ? AND decision = 'DECLINE')
+      `).bind('marau-ops-preview (reconciled)', nowIso(), nowIso(), requestId, requestId, recoveryToken).run();
+      // Retain terminal ownership, just as normal confirm/decline do.
+      return done.meta.changes === 1 ? json({ resolved: 'DECLINED' }) : superseded();
     }
-  }
-  if (movementClaimed) {
-    try {
-      await env.DB
-        .prepare(
-          `DELETE FROM vehicle_time_claims
-           WHERE source_movement_id = ? AND claimed_by_request_id = ?
-             AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
-        )
-        .bind(offer.source_movement_id, requestId, requestId, recoveryToken)
-        .run();
-    } catch (e) {
-      failures.push('movement_claim: ' + e.message);
-    }
-  }
 
-  // Re-verify actual state: a compensating write can report "no error"
-  // yet still have affected zero rows because a staggered reconciler
-  // already took over (its own EXISTS clause silently no-ops rather than
-  // throwing) — check what's REALLY left, not just whether an exception
-  // was thrown.
-  const stillHeld = offer ? (await env.DB.prepare('SELECT status FROM smart_offers WHERE offer_id = ?').bind(offer.offer_id).first()).status !== 'ACTIVE' : false;
-  const allocationStillThere = allocation
-    ? Boolean(await env.DB.prepare('SELECT 1 FROM vehicle_allocations WHERE allocation_id = ?').bind(allocation.allocation_id).first())
-    : false;
-  const claimStillThere = movementClaimed
-    ? Boolean(await env.DB.prepare('SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ?').bind(offer.source_movement_id).first())
-    : false;
-
-  if (failures.length > 0 || stillHeld || allocationStillThere || claimStillThere) {
-    const detail = failures.length > 0 ? failures.join('; ') : 'compensation reported no error but did not actually take effect — likely superseded by a staggered reconciler';
-    if (attempt) {
-      await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ?`).bind(detail, now, attempt.attempt_id).run();
+    const before = await inspect();
+    if (before.ownsOffer && before.offer.status === 'FILLED' && before.movements.length === 1 && before.allocations.length === 1) {
+      // Check resources again in the decisive statement, not only in the
+      // earlier snapshot. A superseded reconciler cannot commit stale state.
+      const done = await env.DB.prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ?
+        WHERE request_id = ? AND status = 'REQUESTED' AND EXISTS (
+          SELECT 1 FROM deal_decision_claims c JOIN smart_offers o ON o.offer_id = deal_requests.offer_id
+          WHERE c.request_id = deal_requests.request_id AND c.attempt_token = ?
+            AND c.journal_attempt_id = o.marau_attempt_id AND o.status = 'FILLED'
+            AND EXISTS (SELECT 1 FROM vehicle_time_claims m WHERE m.claimed_by_request_id = c.request_id
+              AND m.claimed_by_offer_id = o.offer_id AND m.source_movement_id = o.source_movement_id)
+            AND EXISTS (SELECT 1 FROM vehicle_allocations a WHERE a.subject_type = 'DEAL_REQUEST' AND a.subject_id = c.request_id))
+      `).bind('marau-ops-preview (reconciled)', nowIso(), nowIso(), requestId, recoveryToken).run();
+      if (done.meta.changes !== 1) return superseded();
+      // COMMITTED: finishAudit catches failures; no compensation follows.
+      return json({ resolved: 'CONFIRMED', ...await finishAudit(recoveryToken, 'CONFIRMED') });
     }
-    return json({ resolved: 'RECONCILIATION_FAILED', detail }, 500);
-  }
 
-  await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
-  if (attempt) {
-    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
+    const failures = [];
+    if (before.ownsOffer && ['HELD', 'FILLED'].includes(before.offer.status)) {
+      try {
+        const undone = await fencedStore.casOfferStatus(before.offer.offer_id, before.offer.status, 'ACTIVE');
+        if (!undone.success) failures.push('offer compensation did not match ownership/state');
+      } catch (err) { failures.push(`offer: ${err.message}`); }
+    }
+    for (const allocation of before.allocations) {
+      try {
+        const undone = await releaseVehicleAllocation(env, allocation.allocation_id, ownership);
+        if (!undone.released) failures.push('allocation compensation did not match ownership');
+      } catch (err) { failures.push(`allocation: ${err.message}`); }
+    }
+    for (const movement of before.movements) {
+      try {
+        const undone = await env.DB.prepare(`DELETE FROM vehicle_time_claims
+          WHERE source_movement_id = ? AND claimed_by_offer_id = ? AND claimed_by_request_id = ?
+            AND EXISTS (SELECT 1 FROM deal_decision_claims c JOIN deal_requests r ON r.request_id = c.request_id
+              WHERE c.request_id = ? AND c.attempt_token = ? AND r.status = 'REQUESTED')
+        `).bind(movement.source_movement_id, movement.claimed_by_offer_id, requestId, requestId, recoveryToken).run();
+        if (undone.meta.changes !== 1) failures.push('movement compensation did not match ownership');
+      } catch (err) { failures.push(`movement: ${err.message}`); }
+    }
+    if (!(await stillOwnsAttempt(env, requestId, recoveryToken))) return superseded();
+    const after = await inspect();
+    if (after.unknownOffer) failures.push('offer ownership is unproven; manual reconciliation required');
+    if (after.ownsOffer || after.allocations.length || after.movements.length) failures.push('owned resources remain');
+    if (failures.length) return fail(failures.join('; '));
+
+    // Journal FIRST, claim release LAST. If the audit fails, the durable
+    // identity stays discoverable for the next recovery even with no resources.
+    const attempt = journalId && await env.DB.prepare('SELECT 1 FROM confirmation_attempts WHERE attempt_id = ? AND request_id = ?').bind(journalId, requestId).first();
+    if (attempt) await writeJournal(recoveryToken, 'ROLLED_BACK', null, 'REQUESTED');
+    if (!(await release())) return superseded();
+    return json({ resolved: 'ROLLED_BACK_TO_REQUESTED' });
+  } catch (err) {
+    return fail(err.message);
   }
-  return json({ resolved: 'ROLLED_BACK_TO_REQUESTED' });
 }
 
 async function handleAdminListBookings(env) {
