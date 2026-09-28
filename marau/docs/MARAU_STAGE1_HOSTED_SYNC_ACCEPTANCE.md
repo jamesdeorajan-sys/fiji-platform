@@ -33,12 +33,25 @@ Run via `test/marau_synthetic_source_harness.test.mjs`, and reproduced against t
 
 ## Deployment record
 
-- **Deployed commit:** `<round-19 commit hash, recorded in the checkpoint after push>` on `ceo/marau-stage1-preview`.
-- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource).
-- **Database:** `marau-stage1-test-db` (unchanged existing, isolated D1 — never `nadi-marketplace-db`).
-- **Migrations applied this round:** `0029_marau_staff_review_tokens.sql`, `0030_marau_synthetic_source_bookings.sql` (both additive; 0024-0028 already applied in prior rounds).
+- **Deployed commit:** `088542e` on `ceo/marau-stage1-preview`.
+- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource). **Worker version ID:** `3d71e0e0-5dc7-4b06-8da4-a82b6a7b0216`.
+- **Database:** `marau-stage1-test-db` (`e0c81ade-dc9f-477f-b370-bd5fd85a4f1f`, unchanged existing, isolated D1 — never `nadi-marketplace-db`).
+- **Migrations applied this round:** the hosted database was found to still be at migration `0023` (round 9-11's state) — **rounds 13 through 18's own migrations had never actually been applied to the hosted preview**, only demonstrated against the local shim, per every one of those rounds' own explicit scope notes. This round applied the full remaining stack in order: `0024_marau_real_booking_sync.sql`, `0025_marau_real_booking_sync_durable_version.sql`, `0026_marau_real_booking_sync_provenance.sql`, `0027_marau_real_booking_sync_unified_authority.sql`, `0028_marau_real_booking_sync_claims.sql`, `0029_marau_staff_review_tokens.sql`, `0030_marau_synthetic_source_bookings.sql` — all seven applied cleanly (`changed_db: true` on each), verified afterward via `PRAGMA table_info`/`sqlite_master` showing all five `marau_*` sync-related tables present.
 - **Preview URL (unchanged):** https://marau-stage1-preview.helpronline.workers.dev
 - **Test evidence:** 247/247 engine (unaffected) + 177/177 Marau local suite (137 pre-round-13 + 40 across rounds 17-19's files) = **424/424**, plus the live hosted spot-check below.
+
+## Live spot-check (all six scenarios run over real HTTP against the hosted preview, 2026-09-28)
+
+Run directly via `curl` against `https://marau-stage1-preview.helpronline.workers.dev` using the admin test token, against the REAL hosted D1 (not the local shim):
+
+1. **Saved pending → secure Trip access:** seeded `live-1` (`status: 'pending'`), synced a `created` event → `{"created":true,"status":"pending"}`; `/preview/trip` with the returned token showed `status: "pending"`.
+2. **Operator decision → confirmed Trip:** advanced `live-1` to `accepted`, synced an `accepted` event → `{"applied":true,"status":"confirmed"}`; `/preview/trip` showed `status: "confirmed"`.
+3. **Changed pickup/destination/price → correct guest display:** changed `live-1`'s destination to "Sofitel Denarau", vehicle to "Minivan", price to $90; reconciled → `{"applied":true}`; `/preview/trip` showed exactly those new values.
+4. **Cancellation:** moved `live-1` to `cancelled`, synced a `cancelled` event → `{"applied":true,"status":"cancelled"}`; a subsequent attempt to revive it with an older `accepted` event was rejected with `{"applied":false,"reason":"TERMINAL_STATE_LOCKED"}` — confirmed terminal-state locking holds on the real hosted D1, not just locally.
+5. **Interrupted first-sync recovery:** installed a real `CREATE TRIGGER ... RAISE(ABORT)` on `marau_real_booking_links` against the LIVE database, attempted a first sync for `live-5` → a genuine `500` over real HTTP (`D1_ERROR: round19 live demo fault injection`), confirming the round-19 `await` fix actually lets a real thrown error reach the router's own error response, not an unhandled worker exception. Dropped the trigger, retried the same event → `{"recovered":true,"status":"pending"}`; `GET /preview/admin/synthetic-source/live-5` showed exactly one mirror row, one link row, and no dangling claim.
+6. **Expired-owner takeover without stale overwrite:** manually inserted an expired claim row (`expires_at` in the past) directly into the live claims table, simulating a crashed holder; changed the synthetic source's destination/price to "New hotel"/$80; synced an `accepted` event → `{"applied":true,"status":"confirmed","claim_took_over":true}`; final state showed the new data (never the stale pre-crash values) and no claim left held.
+
+All six ran against the same live, isolated preview the guest app itself is served from — genuine hosted acceptance evidence, not a re-run of the local suite.
 
 ## Rollback procedure
 
