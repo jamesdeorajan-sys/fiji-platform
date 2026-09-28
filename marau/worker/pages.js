@@ -33,6 +33,7 @@
 import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptSecret, clearAttemptSecret, defaultRandomSource } from './client_idempotency.js';
 import { formatFijiDateTime, toFijiWallClockInputValue } from './fiji_time.js';
 import { selectDefaultBooking, ACTIVE_BOOKING_STATUSES } from './booking_selection.js';
+import { shortBookingReference, humanizeZoneLabel, humanizeVehicleClassLabel, formatFijiCurrency } from './guest_display.js';
 
 // Splicing these functions' own source into the emitted <script> means
 // the browser runs literally the same code marau/test/*.test.mjs already
@@ -47,6 +48,12 @@ import { selectDefaultBooking, ACTIVE_BOOKING_STATUSES } from './booking_selecti
 // referenced from inside a function body, honouring the exact lesson
 // from the round-3 STORAGE_KEY bug. A regression test reproduces this
 // embedding mechanism for these too (not just an ES-module import).
+//
+// BOUNDED MOBILE-COPY CORRECTIONS: guest_display.js's four formatting
+// helpers are spliced the same way — used both here (client rendering)
+// and server-side in whatsapp_handoff.js/worker.js, so the guest's own
+// screen and the composed WhatsApp summary can never show the route,
+// vehicle, reference, or price differently.
 const EMBEDDED_CLIENT_IDEMPOTENCY = `
 ${getOrCreateClientBookingRef.toString()}
 ${clearClientBookingRef.toString()}
@@ -57,6 +64,10 @@ ${formatFijiDateTime.toString()}
 ${toFijiWallClockInputValue.toString()}
 const ACTIVE_BOOKING_STATUSES = ${JSON.stringify(ACTIVE_BOOKING_STATUSES)};
 ${selectDefaultBooking.toString()}
+${shortBookingReference.toString()}
+${humanizeZoneLabel.toString()}
+${humanizeVehicleClassLabel.toString()}
+${formatFijiCurrency.toString()}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -440,19 +451,30 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       switcher = '<div class="switcher" role="tablist" aria-label="Your bookings">' +
         sorted.map(function (b) {
           var f = formatFijiDateTime(b.pickup_datetime);
-          var label = f.day + ' · ' + b.pickup_zone + ' → ' + b.destination_zone;
+          var label = f.day + ' · ' + humanizeZoneLabel(b.pickup_zone) + ' → ' + humanizeZoneLabel(b.destination_zone);
           return '<button data-booking="' + b.id + '" aria-pressed="' + (b.id === active.id ? 'true' : 'false') + '">' + label + '</button>';
         }).join('') +
         '</div>';
     }
 
+    // Mobile-copy finding 8: "Next pickup" implies a confirmed
+    // arrangement — a still-pending booking hasn't actually been
+    // confirmed by an operator yet, so it reads "Requested pickup"
+    // instead until it reaches a confirmed status.
+    var isConfirmedArrangement = active.status === 'confirmed' || active.status === 'confirmed_unallocated';
+    var headingLabel = defaultBooking && active.id === defaultBooking.id
+      ? (isConfirmedArrangement ? 'Next pickup' : 'Requested pickup')
+      : 'Selected booking';
+
     els.pickupCard.innerHTML = switcher + '<article class="pickup panel" aria-label="Pickup">' +
-      '<p class="sub">' + (defaultBooking && active.id === defaultBooking.id ? 'Next pickup' : 'Selected booking') + ' · booking ' + active.client_booking_ref + '</p>' +
+      // Mobile-copy finding 1: a short, stable display reference — never
+      // the full identifier, and never used for access anywhere.
+      '<p class="sub">' + headingLabel + ' · booking ' + shortBookingReference(active.client_booking_ref) + '</p>' +
       '<p class="when">' + fiji.time + '<span class="small" style="opacity:.75;font-weight:600;margin-left:8px">Fiji time</span></p>' +
       '<p class="sub">' + fiji.day + '</p>' +
       '<div class="route">' +
-        '<div class="stop fill"><span class="dot"></span><div><strong>' + active.pickup_zone + '</strong><span>Pickup</span></div></div>' +
-        '<div class="stop"><span class="dot"></span><div><strong>' + active.destination_zone + '</strong><span>Destination</span></div></div>' +
+        '<div class="stop fill"><span class="dot"></span><div><strong>' + humanizeZoneLabel(active.pickup_zone) + '</strong><span>Pickup</span></div></div>' +
+        '<div class="stop"><span class="dot"></span><div><strong>' + humanizeZoneLabel(active.destination_zone) + '</strong><span>Destination</span></div></div>' +
       '</div>' +
       '<div class="facts">' +
         '<div class="fact">Vehicle<b>' + active.vehicle_type + '</b></div>' +
@@ -487,6 +509,11 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   }
 
   var DEAL_REQUEST_PILL = { REQUESTED: 'warn', CONFIRMED: '', DECLINED: 'bad', WITHDRAWN: 'bad' };
+  // Mobile-copy finding 5: "Requested (REQUESTED)" read as a raw enum
+  // value echoed back at the guest. Subsequent confirmed/declined states
+  // stay accurate, plain English — not reworded away from what actually
+  // happened.
+  var DEAL_REQUEST_STATUS_LABEL = { REQUESTED: 'Awaiting confirmation', CONFIRMED: 'Confirmed', DECLINED: 'Declined', WITHDRAWN: 'Withdrawn' };
   function renderDealRequests(dealRequests) {
     if (!dealRequests || dealRequests.length === 0) { els.dealRequestsPanel.style.display = 'none'; return; }
     els.dealRequestsPanel.style.display = 'block';
@@ -494,9 +521,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     // (finding 5) — those stay in the underlying data for the assistant
     // and for ops, never rendered as visible text here.
     els.dealRequestsList.innerHTML = dealRequests.map(function (r) {
+      var statusLabel = DEAL_REQUEST_STATUS_LABEL[r.status] || r.status;
       return '<div style="border-bottom:1px solid var(--line);padding:10px 0">' +
-        '<p style="font-weight:700">' + r.origin_zone + ' → ' + r.destination_zone + ' <span class="pill ' + (DEAL_REQUEST_PILL[r.status] || '') + '">' + r.status + '</span></p>' +
-        '<p class="small muted">Requested at $' + Number(r.requested_price).toFixed(2) + (r.current_price !== r.requested_price ? ' · now $' + Number(r.current_price).toFixed(2) : '') + ' · ' + r.vehicle_class + '</p>' +
+        '<p style="font-weight:700">' + humanizeZoneLabel(r.origin_zone) + ' → ' + humanizeZoneLabel(r.destination_zone) + ' <span class="pill ' + (DEAL_REQUEST_PILL[r.status] || '') + '">' + statusLabel + '</span></p>' +
+        '<p class="small muted">Requested at ' + formatFijiCurrency(r.requested_price) + (r.current_price !== r.requested_price ? ' · now ' + formatFijiCurrency(r.current_price) : '') + ' · ' + humanizeVehicleClassLabel(r.vehicle_class) + '</p>' +
         '</div>';
     }).join('');
   }
@@ -614,19 +642,30 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   });
 
+  // Mobile-copy finding 5: after a real request, the button used to echo
+  // the raw enum ("Requested (REQUESTED)"). A fresh request is always
+  // REQUESTED, but stay accurate if an idempotent resubmit ever returns
+  // an already-decided status instead.
+  var DEAL_REQUEST_BUTTON_LABEL = { REQUESTED: 'Request received — awaiting confirmation.', CONFIRMED: 'Confirmed', DECLINED: 'Declined' };
+
   function renderDeals(deals) {
     if (deals.length === 0) { els.dealsList.innerHTML = '<p class="muted">No deals available right now.</p>'; return; }
     els.dealsList.innerHTML = deals.map(function (d) {
       var pctOff = d.standard_price ? Math.round((1 - d.total_price / d.standard_price) * 100) : null;
+      // Mobile-copy finding 7: the deal's own expiry used to fall back to
+      // the phone's own implicit local timezone via toLocaleString(). It
+      // now always reads in explicit Fiji time, the same formatter used
+      // everywhere else in this app.
+      var expiry = formatFijiDateTime(d.expires_at);
       return '<div class="deal">' +
         '<div class="deal-top">' +
-          '<div><div class="deal-kind">' + (d.label || 'Deal') + '</div><div class="deal-route">' + d.origin_zone + ' → ' + d.destination_zone + '</div></div>' +
+          '<div><div class="deal-kind">' + (d.label || 'Deal') + '</div><div class="deal-route">' + humanizeZoneLabel(d.origin_zone) + ' → ' + humanizeZoneLabel(d.destination_zone) + '</div></div>' +
           (pctOff ? '<div class="pct">' + pctOff + '%<small>off</small></div>' : '') +
         '</div>' +
         '<p class="why">' + d.conditions + '</p>' +
         '<div class="deal-foot">' +
-          '<span class="price">' + (d.standard_price && d.standard_price !== d.total_price ? '<s>$' + d.standard_price.toFixed(2) + '</s>' : '') + '<b>$' + d.total_price.toFixed(2) + '</b></span>' +
-          '<span class="meta">Expires ' + new Date(d.expires_at).toLocaleString() + '</span>' +
+          '<span class="price">' + (d.standard_price && d.standard_price !== d.total_price ? '<s>' + formatFijiCurrency(d.standard_price) + '</s>' : '') + '<b>' + formatFijiCurrency(d.total_price) + '</b></span>' +
+          '<span class="meta">Expires ' + expiry.day + ' ' + expiry.time + '<span style="opacity:.75;font-weight:600">&nbsp;Fiji time</span></span>' +
         '</div>' +
         '<div style="padding:0 16px 16px"><button class="btn btn-primary btn-block" data-offer="' + d.offer_id + '">Request this deal</button>' +
         '<div class="small" data-handoff="' + d.offer_id + '" style="margin-top:8px"></div></div>' +
@@ -639,7 +678,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
           if (!res.ok) { toast(res.data.error || 'Could not request this deal.'); return; }
           var target = els.dealsList.querySelector('[data-handoff="' + offerId + '"]');
           btn.disabled = true;
-          btn.textContent = 'Requested (' + res.data.status + ')';
+          btn.textContent = DEAL_REQUEST_BUTTON_LABEL[res.data.status] || res.data.status;
           renderMockWhatsApp(target, res.data.whatsapp_handoff);
         });
       });

@@ -29,6 +29,7 @@ import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } f
 import { normalizePickupDatetime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
+import { humanizeVehicleClassLabel } from './guest_display.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -645,7 +646,12 @@ async function handleListDeals(env) {
       capacity: o.capacity,
       total_price: o.smart_match_price ?? o.standard_price,
       standard_price: o.standard_price,
-      conditions: `Confirmed by operator before travel. Capacity ${o.capacity}. Vehicle: ${o.vehicle_class}.`,
+      // Mobile-copy finding 4: this used to assert "Confirmed by operator
+      // before travel" for an offer that has NOT actually been confirmed
+      // yet — nothing about seeing this deal means an operator has
+      // agreed to it. Finding 2: the vehicle class is humanized the same
+      // way everywhere else guest-facing.
+      conditions: `Requires operator confirmation. Capacity ${o.capacity}. Vehicle: ${humanizeVehicleClassLabel(o.vehicle_class)}.`,
       earliest_pickup: o.earliest_pickup,
       latest_pickup: o.latest_pickup,
       expires_at: o.expires_at,

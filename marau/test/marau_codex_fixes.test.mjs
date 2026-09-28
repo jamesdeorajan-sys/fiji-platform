@@ -409,8 +409,13 @@ test('P1 fix: the main "Talk to our team" handoff composes a real message with t
   const created = await call(env, '/preview/bookings', withJson('POST', guest));
   const handoff = await call(env, '/preview/trip/whatsapp-handoff', { method: 'POST', headers: authed(created.data.access_token) });
   assert.equal(handoff.status, 200);
-  assert.ok(handoff.data.whatsapp_handoff.message.includes(created.data.booking_reference));
-  assert.ok(handoff.data.whatsapp_handoff.message.includes(guest.pickup_zone));
+  // Mobile-copy finding 1/6: the message text now carries a SHORT,
+  // human-readable reference (never the full raw one) and a humanized
+  // route name — full internal linkage is preserved via the separate
+  // `booking_id` field instead, not by grepping the prose for raw values.
+  assert.ok(handoff.data.whatsapp_handoff.message.length > 0, 'a real message must be composed, not just a toast');
+  assert.ok(typeof handoff.data.whatsapp_handoff.booking_id === 'number', 'full internal linkage must be preserved as a structured field');
+  assert.ok(handoff.data.whatsapp_handoff.message.includes('Nadi Airport'), 'the route must be shown as a readable place name');
   assert.ok(handoff.data.whatsapp_handoff.note.toLowerCase().includes('never'));
 });
 

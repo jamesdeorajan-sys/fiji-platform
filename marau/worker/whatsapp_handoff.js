@@ -7,13 +7,34 @@
  * wrong side won: per the mission, NEITHER path may navigate to WhatsApp
  * in this preview. Both now go through this one composer and are shown
  * in an in-page mock panel (pages.js) instead.
+ *
+ * BOUNDED MOBILE-COPY CORRECTIONS, finding 6: the composed text used to
+ * embed raw internal IDs (`offer_id`, the deal request's own full id)
+ * and a raw UTC timestamp directly in the human-readable message. Full
+ * internal linkage is fully PRESERVED — every id is still returned as
+ * its own structured field on the result (`request_id`, `offer_id`,
+ * `booking_id`) for the ops console / assistant / tests to use — but the
+ * MESSAGE TEXT itself now reads in plain English: a readable route name,
+ * a short stable reference, and an explicit Fiji date/time, matching
+ * exactly what the guest sees on their own selected Trip (findings 2, 3,
+ * 7 — the same `humanizeZoneLabel`/`humanizeVehicleClassLabel`/
+ * `formatFijiCurrency`/`shortBookingReference` used on the client side,
+ * imported here rather than duplicated, and `formatFijiDateTime` from
+ * fiji_time.js — the same functions, not a second copy that could drift).
  */
+import { humanizeZoneLabel, humanizeVehicleClassLabel, formatFijiCurrency, shortBookingReference } from './guest_display.js';
+import { formatFijiDateTime } from './fiji_time.js';
 
 export function composeDealHandoffMessage({ opsNumber, dealRequestId, offer }) {
   const price = offer.smart_match_price ?? offer.standard_price;
+  const route = `${humanizeZoneLabel(offer.origin_zone)} -> ${humanizeZoneLabel(offer.destination_zone)}`;
   return {
     to: opsNumber,
-    message: `Marau deal request ${dealRequestId}: guest wants offer ${offer.offer_id} (${offer.origin_zone} -> ${offer.destination_zone}, ${offer.vehicle_class}) at ${price}. Reply to confirm or decline in the ops console.`,
+    // Full internal linkage preserved as structured fields — never
+    // dropped, only kept out of the human-readable message text itself.
+    request_id: dealRequestId,
+    offer_id: offer.offer_id,
+    message: `Marau deal request ${shortBookingReference(dealRequestId)}: guest wants ${route} (${humanizeVehicleClassLabel(offer.vehicle_class)}) at ${formatFijiCurrency(price)}. Reply to confirm or decline in the ops console.`,
     note: 'PREVIEW MOCK — this message is composed for review only. Marau never sends it and never opens WhatsApp. Confirming happens only in the ops console.',
   };
 }
@@ -27,6 +48,7 @@ export function composeTripHandoffMessage({ opsNumber, booking }) {
       note: 'PREVIEW MOCK — this message is composed for review only. Marau never sends it and never opens WhatsApp.',
     };
   }
+  const fiji = formatFijiDateTime(booking.pickup_datetime);
   return {
     to: opsNumber,
     // FIX (fourth independent review, finding 2): exposes WHICH booking
@@ -35,7 +57,7 @@ export function composeTripHandoffMessage({ opsNumber, booking }) {
     // this is the row's own database id, never an internal movement/offer
     // id (those stay excluded from guest-facing copy per round 3).
     booking_id: booking.id,
-    message: `Marau booking ${booking.client_booking_ref}: ${booking.pickup_zone} -> ${booking.destination_zone} on ${booking.pickup_datetime}, vehicle ${booking.vehicle_type}, currently "${booking.status}". Guest would like to speak with the team about this booking.`,
+    message: `Marau booking ${shortBookingReference(booking.client_booking_ref)}: ${humanizeZoneLabel(booking.pickup_zone)} -> ${humanizeZoneLabel(booking.destination_zone)} on ${fiji.day} at ${fiji.time} Fiji time, vehicle ${booking.vehicle_type}, currently "${booking.status}". Guest would like to speak with the team about this booking.`,
     note: 'PREVIEW MOCK — this message is composed for review only. Marau never sends it and never opens WhatsApp.',
   };
 }

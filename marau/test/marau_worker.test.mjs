@@ -161,7 +161,11 @@ test('requesting a deal is idempotent and prepares (never sends) a WhatsApp hand
   const first = await call(env, `/preview/deals/${offer.offer_id}/request`, { method: 'POST', headers: authed(token) });
   assert.equal(first.status, 201);
   assert.equal(first.data.status, 'REQUESTED');
-  assert.ok(first.data.whatsapp_handoff.message.includes(offer.offer_id));
+  // Mobile-copy finding 6: the raw offer_id is no longer embedded in the
+  // message text itself — it's preserved as its own structured field
+  // instead, so ops tooling/tests can still get at it precisely.
+  assert.equal(first.data.whatsapp_handoff.offer_id, offer.offer_id, 'full internal linkage must be preserved as a structured field');
+  assert.ok(first.data.whatsapp_handoff.message.length > 0);
   assert.ok(first.data.whatsapp_handoff.note.toLowerCase().includes('never'));
 
   const retry = await call(env, `/preview/deals/${offer.offer_id}/request`, { method: 'POST', headers: authed(token) });
