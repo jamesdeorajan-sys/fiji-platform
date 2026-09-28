@@ -122,7 +122,7 @@ test('a POST confirm WITH valid staff authentication (Authorization header) deci
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
 
-  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
   assert.equal(decide.status, 200);
   const row = await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
   assert.equal(row.status, 'CONFIRMED');
@@ -140,7 +140,7 @@ test('a POST confirm WITH valid staff authentication via the form\'s own admin_t
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
 
-  const form = new URLSearchParams({ token, decision: 'confirm', admin_token: env.MARAU_ADMIN_TEST_TOKEN });
+  const form = new URLSearchParams({ token, decision: 'confirm', admin_token: env.MARAU_ADMIN_TEST_TOKEN, operator: 'ops-1' });
   const decide = await call(env, '/preview/staff/review/decide', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form.toString() });
   assert.equal(decide.status, 200);
   const row = await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
@@ -153,7 +153,7 @@ test('a POST confirm with a WRONG admin_token is rejected, never decided', async
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
 
-  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', admin_token: 'not-the-real-token' }));
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', admin_token: 'not-the-real-token', operator: 'ops-1' }));
   assert.equal(decide.status, 401);
   const row = await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
   assert.equal(row.status, 'REQUESTED');
@@ -165,7 +165,7 @@ test('a POST decline WITH valid staff authentication decides via the EXISTING ad
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
 
-  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'decline' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'decline', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
   assert.equal(decide.status, 200);
   const row = await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
   assert.equal(row.status, 'DECLINED');
@@ -175,7 +175,7 @@ test('an invalid review token is rejected on both the page and the decide endpoi
   const env = makeEnv();
   const page = await call(env, '/preview/staff/review?token=review_does-not-exist');
   assert.equal(page.status, 404);
-  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token: 'review_does-not-exist', decision: 'confirm' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token: 'review_does-not-exist', decision: 'confirm', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
   assert.equal(decide.status, 401);
 });
 
@@ -190,7 +190,7 @@ test('an already-decided request shown via the review page reflects the real sta
   const { requested } = await bookAndRequestDeal(env);
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
-  await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
 
   const page = await call(env, `/preview/staff/review?token=${token}`);
   assert.equal(page.status, 200);
@@ -200,7 +200,7 @@ test('an already-decided request shown via the review page reflects the real sta
   // auth) must not double-apply — enforced by the underlying admin
   // handler's own existing idempotency/terminal-state guard, reused
   // unchanged.
-  const secondDecide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'decline' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  const secondDecide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'decline', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
   assert.notEqual(secondDecide.status, 200);
   const row = await env.DB.prepare('SELECT status FROM deal_requests WHERE request_id = ?').bind(requested.data.request_id).first();
   assert.equal(row.status, 'CONFIRMED', 'the real, first decision must survive an attempted second decide');
@@ -220,6 +220,6 @@ test('a malformed decision shape is rejected cleanly even with valid staff auth'
   const { requested } = await bookAndRequestDeal(env);
   const reviewLink = await fetchReviewLinkAsStaff(env, requested.data.request_id);
   const token = tokenFromLink(reviewLink);
-  const bad = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'maybe' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  const bad = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'maybe', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
   assert.equal(bad.status, 400);
 });

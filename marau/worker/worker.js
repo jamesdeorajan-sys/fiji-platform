@@ -1829,6 +1829,33 @@ async function handleAdminSyncEvent(request, env, sourceBookingRef) {
     return json({ error: 'invalid JSON body' }, 400);
   }
   const result = await syncRealBookingEvent(env, sourceBookingRef, body, syncDeps(env));
+
+  // Round 21 correction: the approved staff "Review and confirm"
+  // workflow concerns the INITIAL TRANSFER RESERVATION, not only an
+  // additional Marau deal request. The moment a real booking first
+  // lands (result.created === true — the "initial transfer reservation
+  // saved" step), mint a booking-scoped review token and return a mock
+  // staff alert alongside it. This response is only ever seen by the
+  // caller of this ALREADY admin-token-gated endpoint — never the guest
+  // (the guest's own access comes back from a completely different call
+  // chain, requireGuestSession-gated, and never sees this token; see
+  // handleRequestDeal's own P0 fix for the equivalent guarantee on the
+  // deal-request path).
+  if (result.ok && result.created) {
+    const reviewToken = await mintStaffReviewToken(env, 'booking', sourceBookingRef);
+    return json(
+      {
+        ...result,
+        mock_staff_alert: {
+          message: `New transfer reservation ${sourceBookingRef} awaiting confirmation. Reply or tap the review link to confirm once vehicle/driver is arranged.`,
+          review_link: `${new URL(request.url).origin}/preview/staff/review?token=${reviewToken.token}`,
+        },
+        demonstration_data: true,
+      },
+      200
+    );
+  }
+
   return json({ ...result, demonstration_data: true }, result.ok ? 200 : 409);
 }
 
@@ -1877,6 +1904,29 @@ async function handleAdminGetSyntheticSourceState(env, sourceBookingRef) {
 // an `admin_token` form field (the plain HTML page below, which cannot
 // set a custom header from a bare <form> POST). The review token is
 // never itself a general admin credential and never was.
+//
+// CORRECTED SCOPE (round 21): the approved workflow concerns the
+// INITIAL TRANSFER RESERVATION (a real booking, synced via
+// worker/real_booking_sync.js) — not only an additional Marau "deal
+// request", which is how rounds 19/20 had scoped it. `subject_type`
+// (migration 0031) is now 'deal_request' OR 'booking'; a booking
+// subject's token is minted automatically the moment a real reservation
+// first lands (handleAdminSyncEvent, result.created === true — the
+// mock "staff booking alert" moment), and deciding it records an
+// "explicit operational confirmation" in the SYNTHETIC SOURCE (never a
+// direct write to the Marau mirror — the mirror only ever updates via
+// the sync module's own fresh read, exactly as every correction since
+// round 17 requires), then syncs so the guest's Trip reflects it.
+// Confirming a reservation additionally requires a driver/vehicle to
+// already be on record (mirrors handleAdminDecideBooking's own
+// existing rule for ordinary bookings) and, per requirement 4, records
+// the deciding `operator` (a plain staff-supplied label — this preview
+// has no per-operator login; see migration 0031's own header for why
+// that is not "inventing a new identity platform"). A review token's
+// `subject_id` is NEVER client-suppliable at decide time — only ever
+// the value already stored on the loaded, validated token row — which
+// is what prevents a decision from ever being pointed at the wrong
+// subject.
 // ---------------------------------------------------------------------
 
 const STAFF_REVIEW_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — a real alert should be actioned well within this
@@ -1900,13 +1950,14 @@ async function loadValidReviewToken(env, token) {
   return row;
 }
 
-// GET — never mutates anything. Renders the current deal-request state
-// and a plain HTML form; the guest's own price/route is shown exactly as
-// composeDealHandoffMessage already renders it elsewhere, reused here
-// via the same humanizer/currency helpers.
+// GET — never mutates anything. Renders the current subject state (a
+// deal request OR, per the round-21 correction, the initial transfer
+// reservation itself) and a plain HTML form.
 async function handleStaffReviewPage(env, token) {
   const reviewToken = await loadValidReviewToken(env, token);
   if (!reviewToken) return html('<!doctype html><html><body><p>This review link is invalid or has expired. Ask ops to resend the alert.</p></body></html>', 404);
+
+  if (reviewToken.subject_type === 'booking') return handleStaffReviewBookingPage(env, token, reviewToken);
 
   const dealRequest = await env.DB
     .prepare(
@@ -1931,19 +1982,51 @@ async function handleStaffReviewPage(env, token) {
   <p><strong>Current status:</strong> ${dealRequest.status}</p>
   ${already
     ? `<p>This request has already been decided (${dealRequest.status}). No further action is needed.</p>`
-    : `<form method="POST" action="/preview/staff/review/decide" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+    : staffDecisionForm(token, ['confirm', 'decline'])}
+</body></html>`;
+  return html(body);
+}
+
+// Round 21 correction: the PRIMARY subject of this workflow — a real
+// booking (the initial transfer reservation) synced via
+// worker/real_booking_sync.js. Shows the CURRENT synthetic-source state
+// (never a cached/guest-facing copy) and, only for this subject, the
+// vehicle/driver fact staff must have arranged before confirming.
+async function handleStaffReviewBookingPage(env, token, reviewToken) {
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(reviewToken.subject_id).first();
+  if (!source) return html('<!doctype html><html><body><p>This reservation no longer exists.</p></body></html>', 404);
+
+  const already = source.status !== 'pending';
+  const driverAssigned = Boolean(source.assigned_driver_id);
+  const body = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Marau — Review reservation (PREVIEW)</title></head>
+<body style="font-family:system-ui;max-width:480px;margin:24px auto;padding:0 16px;">
+  <p style="color:#b45309;font-weight:600;">PREVIEW / DEMONSTRATION DATA — mocked staff review link, no real WhatsApp involved.</p>
+  <h1>Review reservation ${reviewToken.subject_id}</h1>
+  <p><strong>Route:</strong> ${source.pickup_zone} → ${source.destination_zone}</p>
+  <p><strong>Vehicle:</strong> ${source.vehicle_type}</p>
+  <p><strong>Pickup:</strong> ${source.pickup_date} ${source.pickup_time}</p>
+  <p><strong>Driver assigned:</strong> ${driverAssigned ? source.assigned_driver_id : 'NOT YET ASSIGNED — confirmation will be refused until a driver/vehicle is on record'}</p>
+  <p><strong>Current status:</strong> ${source.status}</p>
+  ${already
+    ? `<p>This reservation has already been decided (${source.status}). No further action is needed.</p>`
+    : staffDecisionForm(token, ['confirm'])}
+</body></html>`;
+  return html(body);
+}
+
+function staffDecisionForm(token, decisions) {
+  const buttons = decisions.map((d) => `<button name="decision" value="${d}" style="flex:1;padding:12px;font-size:16px;">${d === 'confirm' ? 'Confirm' : 'Decline'}</button>`).join('');
+  return `<form method="POST" action="/preview/staff/review/decide" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
         <input type="hidden" name="token" value="${token}">
         <label style="font-size:14px;color:#374151;">Staff token (required to decide)
           <input type="password" name="admin_token" required style="display:block;width:100%;padding:10px;font-size:16px;margin-top:4px;">
         </label>
-        <div style="display:flex;gap:12px;">
-          <button name="decision" value="confirm" style="flex:1;padding:12px;font-size:16px;">Confirm</button>
-          <button name="decision" value="decline" style="flex:1;padding:12px;font-size:16px;">Decline</button>
-        </div>
+        <label style="font-size:14px;color:#374151;">Your name/initials (recorded against this decision)
+          <input type="text" name="operator" required style="display:block;width:100%;padding:10px;font-size:16px;margin-top:4px;">
+        </label>
+        <div style="display:flex;gap:12px;">${buttons}</div>
       </form>
-      <p style="color:#6b7280;font-size:13px;margin-top:12px;">Opening this page has not confirmed or declined anything. Only submitting the form above, with a valid staff token, does.</p>`}
-</body></html>`;
-  return html(body);
+      <p style="color:#6b7280;font-size:13px;margin-top:12px;">Opening this page has not decided anything. Only submitting the form above, with a valid staff token, does.</p>`;
 }
 
 async function handleStaffReviewDecide(request, env) {
@@ -1951,41 +2034,109 @@ async function handleStaffReviewDecide(request, env) {
   let token;
   let decision;
   let adminTokenField;
+  let operator;
   if (contentType.includes('application/json')) {
     const body = await request.json().catch(() => ({}));
     token = body.token;
     decision = body.decision;
     adminTokenField = body.admin_token;
+    operator = body.operator;
   } else {
     const form = await request.formData();
     token = form.get('token');
     decision = form.get('decision');
     adminTokenField = form.get('admin_token');
+    operator = form.get('operator');
   }
 
   // P0 FIX (round 20): possession of the review token alone is NO LONGER
-  // sufficient to decide — see this section's header comment above. Real
-  // staff authentication (the admin bearer token, presented via the
-  // ordinary Authorization header OR this form's own admin_token field)
-  // is required in addition. The review token still scopes which ONE
-  // subject this call may act on; it is checked first purely to give a
-  // precise "invalid/expired link" error before an auth error, and is
-  // NEVER itself treated as proof of staff identity.
+  // sufficient to decide. Real staff authentication (the admin bearer
+  // token, presented via the ordinary Authorization header OR this
+  // form's own admin_token field) is required in addition. The review
+  // token still scopes which ONE subject this call may act on — it is
+  // checked first purely to give a precise "invalid/expired link" error
+  // before an auth error, and is NEVER itself treated as proof of staff
+  // identity. This is the SAME protected staff mechanism every other
+  // admin action in this preview already uses — no new identity
+  // platform is introduced.
   const reviewToken = await loadValidReviewToken(env, token);
   if (!reviewToken) return json({ error: 'invalid or expired review token' }, 401);
 
-  const isStaffAuthenticated = requireAdmin(request, env) || Boolean(env.MARAU_ADMIN_TEST_TOKEN) && adminTokenField === env.MARAU_ADMIN_TEST_TOKEN;
+  const isStaffAuthenticated = requireAdmin(request, env) || (Boolean(env.MARAU_ADMIN_TEST_TOKEN) && adminTokenField === env.MARAU_ADMIN_TEST_TOKEN);
   if (!isStaffAuthenticated) return json({ error: 'unauthorized — staff authentication required to decide' }, 401);
+
+  // Round 21, requirement 4: record the authorised operator responsible
+  // for the decision — a plain, staff-supplied identifying label (this
+  // preview has no per-operator login), required and stored alongside
+  // the shared admin-token check above, never a substitute for it.
+  if (!operator || !String(operator).trim()) return json({ error: 'operator name/initials are required to record this decision' }, 400);
+
+  if (reviewToken.subject_type === 'booking') return handleStaffDecideBooking(env, reviewToken, decision, String(operator).trim());
 
   if (decision !== 'confirm' && decision !== 'decline') return json({ error: "decision must be 'confirm' or 'decline'" }, 400);
 
   // Reuses the EXISTING admin handlers exactly — this token authorizes
-  // ONLY this one call, on this one subject; it grants no broader access.
+  // ONLY this one call, on this one subject (reviewToken.subject_id —
+  // NEVER a client-supplied id, which is what prevents this from ever
+  // being pointed at the wrong subject); it grants no broader access.
   const result =
     decision === 'confirm'
       ? await handleAdminConfirmDealRequest(env, reviewToken.subject_id)
       : await handleAdminDeclineDealRequest(env, reviewToken.subject_id);
+  if (result.status === 200) {
+    await recordStaffDecision(env, { token: reviewToken.token, subjectType: 'deal_request', subjectId: reviewToken.subject_id, decision, operator });
+  }
   return result;
+}
+
+// Round 21 correction — the PRIMARY subject: an "explicit operational
+// confirmation" of the initial transfer reservation, recorded in the
+// SYNTHETIC SOURCE (never a direct write to the Marau mirror — the
+// mirror is only ever updated by the sync module's own fresh-read path,
+// exactly like every other correction since round 17), followed by a
+// sync so the guest's Trip reflects it. Only 'confirm' is supported for
+// this subject — there is no real analogue of "decline" for a
+// reservation that has already been saved (a real cancellation is its
+// own, separate real-system action, out of scope here).
+async function handleStaffDecideBooking(env, reviewToken, decision, operator) {
+  if (decision !== 'confirm') return json({ error: "only 'confirm' is supported for a reservation" }, 400);
+
+  const sourceBookingRef = reviewToken.subject_id; // NEVER client-supplied — prevents confirming the wrong subject
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+  if (!source) return json({ error: 'reservation not found' }, 404);
+  if (source.status !== 'pending') return json({ error: 'ALREADY_DECIDED', current_status: source.status }, 409);
+
+  // Round 21: "preserve required driver/vehicle checks" — mirrors the
+  // real system's own invariant (an accepted booking always has a
+  // driver assigned, confirmed directly from the real source in round
+  // 13/15) and Marau's own existing handleAdminDecideBooking rule for
+  // ordinary bookings (VEHICLE_ALLOCATION_DECISION_PENDING). Refuses to
+  // record a confirmation ops could not actually have made yet.
+  if (!source.assigned_driver_id) {
+    return json({ error: 'DRIVER_NOT_ASSIGNED', detail: 'A vehicle/driver must be recorded before this reservation can be confirmed.' }, 409);
+  }
+
+  const now = nowIso();
+  await env.DB.prepare('UPDATE marau_synthetic_source_bookings SET status = ?, updated_at = ? WHERE source_booking_ref = ?').bind('accepted', now, sourceBookingRef).run();
+
+  // Sync-through: the guest's Trip is updated ONLY via the sync module's
+  // own fresh read of what was JUST written above — never a direct
+  // write here. Uses reconciliation (this is an ops-triggered refresh,
+  // not a discrete real booking_events row) with a wall-clock-derived
+  // monotonic sequence, documented as a preview-only simplification —
+  // see docs/MARAU_STAGE1_HOSTED_SYNC_ACCEPTANCE.md.
+  const syncResult = await reconcileRealBooking(env, sourceBookingRef, { snapshotSequence: Date.now(), deps: syncDeps(env) });
+
+  await recordStaffDecision(env, { token: reviewToken.token, subjectType: 'booking', subjectId: sourceBookingRef, decision, operator });
+
+  return json({ ok: true, source_booking_ref: sourceBookingRef, source_status: 'accepted', sync: syncResult, operator, demonstration_data: true });
+}
+
+async function recordStaffDecision(env, { token, subjectType, subjectId, decision, operator }) {
+  await env.DB
+    .prepare('INSERT INTO marau_staff_decisions (token, subject_type, subject_id, decision, operator, decided_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(token, subjectType, subjectId, decision, operator, nowIso())
+    .run();
 }
 
 // ---------------------------------------------------------------------

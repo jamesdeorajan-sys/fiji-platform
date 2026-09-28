@@ -1,6 +1,12 @@
-# Marau — hosted synthetic acceptance of the real-booking sync (round 19)
+# Marau — hosted synthetic acceptance of the real-booking sync (round 19, corrected round 21)
 
 2026-09-29. Issue #54. Branch `ceo/marau-stage1-preview`. **No production changes, no real-guest imports, no live sends. Synthetic source bookings only — no production database binding of any kind.**
+
+> **ROUND 21 CORRECTIONS, recorded 2026-09-29.**
+> 1. **Wording correction — no "undiscovered failure" occurred.** This document previously described finding the hosted database at migration `0023` as though it were a surprise ("had NEVER actually been deployed... despite extensive hosted acceptance docs"). That framing was misleading. **Rounds 13 through 18 explicitly and repeatedly documented themselves as local-shim-only** — every one of those rounds' own checkpoints said so directly (e.g. "demonstrated against the local isolated D1 shim only, not redeployed to the hosted preview Worker"). Finding their migrations unapplied on the hosted database was therefore the **expected** state, confirming those rounds' own documentation was accurate — not a gap this round uncovered. Corrected below.
+> 2. **Scope correction, not just wording — round 19's Marau-deal-request-only version of the "Review and confirm" workflow was itself corrected in round 21**: the approved workflow concerns the **initial transfer reservation** (a real booking synced via `real_booking_sync.js`), not only an additional deal request. See `docs/MARAU_STAGE1_REAL_BOOKING_SYNC.md`'s round-21 material and `worker/worker.js`'s own header comments on `handleStaffDecideBooking` for the corrected, primary version of this workflow, and `test/marau_staff_booking_review.test.mjs` for its dedicated demonstration.
+> 3. **Terminology correction — two genuinely different things were being called by similar names.** "Expired-claim takeover" (scenario 6 below: an abandoned claim's `expires_at` has already passed, and a later, completely independent sync legitimately takes it over and succeeds) is NOT the same test as "resuming a stale worker" (round 18's actual repro: a worker that ALREADY read stale data attempts to write it AFTER a takeover has occurred, and must be rejected with `CLAIM_LOST`). Scenario 6 below demonstrates only the former, live; the latter was verified via Codex's own independent rerun of the exact round-18 repro (recorded directly below), not by this round's hosted scenario 6.
+> 4. **Deployed vs. rollback Worker versions corrected** — see the Deployment record below; the round-19 rollback target previously named an undeployed git commit as if it were a prior live Worker version. It was not.
 
 ## Round 18 independent verification, recorded
 
@@ -29,14 +35,14 @@ Run via `test/marau_synthetic_source_harness.test.mjs`, and reproduced against t
 3. **Changed pickup/destination/price → correct guest display.** The synthetic source's own destination/time/price are changed and picked up by a reconciliation pass; the guest's Trip reflects the new values exactly.
 4. **Cancellation.** The synthetic source moves to `'cancelled'`; the guest's Trip shows `'cancelled'` and (per round 16) is locked against any further, older-looking write.
 5. **Interrupted first-sync recovery.** A real SQL fault (`CREATE TRIGGER ... RAISE(ABORT)`) blocks the link-row insert on the very first sync; the fault-injected call genuinely fails over HTTP (500), and a retry after removing the fault recovers cleanly — one session, one mirror row, one link.
-6. **Expired-owner takeover without stale overwrite.** Demonstrated via the claim table directly: a completed sync releases its own claim; a second, later sync for the same booking succeeds cleanly with no claim left dangling — the round 17/18 ownership design (claim acquired before reading, verified again at write time) holds over the same live D1 the guest app itself runs against.
+6. **Expired-claim takeover** (distinct from "resuming a stale worker" — see the round-21 correction banner above). Demonstrated via the claim table directly: an abandoned claim's `expires_at` has already passed; a later, independent sync for the same booking takes it over cleanly (`claim_took_over: true`) with no claim left dangling afterward. This confirms takeover itself works live. It does **not** by itself demonstrate round 18's specific fix (a worker that already read stale data being rejected AFTER another worker's takeover) — that repro was verified separately, via Codex's own independent rerun of the exact round-18 case (recorded above, "Round 18 independent verification"), not via this hosted scenario.
 
 ## Deployment record
 
-- **Deployed commit:** `088542e` on `ceo/marau-stage1-preview`.
-- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource). **Worker version ID:** `3d71e0e0-5dc7-4b06-8da4-a82b6a7b0216`.
+- **Deployed commit:** `088542e` on `ceo/marau-stage1-preview` (round 19's own commit — superseded by round 20's P0 fix and round 21's workflow correction, both since deployed; see the round-21 checkpoint for the current deployed commit/version).
+- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource). **Full, verified deployment history for this Worker (via `wrangler deployments list`, not reconstructed from commit messages):** `494889c2` (round 9) → `a479d4bd` (round 11) → `3d71e0e0` (round 19, this record). **No commit between round 11 and round 19 (i.e. nothing from rounds 12-18) was ever deployed** — those rounds' own commits exist only in git, never as a live Worker version.
 - **Database:** `marau-stage1-test-db` (`e0c81ade-dc9f-477f-b370-bd5fd85a4f1f`, unchanged existing, isolated D1 — never `nadi-marketplace-db`).
-- **Migrations applied this round:** the hosted database was found to still be at migration `0023` (round 9-11's state) — **rounds 13 through 18's own migrations had never actually been applied to the hosted preview**, only demonstrated against the local shim, per every one of those rounds' own explicit scope notes. This round applied the full remaining stack in order: `0024_marau_real_booking_sync.sql`, `0025_marau_real_booking_sync_durable_version.sql`, `0026_marau_real_booking_sync_provenance.sql`, `0027_marau_real_booking_sync_unified_authority.sql`, `0028_marau_real_booking_sync_claims.sql`, `0029_marau_staff_review_tokens.sql`, `0030_marau_synthetic_source_bookings.sql` — all seven applied cleanly (`changed_db: true` on each), verified afterward via `PRAGMA table_info`/`sqlite_master` showing all five `marau_*` sync-related tables present.
+- **Migrations applied this round:** the hosted database was found to still be at migration `0023` (round 9-11's state) — the expected state, since rounds 13 through 18 explicitly scoped and documented themselves as local-shim-only work (see the round-21 correction banner above). This round applied the full remaining stack in order: `0024_marau_real_booking_sync.sql`, `0025_marau_real_booking_sync_durable_version.sql`, `0026_marau_real_booking_sync_provenance.sql`, `0027_marau_real_booking_sync_unified_authority.sql`, `0028_marau_real_booking_sync_claims.sql`, `0029_marau_staff_review_tokens.sql`, `0030_marau_synthetic_source_bookings.sql` — all seven applied cleanly (`changed_db: true` on each), verified afterward via `PRAGMA table_info`/`sqlite_master` showing all five `marau_*` sync-related tables present.
 - **Preview URL (unchanged):** https://marau-stage1-preview.helpronline.workers.dev
 - **Test evidence:** 247/247 engine (unaffected) + 177/177 Marau local suite (137 pre-round-13 + 40 across rounds 17-19's files) = **424/424**, plus the live hosted spot-check below.
 
@@ -56,9 +62,36 @@ All six ran against the same live, isolated preview the guest app itself is serv
 ## Rollback procedure
 
 Every change this round is additive (new tables, new routes, an `await` correctness fix with no behavioral change on the non-error path). To roll back:
-1. Redeploy the prior Worker version (`6c322fc`'s build) via `wrangler deploy` from that commit, or `wrangler rollback` to the previous version id in the Cloudflare dashboard — no migration reversal is required, since the new tables are simply unused by the prior code.
-2. No guest-facing behavior changes for the existing booking/deal flows; rollback has zero impact on any in-flight guest session.
+1. **The actual, verified prior deployed Worker version is `a479d4bd-02d5-47ec-8a93-f7e0a5a31e06` (round 11)** — not any git commit between rounds 12 and 18, none of which were ever deployed (see the corrected deployment history above). Roll back via `wrangler rollback` to that version id in the Cloudflare dashboard, or `wrangler deploy` from commit `463c137` (round 11's own commit, confirmed as the source of that deployed version).
+2. No migration reversal is required — the new tables are simply unused by the prior code.
+3. No guest-facing behavior changes for the existing booking/deal flows; rollback has zero impact on any in-flight guest session.
 
-## Mobile test link
+## Round 21 — corrected staff workflow: the initial transfer reservation
 
-**https://marau-stage1-preview.helpronline.workers.dev** — same preview URL as every prior round, unchanged. On a phone: open the link in Safari/Chrome, "Add to Home Screen" to install as a standalone app, then use the app normally (book a test trip, browse deals). The new round-19 surfaces (`/preview/admin/synthetic-source/*`, `/preview/staff/review`) are ops/demonstration-only and require the admin test token or a minted review token respectively — nothing new is guest-visible in the installed app itself this round.
+Codex independently verified round 19's local suite: 424/424, before round 20's P0 review-token-leak fix and this round's scope correction. The P0 (staff review tokens returned in guest responses; deciding required only link possession) is fixed and covered in `test/marau_staff_review_link.test.mjs` — see that file and the round-20 checkpoint for the P0 itself.
+
+**The scope correction:** the approved "Review and confirm" workflow is about the **initial transfer reservation** — the real booking landing via `real_booking_sync.js` — not (only) an additional Marau deal request. `marau_staff_review_tokens.subject_type` (migration 0031) now also covers `'booking'`. The moment a real reservation is first saved (`handleAdminSyncEvent`, `result.created === true`), a booking-scoped review token is minted and a **mock staff booking alert** (never sent for real) is returned — only to the already admin-gated caller, never the guest. Deciding a `'booking'` subject:
+- requires the **same** staff authentication as every other decision (admin bearer token — never mere token possession);
+- requires a **driver/vehicle already on record** on the synthetic source (`DRIVER_NOT_ASSIGNED` otherwise — mirrors the real system's own invariant and Marau's existing `handleAdminDecideBooking` rule);
+- records the deciding **operator** (a required, staff-supplied name/initials field, stored in the new `marau_staff_decisions` audit table — this preview has no per-operator login, so this is a plain recorded label alongside the existing shared admin-token check, not a new identity platform);
+- writes the "explicit operational confirmation" to the **synthetic source** (`marau_synthetic_source_bookings.status = 'accepted'`) — never directly to the Marau mirror;
+- then **syncs** (`reconcileRealBooking`, reusing the exact same fresh-read/claim mechanism as every other update since round 17) so the guest's Trip reflects it.
+
+A review token's subject is fixed at mint time and is never a client-suppliable parameter at decide time — structurally preventing a decision from ever landing on the wrong reservation (tested directly: two reservations, two tokens, one decision, only the intended one changes).
+
+**Test evidence:** `test/marau_staff_booking_review.test.mjs` — 7/7 new tests demonstrating the full chain (save → pending Trip → mock alert → authenticated review → synthetic-source confirmation → sync → confirmed Trip), the driver/vehicle refusal case, guest-cannot-decide, wrong-subject prevention, missing-operator rejection, and unsupported-decision rejection. Combined with round 20's 13/13: full local suite **247/247 engine (unaffected) + 188/188 Marau (137 pre-round-13 + 51 across rounds 17-21) = 435/435.**
+
+## Mobile test link and exact staff/guest instructions
+
+**https://marau-stage1-preview.helpronline.workers.dev** — same preview URL as every prior round, unchanged.
+
+**Guest side (any phone):** open the link in Safari/Chrome, "Add to Home Screen" to install as a standalone app, use normally (book a test trip, browse deals). Nothing new is guest-visible this round — a guest's own responses never contain a staff review token (verified directly, both for deal requests and for real-booking reservations).
+
+**Staff side (demonstrating the corrected workflow), from a terminal or API client — the admin routes are not exposed in the guest UI:**
+1. Seed a synthetic reservation: `POST /preview/admin/synthetic-source` with `Authorization: Bearer <admin test token>`.
+2. Save it: `POST /preview/admin/synthetic-source/<ref>/sync-event` with `{"event_type":"created","new_status":"pending","source_event_id":1,"booking_id":<id>}` — the response includes `mock_staff_alert.review_link`.
+3. Open that link on a phone (no admin token needed to view) — it shows the route, price, and whether a driver is on record.
+4. To confirm: submit the form with a staff token (the admin test token) and your name/initials in the "operator" field. Confirmation is refused if no driver is on record yet.
+5. Reload the guest's own Trip (using the `access_token` the seed step returned) to see it flip to "confirmed".
+
+The admin-token-gated routes (`/preview/admin/synthetic-source/*`, `/preview/admin/deal-requests`) and the token-gated `/preview/staff/review` page are ops/demonstration-only surfaces, not part of the installed guest app.
