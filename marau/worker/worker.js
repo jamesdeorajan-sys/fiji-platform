@@ -111,6 +111,34 @@ function bearerToken(request) {
   return match ? match[1] : null;
 }
 
+// FIX (iPhone installation blocker, round 24): James's own real device
+// showed the guest link correctly loading his confirmed Trip in Safari,
+// but the SAME guest's freshly-installed home-screen icon opened
+// straight to the synthetic-entry screen — the standalone container's
+// own localStorage did not carry the token the Safari tab had just set,
+// even though both are nominally the same origin (screenshot evidence,
+// 2026-09-29). This is a real, previously-undocumented gap between
+// "localStorage set from a browser tab" and "localStorage visible to
+// the SEPARATE container iOS launches a home-screen web app from" — see
+// pages.js's own getToken()/setToken() for the client-side half of this
+// fix (a cookie is now ALSO written there, as an independent third
+// recovery path never assumed to work, only tried). This function is
+// the corresponding SERVER-side fallback: used ONLY by
+// requireGuestSession (guest auth), never requireAdmin/bearerToken's
+// other callers — admin/staff auth is completely untouched. Reads the
+// SAME opaque access_token a guest already has via the ordinary
+// Authorization header; nothing about server-side validation, expiry,
+// or revocation changes — access_token_revoked is still checked exactly
+// the same way regardless of which of the two places the token arrived
+// from. Never derives or infers a token from a booking reference, email,
+// or phone match — cookie or header, it is always the caller's own
+// already-issued access_token, verbatim.
+function guestCookieToken(request) {
+  const header = request.headers.get('cookie') || '';
+  const match = header.match(/(?:^|;\s*)marau_tok=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 // Loose, deliberately permissive validation — this is synthetic preview
 // data, not a real KYC check. The point being proven is that the SERVER
 // enforces presence and shape at all, not that it's a production-grade
@@ -227,7 +255,11 @@ async function createSessionAndOfferLink(env, body) {
 }
 
 async function requireGuestSession(request, env) {
-  const token = bearerToken(request);
+  // FIX (round 24): the ordinary Authorization header is tried FIRST,
+  // unchanged — the cookie is only ever a fallback for the specific
+  // installed-standalone-app scenario where the client's own JS-visible
+  // storage came up empty (see guestCookieToken's own header comment).
+  const token = bearerToken(request) || guestCookieToken(request);
   if (!token) return null;
   const session = await env.DB
     .prepare('SELECT * FROM guest_sessions WHERE access_token = ? AND access_token_revoked = 0')

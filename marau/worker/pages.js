@@ -372,27 +372,67 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   // it from BOTH storages so a revoked token is fully gone from the
   // device state we control; server-side revocation (access_token_revoked)
   // remains the authoritative check regardless of what is cached here.
+  //
+  // FIX (iPhone installation blocker, round 24): a real device proved
+  // this assumption wrong for at least some iOS versions — James's own
+  // browser tab correctly showed his confirmed Trip (localStorage set
+  // there), but the SEPARATE container the freshly-installed home-screen
+  // icon launches from did not see it (screenshot evidence, 2026-09-29:
+  // the icon opened straight to the synthetic-entry screen). Per
+  // instruction, "do not assume localStorage transfers between them" —
+  // a cookie is now ALSO written whenever the token is established, as a
+  // genuinely INDEPENDENT third recovery path (never assumed to work
+  // either — just tried, last, after both storages have already been
+  // checked). Cookies are attached automatically by the browser to every
+  // same-origin request regardless of which JS storage container reads
+  // them, which is what makes this resilient even if a given device's
+  // exact standalone-vs-Safari storage-sharing behavior is unknown or
+  // inconsistent; worker.js's own requireGuestSession reads the SAME
+  // cookie server-side as a second-line fallback. Still the exact same
+  // opaque access_token everywhere — isolation, expiry and
+  // server-side revocation are completely unchanged.
+  function getCookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function setCookie(name, value) {
+    document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; samesite=lax; secure';
+  }
+  function clearCookie(name) {
+    document.cookie = name + '=; path=/; max-age=0; samesite=lax; secure';
+  }
   function getToken() {
     var m = location.hash.match(/tok=([^&]+)/);
     if (m) {
       try { sessionStorage.setItem('marau_tok', m[1]); } catch (e) {}
       try { localStorage.setItem('marau_tok', m[1]); } catch (e) {}
+      try { setCookie('marau_tok', m[1]); } catch (e) {}
       return m[1];
     }
     try {
       var fromSession = sessionStorage.getItem('marau_tok');
       if (fromSession) return fromSession;
     } catch (e) {}
-    try { return localStorage.getItem('marau_tok'); } catch (e) { return null; }
+    try {
+      var fromLocal = localStorage.getItem('marau_tok');
+      if (fromLocal) return fromLocal;
+    } catch (e) {}
+    try {
+      var fromCookie = getCookie('marau_tok');
+      if (fromCookie) return fromCookie;
+    } catch (e) {}
+    return null;
   }
   function setToken(tok) {
     try { sessionStorage.setItem('marau_tok', tok); } catch (e) {}
     try { localStorage.setItem('marau_tok', tok); } catch (e) {}
+    try { setCookie('marau_tok', tok); } catch (e) {}
     location.hash = 'tok=' + tok;
   }
   function clearToken() {
     try { sessionStorage.removeItem('marau_tok'); } catch (e) {}
     try { localStorage.removeItem('marau_tok'); } catch (e) {}
+    try { clearCookie('marau_tok'); } catch (e) {}
     location.hash = '';
   }
 
