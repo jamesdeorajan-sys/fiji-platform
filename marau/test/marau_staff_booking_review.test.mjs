@@ -179,3 +179,116 @@ test('a stale/late-arriving event never reverts a confirmation made through the 
   const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
   assert.equal(source.status, 'accepted');
 });
+
+// ---------------------------------------------------------------------
+// Round 22 — the confirmation commit boundary and recovery. Exact
+// reproduction: fault-inject INSERT on marau_staff_decisions, confirm a
+// reservation, observe the source/mirror already committed despite a
+// reported failure, then drop the fault and retry.
+// ---------------------------------------------------------------------
+
+test('round22 exact repro: a fault-injected audit-insert failure must NEVER be reported as the confirmation failing -- source accepted and mirror confirmed, never a 500', async () => {
+  const env = makeEnv();
+  const { booking, saved } = await seedAndSaveReservation(env, { assigned_driver_id: 'drv_22' });
+  const token = new URL(saved.data.mock_staff_alert.review_link).searchParams.get('token');
+
+  env.DB.exec(`CREATE TRIGGER round22_block_audit BEFORE INSERT ON marau_staff_decisions BEGIN SELECT RAISE(ABORT, 'round22 fault injection'); END;`);
+
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'Ana (ops)' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  assert.equal(decide.status, 200, 'a failure in the SECONDARY audit write must never be reported as the confirmation itself failing');
+  assert.equal(decide.data.ok, true);
+  assert.equal(decide.data.source_status, 'accepted');
+  assert.equal(decide.data.audit.ok, false, 'the audit sub-result must honestly report its own failure, distinct from the overall success');
+  assert.equal(decide.data.audit.reason, 'AUDIT_INSERT_FAILED');
+
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(source.status, 'accepted');
+  assert.equal(source.confirmed_operator, 'Ana (ops)', 'the operator must be durably recorded on the source row itself, independent of the audit table');
+  const mirror = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(mirror.status, 'confirmed', 'the guest-facing mirror must already be confirmed -- the sync genuinely completed');
+  const { results: auditRows } = await env.DB.prepare('SELECT * FROM marau_staff_decisions WHERE subject_id = ?').bind(booking.source_booking_ref).all();
+  assert.equal(auditRows.length, 0, 'the interrupted state under test: the audit row is genuinely missing');
+
+  env.DB.exec('DROP TRIGGER round22_block_audit;');
+
+  const retry = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'Someone Else (ops)' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  assert.equal(retry.status, 200, 'a retry after the fault is removed must repair, not report a hard failure');
+  assert.equal(retry.data.recovered, true);
+  assert.equal(retry.data.audit.ok, true);
+  assert.equal(retry.data.confirmed_operator, 'Ana (ops)', 'the retry must NEVER replace the original deciding operator with its own argument');
+
+  const { results: auditRowsAfterRetry } = await env.DB.prepare('SELECT * FROM marau_staff_decisions WHERE subject_id = ?').bind(booking.source_booking_ref).all();
+  assert.equal(auditRowsAfterRetry.length, 1, 'exactly one audit row after repair -- never zero, never duplicated');
+  assert.equal(auditRowsAfterRetry[0].operator, 'Ana (ops)', 'the repaired audit row must record the ORIGINAL operator, never the retry caller\'s own');
+
+  const sourceAfterRetry = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(sourceAfterRetry.confirmed_operator, 'Ana (ops)', 'the source row\'s own durable operator must also never change on retry');
+});
+
+test('round22: the pending->accepted UPDATE is conditional and atomic -- a concurrent confirm attempt for the same reservation only ever lets one through', async () => {
+  const env = makeEnv();
+  const { booking, saved } = await seedAndSaveReservation(env, { assigned_driver_id: 'drv_concurrent' });
+  const token = new URL(saved.data.mock_staff_alert.review_link).searchParams.get('token');
+
+  const [a, b] = await Promise.all([
+    call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'staff-A' }, authed(env.MARAU_ADMIN_TEST_TOKEN))),
+    call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'staff-B' }, authed(env.MARAU_ADMIN_TEST_TOKEN))),
+  ]);
+  const results = [a, b];
+  const winners = results.filter((r) => r.data.ok && !r.data.recovered);
+  const recovered = results.filter((r) => r.data.recovered);
+  assert.equal(winners.length, 1, 'exactly one call must perform the real atomic transition');
+  assert.equal(recovered.length, 1, 'the other must land on the repair path, never a second real transition');
+
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.ok(source.confirmed_operator === 'staff-A' || source.confirmed_operator === 'staff-B');
+  const winnerOperator = source.confirmed_operator;
+  for (const r of results) assert.equal(r.data.confirmed_operator, winnerOperator);
+
+  const { results: auditRows } = await env.DB.prepare('SELECT * FROM marau_staff_decisions WHERE subject_id = ?').bind(booking.source_booking_ref).all();
+  assert.equal(auditRows.length, 1, 'exactly one audit row, even from two concurrent attempts');
+  assert.equal(auditRows[0].operator, winnerOperator);
+});
+
+test('round22: the atomic UPDATE re-checks the driver requirement at write time too, not just in an earlier read', async () => {
+  const env = makeEnv();
+  const { booking, saved } = await seedAndSaveReservation(env);
+  const token = new URL(saved.data.mock_staff_alert.review_link).searchParams.get('token');
+
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  assert.equal(decide.status, 409);
+  assert.equal(decide.data.error, 'DRIVER_NOT_ASSIGNED');
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(source.status, 'pending');
+  assert.equal(source.confirmed_operator, null);
+});
+
+test('round22: a genuinely already-decided reservation NOT confirmed via this workflow (e.g. cancelled by another path) still reports ALREADY_DECIDED, not a false repair', async () => {
+  const env = makeEnv();
+  const { booking, saved } = await seedAndSaveReservation(env, { assigned_driver_id: 'drv_1' });
+  await env.DB.prepare(`UPDATE marau_synthetic_source_bookings SET status = 'cancelled' WHERE source_booking_ref = ?`).bind(booking.source_booking_ref).run();
+
+  const token = new URL(saved.data.mock_staff_alert.review_link).searchParams.get('token');
+  const decide = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'ops-1' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  assert.equal(decide.status, 409);
+  assert.equal(decide.data.error, 'ALREADY_DECIDED');
+  assert.equal(decide.data.current_status, 'cancelled');
+});
+
+test('round22: staff-authorisation regressions are preserved unchanged -- guest cannot decide, wrong admin_token rejected, missing operator rejected, driver check enforced', async () => {
+  const env = makeEnv();
+  const { booking, saved } = await seedAndSaveReservation(env, { assigned_driver_id: 'drv_1' });
+  const token = new URL(saved.data.mock_staff_alert.review_link).searchParams.get('token');
+
+  const noAuth = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'x' }));
+  assert.equal(noAuth.status, 401);
+
+  const wrongAdminToken = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm', operator: 'x', admin_token: 'wrong' }));
+  assert.equal(wrongAdminToken.status, 401);
+
+  const noOperator = await call(env, '/preview/staff/review/decide', withJson('POST', { token, decision: 'confirm' }, authed(env.MARAU_ADMIN_TEST_TOKEN)));
+  assert.equal(noOperator.status, 400);
+
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(source.status, 'pending', 'none of the rejected attempts above may have confirmed anything');
+});

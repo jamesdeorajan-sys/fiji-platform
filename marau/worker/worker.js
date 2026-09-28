@@ -2096,47 +2096,160 @@ async function handleStaffReviewDecide(request, env) {
 // exactly like every other correction since round 17), followed by a
 // sync so the guest's Trip reflects it. Only 'confirm' is supported for
 // this subject — there is no real analogue of "decline" for a
-// reservation that has already been saved (a real cancellation is its
-// own, separate real-system action, out of scope here).
+// reservation that has already been saved.
+//
+// ROUND 22 FIX — the confirmation commit boundary. Codex reproduced:
+// fault-inject INSERT on marau_staff_decisions, confirm a reservation —
+// the source pending->accepted UPDATE and the guest-Trip sync had ALREADY
+// committed by the time the (separate, THIRD) audit INSERT threw, but
+// the caller received an uncaught 500 (a genuine confirmation reported
+// as a failure), and a retry then hit ALREADY_DECIDED with the audit row
+// permanently missing — no way to ever complete or even discover it.
+//
+// Corrected design, in three parts:
+//   1. The authorised operator and decided-at timestamp are now written
+//      DURABLY inside the SAME atomic, conditional UPDATE as the
+//      source's own pending->accepted transition
+//      (`confirmed_operator`/`confirmed_at`/`confirmation_token`,
+//      migration 0032) — never a separate statement that could fail
+//      independently of the transition it is meant to record. The
+//      UPDATE's own WHERE clause re-checks `status = 'pending' AND
+//      assigned_driver_id IS NOT NULL` atomically at write time (closing
+//      the TOCTOU gap a separate SELECT-then-UPDATE would leave open),
+//      and `meta.changes` is checked to know whether it actually applied.
+//   2. Once that ONE atomic write succeeds, the source confirmation is
+//      DONE and durable — nothing that happens afterward (the sync-
+//      through, or the secondary marau_staff_decisions audit insert) is
+//      ever allowed to surface as a top-level failure. Both are wrapped
+//      and reported as their OWN sub-results
+//      (`sync`/`audit`, distinguishing "source confirmation" from
+//      "guest-sync completion" from "secondary audit logging" —
+//      exactly as instructed) rather than letting either throw past this
+//      function.
+//   3. A retry that lands on an ALREADY-confirmed row (detected via the
+//      durable `confirmed_operator` column, not merely `status !==
+//      'pending'`, which could also mean something else entirely)
+//      NEVER re-confirms and NEVER overwrites the original operator — it
+//      idempotently REPAIRS whatever secondary work (sync, audit row)
+//      didn't finish, reading the operator/timestamp to repair WITH from
+//      the durably-stored source row, never from the retry call's own
+//      (possibly different) `operator` argument.
 async function handleStaffDecideBooking(env, reviewToken, decision, operator) {
   if (decision !== 'confirm') return json({ error: "only 'confirm' is supported for a reservation" }, 400);
 
   const sourceBookingRef = reviewToken.subject_id; // NEVER client-supplied — prevents confirming the wrong subject
-  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
-  if (!source) return json({ error: 'reservation not found' }, 404);
-  if (source.status !== 'pending') return json({ error: 'ALREADY_DECIDED', current_status: source.status }, 409);
+  const now = nowIso();
 
-  // Round 21: "preserve required driver/vehicle checks" — mirrors the
-  // real system's own invariant (an accepted booking always has a
-  // driver assigned, confirmed directly from the real source in round
-  // 13/15) and Marau's own existing handleAdminDecideBooking rule for
-  // ordinary bookings (VEHICLE_ALLOCATION_DECISION_PENDING). Refuses to
-  // record a confirmation ops could not actually have made yet.
-  if (!source.assigned_driver_id) {
-    return json({ error: 'DRIVER_NOT_ASSIGNED', detail: 'A vehicle/driver must be recorded before this reservation can be confirmed.' }, 409);
+  const updateResult = await env.DB
+    .prepare(
+      `UPDATE marau_synthetic_source_bookings
+         SET status = 'accepted', confirmed_operator = ?, confirmed_at = ?, confirmation_token = ?, updated_at = ?
+       WHERE source_booking_ref = ? AND status = 'pending' AND assigned_driver_id IS NOT NULL`
+    )
+    .bind(operator, now, reviewToken.token, now, sourceBookingRef)
+    .run();
+
+  if (updateResult.meta.changes === 0) {
+    const current = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+    if (!current) return json({ error: 'reservation not found' }, 404);
+    if (current.confirmed_operator) {
+      // Genuinely already confirmed BY THIS WORKFLOW (proven by the
+      // durable column the atomic UPDATE itself writes, not just an
+      // arbitrary non-pending status) — repair only, never re-decide.
+      return handleStaffBookingConfirmationRepair(env, current);
+    }
+    if (!current.assigned_driver_id) {
+      return json({ error: 'DRIVER_NOT_ASSIGNED', detail: 'A vehicle/driver must be recorded before this reservation can be confirmed.' }, 409);
+    }
+    return json({ error: 'ALREADY_DECIDED', current_status: current.status }, 409);
   }
 
-  const now = nowIso();
-  await env.DB.prepare('UPDATE marau_synthetic_source_bookings SET status = ?, updated_at = ? WHERE source_booking_ref = ?').bind('accepted', now, sourceBookingRef).run();
+  // The source confirmation itself is DONE — everything below is
+  // best-effort follow-through, each reported as its own sub-result,
+  // never as a reason to fail this call.
+  const syncResult = await syncAfterBookingConfirmation(env, sourceBookingRef);
+  const auditResult = await recordStaffDecisionIfMissing(env, { token: reviewToken.token, subjectId: sourceBookingRef, operator, decidedAt: now });
 
-  // Sync-through: the guest's Trip is updated ONLY via the sync module's
-  // own fresh read of what was JUST written above — never a direct
-  // write here. Uses reconciliation (this is an ops-triggered refresh,
-  // not a discrete real booking_events row) with a wall-clock-derived
-  // monotonic sequence, documented as a preview-only simplification —
-  // see docs/MARAU_STAGE1_HOSTED_SYNC_ACCEPTANCE.md.
-  const syncResult = await reconcileRealBooking(env, sourceBookingRef, { snapshotSequence: Date.now(), deps: syncDeps(env) });
-
-  await recordStaffDecision(env, { token: reviewToken.token, subjectType: 'booking', subjectId: sourceBookingRef, decision, operator });
-
-  return json({ ok: true, source_booking_ref: sourceBookingRef, source_status: 'accepted', sync: syncResult, operator, demonstration_data: true });
+  return json({ ok: true, source_booking_ref: sourceBookingRef, source_status: 'accepted', confirmed_operator: operator, sync: syncResult, audit: auditResult, demonstration_data: true });
 }
 
+// Repair path for a retry landing on an already (durably) confirmed
+// reservation — reads what to repair WITH from the source row's own
+// stored `confirmed_operator`/`confirmed_at`, never from this call's own
+// arguments, so a retry can never silently substitute a different
+// "authorised" operator for the one who actually made the decision.
+async function handleStaffBookingConfirmationRepair(env, current) {
+  const syncResult = await syncAfterBookingConfirmation(env, current.source_booking_ref);
+  const auditResult = await recordStaffDecisionIfMissing(env, {
+    token: current.confirmation_token,
+    subjectId: current.source_booking_ref,
+    operator: current.confirmed_operator,
+    decidedAt: current.confirmed_at,
+  });
+  return json({
+    ok: true,
+    recovered: true,
+    source_booking_ref: current.source_booking_ref,
+    source_status: current.status,
+    confirmed_operator: current.confirmed_operator,
+    sync: syncResult,
+    audit: auditResult,
+    demonstration_data: true,
+  });
+}
+
+// Sync-through: the guest's Trip is updated ONLY via the sync module's
+// own fresh read of the source row — never a direct write here. Uses
+// reconciliation (this is an ops-triggered refresh, not a discrete real
+// booking_events row) with a wall-clock-derived monotonic sequence,
+// documented as a preview-only simplification — see
+// docs/MARAU_STAGE1_HOSTED_SYNC_ACCEPTANCE.md. Never allowed to throw
+// past the caller — a sync failure is real and reported, but it must
+// never be confused with the source confirmation itself failing (round
+// 22, requirement 5: "distinguish source confirmation from guest-sync
+// completion").
+async function syncAfterBookingConfirmation(env, sourceBookingRef) {
+  try {
+    return await reconcileRealBooking(env, sourceBookingRef, { snapshotSequence: Date.now(), deps: syncDeps(env) });
+  } catch (err) {
+    return { ok: false, reason: 'SYNC_FAILED_AFTER_CONFIRMATION', detail: String(err && err.message) };
+  }
+}
+
+// Secondary, best-effort audit log — the durable source of truth is
+// already the source row's own confirmed_operator/confirmed_at
+// (written atomically with the transition itself). This INSERT is
+// idempotent (checked first) and never allowed to throw past the
+// caller — a failure here must never be reported as the confirmation
+// itself failing.
+async function recordStaffDecisionIfMissing(env, { token, subjectId, operator, decidedAt }) {
+  try {
+    const existing = await env.DB.prepare(`SELECT 1 FROM marau_staff_decisions WHERE subject_type = 'booking' AND subject_id = ?`).bind(subjectId).first();
+    if (existing) return { ok: true, already_recorded: true };
+    await env.DB
+      .prepare(`INSERT INTO marau_staff_decisions (token, subject_type, subject_id, decision, operator, decided_at) VALUES (?, 'booking', ?, 'confirm', ?, ?)`)
+      .bind(token, subjectId, operator, decidedAt)
+      .run();
+    return { ok: true, already_recorded: false };
+  } catch (err) {
+    return { ok: false, reason: 'AUDIT_INSERT_FAILED', detail: String(err && err.message) };
+  }
+}
+
+// Still used by the deal_request decide path (round 20/21, unchanged) —
+// that path has no atomic-with-the-decision durable column to fall back
+// on, so its own audit write staying best-effort/non-blocking is the
+// smaller, sufficient fix; round 22's finding was specific to the
+// booking-confirmation commit boundary.
 async function recordStaffDecision(env, { token, subjectType, subjectId, decision, operator }) {
-  await env.DB
-    .prepare('INSERT INTO marau_staff_decisions (token, subject_type, subject_id, decision, operator, decided_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(token, subjectType, subjectId, decision, operator, nowIso())
-    .run();
+  try {
+    await env.DB
+      .prepare('INSERT INTO marau_staff_decisions (token, subject_type, subject_id, decision, operator, decided_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(token, subjectType, subjectId, decision, operator, nowIso())
+      .run();
+  } catch (err) {
+    console.error('[marau-preview] deal_request staff-decision audit insert failed (non-fatal — decision already committed)', err);
+  }
 }
 
 // ---------------------------------------------------------------------
