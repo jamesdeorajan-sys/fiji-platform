@@ -698,20 +698,28 @@ async function handleRequestDeal(request, env, offerId) {
   const opsNumber = env.MARAU_OPS_WHATSAPP_TEST_NUMBER || '+15556414099';
   const whatsappHandoff = composeDealHandoffMessage({ opsNumber, dealRequestId: dealRequest.request_id, offer });
 
-  // Round 19 — the approved staff workflow: mint a booking-specific
-  // "Review and confirm" link, meant to ride inside this SAME detailed
-  // alert (still fully mocked — never a real send). Minted fresh on
-  // every call so a genuine retry gets a fresh, equally-valid link
-  // rather than reusing one tied to a specific prior attempt.
-  const reviewToken = await mintStaffReviewToken(env, 'deal_request', dealRequest.request_id);
-  const reviewLink = `${new URL(request.url).origin}/preview/staff/review?token=${reviewToken.token}`;
+  // P0 FIX (round 20): a staff review token — a genuine decision
+  // capability — was being minted here and returned DIRECTLY in the
+  // response to this SAME endpoint's own caller: the GUEST who just
+  // requested the deal (requireGuestSession above proves that, not
+  // requireAdmin). Any guest could read their own response, extract the
+  // token, and call /preview/staff/review/decide on their OWN request —
+  // a complete staff-authorization bypass. The token is still minted
+  // here (it is genuinely tied to THIS request's own creation moment),
+  // but it is NEVER included in the guest-facing response — it is only
+  // ever surfaced via handleAdminListDealRequests (admin-token gated),
+  // which is where a real "compose the ops alert" step would read it
+  // from in production. See that function and handleStaffReviewDecide
+  // (now itself also staff-auth-gated, not token-possession-gated) for
+  // the rest of this fix.
+  await mintStaffReviewToken(env, 'deal_request', dealRequest.request_id);
 
   return json(
     {
       request_id: dealRequest.request_id,
       status: dealRequest.status,
       was_new_request: insertResult.meta.changes === 1,
-      whatsapp_handoff: { ...whatsappHandoff, review_link: reviewLink },
+      whatsapp_handoff: whatsappHandoff,
     },
     insertResult.meta.changes === 1 ? 201 : 200
   );
@@ -795,7 +803,7 @@ async function handleAssist(request, env) {
 // that.
 // ---------------------------------------------------------------------
 
-async function handleAdminListDealRequests(env) {
+async function handleAdminListDealRequests(request, env) {
   const { results } = await env.DB
     .prepare(
       `SELECT dr.*, o.origin_zone, o.destination_zone, o.vehicle_class, o.standard_price, o.smart_match_price, o.expires_at AS offer_expires_at, o.status AS offer_status, o.source_movement_id,
@@ -806,6 +814,22 @@ async function handleAdminListDealRequests(env) {
        ORDER BY dr.created_at DESC`
     )
     .all();
+
+  // P0 FIX (round 20) — this is the ONLY place a staff review link is
+  // ever surfaced: an admin-token-gated endpoint, never the guest's own
+  // request/response. One row per request_id, the most recently minted
+  // still-unexpired token (mintStaffReviewToken is called once per
+  // handleRequestDeal call, so a genuine retry can leave more than one).
+  const { results: tokenRows } = await env.DB
+    .prepare(
+      `SELECT t1.subject_id, t1.token FROM marau_staff_review_tokens t1
+       WHERE t1.subject_type = 'deal_request' AND t1.expires_at > ?
+         AND t1.created_at = (SELECT MAX(t2.created_at) FROM marau_staff_review_tokens t2 WHERE t2.subject_type = 'deal_request' AND t2.subject_id = t1.subject_id AND t2.expires_at > ?)`
+    )
+    .bind(nowIso(), nowIso())
+    .all();
+  const reviewTokenByRequestId = new Map(tokenRows.map((t) => [t.subject_id, t.token]));
+  const origin = new URL(request.url).origin;
 
   // Surface any request whose last confirmation attempt stalled short of
   // a terminal phase — the actionable signal that admin reconciliation
@@ -834,14 +858,16 @@ async function handleAdminListDealRequests(env) {
   const claimedRequestIds = new Set(openClaims.map((c) => c.request_id));
 
   const enriched = results.map((r) => {
+    const reviewToken = reviewTokenByRequestId.get(r.request_id);
+    const review_link = reviewToken ? `${origin}/preview/staff/review?token=${reviewToken}` : null;
     const stalled = stalledByRequest.get(r.request_id);
     if (stalled) {
-      return { ...r, reconciliation_needed: true, stalled_phase: stalled.phase, stalled_detail: stalled.error_detail };
+      return { ...r, review_link, reconciliation_needed: true, stalled_phase: stalled.phase, stalled_detail: stalled.error_detail };
     }
     if (r.status === 'REQUESTED' && claimedRequestIds.has(r.request_id)) {
-      return { ...r, reconciliation_needed: true, stalled_phase: null, stalled_detail: 'A decision claim exists but no confirmation attempt record was ever created for it.' };
+      return { ...r, review_link, reconciliation_needed: true, stalled_phase: null, stalled_detail: 'A decision claim exists but no confirmation attempt record was ever created for it.' };
     }
-    return { ...r, reconciliation_needed: false };
+    return { ...r, review_link, reconciliation_needed: false };
   });
 
   return json({ deal_requests: enriched });
@@ -1833,9 +1859,24 @@ async function handleAdminGetSyntheticSourceState(env, sourceBookingRef) {
 // the current state and a form. Only the explicit POST decides, and it
 // does so by calling the SAME existing admin handlers
 // (handleAdminConfirmDealRequest / handleAdminDeclineDealRequest) —
-// reusing existing staff functionality rather than duplicating it. The
-// token is scoped to exactly one subject and expires; it is never a
-// general admin credential.
+// reusing existing staff functionality rather than duplicating it.
+//
+// P0 FIX (round 20): the review token alone used to be sufficient to
+// decide — but round 19 also (wrongly) returned that same token directly
+// to the GUEST who created the request, which meant mere possession of
+// "a token" proved nothing about being staff. Even independent of that
+// leak, a capability token that rides inside a message is inherently
+// forwardable/screenshottable, so requiring only it to DECIDE (an
+// irreversible, money-adjacent action) was never sufficient on its own.
+// The token still scopes VIEWING to exactly one subject (GET, read-only,
+// unauthenticated beyond the token — no risk in showing route/price
+// again to whoever has the link). DECIDING now additionally requires
+// real staff authentication — the same admin bearer token every other
+// admin action in this preview already requires — presented either as
+// a normal `Authorization: Bearer` header (API/admin-console use) or as
+// an `admin_token` form field (the plain HTML page below, which cannot
+// set a custom header from a bare <form> POST). The review token is
+// never itself a general admin credential and never was.
 // ---------------------------------------------------------------------
 
 const STAFF_REVIEW_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — a real alert should be actioned well within this
@@ -1890,12 +1931,17 @@ async function handleStaffReviewPage(env, token) {
   <p><strong>Current status:</strong> ${dealRequest.status}</p>
   ${already
     ? `<p>This request has already been decided (${dealRequest.status}). No further action is needed.</p>`
-    : `<form method="POST" action="/preview/staff/review/decide" style="display:flex;gap:12px;margin-top:16px;">
+    : `<form method="POST" action="/preview/staff/review/decide" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
         <input type="hidden" name="token" value="${token}">
-        <button name="decision" value="confirm" style="flex:1;padding:12px;font-size:16px;">Confirm</button>
-        <button name="decision" value="decline" style="flex:1;padding:12px;font-size:16px;">Decline</button>
+        <label style="font-size:14px;color:#374151;">Staff token (required to decide)
+          <input type="password" name="admin_token" required style="display:block;width:100%;padding:10px;font-size:16px;margin-top:4px;">
+        </label>
+        <div style="display:flex;gap:12px;">
+          <button name="decision" value="confirm" style="flex:1;padding:12px;font-size:16px;">Confirm</button>
+          <button name="decision" value="decline" style="flex:1;padding:12px;font-size:16px;">Decline</button>
+        </div>
       </form>
-      <p style="color:#6b7280;font-size:13px;margin-top:12px;">Opening this page has not confirmed or declined anything. Only tapping one of the buttons above does.</p>`}
+      <p style="color:#6b7280;font-size:13px;margin-top:12px;">Opening this page has not confirmed or declined anything. Only submitting the form above, with a valid staff token, does.</p>`}
 </body></html>`;
   return html(body);
 }
@@ -1904,18 +1950,33 @@ async function handleStaffReviewDecide(request, env) {
   const contentType = request.headers.get('content-type') || '';
   let token;
   let decision;
+  let adminTokenField;
   if (contentType.includes('application/json')) {
     const body = await request.json().catch(() => ({}));
     token = body.token;
     decision = body.decision;
+    adminTokenField = body.admin_token;
   } else {
     const form = await request.formData();
     token = form.get('token');
     decision = form.get('decision');
+    adminTokenField = form.get('admin_token');
   }
 
+  // P0 FIX (round 20): possession of the review token alone is NO LONGER
+  // sufficient to decide — see this section's header comment above. Real
+  // staff authentication (the admin bearer token, presented via the
+  // ordinary Authorization header OR this form's own admin_token field)
+  // is required in addition. The review token still scopes which ONE
+  // subject this call may act on; it is checked first purely to give a
+  // precise "invalid/expired link" error before an auth error, and is
+  // NEVER itself treated as proof of staff identity.
   const reviewToken = await loadValidReviewToken(env, token);
   if (!reviewToken) return json({ error: 'invalid or expired review token' }, 401);
+
+  const isStaffAuthenticated = requireAdmin(request, env) || Boolean(env.MARAU_ADMIN_TEST_TOKEN) && adminTokenField === env.MARAU_ADMIN_TEST_TOKEN;
+  if (!isStaffAuthenticated) return json({ error: 'unauthorized — staff authentication required to decide' }, 401);
+
   if (decision !== 'confirm' && decision !== 'decline') return json({ error: "decision must be 'confirm' or 'decline'" }, 400);
 
   // Reuses the EXISTING admin handlers exactly — this token authorizes
@@ -2003,7 +2064,7 @@ export default {
         const syntheticReconcileMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/reconcile$/);
         if (method === 'POST' && syntheticReconcileMatch) return await handleAdminReconcile(request, env, decodeURIComponent(syntheticReconcileMatch[1]));
 
-        if (method === 'GET' && pathname === '/preview/admin/deal-requests') return await handleAdminListDealRequests(env);
+        if (method === 'GET' && pathname === '/preview/admin/deal-requests') return await handleAdminListDealRequests(request, env);
         const confirmMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/confirm$/);
         if (method === 'POST' && confirmMatch) return await handleAdminConfirmDealRequest(env, confirmMatch[1]);
         const declineMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/decline$/);
