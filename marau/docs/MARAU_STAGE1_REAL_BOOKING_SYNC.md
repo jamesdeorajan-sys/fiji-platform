@@ -1,6 +1,15 @@
-# Marau — corrected real-booking sync contract, demonstrated synthetically (round 13)
+# Marau — corrected real-booking sync contract, demonstrated synthetically (round 13, corrected further round 14)
 
-2026-09-28. Issue #54. Branch `ceo/marau-stage1-preview`. **No production writes, no real-guest import, no live send.** Everything in this document runs only against the isolated `marau-stage1-test-db` shape (locally, the same `node:sqlite` shim every other Marau test already uses) and synthetic source rows shaped like the real `bookings`/`booking_events` tables. This round corrects seven specific problems in round 12's production-integration plan, then implements and tests the corrected contract.
+2026-09-28. Issue #54. Branch `ceo/marau-stage1-preview`. **No production writes, no real-guest import, no live send.** Everything in this document runs only against the isolated `marau-stage1-test-db` shape (locally, the same `node:sqlite` shim every other Marau test already uses) and synthetic source rows shaped like the real `bookings`/`booking_events` tables.
+
+> **ROUND 14 CORRECTION, recorded 2026-09-28.** Codex's independent review of round 13 (commit `41c9ba4`, confirmed 401/401 existing tests passing, no shared-engine changes) found five further bounded, concrete defects in the round-13 implementation itself (not the round-12 plan) — all five are now fixed in `worker/real_booking_sync.js` and demonstrated with real SQL fault injection and a deterministic concurrency barrier (no reliance on real thread timing). **Some claims below, written for round 13, are now superseded — read the round-14 section first, then treat anything below that conflicts with it as historical record of what round 13 actually did, not the current behavior:**
+> 1. **Round 13 wrongly gated real-booking sync on acceptance.** The actual requirement — restated explicitly this round — is that a saved real booking grants secure **pending** Trip access immediately, the same moment the real system saves it, never waiting for a human to accept it. Round 13's `PENDING_NOT_SYNCED` behavior (skip a `pending`/`created` event entirely) is now REMOVED; a `created` event (`new_status: 'pending'`) runs through the identical first-sync path as any other event, granting immediate access with Marau status `'pending'`.
+> 2. **Round 13's ordering check was READ-then-WRITE, not atomic — a real, demonstrated bug.** A later event, paused between its own read and write, could silently overwrite a still-newer event's state (proven with a deterministic repro, not a flaky race). Fixed by moving the ordering check into the UPDATE's own `WHERE` clause, evaluated atomically by SQLite/D1 at write time. Also: round 13's `source_event_ordinal` was fed by an invented per-test counter, not a real, durable value — renamed/replaced with `source_event_id`, meant to be populated from the real `booking_events.id`.
+> 3. **Round 13's first-sync creation was not durably recoverable.** A failure on the LAST of its three writes (the link-row insert) left an orphaned session and an unlinked booking, and a naive retry created a SECOND session and failed with `DUPLICATE_CLIENT_BOOKING_REF` — reproduced directly with a real fault-injected `CREATE TRIGGER` on `marau_real_booking_links`. Fixed with an idempotent, deterministic-ref recovery check run before any new session is ever created.
+> 4. **Round 13's later-event handling only ever touched status/provenance columns.** A changed pickup time, route, vehicle, or price on a later, validated source snapshot never reached the guest's Trip. Fixed — every field-carrying apply now writes the full current snapshot, gated by the same atomic, validated ordering.
+> 5. **Round 13 validated `event_type` alone, not the whole event.** A recognized `event_type` paired with an inconsistent `new_status` (e.g. `accepted` + `garbage`) still silently advanced the stored ordering/provenance fields. Fixed with full event validation (type/status consistency, a real durable version, and booking-association) run strictly before any database write.
+>
+> See `worker/real_booking_sync.js`'s own header for the complete, corrected rationale behind each fix, and `test/marau_real_booking_sync.test.mjs` for the round-14 tests (`round14/1` through `round14/5`, plus a re-verification of every round-13 correction that still holds and a full corrected end-to-end demonstration).
 
 ## Why this round exists
 
@@ -57,11 +66,13 @@ Critically: no function in this module ever infers `'cancelled'` from a booking'
 
 ## Schema (additive only, isolated D1)
 
-`migrations/0024_marau_real_booking_sync.sql`: a new `marau_real_booking_links` table (the *only* re-association mechanism, keyed by `source_booking_ref`, never by contact) and eight new nullable columns on `marau_test_bookings` (`source_booking_ref`, `source_status`, `source_assigned_driver_id`, `source_event_type`, `source_event_ordinal`, `source_synced_at`, `sync_state`, `sync_last_error`). No `CHECK` constraint changed, so no table needed recreating.
+`migrations/0024_marau_real_booking_sync.sql`: a new `marau_real_booking_links` table (the *only* re-association mechanism, keyed by `source_booking_ref`, never by contact) and eight new nullable columns on `marau_test_bookings` (`source_booking_ref`, `source_status`, `source_assigned_driver_id`, `source_event_type`, `source_event_ordinal` — superseded, see below, `source_synced_at`, `sync_state`, `sync_last_error`). No `CHECK` constraint changed, so no table needed recreating.
+
+`migrations/0025_marau_real_booking_sync_durable_version.sql` (round 14): adds `source_event_id`, the real, durable ordering column `real_booking_sync.js` now actually reads and writes (meant to be populated from the real `booking_events.id`). `source_event_ordinal` is left in place, unused, rather than dropped — no production data to migrate, no reason to risk a table rebuild for a preview-only table.
 
 ## Test evidence
 
-`marau/test/marau_real_booking_sync.test.mjs` — **17/17 new tests**, one per correction above plus a full end-to-end synthetic demonstration (save/accept → guest Trip access → operator completes → guest sees the updated status → admin listing still works), entirely against the isolated shim, zero production writes. Full suite: **247/247 engine (unaffected) + 154/154 Marau (137 prior + 17 new) = 401/401.**
+`marau/test/marau_real_booking_sync.test.mjs` — **22/22 tests** (round 13's 17 corrected/re-verified in place plus 5 net new round-14 tests covering findings 1-5, including real SQL fault injection via `CREATE`/`DROP TRIGGER` on `marau_real_booking_links` and a deterministic concurrency-barrier repro of the exact stale-write race Codex found — no reliance on real thread timing for either), entirely against the isolated shim, zero production writes. Full suite: **247/247 engine (unaffected) + 159/159 Marau (137 pre-round-13 + 22 in this file) = 406/406.**
 
 ## What this round does NOT do
 
@@ -76,7 +87,7 @@ Critically: no function in this module ever infers `'cancelled'` from a booking'
 2. When/whether to stand up a real, isolated production Cloudflare D1 + Worker distinct from both preview databases and `nadi-marketplace-db`.
 3. Per-operator admin authentication, replacing the shared preview token, before any real-guest use.
 4. Monitoring and rollback tooling parity with this project's other live properties.
-5. Who actually runs the real read-only sync job against `nadi-marketplace-db` in production, and on what schedule/trigger — this round proves the mapping/session/ordering logic works; it does not decide or build the production cron/worker that would call it against real rows.
-6. Whether/when to enumerate and handle any further real `booking_events.event_type` values beyond the five directly confirmed this round, should the real system add one.
+5. Who actually runs the real read-only sync job against `nadi-marketplace-db` in production, and on what schedule/trigger — this round proves the mapping/session/ordering/recovery/validation logic works; it does not decide or build the production cron/worker that would call it against real rows, and does not decide how a real `booking_events.id` is actually supplied to it as `source_event_id`.
+6. Whether/when to enumerate and handle any further real `booking_events.event_type` values beyond the five directly confirmed in round 13, should the real system add one.
 
 Nothing above is proposed for execution without a further, explicit go-ahead.
