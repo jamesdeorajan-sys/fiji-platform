@@ -30,6 +30,7 @@ import { normalizePickupDatetime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
+import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -697,12 +698,20 @@ async function handleRequestDeal(request, env, offerId) {
   const opsNumber = env.MARAU_OPS_WHATSAPP_TEST_NUMBER || '+15556414099';
   const whatsappHandoff = composeDealHandoffMessage({ opsNumber, dealRequestId: dealRequest.request_id, offer });
 
+  // Round 19 — the approved staff workflow: mint a booking-specific
+  // "Review and confirm" link, meant to ride inside this SAME detailed
+  // alert (still fully mocked — never a real send). Minted fresh on
+  // every call so a genuine retry gets a fresh, equally-valid link
+  // rather than reusing one tied to a specific prior attempt.
+  const reviewToken = await mintStaffReviewToken(env, 'deal_request', dealRequest.request_id);
+  const reviewLink = `${new URL(request.url).origin}/preview/staff/review?token=${reviewToken.token}`;
+
   return json(
     {
       request_id: dealRequest.request_id,
       status: dealRequest.status,
       was_new_request: insertResult.meta.changes === 1,
-      whatsapp_handoff: whatsappHandoff,
+      whatsapp_handoff: { ...whatsappHandoff, review_link: reviewLink },
     },
     insertResult.meta.changes === 1 ? 201 : 200
   );
@@ -1707,10 +1716,235 @@ async function handleAdminDecideChangeRequest(env, changeRequestId, decision) {
 export { createGuestSession, createSessionAndOfferLink, requireGuestSession, nowIso, normalizePhone };
 
 // ---------------------------------------------------------------------
+// Round 19 — hosted synthetic-source acceptance harness for
+// worker/real_booking_sync.js. Test-only, admin-token gated, isolated to
+// this preview's own D1. `marau_synthetic_source_bookings` (migration
+// 0030) is a stand-in for the real `bookings` table that ops can
+// seed/mutate over HTTP to demonstrate the sync module's injected-reader
+// contract against the LIVE hosted Worker/D1 — the same demonstration
+// the local test suite already does in-memory, now reachable over the
+// network for hosted acceptance evidence. No production database
+// binding of any kind. See docs/MARAU_STAGE1_HOSTED_SYNC_ACCEPTANCE.md.
+// ---------------------------------------------------------------------
+
+async function syntheticSourceReader(env, sourceBookingRef) {
+  const row = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+  if (!row) return null;
+  return {
+    id: row.source_id,
+    source_booking_ref: row.source_booking_ref,
+    guest_email: row.guest_email,
+    guest_phone: row.guest_phone,
+    whatsapp_available: row.whatsapp_available === 1 ? true : row.whatsapp_available === 0 ? false : null,
+    pickup_zone: row.pickup_zone,
+    destination_zone: row.destination_zone,
+    vehicle_type: row.vehicle_type,
+    pickup_date: row.pickup_date,
+    pickup_time: row.pickup_time,
+    quoted_amount: row.quoted_amount,
+    assigned_driver_id: row.assigned_driver_id,
+    status: row.status,
+  };
+}
+
+function syncDeps(env) {
+  return { createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader: (ref) => syntheticSourceReader(env, ref) };
+}
+
+async function handleAdminSeedSyntheticSource(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid JSON body' }, 400);
+  }
+  const required = ['source_booking_ref', 'id', 'guest_email', 'guest_phone', 'pickup_zone', 'destination_zone', 'vehicle_type', 'pickup_date', 'pickup_time', 'status'];
+  const missing = required.filter((f) => body[f] == null);
+  if (missing.length) return json({ error: 'missing required fields', missing }, 400);
+
+  const now = nowIso();
+  await env.DB
+    .prepare(
+      `INSERT INTO marau_synthetic_source_bookings
+        (source_booking_ref, source_id, guest_email, guest_phone, whatsapp_available, pickup_zone, destination_zone, vehicle_type, pickup_date, pickup_time, quoted_amount, assigned_driver_id, status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source_booking_ref) DO UPDATE SET
+         source_id = excluded.source_id, guest_email = excluded.guest_email, guest_phone = excluded.guest_phone,
+         whatsapp_available = excluded.whatsapp_available, pickup_zone = excluded.pickup_zone, destination_zone = excluded.destination_zone,
+         vehicle_type = excluded.vehicle_type, pickup_date = excluded.pickup_date, pickup_time = excluded.pickup_time,
+         quoted_amount = excluded.quoted_amount, assigned_driver_id = excluded.assigned_driver_id, status = excluded.status, updated_at = excluded.updated_at`
+    )
+    .bind(
+      body.source_booking_ref,
+      body.id,
+      body.guest_email,
+      body.guest_phone,
+      body.whatsapp_available === true ? 1 : body.whatsapp_available === false ? 0 : null,
+      body.pickup_zone,
+      body.destination_zone,
+      body.vehicle_type,
+      body.pickup_date,
+      body.pickup_time,
+      body.quoted_amount ?? null,
+      body.assigned_driver_id ?? null,
+      body.status,
+      now
+    )
+    .run();
+
+  return json({ ok: true, source_booking_ref: body.source_booking_ref, demonstration_data: true });
+}
+
+async function handleAdminSyncEvent(request, env, sourceBookingRef) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid JSON body' }, 400);
+  }
+  const result = await syncRealBookingEvent(env, sourceBookingRef, body, syncDeps(env));
+  return json({ ...result, demonstration_data: true }, result.ok ? 200 : 409);
+}
+
+async function handleAdminReconcile(request, env, sourceBookingRef) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+  const result = await reconcileRealBooking(env, sourceBookingRef, { snapshotSequence: body.snapshot_sequence, deps: syncDeps(env) });
+  return json({ ...result, demonstration_data: true }, result.ok ? 200 : 409);
+}
+
+async function handleAdminGetSyntheticSourceState(env, sourceBookingRef) {
+  const source = await env.DB.prepare('SELECT * FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+  const mirror = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ? AND source_sync_owned = 1').bind(sourceBookingRef).first();
+  const link = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+  const claim = await env.DB.prepare('SELECT * FROM marau_real_booking_sync_claims WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+  return json({ source, mirror, link, claim, demonstration_data: true });
+}
+
+// ---------------------------------------------------------------------
+// Round 19 — staff "Review and confirm" link. A booking/deal-specific
+// token (migration 0029), meant to be carried inside the EXISTING
+// detailed WhatsApp alert (still fully mocked here — no real send).
+// Opening the link (GET) never confirms anything; it only ever renders
+// the current state and a form. Only the explicit POST decides, and it
+// does so by calling the SAME existing admin handlers
+// (handleAdminConfirmDealRequest / handleAdminDeclineDealRequest) —
+// reusing existing staff functionality rather than duplicating it. The
+// token is scoped to exactly one subject and expires; it is never a
+// general admin credential.
+// ---------------------------------------------------------------------
+
+const STAFF_REVIEW_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h — a real alert should be actioned well within this
+
+async function mintStaffReviewToken(env, subjectType, subjectId) {
+  const token = `review_${cryptoRandomId()}`;
+  const now = nowIso();
+  const expiresAt = new Date(Date.now() + STAFF_REVIEW_TOKEN_TTL_MS).toISOString();
+  await env.DB
+    .prepare('INSERT INTO marau_staff_review_tokens (token, subject_type, subject_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(token, subjectType, subjectId, now, expiresAt)
+    .run();
+  return { token, expires_at: expiresAt };
+}
+
+async function loadValidReviewToken(env, token) {
+  if (!token) return null;
+  const row = await env.DB.prepare('SELECT * FROM marau_staff_review_tokens WHERE token = ?').bind(token).first();
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() <= Date.now()) return null;
+  return row;
+}
+
+// GET — never mutates anything. Renders the current deal-request state
+// and a plain HTML form; the guest's own price/route is shown exactly as
+// composeDealHandoffMessage already renders it elsewhere, reused here
+// via the same humanizer/currency helpers.
+async function handleStaffReviewPage(env, token) {
+  const reviewToken = await loadValidReviewToken(env, token);
+  if (!reviewToken) return html('<!doctype html><html><body><p>This review link is invalid or has expired. Ask ops to resend the alert.</p></body></html>', 404);
+
+  const dealRequest = await env.DB
+    .prepare(
+      `SELECT dr.request_id, dr.status, dr.requested_price, dr.created_at,
+              o.origin_zone, o.destination_zone, o.vehicle_class, o.smart_match_price, o.standard_price
+       FROM deal_requests dr JOIN smart_offers o ON o.offer_id = dr.offer_id
+       WHERE dr.request_id = ?`
+    )
+    .bind(reviewToken.subject_id)
+    .first();
+  if (!dealRequest) return html('<!doctype html><html><body><p>This request no longer exists.</p></body></html>', 404);
+
+  const price = dealRequest.smart_match_price ?? dealRequest.standard_price ?? dealRequest.requested_price;
+  const already = dealRequest.status !== 'REQUESTED';
+  const body = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Marau — Review request (PREVIEW)</title></head>
+<body style="font-family:system-ui;max-width:480px;margin:24px auto;padding:0 16px;">
+  <p style="color:#b45309;font-weight:600;">PREVIEW / DEMONSTRATION DATA — mocked staff review link, no real WhatsApp involved.</p>
+  <h1>Review request ${dealRequest.request_id}</h1>
+  <p><strong>Route:</strong> ${dealRequest.origin_zone} → ${dealRequest.destination_zone}</p>
+  <p><strong>Vehicle:</strong> ${dealRequest.vehicle_class}</p>
+  <p><strong>Price:</strong> FJ$${Number(price).toFixed(2)}</p>
+  <p><strong>Current status:</strong> ${dealRequest.status}</p>
+  ${already
+    ? `<p>This request has already been decided (${dealRequest.status}). No further action is needed.</p>`
+    : `<form method="POST" action="/preview/staff/review/decide" style="display:flex;gap:12px;margin-top:16px;">
+        <input type="hidden" name="token" value="${token}">
+        <button name="decision" value="confirm" style="flex:1;padding:12px;font-size:16px;">Confirm</button>
+        <button name="decision" value="decline" style="flex:1;padding:12px;font-size:16px;">Decline</button>
+      </form>
+      <p style="color:#6b7280;font-size:13px;margin-top:12px;">Opening this page has not confirmed or declined anything. Only tapping one of the buttons above does.</p>`}
+</body></html>`;
+  return html(body);
+}
+
+async function handleStaffReviewDecide(request, env) {
+  const contentType = request.headers.get('content-type') || '';
+  let token;
+  let decision;
+  if (contentType.includes('application/json')) {
+    const body = await request.json().catch(() => ({}));
+    token = body.token;
+    decision = body.decision;
+  } else {
+    const form = await request.formData();
+    token = form.get('token');
+    decision = form.get('decision');
+  }
+
+  const reviewToken = await loadValidReviewToken(env, token);
+  if (!reviewToken) return json({ error: 'invalid or expired review token' }, 401);
+  if (decision !== 'confirm' && decision !== 'decline') return json({ error: "decision must be 'confirm' or 'decline'" }, 400);
+
+  // Reuses the EXISTING admin handlers exactly — this token authorizes
+  // ONLY this one call, on this one subject; it grants no broader access.
+  const result =
+    decision === 'confirm'
+      ? await handleAdminConfirmDealRequest(env, reviewToken.subject_id)
+      : await handleAdminDeclineDealRequest(env, reviewToken.subject_id);
+  return result;
+}
+
+// ---------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------
 
 export default {
+  // FIX (round 19, found while wiring the synthetic-source hosted-demo
+  // harness): every route below is now `return await handleFoo(...)`,
+  // not a bare `return handleFoo(...)`. In an async function, `return
+  // somePromise` from inside a try block does NOT route a later
+  // rejection through that try's own catch — the promise is handed
+  // straight to the caller of `fetch()` unhandled, bypassing this
+  // router's own error handling entirely. This was a real, pre-existing
+  // gap in every route, not just the new ones: the fault-injection tests
+  // in earlier rounds always called the sync module directly (never
+  // through this HTTP router), so nothing had ever exercised a genuine
+  // thrown error reaching this `catch` over HTTP until this round's own
+  // hosted-harness test did. `return await x` is otherwise behaviourally
+  // identical to `return x` when nothing throws.
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -1730,44 +1964,60 @@ export default {
       if (method === 'GET' && pathname === '/icon-512.png') return PNG_RESPONSE(ICON512_PNG_BASE64);
       if (method === 'GET' && pathname === '/icon-180.png') return PNG_RESPONSE(ICON180_PNG_BASE64);
 
-      if (method === 'POST' && pathname === '/preview/bookings') return handleCreateBooking(request, env);
-      if (method === 'GET' && pathname === '/preview/trip') return handleGetTrip(request, env);
-      if (method === 'POST' && pathname === '/preview/trip/revoke') return handleRevokeTrip(request, env);
-      if (method === 'POST' && pathname === '/preview/trip/whatsapp-handoff') return handleTripWhatsappHandoff(request, env);
+      if (method === 'POST' && pathname === '/preview/bookings') return await handleCreateBooking(request, env);
+      if (method === 'GET' && pathname === '/preview/trip') return await handleGetTrip(request, env);
+      if (method === 'POST' && pathname === '/preview/trip/revoke') return await handleRevokeTrip(request, env);
+      if (method === 'POST' && pathname === '/preview/trip/whatsapp-handoff') return await handleTripWhatsappHandoff(request, env);
 
-      if (method === 'GET' && pathname === '/preview/trip/link-requests') return handleListLinkRequests(request, env);
+      if (method === 'GET' && pathname === '/preview/trip/link-requests') return await handleListLinkRequests(request, env);
       const revokeLinkMatch = pathname.match(/^\/preview\/trip\/link-requests\/([^/]+)\/revoke$/);
-      if (method === 'POST' && revokeLinkMatch) return handleRevokeLinkRequest(request, env, revokeLinkMatch[1]);
-      if (method === 'POST' && pathname === '/preview/trip/link') return handleConfirmLink(request, env);
+      if (method === 'POST' && revokeLinkMatch) return await handleRevokeLinkRequest(request, env, revokeLinkMatch[1]);
+      if (method === 'POST' && pathname === '/preview/trip/link') return await handleConfirmLink(request, env);
 
       const changeReqMatch = pathname.match(/^\/preview\/bookings\/(\d+)\/change-request$/);
-      if (method === 'POST' && changeReqMatch) return handleChangeRequest(request, env, Number(changeReqMatch[1]));
+      if (method === 'POST' && changeReqMatch) return await handleChangeRequest(request, env, Number(changeReqMatch[1]));
 
-      if (method === 'GET' && pathname === '/preview/deals') return handleListDeals(env);
+      if (method === 'GET' && pathname === '/preview/deals') return await handleListDeals(env);
       const dealRequestMatch = pathname.match(/^\/preview\/deals\/([^/]+)\/request$/);
-      if (method === 'POST' && dealRequestMatch) return handleRequestDeal(request, env, dealRequestMatch[1]);
+      if (method === 'POST' && dealRequestMatch) return await handleRequestDeal(request, env, dealRequestMatch[1]);
 
-      if (method === 'POST' && pathname === '/preview/assist') return handleAssist(request, env);
+      if (method === 'POST' && pathname === '/preview/assist') return await handleAssist(request, env);
+
+      // Round 19 — staff review link: token-gated, not admin-token-gated
+      // (a review token authorizes exactly one subject, never broader
+      // admin access). GET never mutates; only the POST decides.
+      if (method === 'GET' && pathname === '/preview/staff/review') return await handleStaffReviewPage(env, url.searchParams.get('token'));
+      if (method === 'POST' && pathname === '/preview/staff/review/decide') return await handleStaffReviewDecide(request, env);
 
       // ---- Admin routes: all require the test-only admin bearer token ----
       if (pathname.startsWith('/preview/admin/')) {
         if (!requireAdmin(request, env)) return json({ error: 'unauthorized — admin test token required' }, 401);
 
-        if (method === 'GET' && pathname === '/preview/admin/deal-requests') return handleAdminListDealRequests(env);
+        // Round 19 — hosted synthetic-source acceptance harness (see
+        // this file's own header comment above these handlers).
+        if (method === 'POST' && pathname === '/preview/admin/synthetic-source') return await handleAdminSeedSyntheticSource(request, env);
+        const syntheticStateMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)$/);
+        if (method === 'GET' && syntheticStateMatch) return await handleAdminGetSyntheticSourceState(env, decodeURIComponent(syntheticStateMatch[1]));
+        const syntheticSyncMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/sync-event$/);
+        if (method === 'POST' && syntheticSyncMatch) return await handleAdminSyncEvent(request, env, decodeURIComponent(syntheticSyncMatch[1]));
+        const syntheticReconcileMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/reconcile$/);
+        if (method === 'POST' && syntheticReconcileMatch) return await handleAdminReconcile(request, env, decodeURIComponent(syntheticReconcileMatch[1]));
+
+        if (method === 'GET' && pathname === '/preview/admin/deal-requests') return await handleAdminListDealRequests(env);
         const confirmMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/confirm$/);
-        if (method === 'POST' && confirmMatch) return handleAdminConfirmDealRequest(env, confirmMatch[1]);
+        if (method === 'POST' && confirmMatch) return await handleAdminConfirmDealRequest(env, confirmMatch[1]);
         const declineMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/decline$/);
-        if (method === 'POST' && declineMatch) return handleAdminDeclineDealRequest(env, declineMatch[1]);
+        if (method === 'POST' && declineMatch) return await handleAdminDeclineDealRequest(env, declineMatch[1]);
         const reconcileMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/reconcile-confirmation$/);
-        if (method === 'POST' && reconcileMatch) return handleAdminReconcileConfirmation(env, reconcileMatch[1]);
+        if (method === 'POST' && reconcileMatch) return await handleAdminReconcileConfirmation(env, reconcileMatch[1]);
 
-        if (method === 'GET' && pathname === '/preview/admin/bookings') return handleAdminListBookings(env);
+        if (method === 'GET' && pathname === '/preview/admin/bookings') return await handleAdminListBookings(env);
         const bookingDecisionMatch = pathname.match(/^\/preview\/admin\/bookings\/(\d+)\/(confirm|decline)$/);
-        if (method === 'POST' && bookingDecisionMatch) return handleAdminDecideBooking(env, Number(bookingDecisionMatch[1]), bookingDecisionMatch[2]);
+        if (method === 'POST' && bookingDecisionMatch) return await handleAdminDecideBooking(env, Number(bookingDecisionMatch[1]), bookingDecisionMatch[2]);
 
-        if (method === 'GET' && pathname === '/preview/admin/change-requests') return handleAdminListChangeRequests(env);
+        if (method === 'GET' && pathname === '/preview/admin/change-requests') return await handleAdminListChangeRequests(env);
         const changeDecisionMatch = pathname.match(/^\/preview\/admin\/change-requests\/([^/]+)\/(approve|reject)$/);
-        if (method === 'POST' && changeDecisionMatch) return handleAdminDecideChangeRequest(env, changeDecisionMatch[1], changeDecisionMatch[2]);
+        if (method === 'POST' && changeDecisionMatch) return await handleAdminDecideChangeRequest(env, changeDecisionMatch[1], changeDecisionMatch[2]);
       }
 
       return json({ error: 'not found' }, 404);
