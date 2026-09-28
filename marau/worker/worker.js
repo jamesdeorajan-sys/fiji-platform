@@ -1694,6 +1694,19 @@ async function handleAdminDecideChangeRequest(env, changeRequestId, decision) {
 }
 
 // ---------------------------------------------------------------------
+// Reused by worker/real_booking_sync.js (round 13) — the real-booking
+// sync path deliberately calls the SAME verified-ownership session
+// functions a guest's own booking submission uses, rather than
+// re-implementing (and risking drifting from) that security model. See
+// real_booking_sync.js's own header for why: a round-12 proposal to
+// "look up or create a session by phone" would have silently reintroduced
+// the exact P0 vulnerability createSessionAndOfferLink's own comment
+// above documents and fixed (a matching phone number must never itself
+// return an existing session's access token).
+// ---------------------------------------------------------------------
+export { createGuestSession, createSessionAndOfferLink, requireGuestSession, nowIso, normalizePhone };
+
+// ---------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------
 
