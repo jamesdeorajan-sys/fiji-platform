@@ -28,8 +28,23 @@
  * which case NOTHING was written (the WHERE NOT EXISTS clause makes the
  * whole statement a no-op when a conflict exists, so there's nothing to
  * roll back for this call itself).
+ *
+ * FIX (sixth independent review, "RESUME OWNERSHIP FIX" — statement-level
+ * ownership enforcement): an OPTIONAL `ownership` argument
+ * ({ requestId, attemptToken }), used ONLY by the deal-request confirm
+ * flow (worker.js#handleAdminConfirmDealRequest). When supplied, the
+ * INSERT's own WHERE clause additionally requires the caller's
+ * attempt_token to still be the current owner recorded in
+ * deal_decision_claims, in the SAME atomic statement as the resource
+ * write itself — there is no separate check-then-act gap for a
+ * concurrent reconciler to race into. This is a narrowly scoped
+ * extension: the ordinary-booking caller (handleAdminDecideBooking) never
+ * passes `ownership`, so its behavior is completely unchanged — the
+ * extra clause is entirely absent from its query.
  */
-export async function claimVehicleAllocation(env, { allocationId, vehicleId, windowStart, windowEnd, subjectType, subjectId, nowIso }) {
+export async function claimVehicleAllocation(env, { allocationId, vehicleId, windowStart, windowEnd, subjectType, subjectId, nowIso, ownership }) {
+  const ownershipClause = ownership ? ' AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)' : '';
+  const ownershipArgs = ownership ? [ownership.requestId, ownership.attemptToken] : [];
   const result = await env.DB
     .prepare(
       `INSERT INTO vehicle_allocations (allocation_id, vehicle_id, window_start, window_end, subject_type, subject_id, created_at)
@@ -37,9 +52,9 @@ export async function claimVehicleAllocation(env, { allocationId, vehicleId, win
        WHERE NOT EXISTS (
          SELECT 1 FROM vehicle_allocations
          WHERE vehicle_id = ? AND window_start < ? AND window_end > ?
-       )`
+       )${ownershipClause}`
     )
-    .bind(allocationId, vehicleId, windowStart, windowEnd, subjectType, subjectId, nowIso, vehicleId, windowEnd, windowStart)
+    .bind(allocationId, vehicleId, windowStart, windowEnd, subjectType, subjectId, nowIso, vehicleId, windowEnd, windowStart, ...ownershipArgs)
     .run();
   return { success: result.meta.changes === 1, allocationId };
 }
@@ -52,10 +67,32 @@ export async function claimVehicleAllocation(env, { allocationId, vehicleId, win
  * past. Idempotent: releasing an allocation_id that doesn't exist (e.g.
  * because the claim step itself failed and nothing was ever inserted) is
  * a harmless no-op.
+ *
+ * The optional `ownership` argument (same shape as claimVehicleAllocation)
+ * additionally requires the caller's own attempt_token to still own the
+ * claim before the delete is allowed to proceed — "never reset another
+ * attempt's offer or delete its allocation": once a reconciler has taken
+ * over ownership (see handleAdminReconcileConfirmation), the ORIGINAL
+ * attempt's own compensation code must not still be able to delete an
+ * allocation a takeover has since taken responsibility for (or, for that
+ * matter, one a *different*, later, unrelated attempt might by then have
+ * created under the same allocation_id space — vanishingly unlikely given
+ * allocation_id is a fresh random value per attempt, but checked anyway
+ * for defence in depth).
  */
-export async function releaseVehicleAllocation(env, allocationId) {
-  if (!allocationId) return;
-  await env.DB.prepare('DELETE FROM vehicle_allocations WHERE allocation_id = ?').bind(allocationId).run();
+export async function releaseVehicleAllocation(env, allocationId, ownership) {
+  if (!allocationId) return { released: true };
+  if (!ownership) {
+    await env.DB.prepare('DELETE FROM vehicle_allocations WHERE allocation_id = ?').bind(allocationId).run();
+    return { released: true };
+  }
+  const result = await env.DB
+    .prepare(
+      `DELETE FROM vehicle_allocations WHERE allocation_id = ? AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+    )
+    .bind(allocationId, ownership.requestId, ownership.attemptToken)
+    .run();
+  return { released: result.meta.changes === 1 };
 }
 
 export async function findVehicleWindow(env, subjectType, subjectId) {

@@ -868,22 +868,71 @@ function interruptedOrAlreadyDecidedResponse({ requestId, priorAttempt }) {
 }
 
 /**
- * Thrown by the confirm handler's fenced phase-advance (`advance()`) when
- * the CAS `UPDATE confirmation_attempts SET phase = <next> WHERE
- * attempt_id = ? AND phase = <expected current>` affects zero rows — the
- * phase has changed under this attempt from somewhere else (an admin's
- * concurrent `reconcile-confirmation` call winning the same CAS race, or
- * this same attempt's own rollback() already having fenced it). The
- * caller MUST treat this as "ownership has been taken away" and abort
- * immediately without any further writes — never fall back to its own
- * rollback(), which would race whoever now legitimately owns the attempt.
+ * Thrown whenever a resource-mutating statement in the confirm flow
+ * discovers, via its OWN affected-row count (or an immediate follow-up
+ * ownership check when the statement's own condition can't distinguish
+ * "lost ownership" from "genuine business conflict"), that this attempt
+ * no longer owns `attempt_token` in `deal_decision_claims` — a concurrent
+ * `reconcile-confirmation` call has taken over. The caller MUST treat
+ * this as "ownership has been taken away" and abort immediately without
+ * any further writes — never fall back to its own rollback(), which
+ * would race whoever now legitimately owns the attempt.
  */
 class ConfirmationFencedError extends Error {
-  constructor(fromPhase, toPhase) {
-    super(`FENCED: lost ownership advancing ${fromPhase} -> ${toPhase} — a concurrent reconcile or rollback already took this attempt`);
-    this.fromPhase = fromPhase;
-    this.toPhase = toPhase;
+  constructor(atStep) {
+    super(`FENCED: lost ownership at step "${atStep}" — a concurrent admin reconciliation already took over this attempt`);
+    this.atStep = atStep;
   }
+}
+
+/**
+ * FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX" —
+ * statement-level ownership enforcement): a narrowly-scoped ADAPTER
+ * around the shared Issue #54 store, used ONLY for this confirm flow's
+ * offer hold/fill/revert calls. It does not change casOfferStatus's
+ * contract or bypass any state-machine rule (the SAME expected-status ->
+ * next-status transition the shared engine's own
+ * smart-return-trigger-fill/src/db.js#casOfferStatus performs, mirrored
+ * here exactly) — it only adds ONE extra `AND EXISTS (...)` condition to
+ * the SAME WHERE clause, so the offer transition and the ownership check
+ * are the SAME atomic UPDATE statement. This is what makes hold/fill
+ * unable to ever "succeed for real" once ownership has been taken away —
+ * there is no window where the transition completes only to be discovered
+ * stale afterward; it simply never completes at all once fenced.
+ */
+function createOwnershipFencedStore(env, requestId, attemptToken) {
+  return {
+    async getOffer(offerId) {
+      return env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(offerId).first();
+    },
+    async casOfferStatus(offerId, expectedStatus, nextStatus, patch = {}) {
+      const patchCols = Object.keys(patch);
+      const setClause = ['status = ?', 'updated_at = ?', ...patchCols.map((c) => `${c} = ?`)].join(', ');
+      const values = [nextStatus, nowIso(), ...patchCols.map((c) => patch[c]), offerId, expectedStatus, requestId, attemptToken];
+      const result = await env.DB
+        .prepare(
+          `UPDATE smart_offers SET ${setClause}
+           WHERE offer_id = ? AND status = ?
+             AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+        )
+        .bind(...values)
+        .run();
+      const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(offerId).first();
+      return { success: result.meta.changes === 1, offer };
+    },
+  };
+}
+
+/**
+ * A single, reusable ownership-verification read — used whenever a
+ * resource-mutating statement's own affected-row count is zero and the
+ * caller needs to distinguish "lost ownership" (abort via
+ * ConfirmationFencedError) from "a genuine, expected business conflict"
+ * (proceed with the normal rejection/rollback path instead).
+ */
+async function stillOwnsAttempt(env, requestId, attemptToken) {
+  const row = await env.DB.prepare('SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, attemptToken).first();
+  return Boolean(row);
 }
 
 /**
@@ -957,18 +1006,57 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   // fail with a confusing, unrelated error instead of naming the real
   // problem: an earlier confirmation is stuck and needs reconciliation.
   const claim = await env.DB
-    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at) VALUES (?, 'CONFIRM', ?)`)
+    .prepare(`INSERT OR IGNORE INTO deal_decision_claims (request_id, decision, claimed_at, attempt_token) VALUES (?, 'CONFIRM', ?, NULL)`)
     .bind(requestId, now)
     .run();
   if (claim.meta.changes !== 1) {
     return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
   }
 
-  // From here on, this attempt holds the claim — any early return MUST
-  // free it again (a clean, expected rejection is not a stalled attempt).
+  // FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX" —
+  // statement-level ownership enforcement): the round-5 design used
+  // confirmation_attempts.phase, checked only at specific advance() call
+  // sites, as the fencing signal — but the ACTUAL resource-mutating
+  // statements happened BETWEEN those checks, leaving real windows a
+  // concurrent reconcile-confirmation call could exploit (see migration
+  // 0021's header for the two exact repros this closes). attempt_token,
+  // established here, is now the SINGLE ownership primitive for this
+  // entire attempt: every subsequent resource-mutating statement below
+  // requires this EXACT token to still be recorded in
+  // deal_decision_claims, embedded as an `AND EXISTS (...)` clause in the
+  // SAME atomic SQL statement as the mutation itself — there is no
+  // separate check-then-act gap. It also doubles as the journal's own
+  // primary key (confirmation_attempts.attempt_id) — "associate the
+  // journal with that exact token."
+  const attemptToken = `at_${cryptoRandomId()}`;
+  const owned = await env.DB
+    .prepare(`UPDATE deal_decision_claims SET attempt_token = ? WHERE request_id = ? AND attempt_token IS NULL`)
+    .bind(attemptToken, requestId)
+    .run();
+  if (owned.meta.changes !== 1) {
+    // Vanishingly unlikely (this row was just inserted by US, above,
+    // synchronously) but stay honest: some concurrent process already
+    // holds or has already resolved this claim.
+    return json(interruptedOrAlreadyDecidedResponse(await describeStuckClaim(env, requestId)), 409);
+  }
+
+  // From here on, this attempt exclusively owns `attemptToken`. Any early
+  // return before the journal/resource writes begin must release
+  // ownership via THIS SAME ownership-checked delete (requirement:
+  // "enforce ownership … on … claim release") — never a bare
+  // unconditional DELETE, so a reconciler that has ALREADY taken over in
+  // some vanishingly narrow window is never undone by us.
+  async function releaseOwnership() {
+    const result = await env.DB
+      .prepare(`DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?`)
+      .bind(requestId, attemptToken)
+      .run();
+    return result.meta.changes === 1;
+  }
+
   const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(dealRequest.offer_id).first();
   if (!offer) {
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await releaseOwnership();
     return json({ error: 'offer no longer exists' }, 404);
   }
 
@@ -977,20 +1065,20 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     if (eligibility.reason === 'EXPIRED' && offer.status !== 'EXPIRED' && offer.status !== 'FILLED') {
       await expireOffer(store, offer.offer_id);
     }
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await releaseOwnership();
     return json({ error: 'STALE_OR_UNAPPROVED_OFFER', reason: eligibility.reason, detail: eligibility.detail }, 409);
   }
 
   const currentPrice = offer.smart_match_price ?? offer.standard_price;
   if (dealRequest.requested_price != null && currentPrice !== dealRequest.requested_price) {
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await releaseOwnership();
     return json(
       { error: 'PRICE_CHANGED_SINCE_REQUEST', detail: `price was ${dealRequest.requested_price} when requested, is now ${currentPrice}` },
       409
     );
   }
   if (dealRequest.requested_floor != null && offer.absolute_floor !== dealRequest.requested_floor) {
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await releaseOwnership();
     return json(
       { error: 'PRICE_CHANGED_SINCE_REQUEST', detail: `absolute_floor was ${dealRequest.requested_floor} when requested, is now ${offer.absolute_floor}` },
       409
@@ -999,94 +1087,66 @@ async function handleAdminConfirmDealRequest(env, requestId) {
 
   const vehicleWindow = await findVehicleWindow(env, 'MOVEMENT', offer.source_movement_id);
   if (!vehicleWindow) {
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
+    await releaseOwnership();
     return json(
       { error: 'VEHICLE_UNKNOWN', detail: 'No recorded vehicle/availability for this offer’s movement — cannot safely confirm.' },
       409
     );
   }
 
-  let attemptId = null;
-  let phase = null; // the last phase THIS process successfully advanced to
+  // A narrowly-scoped, ownership-fenced adapter for the SHARED Issue #54
+  // engine's own hold/fill transitions — see createOwnershipFencedStore's
+  // own doc comment. The shared engine's state-machine rules
+  // (holdOffer/fillOffer in smart-return-trigger-fill/src/offers.js) are
+  // completely unchanged; only the store they write through is swapped.
+  const fencedStore = createOwnershipFencedStore(env, requestId, attemptToken);
+  const ownership = { requestId, attemptToken };
+
   let claimedMovement = false;
   let allocationId = null;
 
-  // FIX (bounded round-5 correction, finding 1 — confirmation/
-  // reconciliation concurrency): every forward-progress phase transition
-  // is now a CAS — `UPDATE ... WHERE attempt_id = ? AND phase = <the
-  // phase THIS process last successfully wrote>`. Admin authentication on
-  // a concurrent reconcile-confirmation call is NOT the same thing as
-  // exclusive ownership of this specific in-flight attempt — Codex's
-  // repro paused this handler immediately after its vehicle_allocations
-  // INSERT committed, called reconcile (which fenced the phase and
-  // unwound the allocation/movement claim), then resumed this handler,
-  // which — before this fix — had no way to know anything had changed
-  // and went on to write CONFIRMED anyway, leaving a FILLED offer with
-  // zero allocations/claims behind it. Now: if reconcile (or this same
-  // attempt's own rollback(), see below) wins the phase-CAS first, EVERY
-  // subsequent advance() call here fails its own CAS and throws
-  // ConfirmationFencedError — caught below, and the ONLY correct
-  // response is to abort immediately without writing anything further
-  // (never fall back to this attempt's own rollback(), which would race
-  // whoever now legitimately owns the attempt).
-  async function advance(toPhase, errorDetail) {
-    const fromPhase = phase;
-    const result = await env.DB
-      .prepare(`UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = ?`)
-      .bind(toPhase, errorDetail ?? null, nowIso(), attemptId, fromPhase)
+  // Best-effort, ownership-checked observability only — NOT load-bearing
+  // for correctness (attempt_token is what enforces correctness now).
+  // Harmless no-op once ownership is gone (the EXISTS clause just yields
+  // zero affected rows).
+  async function setPhase(toPhase, errorDetail) {
+    await env.DB
+      .prepare(
+        `UPDATE confirmation_attempts SET phase = ?, error_detail = ?, updated_at = ?
+         WHERE attempt_id = ? AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+      )
+      .bind(toPhase, errorDetail ?? null, nowIso(), attemptToken, requestId, attemptToken)
       .run();
-    if (result.meta.changes !== 1) {
-      throw new ConfirmationFencedError(fromPhase, toPhase);
-    }
-    phase = toPhase;
   }
 
   // Fully compensates every write this attempt made. deal_requests.status
   // is NEVER touched here — it was never changed from 'REQUESTED' in the
-  // first place (see the file header) — so there is nothing to revert
-  // there. Each step is independently try/caught so one failing
-  // compensating write never prevents the others from running.
+  // first place — so there is nothing to revert there.
   //
-  // This ALSO fences itself first: a self-triggered rollback (a normal
-  // business-conflict rejection, e.g. the offer got held elsewhere) must
-  // not blindly compensate resources a CONCURRENT reconcile call has
-  // already taken ownership of and started compensating itself — that
-  // would race the same deletes/reverts twice. If the fence CAS
-  // (`phase -> 'ROLLING_BACK'`) loses, this attempt has already been
-  // superseded and must not touch anything further; reconcile owns it now.
+  // Requirement: "compensation must verify both current recovery
+  // ownership and ownership of the resource being undone." Every
+  // compensating write below goes through the SAME ownership-fenced
+  // primitives (fencedStore.casOfferStatus, releaseVehicleAllocation's
+  // `ownership` argument, an ownership-gated movement-claim DELETE) as
+  // the forward-progress writes — so a rollback triggered AFTER ownership
+  // has already been taken away by a reconciler is itself unable to
+  // touch anything (each compensating statement's own EXISTS clause
+  // yields zero rows), rather than racing whoever now legitimately owns
+  // the attempt. Each step is independently try/caught so one failing
+  // compensating write never prevents the others from running.
   async function rollback() {
-    // `phase` is still null when the confirmation_attempts row's own
-    // INSERT itself never succeeded (e.g. Codex's exact repro — a
-    // trigger rejecting that INSERT) — there is no row to fence at all,
-    // and per the invariant that this INSERT is the very first write
-    // inside the try block, nothing else could have happened yet either
-    // (claimedMovement is false, allocationId is null). Fencing only
-    // applies once a row genuinely exists to own.
-    let holdsFence = false;
-    if (phase !== null) {
-      const fenced = await env.DB
-        .prepare(`UPDATE confirmation_attempts SET phase = 'ROLLING_BACK', updated_at = ? WHERE attempt_id = ? AND phase = ?`)
-        .bind(nowIso(), attemptId, phase)
-        .run();
-      if (fenced.meta.changes !== 1) {
-        return { fullyRolledBack: false, supersededByReconcile: true };
-      }
-      phase = 'ROLLING_BACK';
-      holdsFence = true;
-    }
-
     const failures = [];
     try {
       if (env.__TEST_FAIL_ROLLBACK_STEP__ === 'offer_status') throw new Error('INJECTED_ROLLBACK_FAILURE(offer_status)');
-      await store.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
-      await store.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
+      await fencedStore.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
+      await fencedStore.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
     } catch (e) {
       failures.push('offer_status: ' + e.message);
     }
     if (allocationId) {
       try {
         if (env.__TEST_FAIL_ROLLBACK_STEP__ === 'allocation') throw new Error('INJECTED_ROLLBACK_FAILURE(allocation)');
-        await releaseVehicleAllocation(env, allocationId);
+        await releaseVehicleAllocation(env, allocationId, ownership);
       } catch (e) {
         failures.push('allocation: ' + e.message);
       }
@@ -1094,59 +1154,86 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     if (claimedMovement) {
       try {
         if (env.__TEST_FAIL_ROLLBACK_STEP__ === 'movement_claim') throw new Error('INJECTED_ROLLBACK_FAILURE(movement_claim)');
-        await env.DB.prepare('DELETE FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).run();
+        await env.DB
+          .prepare(
+            `DELETE FROM vehicle_time_claims
+             WHERE source_movement_id = ? AND claimed_by_request_id = ?
+               AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+          )
+          .bind(offer.source_movement_id, requestId, requestId, attemptToken)
+          .run();
       } catch (e) {
         failures.push('movement_claim: ' + e.message);
       }
     }
     if (failures.length > 0) {
-      if (holdsFence) {
-        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = 'ROLLING_BACK'`).bind(failures.join('; '), nowIso(), attemptId).run();
-      }
+      await setPhase('ROLLBACK_FAILED', failures.join('; '));
       // Deliberately do NOT free the decision claim — its true state
       // can't be safely assumed, so a further attempt must not be able
       // to race in. Only the admin reconcile endpoint may resolve this.
       return { fullyRolledBack: false };
     }
-    // Every side-effect compensation succeeded — free the claim so a
-    // fresh attempt can be made; deal_requests is untouched throughout
-    // (still 'REQUESTED'), genuinely safe to retry.
-    try {
-      await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-      if (holdsFence) {
-        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ? AND phase = 'ROLLING_BACK'`).bind(nowIso(), attemptId).run();
-      }
-      return { fullyRolledBack: true };
-    } catch (e) {
-      if (holdsFence) {
-        await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ?`).bind('claim_release: ' + e.message, nowIso(), attemptId).run();
-      }
-      return { fullyRolledBack: false };
-    }
+    // Every side-effect compensation succeeded. Record ROLLED_BACK
+    // BEFORE freeing the claim — setPhase's own ownership check requires
+    // the claim row to still exist, so releasing it first would make
+    // this write a silent no-op (the phase would be stuck showing
+    // whatever step it was on, contradicting the fully-successful
+    // rollback that just happened). Then free the claim (checked: if
+    // ownership was ALREADY gone by this point, this is simply a
+    // harmless no-op that reports itself honestly rather than claiming
+    // success it didn't achieve).
+    await setPhase('ROLLED_BACK', null);
+    const released = await releaseOwnership();
+    return { fullyRolledBack: released };
   }
 
   try {
-    attemptId = `ca_${cryptoRandomId()}`;
-    await env.DB
-      .prepare(`INSERT INTO confirmation_attempts (attempt_id, request_id, offer_id, phase, created_at, updated_at) VALUES (?, ?, ?, 'STARTED', ?, ?)`)
-      .bind(attemptId, requestId, offer.offer_id, now, now)
-      .run();
-    phase = 'STARTED';
+    // Test-only pause hook, exercised by the round-6 concurrency
+    // regression to reproduce Codex's exact second repro: "pause BEFORE
+    // confirmation_attempts INSERT executes, after decision claim
+    // acquisition." Never present on any real env.
+    if (typeof env.__TEST_PAUSE_AFTER_CLAIM_BEFORE_JOURNAL__ === 'function') {
+      await env.__TEST_PAUSE_AFTER_CLAIM_BEFORE_JOURNAL__();
+    }
 
-    await advance('CLAIMING_MOVEMENT');
+    // The journal — attempt_id IS attemptToken (the exact same value).
+    // Gated on ownership too: "pause right after establishing ownership,
+    // before this INSERT" (Codex's second repro) is closed here — if a
+    // reconciler already took over in that exact window, this affects
+    // zero rows and we detect it immediately, aborting before ANY
+    // resource-mutating statement ever runs.
+    const journal = await env.DB
+      .prepare(
+        `INSERT INTO confirmation_attempts (attempt_id, request_id, offer_id, phase, created_at, updated_at)
+         SELECT ?, ?, ?, 'STARTED', ?, ?
+         WHERE EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+      )
+      .bind(attemptToken, requestId, offer.offer_id, now, now, requestId, attemptToken)
+      .run();
+    if (journal.meta.changes !== 1) {
+      throw new ConfirmationFencedError('creating the journal (claim without a journal — safely recoverable by reconcile)');
+    }
+
+    await setPhase('CLAIMING_MOVEMENT');
     const movementClaim = await env.DB
       .prepare(
-        `INSERT OR IGNORE INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO vehicle_time_claims (source_movement_id, claimed_by_offer_id, claimed_by_request_id, claimed_at)
+         SELECT ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ?)
+           AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
       )
-      .bind(offer.source_movement_id, offer.offer_id, requestId, now)
+      .bind(offer.source_movement_id, offer.offer_id, requestId, now, offer.source_movement_id, requestId, attemptToken)
       .run();
     if (movementClaim.meta.changes !== 1) {
-      // A clean, expected rejection — not a system failure. Nothing else
-      // was touched, so freeing the decision claim directly is enough;
-      // no offer/allocation state exists yet to compensate.
-      await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-      await advance('ROLLED_BACK', 'VEHICLE_TIME_ALREADY_CLAIMED');
+      // The single statement's own affected-row count can't tell us
+      // WHICH of its two conditions failed — re-check ownership directly
+      // to distinguish "lost ownership" (abort, superseded) from "a
+      // genuine, expected VEHICLE_TIME_ALREADY_CLAIMED conflict".
+      if (!(await stillOwnsAttempt(env, requestId, attemptToken))) {
+        throw new ConfirmationFencedError('claiming the movement');
+      }
+      await setPhase('ROLLED_BACK', 'VEHICLE_TIME_ALREADY_CLAIMED');
+      await releaseOwnership();
       return json(
         { error: 'VEHICLE_TIME_ALREADY_CLAIMED', detail: 'This exact movement has already been claimed by another offer.' },
         409
@@ -1154,7 +1241,16 @@ async function handleAdminConfirmDealRequest(env, requestId) {
     }
     claimedMovement = true;
 
-    await advance('CLAIMING_VEHICLE');
+    await setPhase('CLAIMING_VEHICLE');
+
+    // Test-only pause hook, exercised by the round-6 concurrency
+    // regression to reproduce Codex's exact first repro: "pause BEFORE
+    // vehicle_allocations INSERT executes, after phase CLAIMING_VEHICLE."
+    // Never present on any real env.
+    if (typeof env.__TEST_PAUSE_BEFORE_ALLOCATION__ === 'function') {
+      await env.__TEST_PAUSE_BEFORE_ALLOCATION__();
+    }
+
     allocationId = `va_${cryptoRandomId()}`;
     const allocation = await claimVehicleAllocation(env, {
       allocationId,
@@ -1164,9 +1260,13 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       subjectType: 'DEAL_REQUEST',
       subjectId: requestId,
       nowIso: now,
+      ownership,
     });
     if (!allocation.success) {
       allocationId = null; // nothing was actually inserted — see claimVehicleAllocation's own contract
+      if (!(await stillOwnsAttempt(env, requestId, attemptToken))) {
+        throw new ConfirmationFencedError('claiming the vehicle allocation');
+      }
       const result = await rollback();
       return json(
         {
@@ -1178,25 +1278,36 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       );
     }
 
-    // Test-only pause hook, exercised by the round-5 concurrency
-    // regression to reproduce Codex's exact repro: "pause immediately
-    // after vehicle_allocations INSERT commits but before its awaited
-    // result returns; call reconcile-confirmation; resume original
-    // confirmation." Never present on any real env.
+    // Test-only pause hooks, exercised by the concurrency regressions to
+    // reproduce Codex's exact repros at each specific interruption point.
+    // Never present on any real env.
     if (typeof env.__TEST_PAUSE_AFTER_ALLOCATION__ === 'function') {
       await env.__TEST_PAUSE_AFTER_ALLOCATION__();
     }
 
-    await advance('HOLDING_OFFER');
-    const held = await holdOffer(store, offer.offer_id);
+    await setPhase('HOLDING_OFFER');
+    const held = await holdOffer(fencedStore, offer.offer_id);
     if (!held.success) {
+      // held.reason may read as a generic status mismatch even when the
+      // TRUE cause is a lost ownership fence (the fenced store's own CAS
+      // simply reports 0 rows changed either way) — check directly.
+      if (!(await stillOwnsAttempt(env, requestId, attemptToken))) {
+        throw new ConfirmationFencedError('holding the offer');
+      }
       const result = await rollback();
       return json({ error: 'OFFER_STATE_CONFLICT', detail: held.reason, reconciliation_needed: !result.fullyRolledBack }, 409);
     }
 
-    await advance('FILLING_OFFER');
-    const filled = await fillOffer(store, offer.offer_id, { movement_id: offer.source_movement_id });
+    if (typeof env.__TEST_PAUSE_AFTER_HOLD__ === 'function') {
+      await env.__TEST_PAUSE_AFTER_HOLD__();
+    }
+
+    await setPhase('FILLING_OFFER');
+    const filled = await fillOffer(fencedStore, offer.offer_id, { movement_id: offer.source_movement_id });
     if (!filled.success) {
+      if (!(await stillOwnsAttempt(env, requestId, attemptToken))) {
+        throw new ConfirmationFencedError('filling the offer');
+      }
       const result = await rollback();
       return json({ error: 'OFFER_STATE_CONFLICT', detail: filled.reason || 'fill failed', reconciliation_needed: !result.fullyRolledBack }, 409);
     }
@@ -1207,16 +1318,23 @@ async function handleAdminConfirmDealRequest(env, requestId) {
       env.__TEST_INJECT_FAILURE_BEFORE_FINAL_UPDATE__();
     }
 
-    await advance('DONE');
-
-    // ONLY NOW — after every real side effect, the fenced phase advance
-    // to DONE, and the durable audit trail have fully succeeded — does
-    // the guest-visible status ever change. Reaching DONE via the CAS
-    // above is itself proof no concurrent reconcile call won the race.
-    await env.DB
-      .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
-      .bind('marau-ops-preview', nowIso(), nowIso(), requestId)
+    // THE decisive write — ownership-fenced in the SAME atomic statement,
+    // and its affected-row count is CHECKED (requirement: "return
+    // CONFIRMED only when the authoritative final transition succeeded").
+    // Reaching changes === 1 here is itself proof no concurrent reconcile
+    // call ever took over this attempt, from start to finish.
+    const finalWrite = await env.DB
+      .prepare(
+        `UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ?
+         WHERE request_id = ? AND status = 'REQUESTED'
+           AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+      )
+      .bind('marau-ops-preview', nowIso(), nowIso(), requestId, requestId, attemptToken)
       .run();
+    if (finalWrite.meta.changes !== 1) {
+      throw new ConfirmationFencedError('the final decisive status write');
+    }
+    await setPhase('DONE');
 
     return json({
       request_id: requestId,
@@ -1227,29 +1345,21 @@ async function handleAdminConfirmDealRequest(env, requestId) {
   } catch (err) {
     if (err instanceof ConfirmationFencedError) {
       // Ownership was taken away from under us (a concurrent
-      // reconcile-confirmation call, or this same attempt's own
-      // rollback() already fenced it) — abort immediately. Do NOT call
-      // rollback() here: whoever won the fence already owns compensation
-      // for this attempt, and racing it would risk double-releasing the
-      // same resources.
+      // reconcile-confirmation call) — abort immediately. Do NOT call
+      // rollback() here: reconcile already owns compensation for this
+      // attempt (or will, by the time it inspects real state), and every
+      // resource-mutating statement above was ITSELF ownership-fenced, so
+      // nothing this attempt did after losing the fence could ever have
+      // actually taken effect.
       return json(
         {
           error: 'CONFIRMATION_SUPERSEDED',
-          detail: `This confirmation attempt lost ownership advancing from ${err.fromPhase} to ${err.toPhase} — a concurrent admin reconciliation (or this attempt's own conflict-triggered rollback) already took over. No further state was written by this attempt.`,
+          detail: `This confirmation attempt lost ownership while ${err.atStep} — a concurrent admin reconciliation already took over. No further state was written by this attempt from that point on.`,
         },
         409
       );
     }
     const result = await rollback();
-    if (result.supersededByReconcile) {
-      return json(
-        {
-          error: 'CONFIRMATION_SUPERSEDED',
-          detail: 'This confirmation attempt failed and, on trying to roll itself back, found a concurrent admin reconciliation had already taken ownership. No further state was written by this attempt.',
-        },
-        409
-      );
-    }
     return json(
       {
         error: 'CONFIRMATION_FAILED',
@@ -1304,41 +1414,34 @@ async function handleAdminDeclineDealRequest(env, requestId) {
 /**
  * The actionable, ownership-fenced (admin-only) recovery path for a
  * confirmation attempt that was interrupted before reaching a terminal
- * phase. Inspects the REAL current state directly — never trusts the
- * recorded `phase` alone, which could itself be stale if the process
- * died mid-write — and always resolves to a definite outcome: either the
- * confirmation genuinely completed (just finish marking it) or it did
- * not (fully unwind whatever partial state exists). Never leaves the
- * request in an ambiguous state after running.
+ * state. Inspects the REAL current state directly — never trusts the
+ * recorded `phase` alone, which is observational only — and always
+ * resolves to a definite outcome: either the confirmation genuinely
+ * completed (just finish marking it) or it did not (fully unwind
+ * whatever partial state exists). Never leaves the request in an
+ * ambiguous state after running.
  *
- * FIX (bounded round-5 correction, finding 1 — confirmation/
- * reconciliation concurrency): admin authentication on THIS call is not
- * the same thing as exclusive ownership of a specific in-flight confirm
- * attempt. Before inspecting or touching ANY real state, this handler
- * must WIN a fencing CAS — `UPDATE confirmation_attempts SET phase =
- * 'RECONCILING' WHERE attempt_id = ? AND phase = <the phase just read>`
- * — against the SAME `phase` column the confirm handler's own advance()
- * calls are gated on (see handleAdminConfirmDealRequest). If this call
- * loses that race (the original attempt had already moved the phase on
- * by the time this fence is attempted), the original is still genuinely
- * progressing — this call must NOT inspect or touch anything, and
- * instead re-reads fresh state to report what actually happened. Only
- * once the fence is WON is it safe to assume the original attempt's next
- * write will fail its own CAS and abort, making concurrent inspection
- * and compensation here safe.
+ * FIX (sixth independent review, "MARAU — RESUME OWNERSHIP FIX"):
+ * admin authentication on THIS call is not the same thing as exclusive
+ * ownership of a specific in-flight confirm attempt. Reconciliation must
+ * ATOMICALLY take ownership using its OWN unique recovery token — a CAS
+ * on `deal_decision_claims.attempt_token` (`old token -> this call's own
+ * recoveryToken`), never merely nulling the old one — which is exactly
+ * what makes two CONCURRENT reconcile calls mutually exclusive: only one
+ * CAS against the same old value can ever succeed; the loser re-reads
+ * fresh state rather than assuming anything. Once this CAS is won, the
+ * original confirm attempt's every subsequent resource-mutating
+ * statement — each one itself gated on the SAME attempt_token column, in
+ * the same atomic statement as its own mutation — fails from that
+ * instant on, so it is now safe to inspect and compensate real state.
  */
 async function handleAdminReconcileConfirmation(env, requestId) {
-  const store = createD1Store({ SMART_RETURN_DB: env.DB });
   const now = nowIso();
 
   const dealRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
   if (!dealRequest) return json({ error: 'deal request not found' }, 404);
 
   const claim = await env.DB.prepare('SELECT * FROM deal_decision_claims WHERE request_id = ?').bind(requestId).first();
-  const attempt = await env.DB
-    .prepare('SELECT * FROM confirmation_attempts WHERE request_id = ? ORDER BY created_at DESC LIMIT 1')
-    .bind(requestId)
-    .first();
 
   if (dealRequest.status !== 'REQUESTED') {
     return json({ resolved: 'ALREADY_TERMINAL', status: dealRequest.status });
@@ -1347,62 +1450,85 @@ async function handleAdminReconcileConfirmation(env, requestId) {
     return json({ resolved: 'NOTHING_TO_RECONCILE', detail: 'No decision claim exists for this request — it is simply still awaiting a decision.' });
   }
 
-  if (claim.decision === 'DECLINE') {
-    // Decline has no multi-step phase progression to fence (it never
-    // creates a confirmation_attempts row at all — see
-    // handleAdminDeclineDealRequest) — a stalled decline can only have
-    // died between the claim INSERT and its own single UPDATE, before
-    // touching anything else. Safe to just finish it directly.
-    await env.DB
-      .prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
-      .bind('marau-ops-preview (reconciled)', now, now, requestId)
-      .run();
-    if (attempt) await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
-    return json({ resolved: 'DECLINED' });
-  }
-
-  // decision === 'CONFIRM'.
-  if (!attempt) {
-    // No confirmation_attempts row was ever created for this claim.
-    // confirmation_attempts is the FIRST write the confirm handler makes
-    // inside its try block, before any other state-touching write — so
-    // if this row genuinely never exists, nothing beyond the claim
-    // itself could possibly have happened yet. Safe to just free the
-    // claim directly; no fencing/compensation needed. (A vanishingly
-    // narrow window — a crash between the claim INSERT and this row
-    // being created — is not fully closed by this fix; see
-    // MARAU_STAGE1_CODEX_FIXES_ROUND5.md for the honest scope note.)
-    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-    return json({ resolved: 'ROLLED_BACK_TO_REQUESTED', detail: 'No confirmation attempt record ever existed for this claim — freed for a fresh attempt.' });
-  }
-
-  // Win exclusive ownership of THIS SPECIFIC attempt generation before
-  // touching anything. If we lose, the original is still genuinely
-  // progressing (or finished between our read and this fence attempt) —
-  // re-read fresh state rather than assume anything.
-  const fence = await env.DB
-    .prepare(`UPDATE confirmation_attempts SET phase = 'RECONCILING', updated_at = ? WHERE attempt_id = ? AND phase = ?`)
-    .bind(now, attempt.attempt_id, attempt.phase)
+  // Take exclusive ownership via this call's OWN unique recovery token —
+  // a CAS from whatever attempt_token value was just read (which may be
+  // NULL, if the confirm handler died before even establishing
+  // ownership — "make a claim without a journal safely recoverable").
+  // SQL's `column = NULL` never matches, so NULL needs its own branch.
+  const recoveryToken = `rt_${cryptoRandomId()}`;
+  const takeoverWhereClause = claim.attempt_token === null ? 'attempt_token IS NULL' : 'attempt_token = ?';
+  const takeoverArgs = claim.attempt_token === null ? [] : [claim.attempt_token];
+  const takeover = await env.DB
+    .prepare(`UPDATE deal_decision_claims SET attempt_token = ? WHERE request_id = ? AND ${takeoverWhereClause}`)
+    .bind(recoveryToken, requestId, ...takeoverArgs)
     .run();
-  if (fence.meta.changes !== 1) {
-    const fresh = await env.DB.prepare('SELECT * FROM confirmation_attempts WHERE attempt_id = ?').bind(attempt.attempt_id).first();
-    if (fresh && (fresh.phase === 'DONE' || fresh.phase === 'ROLLED_BACK')) {
-      const freshRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
+  if (takeover.meta.changes !== 1) {
+    // Lost the race — re-read fresh state rather than assume anything.
+    // Either another reconciler already took over ("concurrent
+    // reconcilers must not both own recovery" — this one simply lost),
+    // or the original attempt itself finished and freed the claim
+    // entirely in the interim.
+    const freshClaim = await env.DB.prepare('SELECT * FROM deal_decision_claims WHERE request_id = ?').bind(requestId).first();
+    const freshRequest = await env.DB.prepare('SELECT * FROM deal_requests WHERE request_id = ?').bind(requestId).first();
+    if (!freshClaim) {
       return json({
         resolved: freshRequest.status === 'REQUESTED' ? 'ROLLED_BACK_TO_REQUESTED' : 'ALREADY_TERMINAL',
         status: freshRequest.status,
-        detail: 'The attempt reached a terminal outcome between being read and being fenced by this call — nothing further was done here.',
+        detail: 'The attempt reached a terminal outcome (or was fully rolled back) between being read and this call attempting to take over ownership — nothing further was done here.',
       });
     }
     return json({
       resolved: 'ATTEMPT_STILL_ACTIVE',
-      detail: 'The confirmation attempt is still genuinely in progress — its phase advanced between being read and this call’s attempt to fence it. It is not stalled; no action was taken. Call again if it later appears stuck.',
+      detail: 'Ownership changed hands between being read and this call’s attempt to take it over — either the original attempt is still genuinely progressing, or another concurrent reconciliation already won it. It is not stalled from this call’s point of view; no action was taken. Call again if it later appears stuck.',
     });
   }
 
-  // We now exclusively own this attempt generation — the original's own
-  // advance()/rollback() calls will fail their CAS from here on and abort
-  // without writing anything further. Safe to inspect real state.
+  // We now exclusively own recovery for this claim via recoveryToken. The
+  // original confirm attempt's every subsequent statement checks the
+  // OLD attempt_token value, which no longer matches anything — it will
+  // fail atomically at the SQL level and abort without writing anything
+  // further, from this instant on. Safe to inspect and compensate.
+  const recoveryOwnership = { requestId, attemptToken: recoveryToken };
+
+  if (claim.decision === 'DECLINE') {
+    // Decline never establishes attempt_token ownership at all (it has
+    // no multi-step resource work to fence — a single UPDATE, already
+    // affected-row-checked) — a stalled decline can only have died
+    // between the claim INSERT and that one UPDATE, before touching
+    // anything else. Safe to just finish it directly.
+    await env.DB
+      .prepare(`UPDATE deal_requests SET status = 'DECLINED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
+      .bind('marau-ops-preview (reconciled)', now, now, requestId)
+      .run();
+    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
+    return json({ resolved: 'DECLINED' });
+  }
+
+  // decision === 'CONFIRM'. Look up the journal by the OLD attempt token
+  // (claim.attempt_token as originally read, BEFORE our takeover
+  // overwrote it) — this is what "associate the journal with that exact
+  // token" makes possible: an unambiguous lookup, not a fragile
+  // "most recent row for this request_id" guess.
+  const originalToken = claim.attempt_token; // may be null
+  const attempt = originalToken
+    ? await env.DB.prepare('SELECT * FROM confirmation_attempts WHERE attempt_id = ?').bind(originalToken).first()
+    : null;
+
+  if (!attempt) {
+    // Either ownership was never established (originalToken was null —
+    // "make a claim without a journal safely recoverable") or ownership
+    // was established but the journal's own INSERT never landed (the
+    // very next write after that, itself ownership-fenced — see
+    // handleAdminConfirmDealRequest). Either way, per the strict write
+    // ORDER the confirm handler follows, nothing beyond establishing
+    // ownership could possibly have happened yet — no movement claim, no
+    // allocation, no offer touch. Safe to fully release.
+    await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
+    return json({ resolved: 'ROLLED_BACK_TO_REQUESTED', detail: 'No confirmation attempt record existed for this claim (or ownership was never established) — freed for a fresh attempt.' });
+  }
+
+  // Inspect REAL current state directly — never the (now purely
+  // observational) phase marker.
   const offer = await env.DB.prepare('SELECT * FROM smart_offers WHERE offer_id = ?').bind(dealRequest.offer_id).first();
   const movementClaimed = offer
     ? await env.DB.prepare('SELECT 1 FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).first()
@@ -1412,49 +1538,67 @@ async function handleAdminReconcileConfirmation(env, requestId) {
 
   if (offer && movementClaimed && allocation && offerFilled) {
     // Every real side effect actually succeeded — only the final marking
-    // (or the audit write) was interrupted. Finish it.
-    await env.DB
+    // (or the audit write) was interrupted. Finish it. Checked
+    // affected-row count: this is the one and only other writer allowed
+    // to mark CONFIRMED, and only once real state has been verified.
+    const finished = await env.DB
       .prepare(`UPDATE deal_requests SET status = 'CONFIRMED', decided_by = ?, decided_at = ?, updated_at = ? WHERE request_id = ? AND status = 'REQUESTED'`)
       .bind('marau-ops-preview (reconciled)', now, now, requestId)
       .run();
-    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(now, attempt.attempt_id).run();
-    return json({ resolved: 'CONFIRMED' });
+    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'DONE', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
+    return json({ resolved: finished.meta.changes === 1 ? 'CONFIRMED' : 'ALREADY_TERMINAL' });
   }
 
   // Partial or nothing real actually happened — fully unwind whatever
-  // DOES exist so the request becomes cleanly retryable, exactly like a
-  // normal rollback(), each step independently try/caught.
+  // DOES exist so the request becomes cleanly retryable. Requirement:
+  // "compensation must verify both current recovery ownership and
+  // ownership of the resource being undone" — every compensating write
+  // below is scoped to THIS request_id/movement/allocation AND checks
+  // recoveryOwnership (this call's own token) in the same statement,
+  // so it can never reset another attempt's offer or delete an
+  // allocation that doesn't belong to this exact recovery. Each step is
+  // independently try/caught so one failing compensating write never
+  // prevents the others from running.
+  const fencedStore = createOwnershipFencedStore(env, requestId, recoveryToken);
   const failures = [];
   if (offer) {
     try {
-      await store.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
-      await store.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
+      await fencedStore.casOfferStatus(offer.offer_id, 'FILLED', 'ACTIVE');
+      await fencedStore.casOfferStatus(offer.offer_id, 'HELD', 'ACTIVE');
     } catch (e) {
       failures.push('offer_status: ' + e.message);
     }
   }
   if (allocation) {
     try {
-      await releaseVehicleAllocation(env, allocation.allocation_id);
+      const released = await releaseVehicleAllocation(env, allocation.allocation_id, recoveryOwnership);
+      if (!released.released) failures.push('allocation: ownership check failed to match while releasing');
     } catch (e) {
       failures.push('allocation: ' + e.message);
     }
   }
   if (movementClaimed) {
     try {
-      await env.DB.prepare('DELETE FROM vehicle_time_claims WHERE source_movement_id = ? AND claimed_by_request_id = ?').bind(offer.source_movement_id, requestId).run();
+      await env.DB
+        .prepare(
+          `DELETE FROM vehicle_time_claims
+           WHERE source_movement_id = ? AND claimed_by_request_id = ?
+             AND EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?)`
+        )
+        .bind(offer.source_movement_id, requestId, requestId, recoveryToken)
+        .run();
     } catch (e) {
       failures.push('movement_claim: ' + e.message);
     }
   }
 
   if (failures.length > 0) {
-    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(failures.join('; '), now, attempt.attempt_id).run();
+    await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLBACK_FAILED', error_detail = ?, updated_at = ? WHERE attempt_id = ?`).bind(failures.join('; '), now, attempt.attempt_id).run();
     return json({ resolved: 'RECONCILIATION_FAILED', detail: failures.join('; ') }, 500);
   }
 
-  await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ?').bind(requestId).run();
-  await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ? AND phase = 'RECONCILING'`).bind(now, attempt.attempt_id).run();
+  await env.DB.prepare('DELETE FROM deal_decision_claims WHERE request_id = ? AND attempt_token = ?').bind(requestId, recoveryToken).run();
+  await env.DB.prepare(`UPDATE confirmation_attempts SET phase = 'ROLLED_BACK', updated_at = ? WHERE attempt_id = ?`).bind(now, attempt.attempt_id).run();
   return json({ resolved: 'ROLLED_BACK_TO_REQUESTED' });
 }
 

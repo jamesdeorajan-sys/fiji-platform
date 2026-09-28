@@ -1,0 +1,39 @@
+-- Marau Stage 1 (PREVIEW/TEST ONLY) — adds attempt_token: the single,
+-- literal source of truth for "who currently owns this decision claim's
+-- in-progress work," used by every resource-mutating statement in the
+-- confirm flow as an atomic ownership condition baked into the SAME SQL
+-- statement as the mutation itself (never a separate check-then-act
+-- step).
+--
+-- FIX for a SIXTH independent review ("MARAU — RESUME OWNERSHIP FIX"):
+-- the round-5 fencing design used confirmation_attempts.phase as the
+-- ownership signal, checked only at specific advance() call sites — but
+-- the actual resource-mutating statements (movement claim, vehicle
+-- allocation, offer hold/fill, the final deal_requests write) happened
+-- BETWEEN those checks, leaving real windows:
+--   1. Pausing after phase CLAIMING_VEHICLE but before the
+--      vehicle_allocations INSERT let a concurrent reconcile unwind
+--      (finding no allocation yet), then the resumed original still went
+--      on to create a FRESH, now-orphaned allocation nothing would ever
+--      release.
+--   2. Pausing before the confirmation_attempts INSERT (right after
+--      claiming the decision) let reconcile free the claim for a
+--      competing decline to win, then the resumed original completed
+--      its ENTIRE flow anyway and wrote a false CONFIRMED — because its
+--      own final UPDATE never even checked its own affected-row count.
+--
+-- attempt_token closes both: it is generated once (the SAME value also
+-- used as confirmation_attempts.attempt_id — "associate the journal with
+-- that exact token"), and EVERY subsequent mutating statement requires
+-- `EXISTS (SELECT 1 FROM deal_decision_claims WHERE request_id = ? AND
+-- attempt_token = ?)` as part of its own WHERE clause — the ownership
+-- check and the mutation are the SAME atomic operation, so there is no
+-- gap for a concurrent reconciler to exploit. Reconciliation takes
+-- ownership by ATOMICALLY overwriting attempt_token with its own unique
+-- recovery token (a CAS on the OLD token, not merely nulling it) — this
+-- is itself what makes concurrent reconcilers mutually exclusive (only
+-- one CAS against the same old value can ever succeed), and it is what
+-- makes every subsequent write by the original attempt (still checking
+-- against ITS OWN, now-superseded token) fail atomically at the SQL
+-- level from that instant on.
+ALTER TABLE deal_decision_claims ADD COLUMN attempt_token TEXT;
