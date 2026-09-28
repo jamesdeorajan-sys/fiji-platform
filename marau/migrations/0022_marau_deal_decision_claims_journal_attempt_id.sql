@@ -1,0 +1,29 @@
+-- Marau Stage 1 (PREVIEW/TEST ONLY) — adds journal_attempt_id: the
+-- STABLE, NEVER-ROTATED identity of the confirm attempt's own journal
+-- row (confirmation_attempts.attempt_id), kept explicitly separate from
+-- attempt_token (which DOES rotate — it is the current ownership/
+-- recovery holder, replaced every time a reconciler takes over).
+--
+-- FIX for a SEVENTH independent review finding, "recovery retry loses
+-- original attempt identity": a SECOND reconcile-confirmation call (after
+-- a first one failed mid-compensation, e.g. a real SQLite trigger
+-- blocking the HELD->ACTIVE offer revert) looked up the journal via
+-- `claim.attempt_token` — but by the second call, attempt_token had
+-- ALREADY been rotated to the FIRST reconciler's own recovery token,
+-- which was never used as any confirmation_attempts.attempt_id anywhere.
+-- The lookup found nothing, and "missing journal" was wrongly treated as
+-- proof nothing had happened — the claim was deleted outright while the
+-- offer was still genuinely HELD and the allocation/movement-claim rows
+-- still genuinely existed.
+--
+-- journal_attempt_id is set exactly ONCE, at the same moment the confirm
+-- handler first establishes attempt_token ownership, and is never
+-- touched again by any subsequent reconcile takeover. Every
+-- reconcile-confirmation call looks up the journal by THIS column, not
+-- by whatever attempt_token currently happens to be — so the journal
+-- stays findable across any number of staggered reconcile attempts.
+-- Combined with the fix in worker.js that no longer treats "no journal
+-- row found" as sufficient proof nothing happened (it now always
+-- inspects real resource state directly first, regardless of journal
+-- presence), this closes the exact reproduction.
+ALTER TABLE deal_decision_claims ADD COLUMN journal_attempt_id TEXT;
