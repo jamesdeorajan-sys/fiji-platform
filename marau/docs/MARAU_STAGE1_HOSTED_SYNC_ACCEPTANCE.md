@@ -39,8 +39,8 @@ Run via `test/marau_synthetic_source_harness.test.mjs`, and reproduced against t
 
 ## Deployment record
 
-- **Deployed commit:** `088542e` on `ceo/marau-stage1-preview` (round 19's own commit — superseded by round 20's P0 fix and round 21's workflow correction, both since deployed; see the round-21 checkpoint for the current deployed commit/version).
-- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource). **Full, verified deployment history for this Worker (via `wrangler deployments list`, not reconstructed from commit messages):** `494889c2` (round 9) → `a479d4bd` (round 11) → `3d71e0e0` (round 19, this record). **No commit between round 11 and round 19 (i.e. nothing from rounds 12-18) was ever deployed** — those rounds' own commits exist only in git, never as a live Worker version.
+- **Deployed commit (current, as of round 21):** `d999409` on `ceo/marau-stage1-preview`.
+- **Worker:** `marau-stage1-preview` (unchanged existing Worker — no new Cloudflare resource). **Full, verified deployment history for this Worker (via `wrangler deployments list`, not reconstructed from commit messages):** `494889c2` (round 9) → `a479d4bd` (round 11) → `3d71e0e0` (round 19, commit `088542e`) → **`13a0fd0a-a3b8-4fb5-99c9-adda9dc9c1cb` (round 21, commit `d999409` — the current live version, including round 20's P0 fix and round 21's workflow correction)**. **No commit between round 11 and round 19 (i.e. nothing from rounds 12-18) was ever deployed** — those rounds' own commits exist only in git, never as a live Worker version.
 - **Database:** `marau-stage1-test-db` (`e0c81ade-dc9f-477f-b370-bd5fd85a4f1f`, unchanged existing, isolated D1 — never `nadi-marketplace-db`).
 - **Migrations applied this round:** the hosted database was found to still be at migration `0023` (round 9-11's state) — the expected state, since rounds 13 through 18 explicitly scoped and documented themselves as local-shim-only work (see the round-21 correction banner above). This round applied the full remaining stack in order: `0024_marau_real_booking_sync.sql`, `0025_marau_real_booking_sync_durable_version.sql`, `0026_marau_real_booking_sync_provenance.sql`, `0027_marau_real_booking_sync_unified_authority.sql`, `0028_marau_real_booking_sync_claims.sql`, `0029_marau_staff_review_tokens.sql`, `0030_marau_synthetic_source_bookings.sql` — all seven applied cleanly (`changed_db: true` on each), verified afterward via `PRAGMA table_info`/`sqlite_master` showing all five `marau_*` sync-related tables present.
 - **Preview URL (unchanged):** https://marau-stage1-preview.helpronline.workers.dev
@@ -61,10 +61,11 @@ All six ran against the same live, isolated preview the guest app itself is serv
 
 ## Rollback procedure
 
-Every change this round is additive (new tables, new routes, an `await` correctness fix with no behavioral change on the non-error path). To roll back:
-1. **The actual, verified prior deployed Worker version is `a479d4bd-02d5-47ec-8a93-f7e0a5a31e06` (round 11)** — not any git commit between rounds 12 and 18, none of which were ever deployed (see the corrected deployment history above). Roll back via `wrangler rollback` to that version id in the Cloudflare dashboard, or `wrangler deploy` from commit `463c137` (round 11's own commit, confirmed as the source of that deployed version).
-2. No migration reversal is required — the new tables are simply unused by the prior code.
-3. No guest-facing behavior changes for the existing booking/deal flows; rollback has zero impact on any in-flight guest session.
+Every change since round 19 is additive (new tables, new routes, an `await` correctness fix with no behavioral change on the non-error path). Two DIFFERENT rollback targets exist, and they are not equivalent:
+
+1. **To undo only round 21's workflow correction, roll back to `3d71e0e0` (round 19).** ⚠️ **Do not do this** — that version still has round 20's P0 (staff review tokens returned in guest responses, deciding possible with mere link possession). It is recorded here only for completeness of the deployment history, not as a safe option.
+2. **To roll all the way back past this entire feature set (real-booking-sync + staff review workflow), roll back to `a479d4bd-02d5-47ec-8a93-f7e0a5a31e06` (round 11)** — the last deployed version with none of this round's tables/routes at all. Via `wrangler rollback` to that version id in the Cloudflare dashboard, or `wrangler deploy` from commit `463c137`. No migration reversal is required either way — the new tables are simply unused by older code.
+3. No guest-facing behavior changes for the existing booking/deal flows in any case; rollback has zero impact on any in-flight guest session.
 
 ## Round 21 — corrected staff workflow: the initial transfer reservation
 
@@ -80,6 +81,8 @@ Codex independently verified round 19's local suite: 424/424, before round 20's 
 A review token's subject is fixed at mint time and is never a client-suppliable parameter at decide time — structurally preventing a decision from ever landing on the wrong reservation (tested directly: two reservations, two tokens, one decision, only the intended one changes).
 
 **Test evidence:** `test/marau_staff_booking_review.test.mjs` — 7/7 new tests demonstrating the full chain (save → pending Trip → mock alert → authenticated review → synthetic-source confirmation → sync → confirmed Trip), the driver/vehicle refusal case, guest-cannot-decide, wrong-subject prevention, missing-operator rejection, and unsupported-decision rejection. Combined with round 20's 13/13: full local suite **247/247 engine (unaffected) + 188/188 Marau (137 pre-round-13 + 51 across rounds 17-21) = 435/435.**
+
+**Live hosted verification (2026-09-28), against the real hosted D1, deployed commit `d999409`, Worker version `13a0fd0a-a3b8-4fb5-99c9-adda9dc9c1cb`:** seeded and saved a real synthetic reservation (`r21-fresh`) → response carried `mock_staff_alert.review_link`, guest's own `/preview/trip` response scanned and confirmed to contain no review token anywhere → opened the review page (read-only, no mutation) → an unauthenticated decide attempt was rejected (`401`) → an authenticated confirm with `operator: "James (live demo)"` succeeded, writing `source_status: "accepted"` and syncing the guest's Trip to `"confirmed"` → `marau_staff_decisions` table queried directly, confirming the operator was durably recorded → a second reservation with no driver assigned was correctly refused with `DRIVER_NOT_ASSIGNED`. All exactly as the local test suite predicts, now proven live.
 
 ## Mobile test link and exact staff/guest instructions
 
