@@ -18,6 +18,13 @@ Update this file whenever you verify, contradict, or add to anything in it.
 Do not delete another agent's entries — mark them superseded/resolved
 instead, so the history of what was checked and by whom stays intact.
 
+## 🔴 P0 FIX 2026-09-29 (round 20) — Marau: staff review token leaked to guest, now fixed; staff auth required to decide (Claude)
+- **Not yet redeployed to hosted preview** (still running round-19's `3d71e0e0` build) — redeploy + re-verify the six hosted scenarios is the immediate next action for whoever picks this up.
+- **The P0:** round 19's staff "Review and confirm" workflow returned the booking-specific review token DIRECTLY in the response to the GUEST who had just requested the deal (a guest-session-gated endpoint) — any guest could read their own response and decide their own request. Complete staff-authorization bypass.
+- **Fix:** (1) the token is never in the guest-facing response anymore — surfaced ONLY via the admin-token-gated `GET /preview/admin/deal-requests` listing; (2) deciding now ALSO requires real staff authentication (the admin bearer token, via header or the review page's own new `admin_token` form field), not mere token possession.
+- **Tests:** `marau/test/marau_staff_review_link.test.mjs` rewritten, 13/13, P0 asserted directly. Full suite: 247/247 engine + 181/181 Marau (137 pre-round-13 + 44 across rounds 17-20) = **428/428**.
+- Commit `126d086` on `ceo/marau-stage1-preview`, pushed. The initial-transfer confirmation workflow (a separate, not-yet-started task) has NOT been begun.
+
 ## ✅ CHECKPOINT 2026-09-29 (round 19) — Marau: round-18 independently reverified + hosted synthetic sync acceptance + staff review link (Claude)
 - **No production changes, real-guest imports, or live sends. Synthetic source bookings only, no production database binding.** Codex independently verified round 18 (`6c322fc`): 407/407, no shared-engine changes, AND reran its own original paused-reader/takeover repro — stale worker now returns `CLAIM_LOST`, current details intact. Full write-up: `marau/docs/MARAU_STAGE1_HOSTED_SYNC_ACCEPTANCE.md`.
 - **Discovered rounds 13-18 had NEVER been deployed to the hosted preview** — `marau-stage1-test-db` was still at migration `0023`. Applied the full remaining stack (`0024`-`0030`) and deployed Worker version `3d71e0e0` on commit `088542e`.
