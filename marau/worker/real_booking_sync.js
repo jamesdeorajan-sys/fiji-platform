@@ -1,12 +1,76 @@
-/* Marau Stage 1 (PREVIEW ONLY) — round 17: finishes source freshness.
- * Fixes a cross-path bug rounds 13-16's own fixes never actually closed
- * — Codex's round-16 review confirmed 416/416 tests passing, no
- * shared-engine changes, then reproduced two further, more fundamental
- * repros directly. Rounds 13-16's own corrections (verified-ownership
- * reuse, no-duplicate-guest-entry, revocation, price validation, the
- * evidenced event/status contract, terminal-state stickiness, linkage
- * recovery) all still stand; this header documents what changed THIS
- * round and why.
+/* Marau Stage 1 (PREVIEW ONLY) — round 18: enforces claim ownership AT
+ * EACH WRITE, not just at acquisition. Codex independently verified
+ * round 17 (403/403, no shared-engine changes), then reproduced a
+ * stale-owner overwrite AFTER a legitimate takeover — round 17's own
+ * "events/snapshots as signals + injected reader" fix (still correct
+ * and still the primary defense) had one remaining hole this round
+ * closes. Rounds 13-17's own corrections all still stand; this header
+ * documents what changed THIS round and why.
+ *
+ * ── ROUND 18 — THE HOLE ROUND 17 LEFT OPEN ──────────────────────────────
+ * Exact reproduction (see `test/marau_real_booking_sync.test.mjs`'s
+ * `round18` tests for the literal, deterministic version — a paused
+ * reader via a manually-resolved promise, and a shared, explicitly
+ * advanceable fake clock, never real timers):
+ *   1. Seed an accepted mirrored booking.
+ *   2. Worker A acquires the claim; its injected reader is CALLED and
+ *      begins resolving "Old hotel / 09:00 / FJ$45" — but is paused
+ *      (held back) before that call returns control to A.
+ *   3. The clock advances 31s (past the 30s claim TTL).
+ *   4. The authoritative source changes to "New hotel / 14:00 / FJ$80".
+ *   5. Worker B takes over A's now-expired claim and refreshes
+ *      successfully — reads the current data, applies it, releases ITS
+ *      OWN claim (token-scoped), leaving no live claim behind.
+ *   6. Worker A resumes: its reader call finally returns the STALE "Old
+ *      hotel" data it captured back in step 2.
+ * Round 17's own code then fetched `existingBookingRow` — the row used
+ * for generation fencing — AFTER resuming, i.e. AFTER B's write. That
+ * read was itself perfectly fresh (generation matches, nothing raced
+ * between IT and the write), so `applyFreshRead`'s WHERE clause passed
+ * and A silently reverted every field to its stale captured values.
+ *
+ * **Root cause:** `claimToken` was never threaded into `applyFreshRead`
+ * or `createOrRecoverOwnedRow`. Their mutations verified the MIRROR
+ * ROW's own generation, which says nothing about whether the CALLER
+ * still actually holds the claim that authorized its fresh read in the
+ * first place — a freshly-read mirror generation cannot prove claim
+ * ownership; a claim and a generation are two independent facts, and
+ * checking only one leaves the other's staleness completely unguarded.
+ *
+ * **The fix:** every mutating statement in the write path — the mirror
+ * UPDATE, the mirror INSERT, and both `marau_real_booking_links`
+ * INSERTs (first-link and link-repair) — now carries the ACQUIRED
+ * `claimToken` all the way through and re-verifies, INSIDE the same
+ * atomic SQL statement (an `EXISTS` subquery against
+ * `marau_real_booking_sync_claims`, checked with `expires_at > now`),
+ * that this exact token is STILL the live claim for this booking at the
+ * moment of the write — not merely at the moment of acquisition or the
+ * moment of the fresh read. Because this check lives inside the same
+ * `UPDATE ... WHERE` / `INSERT ... SELECT ... WHERE EXISTS (...)`
+ * statement as the actual data write, SQLite/D1 evaluates both
+ * atomically — there is no window between "check ownership" and "write"
+ * for another worker's takeover to land in. A0's resumed write in the
+ * repro above now checks its own (already-replaced) claim_token against
+ * the claims table and finds no match — `applyFreshRead` returns
+ * `applied: false, reason: 'CLAIM_LOST'`, and NOTHING is written.
+ *
+ * `release` remains strictly token-scoped (unchanged) — B's release
+ * only ever deletes ITS OWN claim row, never A's (which by that point no
+ * longer exists anyway, having been overwritten by B's takeover). A
+ * lost-ownership result never attempts a stale write; a caller that gets
+ * `CLAIM_LOST` must simply retry, which re-acquires a fresh claim and
+ * re-reads the source from scratch — the SAME "retry always re-reads"
+ * guarantee round 17 already established, now genuinely enforced at
+ * every mutation, not just at the top of the flow.
+ *
+ * Session creation/cleanup when ownership is lost mid-flight (during
+ * first-sync, after `createSessionAndOfferLink` but before the booking
+ * row is durably, claim-verified linked) is handled the same safe way
+ * as an ordinary lost race: the now-unused session is deleted, and
+ * `CLAIM_LOST` is reported rather than a false success — a later retry
+ * (fresh claim, fresh read) creates its own session cleanly, or repairs
+ * an already-claimed-and-inserted row if one exists from an earlier,
+ * still-partially-successful attempt.
  *
  * ── ROUND 17 — THE BUG TERMINAL-STATE STICKINESS DIDN'T CATCH ──────────
  * Round 16 fixed cross-path REVIVAL of a terminal status (cancelled
@@ -263,17 +327,27 @@ export async function releaseBookingClaim(env, sourceBookingRef, claimToken) {
  * `source_booking_ref + source_sync_owned = 1`, backed by a genuine
  * SQLite partial unique index (round 15, unchanged).
  */
-async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { nowIso, createSessionAndOfferLink, marauStatus, pickupDatetime, quotedAmount, provenance }) {
+async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { nowIso, createSessionAndOfferLink, marauStatus, pickupDatetime, quotedAmount, provenance, claimToken }) {
   if (!sourceBooking.guest_email || !sourceBooking.guest_phone) return { ok: false, reason: 'MISSING_GUEST_CONTACT' };
 
   const priorOwnedRow = await findOwnedMirrorRow(env, sourceBookingRef);
   if (priorOwnedRow) {
     const now = nowIso();
     const session = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(priorOwnedRow.guest_session_id).first();
+    // ROUND 18: gate the repair INSERT itself on STILL holding the live
+    // claim, atomically, inside the same statement.
     await env.DB
-      .prepare('INSERT OR IGNORE INTO marau_real_booking_links (source_booking_ref, guest_session_id, marau_booking_id, created_at) VALUES (?, ?, ?, ?)')
-      .bind(sourceBookingRef, priorOwnedRow.guest_session_id, priorOwnedRow.id, now)
+      .prepare(
+        `INSERT OR IGNORE INTO marau_real_booking_links (source_booking_ref, guest_session_id, marau_booking_id, created_at)
+         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`
+      )
+      .bind(sourceBookingRef, priorOwnedRow.guest_session_id, priorOwnedRow.id, now, sourceBookingRef, claimToken, now)
       .run();
+    // A 0-changes result here is ambiguous by row-count alone (it could
+    // mean "link already existed" OR "claim was lost") — disambiguate by
+    // checking whether a link exists at all afterward, not the raw count.
+    const linkNowExists = await env.DB.prepare('SELECT 1 FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+    if (!linkNowExists) return { ok: false, reason: 'CLAIM_LOST' };
     return { ok: true, recovered: true, created: false, session, existingBookingRow: priorOwnedRow };
   }
 
@@ -285,12 +359,18 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
 
   const clientBookingRef = `REAL-SYNC-${sourceBookingRef}-${cryptoRandomId().slice(0, 8)}`;
   const now = nowIso();
+  // ROUND 18: the mirror-row creation itself is now gated on STILL
+  // holding the live claim at write time (an EXISTS subquery inside the
+  // same INSERT...SELECT...WHERE statement) — not just on whatever
+  // generation the (nonexistent, for a first sync) mirror row would
+  // have had.
   const insertResult = await env.DB
     .prepare(
       `INSERT OR IGNORE INTO marau_test_bookings
         (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at,
          source_booking_ref, source_status, source_assigned_driver_id, source_event_type, source_event_id, source_snapshot_sequence, source_synced_at, sync_state, source_sync_owned, source_write_generation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1, 1)`
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1, 1
+       WHERE EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`
     )
     .bind(
       clientBookingRef,
@@ -311,29 +391,46 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
       provenance.eventType,
       provenance.eventId,
       provenance.snapshotSequence,
+      now,
+      sourceBookingRef,
+      claimToken,
       now
     )
     .run();
 
   if (insertResult.meta.changes === 1) {
     const marauBookingRow = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
-    await env.DB
-      .prepare('INSERT INTO marau_real_booking_links (source_booking_ref, guest_session_id, marau_booking_id, created_at) VALUES (?, ?, ?, ?)')
-      .bind(sourceBookingRef, session.session_id, marauBookingRow.id, now)
+    // ROUND 18: gate the first link INSERT the same way. If the claim
+    // died in the narrow window between the mirror INSERT and this
+    // statement, the mirror row still exists (legitimately created
+    // while the claim was live) but stays unlinked — a later retry's
+    // own fresh claim will find and repair it via the priorOwnedRow
+    // branch above, exactly like any other interrupted first sync.
+    const linkInsertResult = await env.DB
+      .prepare(
+        `INSERT INTO marau_real_booking_links (source_booking_ref, guest_session_id, marau_booking_id, created_at)
+         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`
+      )
+      .bind(sourceBookingRef, session.session_id, marauBookingRow.id, now, sourceBookingRef, claimToken, now)
       .run();
+    if (linkInsertResult.meta.changes !== 1) return { ok: false, reason: 'CLAIM_LOST' };
     return { ok: true, created: true, session, link_offer: linkOffer, existingBookingRow: marauBookingRow };
   }
 
-  // Lost a race (should be rare under claim-based serialization, but
-  // kept as defense-in-depth — see this file's header) — clean up our
-  // own now-unused session and recover via the real owner, found the
-  // SAME safe way, never by client_booking_ref.
+  // 0 changes: either a genuine race (rare under claim-based
+  // serialization, kept as defense-in-depth) or the claim was already
+  // lost before this statement even ran. Always safe to clean up our
+  // own now-unused session first; then disambiguate.
   await env.DB.prepare('DELETE FROM guest_link_requests WHERE new_session_id = ? OR candidate_session_id = ?').bind(session.session_id, session.session_id).run();
   await env.DB.prepare('DELETE FROM guest_sessions WHERE session_id = ?').bind(session.session_id).run();
   const winnerRow = await findOwnedMirrorRow(env, sourceBookingRef);
-  if (!winnerRow) return { ok: false, reason: 'LOST_RACE_BUT_WINNER_ROW_MISSING' };
-  const winnerSession = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(winnerRow.guest_session_id).first();
-  return { ok: true, recovered: true, created: false, session: winnerSession, existingBookingRow: winnerRow };
+  if (winnerRow) {
+    const winnerSession = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(winnerRow.guest_session_id).first();
+    return { ok: true, recovered: true, created: false, session: winnerSession, existingBookingRow: winnerRow };
+  }
+  const stillOwnClaim = await env.DB.prepare('SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?').bind(sourceBookingRef, claimToken, nowIso()).first();
+  if (!stillOwnClaim) return { ok: false, reason: 'CLAIM_LOST' };
+  return { ok: false, reason: 'LOST_RACE_BUT_WINNER_ROW_MISSING' };
 }
 
 /**
@@ -347,13 +444,22 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
  * are always whatever is true right now, never whatever an old
  * event/snapshot happened to carry.
  */
-async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance }) {
+async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance, sourceBookingRef, claimToken }) {
   if (TERMINAL_SOURCE_STATUSES.has(existingBookingRow.source_status)) {
     return { ok: true, applied: false, reason: 'TERMINAL_STATE_LOCKED', current_source_status: existingBookingRow.source_status, marau_booking_id: existingBookingRow.id };
   }
 
   const now = nowIso();
   const expectedGeneration = existingBookingRow.source_write_generation;
+  // ROUND 18: the actual fix. `expectedGeneration` alone proves nothing
+  // about whether THIS caller still holds the claim that authorized its
+  // fresh read — a generation is a property of the mirror row, refreshed
+  // independently of any claim's identity or lifetime. The EXISTS
+  // subquery re-verifies, INSIDE this same atomic statement, that
+  // `claimToken` is STILL the live claim for this booking right now —
+  // closing the exact window the round-18 repro exploited (a resumed,
+  // stale-payload write whose OWN generation read happened to be fresh
+  // because it was fetched AFTER a legitimate takeover already occurred).
   const updateResult = await env.DB
     .prepare(
       `UPDATE marau_test_bookings SET
@@ -363,7 +469,8 @@ async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, 
          sync_state = 'IN_LATEST_FEED', sync_last_error = NULL
        WHERE id = ?
          AND source_write_generation = ?
-         AND source_status NOT IN ('cancelled', 'completed')`
+         AND source_status NOT IN ('cancelled', 'completed')
+         AND EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`
     )
     .bind(
       marauStatus,
@@ -380,11 +487,21 @@ async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, 
       provenance.snapshotSequence,
       now,
       existingBookingRow.id,
-      expectedGeneration
+      expectedGeneration,
+      sourceBookingRef,
+      claimToken,
+      now
     )
     .run();
 
   if (updateResult.meta.changes === 0) {
+    // Disambiguate WHY, checked in the same priority order the WHERE
+    // clause itself applies its conditions: claim ownership first (the
+    // round-18 fix's own guard), then terminal state, then a genuine
+    // same-claim generation conflict (should be rare under claim
+    // serialization, but reported precisely rather than assumed).
+    const stillOwnClaim = await env.DB.prepare('SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?').bind(sourceBookingRef, claimToken, now).first();
+    if (!stillOwnClaim) return { ok: true, applied: false, reason: 'CLAIM_LOST', marau_booking_id: existingBookingRow.id };
     const current = await env.DB.prepare('SELECT status, source_status, source_write_generation FROM marau_test_bookings WHERE id = ?').bind(existingBookingRow.id).first();
     if (!current) return { ok: true, applied: false, reason: 'MARAU_BOOKING_MISSING', marau_booking_id: existingBookingRow.id };
     const reason = TERMINAL_SOURCE_STATUSES.has(current.source_status) ? 'TERMINAL_STATE_LOCKED' : 'GENERATION_CONFLICT';
@@ -430,7 +547,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
     if (existingLink) {
       const existingBookingRow = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ? AND source_sync_owned = 1').bind(existingLink.marau_booking_id).first();
       if (!existingBookingRow) return { ok: false, reason: 'LINKED_MARAU_BOOKING_MISSING' };
-      const applied = await applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance });
+      const applied = await applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance, sourceBookingRef, claimToken: claim.claimToken });
       return { ...applied, claim_took_over: claim.tookOver };
     }
 
@@ -441,6 +558,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
       pickupDatetime,
       quotedAmount,
       provenance,
+      claimToken: claim.claimToken,
     });
     if (!created.ok) return created;
     if (created.created) {
@@ -449,8 +567,9 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
 
     // Recovered (interrupted retry or claim takeover) — apply the JUST
     // freshly-read data (never the original, possibly-abandoned
-    // attempt's own payload) through the same atomic path.
-    const applied = await applyFreshRead(env, created.existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance });
+    // attempt's own payload) through the same atomic, claim-verified
+    // path.
+    const applied = await applyFreshRead(env, created.existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance, sourceBookingRef, claimToken: claim.claimToken });
     return { ...applied, recovered: true, created: false, session: created.session, claim_took_over: claim.tookOver };
   } finally {
     await releaseBookingClaim(env, sourceBookingRef, claim.claimToken);
