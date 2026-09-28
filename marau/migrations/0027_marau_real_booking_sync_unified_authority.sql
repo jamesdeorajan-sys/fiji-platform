@@ -1,0 +1,33 @@
+-- Marau Stage 1 (PREVIEW/TEST ONLY) — round 16 fix (Codex independent
+-- review, finding 1): rounds 13-15 tracked event-driven ordering
+-- (`source_event_id`) and snapshot-driven ordering
+-- (`source_snapshot_sequence`) as two completely SEPARATE counters, each
+-- only ever compared against its own prior value. That let either path
+-- blindly overwrite whatever the OTHER path most recently wrote, because
+-- an event-id and a snapshot-sequence are not comparable numbers at all
+-- — a "newer-looking" write on one axis says nothing about freshness on
+-- the other. See worker/real_booking_sync.js's own header for the two
+-- reproduced repros and the corrected, unified contract.
+--
+-- `source_write_generation`: a single, shared, monotonic counter
+-- incremented by ONE successful write from EITHER path (event or
+-- snapshot), used as an optimistic-concurrency FENCING token — a write
+-- is only accepted if it was computed from a read that still matches the
+-- row's CURRENT generation, so a write based on a stale read (from
+-- either path) is rejected and must re-read-and-retry, rather than
+-- silently applying regardless of what happened in between.
+ALTER TABLE marau_test_bookings ADD COLUMN source_write_generation INTEGER NOT NULL DEFAULT 0;
+
+-- The primary, semantically-grounded cross-path authority rule (not a
+-- counter comparison at all, per instruction: "do not compare unrelated
+-- counter values"): 'cancelled' and 'completed' are REAL terminal states
+-- in the source system itself (see worker/real_booking_sync.js's own
+-- citation of handleAdminCancelBooking's real comment: "Blocked from
+-- 'completed' or already-'cancelled' — both are real terminal states,
+-- not something a cancel action should ever override"). Once
+-- `source_status` reaches either value — from EITHER path — no future
+-- apply from EITHER path may change it. This single rule, checked before
+-- any per-path counter comparison, is what actually fixes both
+-- reproduced repros; the shared generation counter above is the
+-- secondary, complementary anti-TOCTOU fencing layer for the remaining,
+-- genuinely-ambiguous non-terminal case.

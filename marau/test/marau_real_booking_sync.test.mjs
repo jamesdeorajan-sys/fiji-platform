@@ -376,7 +376,223 @@ test('round15/4: snapshotSequence must be a real, durable positive integer — n
 });
 
 // ---------------------------------------------------------------------
-// Rounds 13/14 corrections, re-verified unchanged under the round-15
+// Round 16, finding 1 — one coherent cross-path authority contract:
+// terminal-state stickiness (the real fix) plus shared generation
+// fencing (the complementary anti-TOCTOU layer). Deterministic
+// interleavings, no reliance on real thread timing.
+// ---------------------------------------------------------------------
+
+test('round16/1 repro A: a cancelled SNAPSHOT followed by an older accepted EVENT must NOT revive the booking', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'accepted' });
+  const created = await applySourceSnapshot(env, booking, { snapshotSequence: 1, deps });
+  assert.equal(created.status, 'confirmed');
+
+  const cancelledSnap = await applySourceSnapshot(env, { ...booking, status: 'cancelled' }, { snapshotSequence: 10, deps });
+  assert.equal(cancelledSnap.applied, true);
+  assert.equal(cancelledSnap.status, 'cancelled');
+
+  // An OLDER accepted EVENT arrives — source_event_id was never set by
+  // any event before (only snapshots have touched this row), so under
+  // the round-15 bug "source_event_id IS NULL" trivially admitted it.
+  const olderEvent = await syncRealBookingEvent(env, booking, synthEvent(booking, { source_event_id: 2 }), deps);
+  assert.equal(olderEvent.applied, false, 'a real cancellation must never be revived by an event, however it arrives');
+  assert.equal(olderEvent.reason, 'TERMINAL_STATE_LOCKED');
+
+  const row = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(created.marau_booking_id).first();
+  assert.equal(row.status, 'cancelled', 'the exact round-16 repro A: status must stay cancelled, never revert to confirmed');
+  assert.equal(row.source_status, 'cancelled');
+});
+
+test('round16/1 repro B: an accepted snapshot captured BEFORE a newer cancelled EVENT must not revive the booking when applied AFTER it', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'accepted' });
+  const created = await applySourceSnapshot(env, booking, { snapshotSequence: 1, deps });
+
+  // "Capture" a snapshot — just read the CURRENT source booking data,
+  // matching an accepted state, before anything newer has happened.
+  const capturedSnapshotBooking = { ...booking, status: 'accepted' };
+
+  // A NEWER cancelled EVENT applies.
+  const cancelEvent = await syncRealBookingEvent(env, booking, synthEvent(booking, { event_type: 'cancelled', new_status: 'cancelled', source_event_id: 3 }), deps);
+  assert.equal(cancelEvent.applied, true);
+  assert.equal(cancelEvent.status, 'cancelled');
+
+  // The OLDER captured snapshot is applied AFTER the newer cancellation
+  // — source_snapshot_sequence was never touched by the event path, so
+  // under the round-15 bug "source_snapshot_sequence IS NULL" (still
+  // null relative to the event path, since only snapshotSequence=1 was
+  // ever applied and this is a FRESH, lower value scenario) would have
+  // trivially admitted it.
+  const staleSnapshot = await applySourceSnapshot(env, capturedSnapshotBooking, { snapshotSequence: 1, deps });
+  assert.equal(staleSnapshot.applied, false, 'a real cancellation must never be revived by a stale captured snapshot');
+
+  const row = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(created.marau_booking_id).first();
+  assert.equal(row.status, 'cancelled', 'the exact round-16 repro B: status must stay cancelled, never revert to confirmed AGAIN');
+});
+
+test('round16/1: terminal-state stickiness applies symmetrically — a cancelled EVENT then a stale accepted SNAPSHOT is also rejected', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'accepted' });
+  const created = await syncRealBookingEvent(env, booking, createdAlreadyAcceptedEvent(booking, { source_event_id: 1 }), deps);
+  const cancelEvent = await syncRealBookingEvent(env, booking, synthEvent(booking, { event_type: 'cancelled', new_status: 'cancelled', source_event_id: 2 }), deps);
+  assert.equal(cancelEvent.status, 'cancelled');
+
+  const laterSnapshot = await applySourceSnapshot(env, { ...booking, status: 'accepted' }, { snapshotSequence: 1, deps });
+  assert.equal(laterSnapshot.applied, false);
+  assert.equal(laterSnapshot.reason, 'TERMINAL_STATE_LOCKED');
+  const row = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(created.marau_booking_id).first();
+  assert.equal(row.status, 'cancelled');
+});
+
+test('round16/1: a real, non-terminal event still applies normally after terminal-state stickiness and generation fencing are added — no regression to the ordinary flow', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'accepted' });
+  const created = await syncRealBookingEvent(env, booking, createdEvent(booking, { source_event_id: 1 }), deps);
+  assert.equal(created.status, 'pending');
+  const accepted = await syncRealBookingEvent(env, booking, synthEvent(booking, { source_event_id: 2 }), deps);
+  assert.equal(accepted.applied, true);
+  assert.equal(accepted.status, 'confirmed');
+  const completed = await syncRealBookingEvent(env, booking, synthEvent(booking, { event_type: 'completed', new_status: 'completed', source_event_id: 3 }), deps);
+  assert.equal(completed.applied, true);
+  const row = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(created.marau_booking_id).first();
+  assert.equal(row.source_write_generation, 3, 'generation increments once per successful write: 1 create + 2 further applies (accepted, completed)');
+});
+
+test('round16/1: generation fencing rejects a write based on a stale read even when its own ordering counter looks newer', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'accepted' });
+  const created = await syncRealBookingEvent(env, booking, createdEvent(booking, { source_event_id: 1 }), deps);
+  const staleRead = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(created.marau_booking_id).first();
+
+  // Someone else advances the row (event id=5, non-terminal).
+  await syncRealBookingEvent(env, booking, synthEvent(booking, { source_event_id: 5 }), deps);
+
+  // The stale reader now tries to write using its own (higher-looking,
+  // "newer" by ordinary event-id comparison) event id=10, but computed
+  // from generation 1 data that is no longer current.
+  const staleWrite = await applyEventIfNewer(env, staleRead, booking, synthEvent(booking, { source_event_id: 10 }), { nowIso, marauStatus: 'confirmed', pickupDatetime: staleRead.pickup_datetime, quotedAmount: staleRead.quoted_amount });
+  assert.equal(staleWrite.applied, false);
+  assert.equal(staleWrite.reason, 'GENERATION_CONFLICT', 'a stale-generation write must be rejected even though its OWN ordering value (10) is higher than what it read (1... well, source_event_id was 1 at read time)');
+});
+
+// ---------------------------------------------------------------------
+// Round 16, finding 2 — snapshot first-creation recovery must repair
+// missing linkage, not just report the snapshot as stale/duplicate.
+// ---------------------------------------------------------------------
+
+test('round16/2 repro: a fault-injected link-row failure during a FIRST snapshot sync, retried after removing the fault, must repair the link — not just report ok:true with zero links', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'pending' });
+
+  env.DB.exec(`CREATE TRIGGER round16_block_snapshot_link BEFORE INSERT ON marau_real_booking_links BEGIN SELECT RAISE(ABORT, 'fault'); END;`);
+  await assert.rejects(() => applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }));
+  env.DB.exec('DROP TRIGGER round16_block_snapshot_link;');
+
+  // Interrupted state, confirmed: owned row exists, link row does not.
+  const { results: bookingsAfterFailure } = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ? AND source_sync_owned = 1').bind(booking.source_booking_ref).all();
+  assert.equal(bookingsAfterFailure.length, 1);
+  const { results: linksAfterFailure } = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(linksAfterFailure.length, 0, 'the interrupted state under test: link row genuinely missing');
+
+  // Retry the SAME snapshot — this is exactly the reported repro.
+  const retry = await applySourceSnapshot(env, booking, { snapshotSequence: 1, deps });
+  assert.equal(retry.ok, true);
+
+  const { results: linksAfterRetry } = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(linksAfterRetry.length, 1, 'the retry must repair the missing link row, not just report ok:true and leave it missing');
+  const { results: bookingsAfterRetry } = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(bookingsAfterRetry.length, 1, 'still exactly one mirror row — no duplicate created during repair');
+  const { results: sessionsAfterRetry } = await env.DB.prepare('SELECT * FROM guest_sessions WHERE guest_email = ?').bind(booking.guest_email).all();
+  assert.equal(sessionsAfterRetry.length, 1, 'still exactly one session — repair must never create an extra one');
+});
+
+test('round16/2: same-version retry after repair correctly reports the snapshot as already-applied, but the link is still fixed', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'pending' });
+  env.DB.exec(`CREATE TRIGGER round16_block_same BEFORE INSERT ON marau_real_booking_links BEGIN SELECT RAISE(ABORT, 'fault'); END;`);
+  await assert.rejects(() => applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }));
+  env.DB.exec('DROP TRIGGER round16_block_same;');
+
+  const retry = await applySourceSnapshot(env, booking, { snapshotSequence: 1, deps });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.recovered, true);
+  // Same snapshotSequence as the interrupted attempt already recorded —
+  // correctly a no-op on the DATA (nothing changed), but the link must
+  // still now exist.
+  assert.equal(retry.applied, false);
+  const { results: links } = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(links.length, 1);
+});
+
+test('round16/2: newer-version retry after repair both fixes the link AND applies the newer data', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'pending', quoted_amount: 20 });
+  env.DB.exec(`CREATE TRIGGER round16_block_newer BEFORE INSERT ON marau_real_booking_links BEGIN SELECT RAISE(ABORT, 'fault'); END;`);
+  await assert.rejects(() => applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }));
+  env.DB.exec('DROP TRIGGER round16_block_newer;');
+
+  // The retry carries a genuinely NEWER snapshot (the reconciliation
+  // pass re-read the real row again before retrying).
+  const retry = await applySourceSnapshot(env, { ...booking, status: 'accepted', quoted_amount: 55 }, { snapshotSequence: 2, deps });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.applied, true);
+  assert.equal(retry.status, 'confirmed');
+
+  const { results: links } = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(links.length, 1);
+  const row = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(row.quoted_amount, 55);
+  assert.equal(row.status, 'confirmed');
+});
+
+test('round16/2: concurrent recovery attempts for the SAME interrupted snapshot never create two sessions or two link rows', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'pending' });
+  env.DB.exec(`CREATE TRIGGER round16_block_concurrent BEFORE INSERT ON marau_real_booking_links BEGIN SELECT RAISE(ABORT, 'fault'); END;`);
+  await assert.rejects(() => applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }));
+  env.DB.exec('DROP TRIGGER round16_block_concurrent;');
+
+  const [first, second] = await Promise.all([
+    applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }),
+    applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }),
+  ]);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+
+  const { results: links } = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(links.length, 1, 'exactly one link row, even with two concurrent recovery attempts');
+  const { results: sessions } = await env.DB.prepare('SELECT * FROM guest_sessions WHERE guest_email = ?').bind(booking.guest_email).all();
+  assert.equal(sessions.length, 1, 'exactly one session, even with two concurrent recovery attempts');
+});
+
+test('round16/2: repair never bypasses revocation — a revoked session recovered via repair stays revoked', async () => {
+  const env = makeEnv();
+  const booking = synthRealBooking({ status: 'pending' });
+  env.DB.exec(`CREATE TRIGGER round16_block_revoke BEFORE INSERT ON marau_real_booking_links BEGIN SELECT RAISE(ABORT, 'fault'); END;`);
+  await assert.rejects(() => applySourceSnapshot(env, booking, { snapshotSequence: 1, deps }));
+  env.DB.exec('DROP TRIGGER round16_block_revoke;');
+
+  // Revoke the interrupted attempt's own (orphaned) session directly —
+  // simulating an admin revoking access to a suspicious/incomplete
+  // session before the retry ever runs.
+  const { results: orphanRows } = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE source_booking_ref = ? AND source_sync_owned = 1').bind(booking.source_booking_ref).all();
+  const orphanSessionId = orphanRows[0].guest_session_id;
+  await env.DB.prepare('UPDATE guest_sessions SET access_token_revoked = 1 WHERE session_id = ?').bind(orphanSessionId).run();
+
+  const retry = await applySourceSnapshot(env, booking, { snapshotSequence: 1, deps });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.session.session_id, orphanSessionId, 'repair must reuse the SAME session, never mint a fresh, unrevoked one');
+
+  const session = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(orphanSessionId).first();
+  assert.equal(session.access_token_revoked, 1, 'revocation must never be bypassed or reset by repair');
+
+  const tripAttempt = await call(env, '/preview/trip', { headers: authed(retry.session.access_token) });
+  assert.equal(tripAttempt.status, 401, 'the recovered-but-revoked session must still be rejected on a protected endpoint');
+});
+
+// ---------------------------------------------------------------------
+// Rounds 13/14 corrections, re-verified unchanged under the round-16
 // module.
 // ---------------------------------------------------------------------
 

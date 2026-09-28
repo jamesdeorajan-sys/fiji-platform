@@ -1,8 +1,88 @@
-/* Marau Stage 1 (PREVIEW ONLY) — round 15: fixes four bounded findings
- * from Codex's independent review of round 14 (commit 9398654, 406/406
- * verified passing, no shared-engine changes). Rounds 13/14's own
+/* Marau Stage 1 (PREVIEW ONLY) — round 16: fixes two bounded blockers
+ * from Codex's independent review of round 15 (commit 35f887f, 406/406
+ * verified passing, no shared-engine changes). Rounds 13-15's own
  * corrections still stand and are unchanged except where noted below;
  * this header documents only what changed THIS round and why.
+ *
+ * ── ROUND 16, FINDING 1 — one coherent cross-path authority contract ───
+ * Round 15 tracked event-driven ordering (`source_event_id`) and
+ * snapshot-driven ordering (`source_snapshot_sequence`) as two
+ * completely SEPARATE counters, each compared only against its OWN prior
+ * value. That let either path blindly overwrite whatever the OTHER path
+ * most recently wrote — an event-id and a snapshot-sequence are not
+ * comparable numbers at all; "newer on one axis" says nothing about
+ * freshness on the other. Two repros confirmed this directly:
+ *   A. Apply a cancelled SNAPSHOT (`source_status` becomes 'cancelled',
+ *      `source_snapshot_sequence` set). Deliver an OLDER accepted EVENT
+ *      — `source_event_id` was still NULL (no event had ever applied to
+ *      this row), so "`source_event_id IS NULL`" trivially admitted ANY
+ *      event, silently reviving the cancelled booking as confirmed.
+ *   B. Capture an accepted SNAPSHOT (read, not yet applied). Apply a
+ *      NEWER cancelled EVENT (`source_event_id` set, status cancelled).
+ *      Apply the OLDER captured snapshot — `source_snapshot_sequence`
+ *      was still NULL, so it too was trivially admitted, silently
+ *      reviving the cancelled booking as confirmed AGAIN, from the other
+ *      direction.
+ *
+ * Per instruction, the fix does NOT compare the two unrelated counters
+ * against each other. Instead it has two complementary layers:
+ *   1. TERMINAL-STATE STICKINESS (the actual fix for both repros above,
+ *      and the primary cross-path authority rule): 'cancelled' and
+ *      'completed' are REAL terminal states in the source system itself
+ *      — see this file's own citation, already established in round 13,
+ *      of `handleAdminCancelBooking`'s real comment: "Blocked from
+ *      'completed' or already-'cancelled' — both are real terminal
+ *      states, not something a cancel action should ever override."
+ *      Once `source_status` (a VALUE both paths read/write identically,
+ *      not a counter) reaches either value, from EITHER path, no future
+ *      apply from EITHER path may change it — checked first, inside the
+ *      same atomic UPDATE's WHERE clause, before any per-path counter
+ *      check. This one rule fixes both repros without ever comparing an
+ *      event id to a snapshot sequence.
+ *   2. SHARED GENERATION FENCING (`source_write_generation`, migration
+ *      0027) — a single counter incremented by ONE successful write from
+ *      EITHER path, used as an optimistic-concurrency fencing token: a
+ *      write is only accepted if the row's CURRENT generation still
+ *      matches what the caller observed when it read the row. This is
+ *      the "serialized authoritative reads with ownership fencing"
+ *      mechanism named in the instruction — it does not, and cannot,
+ *      establish which of two genuinely incomparable sources (an event
+ *      vs. a snapshot, neither of which carries the other's kind of
+ *      version) is "more true," but it DOES guarantee no write is ever
+ *      based on a stale read from EITHER path, closing the remaining
+ *      TOCTOU gap for the non-terminal case that terminal-stickiness
+ *      alone doesn't cover. Within-path ordering (`source_event_id` for
+ *      events, `source_snapshot_sequence` for snapshots — rounds 14/15,
+ *      unchanged) still runs alongside both of the above, in the SAME
+ *      atomic WHERE clause, so an out-of-order-delivered (but
+ *      freshly-read, non-racing) event or snapshot is still correctly
+ *      rejected even when generation fencing alone would have allowed
+ *      it.
+ *
+ * ── ROUND 16, FINDING 2 — snapshot recovery must repair linkage too ────
+ * Round 15's `applySourceSnapshot` looked up an existing OWNED row
+ * directly (`findOwnedMirrorRow`) and, if found, went straight to
+ * applying the snapshot — it never checked whether `marau_real_booking_links`
+ * actually had a row for it. Codex's repro: fault-inject the link-row
+ * INSERT during a first snapshot sync (real `CREATE TRIGGER ...
+ * RAISE(ABORT)`), so the mirror row is created (with
+ * `source_sync_owned = 1`) but its link row is missing; remove the fault
+ * and retry the SAME snapshot. Because `findOwnedMirrorRow` already
+ * found the orphaned row, the retry skipped straight to the ordinary
+ * "is this snapshot newer" check, which correctly reported
+ * `STALE_OR_DUPLICATE_SNAPSHOT` (same sequence as before) — reported
+ * `ok: true` while the link row remained permanently missing. Fixed by
+ * restructuring `applySourceSnapshot` to check `marau_real_booking_links`
+ * FIRST, exactly like `syncRealBookingEvent` already does — when no link
+ * exists yet, it now always routes through `createOrRecoverOwnedRow`
+ * (the SAME shared repair path both functions use), which idempotently
+ * ensures the link row exists whether the owned row is brand new or
+ * already there from an earlier interrupted attempt, before ever
+ * applying the current snapshot. Never creates an extra session, never
+ * adopts a guest-created row (FINDING 1 from round 15, unchanged), and
+ * never touches `access_token_revoked` — repair only ever re-links an
+ * EXISTING session to its own row, it does not re-create or un-revoke
+ * anything.
  *
  * ── ROUND 15, FINDING 1 (P0) — server-controlled provenance, never a
  *    guest-writable column ───────────────────────────────────────────────
@@ -147,6 +227,12 @@ function isLegitimateEventStatusPair(eventType, newStatus) {
   return LEGITIMATE_EVENT_STATUS_PAIRS.has(`${eventType}:${newStatus}`);
 }
 
+// ROUND 16, FINDING 1 — real, source-system terminal states. Once
+// `source_status` reaches either value, from EITHER path, nothing may
+// ever change it again. See this file's header for the full rationale
+// and the real source's own comment this is grounded in.
+const TERMINAL_SOURCE_STATUSES = new Set(['cancelled', 'completed']);
+
 /**
  * The ONLY status mapping this module is authorized to apply. 'pending'
  * maps to Marau's own 'pending' (immediate access, unconfirmed).
@@ -252,14 +338,28 @@ async function findOwnedMirrorRow(env, sourceBookingRef) {
  * unchanged).
  */
 export async function applyEventIfNewer(env, existingBookingRow, sourceBooking, sourceEvent, { nowIso, marauStatus, pickupDatetime, quotedAmount }) {
+  // Fast, non-atomic pre-check purely for a clear, specific return
+  // reason — the AUTHORITATIVE guard is the same condition repeated
+  // inside the UPDATE's own WHERE clause below, which is what actually
+  // protects against a concurrent write racing in between this read and
+  // that write.
+  if (TERMINAL_SOURCE_STATUSES.has(existingBookingRow.source_status)) {
+    return { ok: true, applied: false, reason: 'TERMINAL_STATE_LOCKED', current_source_status: existingBookingRow.source_status, marau_booking_id: existingBookingRow.id };
+  }
+
   const now = nowIso();
+  const expectedGeneration = existingBookingRow.source_write_generation;
   const updateResult = await env.DB
     .prepare(
       `UPDATE marau_test_bookings SET
          status = ?, pickup_zone = ?, destination_zone = ?, vehicle_type = ?, pickup_datetime = ?, quoted_amount = ?,
          updated_at = ?, source_status = ?, source_assigned_driver_id = ?, source_event_type = ?, source_event_id = ?, source_synced_at = ?,
+         source_write_generation = source_write_generation + 1,
          sync_state = 'IN_LATEST_FEED', sync_last_error = NULL
-       WHERE id = ? AND (source_event_id IS NULL OR source_event_id < ?)`
+       WHERE id = ?
+         AND source_write_generation = ?
+         AND (source_event_id IS NULL OR source_event_id < ?)
+         AND source_status NOT IN ('cancelled', 'completed')`
     )
     .bind(
       marauStatus,
@@ -275,22 +375,46 @@ export async function applyEventIfNewer(env, existingBookingRow, sourceBooking, 
       sourceEvent.source_event_id,
       now,
       existingBookingRow.id,
+      expectedGeneration,
       sourceEvent.source_event_id
     )
     .run();
 
   if (updateResult.meta.changes === 0) {
-    const current = await env.DB.prepare('SELECT source_event_id, status FROM marau_test_bookings WHERE id = ?').bind(existingBookingRow.id).first();
-    return {
-      ok: true,
-      applied: false,
-      reason: 'STALE_OR_DUPLICATE_EVENT',
-      current_source_event_id: current ? current.source_event_id : null,
-      marau_booking_id: existingBookingRow.id,
-    };
+    return rejectedApplyResult(env, existingBookingRow.id, expectedGeneration, 'source_event_id');
   }
 
   return { ok: true, applied: true, marau_booking_id: existingBookingRow.id, status: marauStatus };
+}
+
+/**
+ * Shared, precise-reason reporting for a rejected atomic apply (event or
+ * snapshot) — re-reads the row's CURRENT state to distinguish WHY the
+ * WHERE clause matched zero rows: a real terminal-state lock (round 16
+ * finding 1's primary fix), a generation-fencing conflict (a concurrent
+ * write from either path happened since the caller's own read — the
+ * secondary anti-TOCTOU layer), or a genuine same-path stale/duplicate
+ * replay (rounds 14/15's ordering checks, still enforced).
+ */
+async function rejectedApplyResult(env, marauBookingId, expectedGeneration, orderingColumn) {
+  const current = await env.DB.prepare(`SELECT ${orderingColumn}, status, source_status, source_write_generation FROM marau_test_bookings WHERE id = ?`).bind(marauBookingId).first();
+  if (!current) return { ok: true, applied: false, reason: 'MARAU_BOOKING_MISSING', marau_booking_id: marauBookingId };
+  const reason = TERMINAL_SOURCE_STATUSES.has(current.source_status)
+    ? 'TERMINAL_STATE_LOCKED'
+    : current.source_write_generation !== expectedGeneration
+      ? 'GENERATION_CONFLICT'
+      : orderingColumn === 'source_event_id'
+        ? 'STALE_OR_DUPLICATE_EVENT'
+        : 'STALE_OR_DUPLICATE_SNAPSHOT';
+  return {
+    ok: true,
+    applied: false,
+    reason,
+    current_source_status: current.source_status,
+    current_generation: current.source_write_generation,
+    [`current_${orderingColumn}`]: current[orderingColumn],
+    marau_booking_id: marauBookingId,
+  };
 }
 
 /**
@@ -334,8 +458,8 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
     .prepare(
       `INSERT OR IGNORE INTO marau_test_bookings
         (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at,
-         source_booking_ref, source_status, source_assigned_driver_id, source_event_type, source_event_id, source_snapshot_sequence, source_synced_at, sync_state, source_sync_owned)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1)`
+         source_booking_ref, source_status, source_assigned_driver_id, source_event_type, source_event_id, source_snapshot_sequence, source_synced_at, sync_state, source_sync_owned, source_write_generation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1, 1)`
     )
     .bind(
       clientBookingRef,
@@ -463,36 +587,63 @@ export async function applySourceSnapshot(env, sourceBooking, { snapshotSequence
   const { pickupDatetime, quotedAmount } = tripDetails;
 
   const sourceBookingRef = String(sourceBooking.source_booking_ref || sourceBooking.id);
-  const existingOwnedRow = await findOwnedMirrorRow(env, sourceBookingRef);
 
-  if (!existingOwnedRow) {
-    const created = await createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, {
-      nowIso,
-      createSessionAndOfferLink,
-      marauStatus,
-      pickupDatetime,
-      quotedAmount,
-      provenance: { status: sourceBooking.status, eventType: 'snapshot', eventId: null, snapshotSequence },
-    });
-    if (!created.ok) return created;
-    if (created.created) {
-      return { ok: true, created: true, session: created.session, marau_booking_id: created.existingBookingRow.id, link_offer: created.link_offer, status: marauStatus, via: 'snapshot' };
-    }
-    return applySnapshotIfNewer(env, created.existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, snapshotSequence });
+  // ROUND 16, FINDING 2: check the link table FIRST, exactly like
+  // syncRealBookingEvent does — NOT findOwnedMirrorRow first. A row can
+  // legitimately exist (source_sync_owned = 1) from an earlier attempt
+  // whose link-row insert failed; going straight to "apply the snapshot"
+  // on that row (round 15's bug) skips repairing the missing link
+  // forever. Routing through createOrRecoverOwnedRow whenever no link
+  // exists yet — the SAME repair path syncRealBookingEvent already
+  // uses — fixes this for both a genuinely first sync AND an interrupted
+  // retry, with one code path.
+  const existingLink = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+
+  if (existingLink) {
+    const existingBookingRow = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ? AND source_sync_owned = 1').bind(existingLink.marau_booking_id).first();
+    if (!existingBookingRow) return { ok: false, reason: 'LINKED_MARAU_BOOKING_MISSING' };
+    return applySnapshotIfNewer(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, snapshotSequence });
   }
 
-  return applySnapshotIfNewer(env, existingOwnedRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, snapshotSequence });
+  const created = await createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, {
+    nowIso,
+    createSessionAndOfferLink,
+    marauStatus,
+    pickupDatetime,
+    quotedAmount,
+    provenance: { status: sourceBooking.status, eventType: 'snapshot', eventId: null, snapshotSequence },
+  });
+  if (!created.ok) return created;
+  if (created.created) {
+    return { ok: true, created: true, session: created.session, marau_booking_id: created.existingBookingRow.id, link_offer: created.link_offer, status: marauStatus, via: 'snapshot' };
+  }
+
+  // Recovered (link repaired, session/row reused, per FINDING 2) — apply
+  // the current snapshot through the SAME atomic, ordered path as any
+  // other, in case it is actually newer than what the recovered row
+  // already has.
+  const applied = await applySnapshotIfNewer(env, created.existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, snapshotSequence });
+  return { ...applied, recovered: true, created: false, session: created.session, via: 'snapshot' };
 }
 
 async function applySnapshotIfNewer(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, snapshotSequence }) {
+  if (TERMINAL_SOURCE_STATUSES.has(existingBookingRow.source_status)) {
+    return { ok: true, applied: false, reason: 'TERMINAL_STATE_LOCKED', current_source_status: existingBookingRow.source_status, marau_booking_id: existingBookingRow.id, via: 'snapshot' };
+  }
+
   const now = nowIso();
+  const expectedGeneration = existingBookingRow.source_write_generation;
   const updateResult = await env.DB
     .prepare(
       `UPDATE marau_test_bookings SET
          status = ?, pickup_zone = ?, destination_zone = ?, vehicle_type = ?, pickup_datetime = ?, quoted_amount = ?,
          updated_at = ?, source_status = ?, source_assigned_driver_id = ?, source_event_type = 'snapshot', source_snapshot_sequence = ?, source_synced_at = ?,
+         source_write_generation = source_write_generation + 1,
          sync_state = 'IN_LATEST_FEED', sync_last_error = NULL
-       WHERE id = ? AND (source_snapshot_sequence IS NULL OR source_snapshot_sequence < ?)`
+       WHERE id = ?
+         AND source_write_generation = ?
+         AND (source_snapshot_sequence IS NULL OR source_snapshot_sequence < ?)
+         AND source_status NOT IN ('cancelled', 'completed')`
     )
     .bind(
       marauStatus,
@@ -507,19 +658,14 @@ async function applySnapshotIfNewer(env, existingBookingRow, sourceBooking, { no
       snapshotSequence,
       now,
       existingBookingRow.id,
+      expectedGeneration,
       snapshotSequence
     )
     .run();
 
   if (updateResult.meta.changes === 0) {
-    const current = await env.DB.prepare('SELECT source_snapshot_sequence, status FROM marau_test_bookings WHERE id = ?').bind(existingBookingRow.id).first();
-    return {
-      ok: true,
-      applied: false,
-      reason: 'STALE_OR_DUPLICATE_SNAPSHOT',
-      current_source_snapshot_sequence: current ? current.source_snapshot_sequence : null,
-      marau_booking_id: existingBookingRow.id,
-    };
+    const rejected = await rejectedApplyResult(env, existingBookingRow.id, expectedGeneration, 'source_snapshot_sequence');
+    return { ...rejected, via: 'snapshot' };
   }
 
   return { ok: true, applied: true, marau_booking_id: existingBookingRow.id, status: marauStatus, via: 'snapshot' };
