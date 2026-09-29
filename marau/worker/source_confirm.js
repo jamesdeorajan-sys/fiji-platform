@@ -7,6 +7,58 @@
  * outcome") — every fix below narrows or corrects a specific claim the
  * round-27 version made too loosely.
  *
+ * ── ROUND 29 — finishing outcome finalization ──────────────────────────
+ * Codex independently verified round 28 (466/466), then reproduced four
+ * further real defects specifically in `finalizeOutcome` and
+ * `classifyDefiniteOutcome` — the durable-write and classification
+ * logic round 28 itself introduced:
+ *
+ * (a) The PRIMARY `UPDATE ... SET status = 'confirmed'` write itself
+ *     was never wrapped — a fault on THAT write (not just the
+ *     secondary decision-log insert round 28 already handled) would
+ *     have propagated an uncaught exception even though the source had
+ *     already genuinely confirmed. Fixed: `finalizeOutcome` now catches
+ *     a failure on its own primary UPDATE and returns the KNOWN source
+ *     decision (`status`/`ok` reflect the truth) with a separate
+ *     `local_persistence: { ok: false, ... }` sub-result — never an
+ *     undifferentiated failure. The row is left in `reserved`/
+ *     `unresolved`, so a plain retry (once the fault is removed) simply
+ *     re-resolves the SAME attempt through the normal path and repairs
+ *     itself — no special repair codepath needed.
+ * (b) `classifyDefiniteOutcome` only ever treated `status === 'accepted'`
+ *     as evidence of OUR OWN confirmation — a reservation that had
+ *     legitimately progressed to `en_route` or `completed` by the time
+ *     a recovery read happened (an entirely normal real-world sequence
+ *     AFTER a real confirmation) would have been misclassified as a
+ *     conflict. Fixed: ownership is now checked against the WHOLE
+ *     `CONFIRMED_PROGRESSION_STATUSES` set (`accepted`, `en_route`,
+ *     `completed`), not `accepted` alone — the historical fact "this
+ *     attempt confirmed it" is recovered independent of how far the
+ *     booking has since moved; `cancelled` remains its own, explicit,
+ *     never-confirmable outcome.
+ * (c) Anything that wasn't cancelled-and-owned-and-accepted used to
+ *     fall through to `conflict` by default — including a `pending`
+ *     response/read (no decision has been made AT ALL) and an
+ *     unrecognized/unsupported status string. Neither is EVIDENCE of a
+ *     conflicting decision, and `finalizeOutcome` durably writes
+ *     whatever it's given — a false `conflict` would have been
+ *     PERMANENT. Fixed: `classifyDefiniteOutcome` is now the single
+ *     classifier both `resolveAttempt`'s response path and
+ *     `recoverViaReadback`'s read path share, and it returns
+ *     `unresolved` (never finalized, always retryable) for `pending`,
+ *     a missing reservation, and any status outside a small, explicit
+ *     known set — only a genuinely known, non-pending, non-cancelled,
+ *     not-ours status is real evidence of a conflict.
+ * (d) `finalizeOutcome`'s own UPDATE never checked its affected-row
+ *     count — under a genuine race (two concurrent recoveries resolving
+ *     the same attempt), the LOSING caller's write would silently apply
+ *     zero rows, yet the code went on to log ITS OWN (possibly
+ *     different) classification to the decision log and return it to
+ *     its own caller, instead of the row that actually won. Fixed:
+ *     `result.meta.changes` is checked explicitly; on zero, the row is
+ *     re-read and the ALREADY-DURABLE winning values are what get
+ *     logged and returned — never a losing caller's own proposal.
+ *
  * ── FIX 1 — a cancelled reservation must never read back as confirmed ──
  * Round 27's recovery logic only ever asked "is the source's status
  * still 'pending'?" — anything else was treated as a candidate
@@ -221,38 +273,101 @@ async function reserveAttempt(env, { sourceBookingRef, driverId, operator, nowIs
   }
 }
 
-async function finalizeOutcome(env, row, { status, confirmedDriverId, recoveredViaReadback, nowIso }) {
-  const now = nowIso();
-  await env.DB
-    .prepare(
-      `UPDATE marau_source_confirm_outcomes
-         SET status = ?, confirmed_driver_id = ?, recovered_via_readback = ?, decided_at = ?
-       WHERE source_booking_ref = ? AND attempt_id = ? AND status IN ('reserved', 'unresolved')`
-    )
-    .bind(status, confirmedDriverId ?? null, recoveredViaReadback ? 1 : 0, now, row.source_booking_ref, row.attempt_id)
-    .run();
-  await recordDecisionLogIfMissing(env, { sourceBookingRef: row.source_booking_ref, attemptId: row.attempt_id, status, nowIso });
-  const finalRow = await loadOutcomeRow(env, row.source_booking_ref);
-  return terminalResult(finalRow);
-}
+// Round 29 — a KNOWN source status is required before treating anything
+// as a conflict (fix 3): "pending" is not evidence of ANY decision, and
+// a status this module has never heard of is not evidence of a
+// CONFLICTING one either — both must stay honestly unresolved, never a
+// false permanent conflict. "accepted"/"en_route"/"completed" are all
+// treated as evidence of OUR OWN successful confirmation when the
+// attempt_id matches (fix 2) — a reservation confirmed through Marau
+// can legitimately progress past "accepted" by the time a recovery
+// read happens, and that must not be misread as "no longer confirmed."
+const KNOWN_SOURCE_STATUSES = new Set(['pending', 'accepted', 'en_route', 'completed', 'cancelled']);
+const CONFIRMED_PROGRESSION_STATUSES = new Set(['accepted', 'en_route', 'completed']);
 
 /**
- * Classifies a DEFINITE (non-pending) source read — fix 1 (cancelled
- * first, before any driver comparison) and fix 2 (attempt_id, never
- * driver_id, proves ownership) both live here.
+ * Classifies a source read into a decision — or explicitly declines to
+ * decide (`status: 'unresolved'`) when the evidence doesn't support
+ * one. Fix 1 (cancelled checked first, before any driver comparison),
+ * fix 2 (attempt_id, never driver_id, proves ownership — checked
+ * across the whole CONFIRMED_PROGRESSION_STATUSES set, not just
+ * "accepted" alone), and fix 3 (pending/missing/unsupported all stay
+ * unresolved, never a guessed conflict) all live here, as the ONE
+ * classifier both `resolveAttempt` and `recoverViaReadback` use — no
+ * duplicated, potentially inconsistent logic between the two.
  */
 function classifyDefiniteOutcome(row, current) {
   if (!current) return { status: 'unresolved', reason: 'SOURCE_RESERVATION_NOT_FOUND' };
+  if (current.status === 'pending') return { status: 'unresolved', reason: 'SOURCE_STILL_PENDING' };
   if (current.status === 'cancelled') {
     return { status: 'source_cancelled', confirmedDriverId: current.assigned_driver_id ?? null };
   }
+  if (!KNOWN_SOURCE_STATUSES.has(current.status)) {
+    return { status: 'unresolved', reason: 'UNSUPPORTED_SOURCE_STATUS' };
+  }
   const ownedByThisAttempt = current.confirmation_attempt_id === row.attempt_id;
-  if (current.status === 'accepted' && ownedByThisAttempt) {
+  if (ownedByThisAttempt && CONFIRMED_PROGRESSION_STATUSES.has(current.status)) {
     return { status: 'confirmed', confirmedDriverId: current.assigned_driver_id };
   }
-  // Accepted by a different attempt, or any other non-pending,
-  // non-cancelled state that isn't ours — never a confirmation.
+  // A genuinely known, non-pending, non-cancelled status, but NOT owned
+  // by this attempt — real evidence of a conflicting decision.
   return { status: 'conflict', confirmedDriverId: current.assigned_driver_id ?? null };
+}
+
+/**
+ * Durably records a decision — or, if that write itself fails or loses
+ * a race, reports honestly without ever losing track of the ALREADY-
+ * KNOWN source decision (fix 1) or misattributing a losing caller's own
+ * classification over the actual winning one (fix 4).
+ */
+async function finalizeOutcome(env, row, { status, confirmedDriverId, recoveredViaReadback, nowIso }) {
+  if (status === 'unresolved') return unresolvedResult(row, undefined);
+
+  const now = nowIso();
+  let changes = 0;
+  let updateFailed = false;
+  let updateError = null;
+  try {
+    const result = await env.DB
+      .prepare(
+        `UPDATE marau_source_confirm_outcomes
+           SET status = ?, confirmed_driver_id = ?, recovered_via_readback = ?, decided_at = ?
+         WHERE source_booking_ref = ? AND attempt_id = ? AND status IN ('reserved', 'unresolved')`
+      )
+      .bind(status, confirmedDriverId ?? null, recoveredViaReadback ? 1 : 0, now, row.source_booking_ref, row.attempt_id)
+      .run();
+    // Fix 4: VERIFIED, never assumed — an affected-row count of zero
+    // means this write did not apply (a concurrent finalize already
+    // won), not that it silently succeeded.
+    changes = result.meta.changes;
+  } catch (err) {
+    updateFailed = true;
+    updateError = String(err && err.message);
+  }
+
+  if (updateFailed) {
+    // Fix 1: the source decision is ALREADY KNOWN at this point (we
+    // only ever reach finalizeOutcome after a real source response or
+    // a successful recovery read) — report it as such, distinct from
+    // local persistence failing. Never an undifferentiated failure.
+    return {
+      ok: status === 'confirmed',
+      status,
+      confirmed_driver_id: confirmedDriverId ?? null,
+      operator: row.operator,
+      attempt_id: row.attempt_id,
+      recovered_via_readback: Boolean(recoveredViaReadback),
+      local_persistence: { ok: false, reason: 'PRIMARY_UPDATE_FAILED', detail: updateError },
+    };
+  }
+
+  // Fix 4: if OUR OWN update applied zero rows (a concurrent finalize
+  // already won this row), read back and use THAT row's own durable
+  // values for the audit log and the returned result — never this
+  // caller's own (possibly different, losing) classification.
+  const finalRow = await loadOutcomeRow(env, row.source_booking_ref);
+  await recordDecisionLogIfMissing(env, { sourceBookingRef: finalRow.source_booking_ref, attemptId: finalRow.attempt_id, status: finalRow.status, nowIso });
+  return { ...terminalResult(finalRow), local_persistence: { ok: true } };
 }
 
 async function recoverViaReadback(env, client, row, nowIso) {
@@ -260,18 +375,12 @@ async function recoverViaReadback(env, client, row, nowIso) {
   try {
     current = await client.getReservation(row.source_booking_ref);
   } catch {
-    // Fix 4: the write's own response AND the recovery read are BOTH
+    // The write's own response AND the recovery read are BOTH
     // unavailable. Never guess — report honestly, change nothing.
     return unresolvedResult(row, 'SOURCE_UNAVAILABLE_FOR_RECOVERY');
   }
-  if (!current) return unresolvedResult(row, 'SOURCE_RESERVATION_NOT_FOUND');
-  if (current.status === 'pending') {
-    // Fix 4: a pending read alone does not prove an in-flight request
-    // cannot still commit — left unresolved, never confidently
-    // reported as "safe to retry with a fresh write."
-    return unresolvedResult(row, 'SOURCE_STATE_STILL_PENDING_AFTER_LOST_RESPONSE');
-  }
   const classified = classifyDefiniteOutcome(row, current);
+  if (classified.status === 'unresolved') return unresolvedResult(row, classified.reason);
   return finalizeOutcome(env, row, { ...classified, recoveredViaReadback: true, nowIso });
 }
 
@@ -291,7 +400,12 @@ async function resolveAttempt(env, client, row, nowIso) {
     return finalizeOutcome(env, row, { status: 'confirmed', confirmedDriverId: driverId, recoveredViaReadback: false, nowIso });
   }
 
+  // Fix 3: a definite, non-throwing "not won" response is run through
+  // the SAME classifier as a readback — a response showing "pending"
+  // or an unrecognized status is not evidence of a conflicting
+  // decision either, and must not become one.
   const classified = classifyDefiniteOutcome(row, response && response.current);
+  if (classified.status === 'unresolved') return unresolvedResult(row, classified.reason);
   return finalizeOutcome(env, row, { ...classified, recoveredViaReadback: false, nowIso });
 }
 
@@ -328,3 +442,9 @@ export async function confirmReservationAtSource(env, client, { sourceBookingRef
   // call's own (possibly different) arguments.
   return resolveAttempt(env, client, row, nowIso);
 }
+
+// Test-only: exposes finalizeOutcome directly so a test can reproduce a
+// genuine race between two concurrent finalizers of the SAME reserved
+// attempt (fix round-29d) without needing two real, concurrently-racing
+// client calls. Never used by any production code path.
+export const __test_only_finalizeOutcome = finalizeOutcome;

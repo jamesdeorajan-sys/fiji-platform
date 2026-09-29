@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { installNetworkGuard } from './network_guard.mjs';
 import { makeEnv } from './fixtures.mjs';
 import worker, { nowIso } from '../worker/worker.js';
-import { confirmReservationAtSource } from '../worker/source_confirm.js';
+import { confirmReservationAtSource, __test_only_finalizeOutcome } from '../worker/source_confirm.js';
 
 installNetworkGuard();
 
@@ -207,6 +207,136 @@ test('fix 2: a coincidentally-matching driver id from a DIFFERENT attempt is cor
   assert.equal(result.status, 'conflict', 'the same driver id from a different attempt must never be treated as our own confirmation');
   assert.equal(result.confirmed_driver_id, 'drv_shared');
   assert.equal(result.operator, 'Ana (ops)', "the LOCAL ledger's own reserving operator is still recorded, distinct from whoever actually won at the source");
+});
+
+// ---------------------------------------------------------------------
+// ROUND 29 — finishing outcome finalization: four further defects Codex
+// found specifically in finalizeOutcome/classifyDefiniteOutcome.
+// ---------------------------------------------------------------------
+
+test('round29 (a): a fault on the PRIMARY outcome UPDATE itself never becomes an undifferentiated failure -- the known source decision is preserved and local persistence is reported separately, then a retry repairs it', async () => {
+  const env = makeEnv();
+  const { booking } = await seedAndSaveReservation(env);
+  await seedStaffIdentity(env, 'staff-tok-ana', 'Ana (ops)');
+
+  env.DB.exec(`CREATE TRIGGER round29_block_primary_update BEFORE UPDATE ON marau_source_confirm_outcomes WHEN NEW.status = 'confirmed' BEGIN SELECT RAISE(ABORT, 'round29 fault injection'); END;`);
+
+  const first = await sourceApiConfirm(env, booking.source_booking_ref, { driverId: 'drv_29a', staffToken: 'staff-tok-ana' });
+  assert.equal(first.status, 200, 'the source decision must be reported, never an undifferentiated failure, even when the primary local write itself faults');
+  assert.equal(first.data.ok, true);
+  assert.equal(first.data.status, 'confirmed', 'the KNOWN source decision must be preserved in the response');
+  assert.equal(first.data.confirmed_driver_id, 'drv_29a');
+  assert.equal(first.data.operator, 'Ana (ops)');
+  assert.equal(first.data.local_persistence.ok, false, 'local persistence must be reported as its own, distinct sub-result');
+
+  const ledgerDuring = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(ledgerDuring.status, 'reserved', 'the local row must be left exactly as-is while the primary write is faulted');
+
+  env.DB.exec('DROP TRIGGER round29_block_primary_update;');
+
+  await seedStaffIdentity(env, 'staff-tok-bala', 'Bala (ops)');
+  const retry = await sourceApiConfirm(env, booking.source_booking_ref, { driverId: 'drv_should_be_ignored', staffToken: 'staff-tok-bala' });
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.ok, true);
+  assert.equal(retry.data.confirmed_driver_id, 'drv_29a', 'the retry must never produce a duplicate/different assignment');
+  assert.equal(retry.data.operator, 'Ana (ops)', 'the retry must never change the original operator attribution');
+
+  const ledgerAfter = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+  assert.equal(ledgerAfter.status, 'confirmed', 'the primary row is durably repaired once the fault is removed');
+  const { results: logRows } = await env.DB.prepare('SELECT * FROM marau_source_confirm_decision_log WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(logRows.length, 1, 'exactly one decision-log row -- no duplicate side effects from the retry');
+});
+
+test('round29 (b): a successful attempt is still recoverable after the source has progressed to en_route or completed -- the historical confirmation outcome is distinct from current booking status', async () => {
+  const env = makeEnv();
+  const { booking } = await seedAndSaveReservation(env);
+
+  for (const advancedStatus of ['en_route', 'completed']) {
+    const client = {
+      async getReservation(ref) {
+        const row = await env.DB.prepare('SELECT status, assigned_driver_id, confirmation_attempt_id, confirmed_operator_name FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(ref).first();
+        return row ? { status: row.status, assigned_driver_id: row.assigned_driver_id, confirmation_attempt_id: row.confirmation_attempt_id, confirmed_operator: row.confirmed_operator_name } : null;
+      },
+      async confirmReservation(ref, { driverId, attemptId, operator }) {
+        // Commits, then the booking legitimately progresses PAST
+        // "accepted" (a driver en route / trip completed) before the
+        // response is lost.
+        await env.DB.prepare(`UPDATE marau_synthetic_source_bookings SET status = ?, assigned_driver_id = ?, confirmation_attempt_id = ?, confirmed_operator_name = ? WHERE source_booking_ref = ?`)
+          .bind(advancedStatus, driverId, attemptId, operator, ref).run();
+        throw new Error('SIMULATED_RESPONSE_LOSS_AFTER_PROGRESSION');
+      },
+    };
+
+    const result = await confirmReservationAtSource(env, client, { sourceBookingRef: booking.source_booking_ref, driverId: `drv_${advancedStatus}`, operator: 'Ana (ops)', nowIso });
+    assert.equal(result.ok, true, `a booking that has already progressed to '${advancedStatus}' must still be recoverable as a genuine confirmation`);
+    assert.equal(result.status, 'confirmed');
+    assert.equal(result.confirmed_driver_id, `drv_${advancedStatus}`);
+
+    // Reset for the next iteration.
+    await env.DB.prepare('DELETE FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(booking.source_booking_ref).run();
+    await env.DB.prepare('DELETE FROM marau_source_confirm_decision_log WHERE source_booking_ref = ?').bind(booking.source_booking_ref).run();
+    await env.DB.prepare(`UPDATE marau_synthetic_source_bookings SET status = 'pending', assigned_driver_id = NULL, confirmation_attempt_id = NULL, confirmed_operator_name = NULL WHERE source_booking_ref = ?`).bind(booking.source_booking_ref).run();
+  }
+});
+
+test('round29 (c): pending, missing, and unsupported source responses are all left honestly unresolved -- never a permanent, unevidenced conflict', async () => {
+  const env = makeEnv();
+
+  async function attempt(currentResponse) {
+    const { booking } = await seedAndSaveReservation(env);
+    const client = {
+      async getReservation() {
+        return currentResponse;
+      },
+      async confirmReservation() {
+        return { won: false, current: currentResponse };
+      },
+    };
+    return { booking, result: await confirmReservationAtSource(env, client, { sourceBookingRef: booking.source_booking_ref, driverId: 'drv_1', operator: 'Ana (ops)', nowIso }) };
+  }
+
+  const { booking: pendingBooking, result: pendingResult } = await attempt({ status: 'pending', assigned_driver_id: null, confirmation_attempt_id: null, confirmed_operator: null });
+  assert.equal(pendingResult.status, 'unresolved', 'a "not won" response showing the source still pending must never become a conflict');
+  const pendingLedger = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(pendingBooking.source_booking_ref).first();
+  assert.equal(pendingLedger.status, 'reserved', 'the reservation stays retryable, never durably marked as a conflict');
+
+  const { booking: missingBooking, result: missingResult } = await attempt(null);
+  assert.equal(missingResult.status, 'unresolved', 'a missing/null current reservation is not evidence of a conflicting decision');
+  const missingLedger = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(missingBooking.source_booking_ref).first();
+  assert.equal(missingLedger.status, 'reserved');
+
+  const { booking: unsupportedBooking, result: unsupportedResult } = await attempt({ status: 'archived_by_a_future_feature', assigned_driver_id: 'drv_9', confirmation_attempt_id: 'some-attempt', confirmed_operator: 'Someone' });
+  assert.equal(unsupportedResult.status, 'unresolved', 'an unrecognized/unsupported source status is not evidence of a conflicting decision either');
+  const unsupportedLedger = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(unsupportedBooking.source_booking_ref).first();
+  assert.equal(unsupportedLedger.status, 'reserved');
+});
+
+test('round29 (d): under a genuine race between two recoveries, the audit log and returned result reflect the durable WINNING write, never a losing caller\'s own proposed classification', async () => {
+  const env = makeEnv();
+  const { booking } = await seedAndSaveReservation(env);
+
+  // Manually seed a 'reserved' row, as if an earlier attempt had
+  // already reserved it but never resolved.
+  const attemptId = 'attempt_round29d';
+  await env.DB.prepare(`INSERT INTO marau_source_confirm_outcomes (source_booking_ref, attempt_id, status, intended_driver_id, operator, reserved_at) VALUES (?, ?, 'reserved', ?, ?, ?)`)
+    .bind(booking.source_booking_ref, attemptId, 'drv_race', 'Ana (ops)', nowIso()).run();
+  const row = await env.DB.prepare('SELECT * FROM marau_source_confirm_outcomes WHERE source_booking_ref = ?').bind(booking.source_booking_ref).first();
+
+  // Caller A finalizes it as 'confirmed' (the true, correct outcome).
+  await __test_only_finalizeOutcome(env, row, { status: 'confirmed', confirmedDriverId: 'drv_race', recoveredViaReadback: false, nowIso });
+
+  // Caller B — racing, and WRONG (e.g. it read a transient state and
+  // concluded 'conflict') — attempts to finalize the SAME attempt_id
+  // with a DIFFERENT classification. Its own UPDATE must apply zero
+  // rows (the row is no longer 'reserved'/'unresolved'), and it must
+  // report/log the ACTUAL winning row, never its own proposal.
+  const callerBResult = await __test_only_finalizeOutcome(env, row, { status: 'conflict', confirmedDriverId: 'some-other-driver', recoveredViaReadback: false, nowIso });
+  assert.equal(callerBResult.status, 'confirmed', "the losing caller's own result must reflect the durable winning outcome, not its own proposed classification");
+  assert.equal(callerBResult.confirmed_driver_id, 'drv_race');
+
+  const { results: logRows } = await env.DB.prepare('SELECT * FROM marau_source_confirm_decision_log WHERE source_booking_ref = ?').bind(booking.source_booking_ref).all();
+  assert.equal(logRows.length, 1, 'exactly one decision-log row, reflecting the true winning outcome');
+  assert.equal(logRows[0].status, 'confirmed', 'the audit log must never record the losing caller\'s own classification');
 });
 
 // ---------------------------------------------------------------------
