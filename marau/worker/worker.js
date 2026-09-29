@@ -31,6 +31,7 @@ import { selectDefaultBooking } from './booking_selection.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
+import { confirmReservationAtSource } from './source_confirm.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -1911,6 +1912,97 @@ async function handleAdminGetSyntheticSourceState(env, sourceBookingRef) {
 }
 
 // ---------------------------------------------------------------------
+// Round 27 — the next bounded integration slice from
+// docs/MARAU_STAGE1_PRODUCTION_RELEASE_PACKAGE.md §1c: a staff
+// confirmation that reaches an AUTHORITATIVE SOURCE via an API-CLIENT
+// SHAPED call (mirroring what a real, authenticated HTTP call to
+// nadi-dispatch-api's own admin-gated confirm endpoint looks like —
+// verified against its real source this round: `requireAdmin`, a
+// compare-and-swap UPDATE, a 409 with the current row on conflict,
+// exactly reproduced below), NOT the direct, same-process D1 UPDATE
+// rounds 19-22's `handleStaffDecideBooking` already proved. See
+// worker/source_confirm.js's own header for why this is a genuinely
+// different, additional failure class (a response can be lost AFTER
+// the source has already committed) that a direct UPDATE cannot
+// exercise, and why the fix (a durable local outcome ledger + a
+// read-before-deciding recovery rule) lives there, reusable by any
+// future caller.
+//
+// This demonstration client still writes to `marau_synthetic_source_bookings`
+// (the same isolated stand-in table rounds 19-22 already use) — the
+// point of this round is the CLIENT'S SHAPE and the CALLER'S recovery
+// logic, both of which carry over unchanged to a real HTTP client
+// later; only `syntheticSourceApiClient` itself would be swapped out.
+// `simulate_response_loss` is a request-body-level test hook (not an
+// env var), admin-token-gated same as every other demonstration
+// endpoint here, and reproduces the critical case named in the mission:
+// the write commits, then the caller never learns the outcome.
+// ---------------------------------------------------------------------
+
+function syntheticSourceApiClient(env, { simulateResponseLoss = false } = {}) {
+  return {
+    async getReservation(sourceBookingRef) {
+      const row = await env.DB.prepare('SELECT status, assigned_driver_id FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+      return row || null;
+    },
+    async confirmReservation(sourceBookingRef, { driverId }) {
+      // Mirrors the REAL nadi-dispatch-api handleAdminManualAssign
+      // "Path A" exactly, verified this round by reading its actual
+      // deployed source: a compare-and-swap UPDATE, guarded on
+      // status='pending' AND assigned_driver_id IS NULL, changes===1
+      // is the only proof of a genuine win.
+      const now = nowIso();
+      const result = await env.DB
+        .prepare(`UPDATE marau_synthetic_source_bookings SET status = 'accepted', assigned_driver_id = ?, updated_at = ? WHERE source_booking_ref = ? AND status = 'pending' AND assigned_driver_id IS NULL`)
+        .bind(String(driverId), now, sourceBookingRef)
+        .run();
+      const won = result.meta.changes === 1;
+
+      // The write above has ALREADY committed by this point, exactly
+      // like the real system's own compare-and-swap UPDATE — dropping
+      // the response now is the critical case: a genuine commit whose
+      // caller never learns the outcome, not a failed write.
+      if (won && simulateResponseLoss) throw new Error('SIMULATED_RESPONSE_LOSS_AFTER_COMMIT');
+
+      const current = await env.DB.prepare('SELECT status, assigned_driver_id FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+      return { won, current };
+    },
+  };
+}
+
+async function handleAdminSourceApiConfirm(request, env, sourceBookingRef) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid JSON body' }, 400);
+  }
+  const { driver_id: driverId, operator, simulate_response_loss: simulateResponseLoss } = body;
+  if (driverId == null) return json({ error: 'driver_id is required' }, 400);
+  if (!operator || !String(operator).trim()) return json({ error: 'operator name/initials are required to record this decision' }, 400);
+
+  const client = syntheticSourceApiClient(env, { simulateResponseLoss: Boolean(simulateResponseLoss) });
+  const confirmResult = await confirmReservationAtSource(env, client, {
+    sourceBookingRef,
+    driverId,
+    operator: String(operator).trim(),
+    nowIso,
+  });
+
+  // Authoritative outcome recovery -> refreshed guest Trip: reuse the
+  // EXISTING, unmodified sync module, called immediately rather than
+  // waiting for the next reconciliation tick, so the guest's own Trip
+  // reflects reality right away. A confirm outcome of 'conflict' still
+  // syncs — the source's own true current state (whoever actually won)
+  // is exactly what the guest should see.
+  const syncResult = confirmResult.ok || confirmResult.outcome === 'conflict'
+    ? await syncAfterBookingConfirmation(env, sourceBookingRef)
+    : null;
+
+  return json({ ...confirmResult, sync: syncResult, demonstration_data: true }, confirmResult.ok ? 200 : confirmResult.outcome ? 409 : 422);
+}
+
+// ---------------------------------------------------------------------
 // Round 19 — staff "Review and confirm" link. A booking/deal-specific
 // token (migration 0029), meant to be carried inside the EXISTING
 // detailed WhatsApp alert (still fully mocked here — no real send).
@@ -2359,6 +2451,11 @@ export default {
         if (method === 'POST' && syntheticSyncMatch) return await handleAdminSyncEvent(request, env, decodeURIComponent(syntheticSyncMatch[1]));
         const syntheticReconcileMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/reconcile$/);
         if (method === 'POST' && syntheticReconcileMatch) return await handleAdminReconcile(request, env, decodeURIComponent(syntheticReconcileMatch[1]));
+
+        // Round 27 — the source-API-client-shaped confirm slice (see this
+        // file's own header comment above handleAdminSourceApiConfirm).
+        const sourceApiConfirmMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/source-api-confirm$/);
+        if (method === 'POST' && sourceApiConfirmMatch) return await handleAdminSourceApiConfirm(request, env, decodeURIComponent(sourceApiConfirmMatch[1]));
 
         if (method === 'GET' && pathname === '/preview/admin/deal-requests') return await handleAdminListDealRequests(request, env);
         const confirmMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/confirm$/);
