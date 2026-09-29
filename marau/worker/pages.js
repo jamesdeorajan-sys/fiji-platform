@@ -391,9 +391,43 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
   // cookie server-side as a second-line fallback. Still the exact same
   // opaque access_token everywhere — isolation, expiry and
   // server-side revocation are completely unchanged.
+  // FIX (round 25): the original new-RegExp-from-a-string version of
+  // this function was broken by exactly the double-escaping this
+  // codebase has been bitten by before (the round-3 STORAGE_KEY /
+  // round-15 outer-scope-const embedding lessons, same class, different
+  // mechanism): this function's own source sits inside GUEST_APP_HTML's
+  // OUTER template literal (pages.js), which processes a backslash as
+  // an escape sequence ITSELF before this code is ever served — an
+  // ordinary (non-tagged) template literal drops an unrecognized
+  // single-backslash escape exactly like a string literal does (a
+  // template literal containing "backslash-s-star", parsed once,
+  // evaluates to just the two plain characters "s" and "*" — no
+  // backslash survives). Writing that same escape twice in this file's
+  // own source therefore reaches the BROWSER as only a SINGLE backslash
+  // inside a STRING passed to the RegExp constructor — and a lone
+  // backslash before a non-special character inside a JS STRING literal
+  // (not a regex literal) is ALSO dropped by the string-literal escape
+  // rules, leaving a bare "s" with no regex meaning at all. Codex
+  // reproduced this directly by executing the real served script: with
+  // document.cookie set to "other=1; marau_tok=test-token", getToken()
+  // returned null. Fixed by removing the regex (and therefore the
+  // backslash, and therefore the entire class of bug) rather than
+  // trying to get the escaping "more correct" — trim() and
+  // indexOf()/slice() need no escape sequences of any kind, so no
+  // number of template-literal layers this code passes through can ever
+  // corrupt them. (This comment itself deliberately avoids backtick
+  // characters and doubled backslashes for the exact same reason —
+  // either would risk corrupting the SAME outer template literal this
+  // function's own code lives inside.)
   function getCookie(name) {
-    var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-    return m ? decodeURIComponent(m[1]) : null;
+    var pairs = document.cookie.split(';');
+    for (var i = 0; i < pairs.length; i++) {
+      var trimmed = pairs[i].trim();
+      if (trimmed.indexOf(name + '=') === 0) {
+        return decodeURIComponent(trimmed.slice(name.length + 1));
+      }
+    }
+    return null;
   }
   function setCookie(name, value) {
     document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; samesite=lax; secure';

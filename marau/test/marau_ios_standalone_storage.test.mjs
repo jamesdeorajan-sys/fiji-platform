@@ -14,6 +14,21 @@
  * own; the whole point is redundancy across mechanisms with genuinely
  * different sharing behavior between a browser tab and a standalone
  * home-screen app.
+ *
+ * Round 25 correction: Codex independently executed the token/cookie
+ * functions EXTRACTED FROM THE REAL GUEST_APP_HTML STRING and found
+ * getCookie's escaping broken in the actually-served text (a bug this
+ * file's own round-24 tests, which hand-reimplemented the logic instead
+ * of executing the real served bytes, never caught). getCookie has been
+ * rewritten with zero regex/backslashes, and every client-side test in
+ * this file now extracts and EXECUTES the real function source out of
+ * GUEST_APP_HTML via `new Function(...)`, never a copy. Separately: a
+ * cookie surviving in these tests is a simulation of storage behavior,
+ * not a reproduction of an actual iPhone installation — Apple documents
+ * cookies being copied at install time specifically, which is a one-time
+ * event and does not by itself guarantee ongoing shared storage between
+ * Safari and the standalone container afterward. Real-device acceptance
+ * remains pending James's own retest.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,10 +70,37 @@ test('round24: the served app writes the token to a cookie in addition to both s
   assert.ok(GUEST_APP_HTML.includes("clearCookie('marau_tok')"), 'clearToken/revoke must clear the cookie too');
 });
 
-test('round24: getToken() recovers from the cookie ALONE — sessionStorage empty, localStorage empty, no hash — the exact reported repro', () => {
-  // A faithful re-implementation of the ACTUAL logic now embedded in
-  // pages.js (mirrors the existing finding-3 test's own established
-  // pattern for testing this client-side logic without a real browser).
+// ---------------------------------------------------------------------
+// Round 25 correction: Codex independently executed the token/cookie
+// functions EXTRACTED FROM THE REAL GUEST_APP_HTML STRING (not a
+// hand-copied reimplementation) and found that getCookie's escaping was
+// broken by the time it reached the served text — a bug this file's
+// round-24 tests never caught precisely BECAUSE they retyped the logic
+// inline instead of executing the real served bytes. This helper pulls
+// the actual function source out of GUEST_APP_HTML between two fixed,
+// verified markers and executes it with `new Function(...)`, so every
+// test below runs the exact code a real browser would receive — never
+// a copy.
+// ---------------------------------------------------------------------
+
+function loadRealClientTokenFunctions() {
+  const start = GUEST_APP_HTML.indexOf('function getCookie(name) {');
+  const end = GUEST_APP_HTML.indexOf('function authFetch');
+  assert.ok(start !== -1 && end !== -1 && end > start, 'could not locate the real getCookie..clearToken block in GUEST_APP_HTML — markers may have moved');
+  const realSource = GUEST_APP_HTML.slice(start, end);
+  // A belt-and-braces check that this really is unmodified served source,
+  // not a stand-in: it must still contain the exact function names this
+  // test depends on.
+  for (const name of ['getCookie', 'setCookie', 'clearCookie', 'getToken', 'setToken', 'clearToken']) {
+    assert.ok(realSource.includes('function ' + name + '('), `extracted block is missing function ${name} — extraction markers may be wrong`);
+  }
+  return new Function(
+    'document', 'sessionStorage', 'localStorage', 'location',
+    realSource + '\nreturn { getCookie: getCookie, setCookie: setCookie, clearCookie: clearCookie, getToken: getToken, setToken: setToken, clearToken: clearToken };'
+  );
+}
+
+function makeMockBrowser(initialHash) {
   const sessionStore = new Map();
   const localStore = new Map();
   let cookieJar = '';
@@ -67,12 +109,12 @@ test('round24: getToken() recovers from the cookie ALONE — sessionStorage empt
   const document = {
     get cookie() { return cookieJar; },
     set cookie(v) {
-      // A tiny real cookie-jar simulation: parses "name=value; ...attrs"
-      // and either sets or (max-age=0) clears that name in the jar.
       const [pair] = v.split(';');
-      const [name, value] = pair.split('=');
+      const eq = pair.indexOf('=');
+      const name = pair.slice(0, eq);
+      const value = pair.slice(eq + 1);
       if (/max-age=0/i.test(v)) {
-        cookieJar = cookieJar.split('; ').filter((c) => !c.startsWith(name + '=')).join('; ');
+        cookieJar = cookieJar.split('; ').filter((c) => c && !c.startsWith(name + '=')).join('; ');
       } else {
         const rest = cookieJar.split('; ').filter((c) => c && !c.startsWith(name + '='));
         rest.push(`${name}=${value}`);
@@ -80,49 +122,77 @@ test('round24: getToken() recovers from the cookie ALONE — sessionStorage empt
       }
     },
   };
+  const location = { hash: initialHash || '' };
+  return { document, sessionStorage, localStorage, location, sessionStore, localStore, setRawCookie: (v) => { cookieJar = v; } };
+}
 
-  function getCookie(name) {
-    const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-    return m ? decodeURIComponent(m[1]) : null;
+test('round25: the extraction markers actually isolate real, runnable getCookie/setCookie/clearCookie/getToken/setToken/clearToken source from GUEST_APP_HTML', () => {
+  const factory = loadRealClientTokenFunctions();
+  const { document, sessionStorage, localStorage, location } = makeMockBrowser('');
+  const fns = factory(document, sessionStorage, localStorage, location);
+  for (const name of ['getCookie', 'setCookie', 'clearCookie', 'getToken', 'setToken', 'clearToken']) {
+    assert.equal(typeof fns[name], 'function', `${name} must be a real, callable function extracted from the served app`);
   }
-  function setCookie(name, value) {
-    document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; samesite=lax; secure';
-  }
-  function getToken(location) {
-    const m = location.hash.match(/tok=([^&]+)/);
-    if (m) {
-      try { sessionStorage.setItem('marau_tok', m[1]); } catch (e) {}
-      try { localStorage.setItem('marau_tok', m[1]); } catch (e) {}
-      try { setCookie('marau_tok', m[1]); } catch (e) {}
-      return m[1];
-    }
-    try {
-      const fromSession = sessionStorage.getItem('marau_tok');
-      if (fromSession) return fromSession;
-    } catch (e) {}
-    try {
-      const fromLocal = localStorage.getItem('marau_tok');
-      if (fromLocal) return fromLocal;
-    } catch (e) {}
-    try {
-      const fromCookie = getCookie('marau_tok');
-      if (fromCookie) return fromCookie;
-    } catch (e) {}
-    return null;
-  }
+});
 
-  // Simulate: the Safari tab established the token (sets all three).
-  getToken({ hash: '#tok=secure-trip-token-xyz' });
-  // Simulate: the standalone container's own localStorage/sessionStorage
-  // came up genuinely empty on relaunch (the real repro) — but the
-  // cookie (a different, more reliably-shared mechanism) is still there.
-  sessionStore.clear();
-  localStore.clear();
-  assert.equal(sessionStorage.getItem('marau_tok'), null);
-  assert.equal(localStorage.getItem('marau_tok'), null);
+test('round25 (Codex repro, case 1): with the REAL served getCookie, document.cookie = "marau_tok=test-token" (cookie alone) — getCookie must return "test-token"', () => {
+  const factory = loadRealClientTokenFunctions();
+  const { document, sessionStorage, localStorage, location } = makeMockBrowser('');
+  const { getCookie } = factory(document, sessionStorage, localStorage, location);
+  document.cookie = 'marau_tok=test-token';
+  assert.equal(getCookie('marau_tok'), 'test-token');
+});
 
-  const recovered = getToken({ hash: '' });
-  assert.equal(recovered, 'secure-trip-token-xyz', 'the exact reported repro: both storages empty, no fragment — the cookie must still recover the token');
+test('round25 (Codex repro, case 2 — the actual reported bug): with the REAL served getCookie, document.cookie = "other=1; marau_tok=test-token" (cookie AFTER another) — getCookie must still return "test-token", not null', () => {
+  const factory = loadRealClientTokenFunctions();
+  const { document, sessionStorage, localStorage, location, setRawCookie } = makeMockBrowser('');
+  const { getCookie } = factory(document, sessionStorage, localStorage, location);
+  setRawCookie('other=1; marau_tok=test-token');
+  assert.equal(getCookie('marau_tok'), 'test-token', 'the exact case Codex found broken: getCookie incorrectly returned null when marau_tok followed another cookie');
+});
+
+test('round25: with the REAL served getCookie, a cookie appearing BEFORE another cookie ("marau_tok=test-token; other=1") is also found', () => {
+  const factory = loadRealClientTokenFunctions();
+  const { document, sessionStorage, localStorage, location, setRawCookie } = makeMockBrowser('');
+  const { getCookie } = factory(document, sessionStorage, localStorage, location);
+  setRawCookie('marau_tok=test-token; other=1');
+  assert.equal(getCookie('marau_tok'), 'test-token');
+});
+
+test('round25: with the REAL served getCookie, an absent cookie (no marau_tok anywhere) returns null, never a false match', () => {
+  const factory = loadRealClientTokenFunctions();
+  const { document, sessionStorage, localStorage, location, setRawCookie } = makeMockBrowser('');
+  const { getCookie } = factory(document, sessionStorage, localStorage, location);
+  setRawCookie('other=1; another=2');
+  assert.equal(getCookie('marau_tok'), null);
+});
+
+test('round25: end-to-end with the REAL served getToken() — cookie ALONE, sessionStorage empty, localStorage empty, no hash — the exact iPhone-reopen repro', () => {
+  const factory = loadRealClientTokenFunctions();
+  const setup = makeMockBrowser('#tok=secure-trip-token-xyz');
+  const first = factory(setup.document, setup.sessionStorage, setup.localStorage, setup.location);
+  // Establish the token the way the Safari tab would (writes all three).
+  first.getToken();
+
+  // Simulate the standalone container's own storages coming up genuinely
+  // empty on relaunch, exactly as James's device showed — only the
+  // cookie (copied at install time, per Apple's own documented behavior)
+  // is still present. A fresh factory call models a fresh JS realm, the
+  // same way a relaunched standalone app gets a fresh page load.
+  setup.sessionStore.clear();
+  setup.localStore.clear();
+  setup.location.hash = '';
+  const second = factory(setup.document, setup.sessionStorage, setup.localStorage, setup.location);
+  const recovered = second.getToken();
+  assert.equal(recovered, 'secure-trip-token-xyz', 'both storages empty, no fragment — the real served getToken() must still recover the token from the cookie');
+});
+
+test('round25: end-to-end with the REAL served getToken() — cookie set alongside an unrelated cookie written first (the Codex repro shape), storages empty', () => {
+  const factory = loadRealClientTokenFunctions();
+  const setup = makeMockBrowser('');
+  setup.setRawCookie('other=1; marau_tok=secure-trip-token-abc');
+  const fns = factory(setup.document, setup.sessionStorage, setup.localStorage, setup.location);
+  assert.equal(fns.getToken(), 'secure-trip-token-abc');
 });
 
 // ---------------------------------------------------------------------
