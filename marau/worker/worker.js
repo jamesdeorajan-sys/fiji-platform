@@ -1912,49 +1912,97 @@ async function handleAdminGetSyntheticSourceState(env, sourceBookingRef) {
 }
 
 // ---------------------------------------------------------------------
-// Round 27 — the next bounded integration slice from
+// Round 27/28 — the next bounded integration slice from
 // docs/MARAU_STAGE1_PRODUCTION_RELEASE_PACKAGE.md §1c: a staff
 // confirmation that reaches an AUTHORITATIVE SOURCE via an API-CLIENT
-// SHAPED call (mirroring what a real, authenticated HTTP call to
-// nadi-dispatch-api's own admin-gated confirm endpoint looks like —
-// verified against its real source this round: `requireAdmin`, a
-// compare-and-swap UPDATE, a 409 with the current row on conflict,
-// exactly reproduced below), NOT the direct, same-process D1 UPDATE
-// rounds 19-22's `handleStaffDecideBooking` already proved. See
-// worker/source_confirm.js's own header for why this is a genuinely
-// different, additional failure class (a response can be lost AFTER
-// the source has already committed) that a direct UPDATE cannot
-// exercise, and why the fix (a durable local outcome ledger + a
-// read-before-deciding recovery rule) lives there, reusable by any
-// future caller.
+// SHAPED call, NOT the direct, same-process D1 UPDATE rounds 19-22's
+// `handleStaffDecideBooking` already proved. See worker/source_confirm.js's
+// own header for the full recovery design and, per round 28's fix 5,
+// for why `operator` below is no longer read from the request body.
+//
+// ROUND 28 CORRECTION: Codex independently verified round 27 (461/461)
+// then reproduced three real defects in worker/source_confirm.js's
+// design (a cancelled reservation could read back as confirmed; driver-
+// id equality alone proved nothing about which attempt actually won; a
+// single ledger-write fault could lose a genuinely successful source
+// confirmation) plus three further hardening requirements (an
+// unavailable recovery readback must be reported honestly, not
+// guessed; operator identity must come from authenticated staff
+// context, never a caller-supplied display name; concurrency needed
+// precise assertions). All six are fixed in source_confirm.js and
+// wired in here — `requireStaffIdentity` below is the fix-5 wiring.
 //
 // This demonstration client still writes to `marau_synthetic_source_bookings`
-// (the same isolated stand-in table rounds 19-22 already use) — the
-// point of this round is the CLIENT'S SHAPE and the CALLER'S recovery
-// logic, both of which carry over unchanged to a real HTTP client
-// later; only `syntheticSourceApiClient` itself would be swapped out.
+// (the same isolated stand-in table rounds 19-22 already use), now
+// extended (migration 0034) to persist `confirmation_attempt_id`/
+// `confirmed_operator_name` at the same commit as the assignment — a
+// capability documented in source_confirm.js's own header as NOT
+// currently present on the real, deployed `nadi-dispatch-api`. This
+// client is a demonstration of the CALLER'S recovery logic, not a
+// proof that a real client can be swapped in unchanged.
 // `simulate_response_loss` is a request-body-level test hook (not an
 // env var), admin-token-gated same as every other demonstration
-// endpoint here, and reproduces the critical case named in the mission:
-// the write commits, then the caller never learns the outcome.
+// endpoint here, and reproduces the critical case: the write commits,
+// then the caller never learns the outcome.
 // ---------------------------------------------------------------------
+
+// Fix 5: operator identity is derived from an authenticated, per-staff
+// credential — never a caller-supplied display-name field, which any
+// holder of the shared admin token could previously set to anyone's
+// name. A distinct header (not Authorization, which the outer
+// requireAdmin gate already consumes) carries this SECOND, individual
+// credential; both are required to confirm at the source.
+async function requireStaffIdentity(request, env) {
+  const token = (request.headers.get('x-marau-staff-token') || '').trim();
+  if (!token) return null;
+  const row = await env.DB.prepare('SELECT operator_name FROM marau_staff_identities WHERE token = ?').bind(token).first();
+  return row ? { operatorName: row.operator_name } : null;
+}
+
+async function handleAdminSeedStaffIdentity(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid JSON body' }, 400);
+  }
+  const { token, operator_name: operatorName } = body;
+  if (!token || !String(token).trim()) return json({ error: 'token is required' }, 400);
+  if (!operatorName || !String(operatorName).trim()) return json({ error: 'operator_name is required' }, 400);
+  await env.DB
+    .prepare('INSERT INTO marau_staff_identities (token, operator_name, created_at) VALUES (?, ?, ?) ON CONFLICT(token) DO UPDATE SET operator_name = excluded.operator_name')
+    .bind(String(token).trim(), String(operatorName).trim(), nowIso())
+    .run();
+  return json({ ok: true, demonstration_data: true });
+}
 
 function syntheticSourceApiClient(env, { simulateResponseLoss = false } = {}) {
   return {
     async getReservation(sourceBookingRef) {
-      const row = await env.DB.prepare('SELECT status, assigned_driver_id FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
-      return row || null;
+      const row = await env.DB
+        .prepare('SELECT status, assigned_driver_id, confirmation_attempt_id, confirmed_operator_name FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?')
+        .bind(sourceBookingRef)
+        .first();
+      if (!row) return null;
+      return { status: row.status, assigned_driver_id: row.assigned_driver_id, confirmation_attempt_id: row.confirmation_attempt_id, confirmed_operator: row.confirmed_operator_name };
     },
-    async confirmReservation(sourceBookingRef, { driverId }) {
+    async confirmReservation(sourceBookingRef, { driverId, attemptId, operator }) {
       // Mirrors the REAL nadi-dispatch-api handleAdminManualAssign
       // "Path A" exactly, verified this round by reading its actual
       // deployed source: a compare-and-swap UPDATE, guarded on
       // status='pending' AND assigned_driver_id IS NULL, changes===1
-      // is the only proof of a genuine win.
+      // is the only proof of a genuine win. This synthetic client
+      // ADDITIONALLY persists attemptId/operator at the same commit —
+      // a capability the real source does not currently have (see
+      // source_confirm.js's own header).
       const now = nowIso();
       const result = await env.DB
-        .prepare(`UPDATE marau_synthetic_source_bookings SET status = 'accepted', assigned_driver_id = ?, updated_at = ? WHERE source_booking_ref = ? AND status = 'pending' AND assigned_driver_id IS NULL`)
-        .bind(String(driverId), now, sourceBookingRef)
+        .prepare(
+          `UPDATE marau_synthetic_source_bookings
+             SET status = 'accepted', assigned_driver_id = ?, confirmation_attempt_id = ?, confirmed_operator_name = ?, updated_at = ?
+           WHERE source_booking_ref = ? AND status = 'pending' AND assigned_driver_id IS NULL`
+        )
+        .bind(String(driverId), attemptId, operator, now, sourceBookingRef)
         .run();
       const won = result.meta.changes === 1;
 
@@ -1964,7 +2012,7 @@ function syntheticSourceApiClient(env, { simulateResponseLoss = false } = {}) {
       // caller never learns the outcome, not a failed write.
       if (won && simulateResponseLoss) throw new Error('SIMULATED_RESPONSE_LOSS_AFTER_COMMIT');
 
-      const current = await env.DB.prepare('SELECT status, assigned_driver_id FROM marau_synthetic_source_bookings WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
+      const current = await this.getReservation(sourceBookingRef);
       return { won, current };
     },
   };
@@ -1977,29 +2025,34 @@ async function handleAdminSourceApiConfirm(request, env, sourceBookingRef) {
   } catch {
     return json({ error: 'invalid JSON body' }, 400);
   }
-  const { driver_id: driverId, operator, simulate_response_loss: simulateResponseLoss } = body;
+  const { driver_id: driverId, simulate_response_loss: simulateResponseLoss } = body;
   if (driverId == null) return json({ error: 'driver_id is required' }, 400);
-  if (!operator || !String(operator).trim()) return json({ error: 'operator name/initials are required to record this decision' }, 400);
+
+  // Fix 5: operator is derived from the authenticated staff identity,
+  // never from a request-body field the caller could set to anything.
+  const staffIdentity = await requireStaffIdentity(request, env);
+  if (!staffIdentity) return json({ error: 'unauthorized — a valid staff identity token (x-marau-staff-token) is required to confirm at the source' }, 401);
 
   const client = syntheticSourceApiClient(env, { simulateResponseLoss: Boolean(simulateResponseLoss) });
   const confirmResult = await confirmReservationAtSource(env, client, {
     sourceBookingRef,
     driverId,
-    operator: String(operator).trim(),
+    operator: staffIdentity.operatorName,
     nowIso,
   });
 
   // Authoritative outcome recovery -> refreshed guest Trip: reuse the
   // EXISTING, unmodified sync module, called immediately rather than
-  // waiting for the next reconciliation tick, so the guest's own Trip
-  // reflects reality right away. A confirm outcome of 'conflict' still
-  // syncs — the source's own true current state (whoever actually won)
-  // is exactly what the guest should see.
-  const syncResult = confirmResult.ok || confirmResult.outcome === 'conflict'
+  // waiting for the next reconciliation tick. A conflict or a
+  // source_cancelled outcome still syncs — the source's own true
+  // current state is exactly what the guest should see; an unresolved
+  // outcome does NOT sync, since nothing new is actually known yet.
+  const syncResult = ['confirmed', 'conflict', 'source_cancelled'].includes(confirmResult.status)
     ? await syncAfterBookingConfirmation(env, sourceBookingRef)
     : null;
 
-  return json({ ...confirmResult, sync: syncResult, demonstration_data: true }, confirmResult.ok ? 200 : confirmResult.outcome ? 409 : 422);
+  const httpStatus = confirmResult.ok ? 200 : confirmResult.status === 'unresolved' ? 202 : confirmResult.status ? 409 : 422;
+  return json({ ...confirmResult, sync: syncResult, demonstration_data: true }, httpStatus);
 }
 
 // ---------------------------------------------------------------------
@@ -2452,10 +2505,15 @@ export default {
         const syntheticReconcileMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/reconcile$/);
         if (method === 'POST' && syntheticReconcileMatch) return await handleAdminReconcile(request, env, decodeURIComponent(syntheticReconcileMatch[1]));
 
-        // Round 27 — the source-API-client-shaped confirm slice (see this
-        // file's own header comment above handleAdminSourceApiConfirm).
+        // Round 27/28 — the source-API-client-shaped confirm slice (see
+        // this file's own header comment above handleAdminSourceApiConfirm).
         const sourceApiConfirmMatch = pathname.match(/^\/preview\/admin\/synthetic-source\/([^/]+)\/source-api-confirm$/);
         if (method === 'POST' && sourceApiConfirmMatch) return await handleAdminSourceApiConfirm(request, env, decodeURIComponent(sourceApiConfirmMatch[1]));
+        // Round 28, fix 5 — seeds an isolated per-staff identity token
+        // (test-only), used to demonstrate that operator attribution
+        // comes from authenticated staff context, never a caller-
+        // supplied display name.
+        if (method === 'POST' && pathname === '/preview/admin/staff-identities') return await handleAdminSeedStaffIdentity(request, env);
 
         if (method === 'GET' && pathname === '/preview/admin/deal-requests') return await handleAdminListDealRequests(request, env);
         const confirmMatch = pathname.match(/^\/preview\/admin\/deal-requests\/([^/]+)\/confirm$/);
