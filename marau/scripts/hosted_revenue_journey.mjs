@@ -198,6 +198,25 @@ try {
   const supp = (await api('/preview/admin/messages/check', { method: 'POST', headers: staff(ANA), body: { session_id: noWa2.sessionId, purpose: 'booking_confirmation', channel: 'email' } })).data;
   check('a recorded delivery failure blocks that channel even for an essential message', supp.allowed === false && supp.reasons.includes('channel_suppressed'));
 
+  // closeout round: refund delivered BEFORE its payment record, and the stored-snapshot terms
+  const friend3 = await newGuest({ referral_code: ref.code });
+  const rid3 = (await api(`/preview/offers/${offer.id}/request`, { method: 'POST', headers: guest(friend3.token), body: { places: 1 } })).data.request.request_id;
+  await api(`/preview/admin/offers/requests/${rid3}/confirm`, { method: 'POST', headers: staff(ANA), body: {} });
+  const early = await api(`/preview/admin/offers/requests/${rid3}/payment`, { method: 'POST', headers: staff(ANA), body: { event: 'refunded', amount_fjd: 120, method: 'card', event_key: `early-${RUN}` } });
+  const c3 = wranglerJson(`SELECT status FROM marau_reward_credits WHERE qualifying_request_id = '${rid3}'`)[0];
+  check('REFUND BEFORE PAYMENT: retained and flagged awaiting its payment record; the pending credit is reversed', early.status === 200 && early.data.reconciliation.status === 'refund_awaiting_payment_record' && c3 && c3.status === 'reversed');
+  const late = await api(`/preview/admin/offers/requests/${rid3}/payment`, { method: 'POST', headers: staff(BALA), body: { event: 'paid', amount_fjd: 120, method: 'card', event_key: `late-${RUN}` } });
+  await api(`/preview/admin/offers/requests/${rid3}/fulfil`, { method: 'POST', headers: staff(ANA), body: {} });
+  check('...the late payment record reconciles (matched) and never resurrects the credit', late.status === 200 && late.data.reconciliation.status === 'matched' && wranglerJson(`SELECT status FROM marau_reward_credits WHERE qualifying_request_id = '${rid3}'`)[0].status === 'reversed');
+  const friend4 = await newGuest({ referral_code: ref.code });
+  const rid4 = (await api(`/preview/offers/${offer.id}/request`, { method: 'POST', headers: guest(friend4.token), body: { places: 1 } })).data.request.request_id;
+  await api(`/preview/admin/offers/requests/${rid4}/confirm`, { method: 'POST', headers: staff(ANA), body: {} });
+  await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { amount_fjd: 25, require_payment: 'none', qualify_on: 'confirmed' } });
+  await api(`/preview/admin/offers/requests/${rid4}/fulfil`, { method: 'POST', headers: staff(ANA), body: {} });
+  const c4 = wranglerJson(`SELECT status, amount_cents FROM marau_reward_credits WHERE qualifying_request_id = '${rid4}'`)[0];
+  check('POLICY SNAPSHOT: loosening the policy later does not change an existing credit (still pending, still FJ$10, original payment requirement)', c4 && c4.status === 'pending' && c4.amount_cents === 1000);
+  await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { amount_fjd: 10, require_payment: 'paid_in_full', qualify_on: 'fulfilled' } });
+
   // report
   const rep = (await api('/preview/admin/offers/report', { headers: staff(ANA) })).data;
   check('report labels quoted value as NOT revenue and separates shares/attributions/credits/funding/payment evidence', /NOT revenue/.test(rep.labels.quoted_value) && typeof rep.referral_shares_tapped === 'number' && typeof rep.reward_funding_committed_fjd === 'number' && typeof rep.payment_evidenced_net_fjd === 'number');

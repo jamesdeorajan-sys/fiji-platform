@@ -357,3 +357,12 @@ test('POLICY OFF is a FREEZE: no new credits, no promotion, no application; noth
   assert.equal((await one(env, 'SELECT status FROM marau_reward_credits WHERE credit_id = ?', pendingOne.credit_id)).status, 'earned', 'resumes: the fulfilled+paid credit is promoted under its stored terms');
   assert.equal((await apply(env, earnedOne.credit_id, returnId)).status, 200);
 });
+
+test('REPORT: funding figures never count a credit whose purchase was refunded behind the hook (the report sweeps first)', async () => {
+  const { env, offerId } = await setup({ ...POLICY, qualify_on: 'confirmed', require_payment: 'none' });
+  const referrer = await newGuest(env); const friend = await friendOf(env, referrer.token);
+  const rid = await buy(env, friend.token, offerId); await act(env, rid, 'confirm');
+  assert.equal((await call(env, '/preview/admin/offers/report', { headers: staffH(env) })).data.reward_funding_committed_fjd, 10);
+  await env.DB.prepare(`INSERT INTO marau_offer_payments (payment_id, request_id, event_type, amount_cents, method, event_key, recorded_by, created_at) VALUES ('pay_x', ?, 'refunded', 12000, 'card', 'orphan', 'Bala (ops)', ?)`).bind(rid, new Date().toISOString()).run();
+  assert.equal((await call(env, '/preview/admin/offers/report', { headers: staffH(env) })).data.reward_funding_committed_fjd, 0);
+});

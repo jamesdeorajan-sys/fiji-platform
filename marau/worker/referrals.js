@@ -566,6 +566,7 @@ export function createReferrals(deps) {
   }
 
   async function reportExtras(env) {
+    await reconcileApplications(env); // the funding figures below must not count a credit whose purchase has been cancelled or refunded
     const q = async (sql, ...b) => env.DB.prepare(sql).bind(...b).first();
     const shares = await q('SELECT COUNT(*) AS n FROM marau_share_events');
     const joined = await q(`SELECT COUNT(*) AS n FROM marau_referrals WHERE status IN ('attributed', 'capped')`);
