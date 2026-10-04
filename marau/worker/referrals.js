@@ -43,6 +43,27 @@ export function generateReferralCode(randomBytes = (n) => crypto.getRandomValues
 }
 export const isWellFormedCode = (c) => typeof c === 'string' && c.length === CODE_LENGTH && [...c].every((ch) => CODE_ALPHABET.includes(ch));
 
+/**
+ * THE QUALIFICATION CONTRACT, as a pure function of facts (so it is unit-testable and order-independent).
+ *   requestStatus : the referred guest's purchase state
+ *   totals        : payment-evidence totals {paid, refunded, net} in cents
+ *   policy        : {qualify_on: 'confirmed'|'fulfilled', require_payment: 'none'|'paid_in_full'}
+ * Returns {state: 'none'|'pending'|'earned'|'reverse', reason?}.
+ *   - a saved (still 'requested') purchase earns nothing;
+ *   - cancelled / declined / expired purchases, and ANY recorded refund, reverse the credit - terminally;
+ *   - confirmed but not yet qualifying -> pending;
+ *   - earned only when the stage has been reached (fulfilled, or confirmed if the policy says so) AND, when the policy
+ *     requires payment, the purchase is paid in full by evidence (net paid >= total). Fulfilled-but-unpaid stays PENDING.
+ */
+export function qualificationState({ requestStatus, totalCents, totals, policy }) {
+  if (['cancelled_by_guest', 'cancelled_by_staff', 'declined', 'expired'].includes(requestStatus)) return { state: 'reverse', reason: `purchase ${requestStatus.replace(/_/g, ' ')}` };
+  if (totals.refunded > 0) return { state: 'reverse', reason: 'purchase refunded' };
+  if (requestStatus !== 'confirmed' && requestStatus !== 'fulfilled') return { state: 'none' };
+  const stageReached = requestStatus === 'fulfilled' || policy.qualify_on === 'confirmed';
+  const paidOk = policy.require_payment === 'none' || totals.net >= totalCents;
+  return { state: stageReached && paidOk ? 'earned' : 'pending' };
+}
+
 export function createReferrals(deps) {
   const { json, html, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, guestAppHtml } = deps;
   const idFor = (p) => `${p}_${cryptoRandomId()}`;
@@ -116,25 +137,49 @@ export function createReferrals(deps) {
 
   // ------------------------------------------------------------ credit ledger
 
-  /** Hook: the referred guest's offer purchase changed state. */
-  async function onRequestTransition(env, { request, from, to }) {
+  /** Total paid, total refunded for one purchase, from the append-only payment-evidence ledger. */
+  async function paymentTotals(env, requestId) {
+    const r = await env.DB.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN event_type = 'paid' THEN amount_cents ELSE 0 END), 0) AS paid, COALESCE(SUM(CASE WHEN event_type = 'refunded' THEN amount_cents ELSE 0 END), 0) AS refunded FROM marau_offer_payments WHERE request_id = ?`
+    ).bind(requestId).first();
+    return { paid: r.paid, refunded: r.refunded, net: r.paid - r.refunded };
+  }
+
+  /**
+   * Hook: ANYTHING about the referred guest's purchase changed (a staff transition, a guest cancellation, a payment or refund
+   * event). The credit state is re-derived from the purchase's CURRENT facts (qualificationState), never from the event that
+   * happened to trigger the call, so repeated and out-of-order events converge on the same state.
+   */
+  async function onRequestTransition(env, { request }) { return reconcileRequest(env, request.request_id); }
+
+  async function reconcileRequest(env, requestId) {
+    const req = await env.DB.prepare('SELECT * FROM marau_offer_requests WHERE request_id = ?').bind(requestId).first();
+    if (!req) return { handled: false };
     const referral = await env.DB.prepare(
       `SELECT r.*, gs.test_data AS referrer_test_data FROM marau_referrals r JOIN guest_sessions gs ON gs.session_id = r.referrer_session_id
        WHERE r.referred_session_id = ? AND r.status IN ('attributed', 'capped')`
-    ).bind(request.guest_session_id).first();
+    ).bind(req.guest_session_id).first();
     if (!referral) return { handled: false };
 
-    if (to === 'cancelled_by_staff' || to === 'cancelled_by_guest') return reverseForRequest(env, request, `purchase ${to.replace(/_/g, ' ')} (was ${from})`);
-    if (to !== 'confirmed' && to !== 'fulfilled') return { handled: false };
-
     const policy = await readPolicy(env);
-    if (!policyPermits(policy, referral.referrer_test_data, env)) return { handled: false, blocked: 'policy' };
-    if (request.total_cents < policy.min_purchase_cents) return { handled: false, blocked: 'below_minimum_purchase' };
+    const totals = await paymentTotals(env, requestId);
+    const want = qualificationState({ requestStatus: req.status, totalCents: req.total_cents, totals, policy });
+    const existing = await env.DB.prepare('SELECT credit_id, status FROM marau_reward_credits WHERE qualifying_request_id = ?').bind(requestId).first();
 
-    const earnedNow = to === 'fulfilled' || policy.qualify_on === 'confirmed';
+    if (want.state === 'reverse') return existing ? reverseForRequest(env, requestId, want.reason) : { handled: true, nothing_to_reverse: true };
+    if (want.state === 'none') return { handled: false };
+    if (!policyPermits(policy, referral.referrer_test_data, env)) return { handled: false, blocked: 'policy' };
+    if (req.total_cents < policy.min_purchase_cents) return { handled: false, blocked: 'below_minimum_purchase' };
+
     const now = nowIso();
-    const snapshot = JSON.stringify({ amount_cents: policy.amount_cents, cap_cents_per_referrer: policy.cap_cents_per_referrer, min_purchase_cents: policy.min_purchase_cents, qualify_on: policy.qualify_on, mode: policy.mode });
-    let created = false;
+    const earnedNow = want.state === 'earned';
+    if (existing) {
+      if (earnedNow && existing.status === 'pending') {
+        await env.DB.prepare(`UPDATE marau_reward_credits SET status = 'earned', earned_at = ? WHERE credit_id = ? AND status = 'pending'`).bind(now, existing.credit_id).run();
+      }
+      return { handled: true, created: false };
+    }
+    const snapshot = JSON.stringify({ amount_cents: policy.amount_cents, cap_cents_per_referrer: policy.cap_cents_per_referrer, min_purchase_cents: policy.min_purchase_cents, qualify_on: policy.qualify_on, require_payment: policy.require_payment, mode: policy.mode });
     try {
       // One statement: the cap is checked in the same atomic INSERT that creates the credit. UNIQUE(referral_id) makes a
       // second credit for this friend impossible.
@@ -142,43 +187,80 @@ export function createReferrals(deps) {
         `INSERT INTO marau_reward_credits (credit_id, referral_id, beneficiary_session_id, referred_session_id, qualifying_request_id, amount_cents, status, funding_source, policy_snapshot, created_at, earned_at)
          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE (SELECT COALESCE(SUM(amount_cents), 0) FROM marau_reward_credits WHERE beneficiary_session_id = ? AND status IN ('pending', 'earned', 'applied')) + ? <= ?`
-      ).bind(idFor('cr'), referral.referral_id, referral.referrer_session_id, referral.referred_session_id, request.request_id, policy.amount_cents,
+      ).bind(idFor('cr'), referral.referral_id, referral.referrer_session_id, referral.referred_session_id, requestId, policy.amount_cents,
         earnedNow ? 'earned' : 'pending', policy.funding_source, snapshot, now, earnedNow ? now : null,
         referral.referrer_session_id, policy.amount_cents, policy.cap_cents_per_referrer).run();
-      created = res.meta.changes === 1;
-      if (!created) {
-        // Zero rows can mean the CAP stopped a new credit - or that this friend ALREADY has a credit whose own amount
-        // counts toward the cap (a second event for the same purchase). Only the former is "capped".
-        const existing = await env.DB.prepare('SELECT 1 AS ok FROM marau_reward_credits WHERE referral_id = ?').bind(referral.referral_id).first();
-        if (!existing) {
-          await env.DB.prepare(`UPDATE marau_referrals SET status = 'capped' WHERE referral_id = ? AND status = 'attributed'`).bind(referral.referral_id).run();
-          return { handled: true, capped: true };
-        }
+      if (res.meta.changes === 1) return { handled: true, created: true };
+      // Zero rows: the CAP stopped a new credit, OR this friend ALREADY has a credit whose own amount counts toward the cap.
+      const raced = await env.DB.prepare('SELECT 1 AS ok FROM marau_reward_credits WHERE referral_id = ?').bind(referral.referral_id).first();
+      if (!raced) {
+        await env.DB.prepare(`UPDATE marau_referrals SET status = 'capped' WHERE referral_id = ? AND status = 'attributed'`).bind(referral.referral_id).run();
+        return { handled: true, capped: true };
       }
+      return { handled: true, created: false };
     } catch (err) {
       if (!/UNIQUE/i.test(String(err && err.message))) throw err;
-      // A credit for this friend already exists (an earlier confirmed -> now fulfilled, or a repeat call): never a second.
+      return { handled: true, created: false }; // a concurrent event already created this friend's credit
     }
-    if (!created && earnedNow) {
-      await env.DB.prepare(`UPDATE marau_reward_credits SET status = 'earned', earned_at = ? WHERE referral_id = ? AND qualifying_request_id = ? AND status = 'pending'`).bind(now, referral.referral_id, request.request_id).run();
-    }
-    return { handled: true, created };
   }
 
-  async function reverseForRequest(env, request, reason) {
+  /**
+   * Reverse the credit for a purchase - in ONE atomic batch with the flagging of any live discount it already gave, so a
+   * reversal racing a redemption can never leave the credit reversed while its adjustment still reads as a clean discount.
+   */
+  async function reverseForRequest(env, requestId, reason) {
     const now = nowIso();
-    const before = await env.DB.prepare(`SELECT credit_id, status FROM marau_reward_credits WHERE qualifying_request_id = ?`).bind(request.request_id).first();
-    if (!before || before.status === 'reversed') return { handled: false };
-    const res = await env.DB.prepare(
-      `UPDATE marau_reward_credits SET status = 'reversed', reversed_at = ?, reversal_reason = ?, needs_manual_adjustment = CASE WHEN status = 'applied' THEN 1 ELSE 0 END
-       WHERE qualifying_request_id = ? AND status IN ('pending', 'earned', 'applied')`
-    ).bind(now, reason, request.request_id).run();
-    if (res.meta.changes === 1 && before.status === 'applied') {
-      // The discount was already given on a return transfer: surface it for a human; never silently change a fare.
-      await env.DB.prepare(`UPDATE marau_booking_adjustments SET status = 'reversal_pending_staff' WHERE credit_id = ?`).bind(before.credit_id).run();
-    }
-    return { handled: true, reversed: res.meta.changes === 1, was: before.status };
+    const res = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE marau_reward_credits SET status = 'reversed', reversed_at = ?, reversal_reason = ?, needs_manual_adjustment = CASE WHEN status = 'applied' THEN 1 ELSE 0 END
+         WHERE qualifying_request_id = ? AND status IN ('pending', 'earned', 'applied')`
+      ).bind(now, reason, requestId),
+      env.DB.prepare(
+        `UPDATE marau_booking_adjustments SET status = 'reversal_pending_staff'
+         WHERE status = 'applied' AND credit_id IN (SELECT credit_id FROM marau_reward_credits WHERE qualifying_request_id = ? AND status = 'reversed' AND needs_manual_adjustment = 1)`
+      ).bind(requestId),
+    ]);
+    return { handled: true, reversed: res[0].meta.changes === 1 };
   }
+
+  const LIVE_ADJ = `('applied', 'reversal_pending_staff')`;
+  const CANCELLED_BOOKING = `('cancelled', 'declined')`;
+
+  /**
+   * Idempotent repair sweep, safe to run at any time and by any number of callers: when a return transfer has been cancelled
+   * or declined (by the source sync, by staff, or by anything that never called a hook) its credit goes back to 'earned' and
+   * its discount is released; a flagged reversal on a cancelled booking needs no human any more.
+   */
+  async function reconcileApplications(env) {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE marau_reward_credits SET status = 'earned', applied_at = NULL, applied_by = NULL, applied_booking_id = NULL, applied_cents = NULL
+         WHERE status = 'applied' AND applied_booking_id IN (SELECT id FROM marau_test_bookings WHERE status IN ${CANCELLED_BOOKING})`
+      ),
+      env.DB.prepare(
+        `UPDATE marau_booking_adjustments SET status = 'released_booking_cancelled'
+         WHERE status IN ${LIVE_ADJ} AND booking_id IN (SELECT id FROM marau_test_bookings WHERE status IN ${CANCELLED_BOOKING})`
+      ),
+      env.DB.prepare(
+        `UPDATE marau_reward_credits SET needs_manual_adjustment = 0
+         WHERE status = 'reversed' AND needs_manual_adjustment = 1
+           AND NOT EXISTS (SELECT 1 FROM marau_booking_adjustments a WHERE a.credit_id = marau_reward_credits.credit_id AND a.status IN ${LIVE_ADJ})
+           AND EXISTS (SELECT 1 FROM marau_booking_adjustments a WHERE a.credit_id = marau_reward_credits.credit_id AND a.status = 'released_booking_cancelled')`
+      ),
+    ]);
+  }
+
+  // The adjustment insert is ONE statement that, in the same atomic step, checks the credit is still in the expected state, the
+  // booking is the holder's own upcoming uncancelled RETURN, and that amount due remains - and sizes the credit to what remains.
+  const ADJUSTMENT_SOURCE = `
+    FROM (
+      SELECT c.credit_id AS credit_id, c.amount_cents AS amount, c.funding_source AS funding, b.id AS booking_id,
+             CAST(ROUND(b.quoted_amount * 100) AS INTEGER) AS orig,
+             COALESCE((SELECT SUM(a.credit_cents) FROM marau_booking_adjustments a WHERE a.booking_id = b.id AND a.status IN ${LIVE_ADJ}), 0) AS used
+      FROM marau_reward_credits c
+      JOIN marau_test_bookings b ON b.id = ? AND b.guest_session_id = c.beneficiary_session_id AND b.leg_type = 'return'
+                                AND b.status IN ('pending', 'confirmed', 'confirmed_unallocated') AND b.pickup_datetime > ?
+      WHERE c.credit_id = ?`;
 
   async function applyCredit(request, env, creditId) {
     const staff = await requireStaffIdentity(request, env);
@@ -187,74 +269,117 @@ export function createReferrals(deps) {
     const bookingId = Number(body.booking_id);
     if (!Number.isInteger(bookingId) || bookingId <= 0) return json({ error: 'booking_id is required' }, 400);
 
-    const credit = await env.DB.prepare('SELECT * FROM marau_reward_credits WHERE credit_id = ?').bind(creditId).first();
-    if (!credit) return json({ error: 'credit not found' }, 404);
-
-    // Idempotent repair: a retry for the SAME booking after a partial failure finishes the job instead of failing.
-    if (credit.status === 'applied') {
-      if (credit.applied_booking_id !== bookingId) return json({ error: 'CREDIT_ALREADY_APPLIED_ELSEWHERE' }, 409);
-      await ensureAdjustment(env, credit, bookingId, staff.operatorName);
-      return json({ ok: true, repeated: true, fare: await fareFor(env, bookingId), demonstration_data: true });
-    }
-    if (credit.status !== 'earned') return json({ error: 'CREDIT_NOT_APPLICABLE', status: credit.status, detail: credit.status === 'pending' ? 'the purchase is not yet fulfilled' : undefined }, 409);
+    await reconcileApplications(env);
+    const credit0 = await env.DB.prepare('SELECT credit_id FROM marau_reward_credits WHERE credit_id = ?').bind(creditId).first();
+    if (!credit0) return json({ error: 'credit not found' }, 404);
 
     const now = nowIso();
-    const booking = await env.DB.prepare(
-      `SELECT * FROM marau_test_bookings WHERE id = ? AND guest_session_id = ? AND leg_type = 'return' AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ?`
-    ).bind(bookingId, credit.beneficiary_session_id, now).first();
-    if (!booking) return json({ error: 'NOT_AN_ELIGIBLE_RETURN_TRANSFER', detail: "the booking must be the credit holder's own upcoming, uncancelled RETURN transfer" }, 409);
-    const original = Math.round(Number(booking.quoted_amount) * 100);
-    const applied = Math.min(credit.amount_cents, original);
-
-    const cas = await env.DB.prepare(
-      `UPDATE marau_reward_credits SET status = 'applied', applied_at = ?, applied_by = ?, applied_booking_id = ?, applied_cents = ? WHERE credit_id = ? AND status = 'earned'`
-    ).bind(now, staff.operatorName, bookingId, applied, creditId).run();
-    if (cas.meta.changes !== 1) return json({ error: 'CREDIT_NOT_APPLICABLE', detail: 'another redemption won the race' }, 409);
-
+    const adjId = idFor('adj');
+    // ONE batch = ONE transaction: the adjustment, then the claim of the credit that is conditional on THAT adjustment existing.
+    // There is no instant at which the credit is applied without its adjustment, nor an adjustment without its credit.
+    let batch;
     try {
-      await ensureAdjustment(env, { ...credit, applied_cents: applied }, bookingId, staff.operatorName, original);
+      batch = await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at)
+           SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(x.amount, x.orig - x.used), x.orig - x.used - MIN(x.amount, x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?
+           ${ADJUSTMENT_SOURCE} AND c.status = 'earned') x
+           WHERE x.orig - x.used > 0`
+        ).bind(adjId, staff.operatorName, now, bookingId, now, creditId),
+        env.DB.prepare(
+          `UPDATE marau_reward_credits SET status = 'applied', applied_at = ?, applied_by = ?, applied_booking_id = ?, applied_cents = (SELECT credit_cents FROM marau_booking_adjustments WHERE adjustment_id = ?)
+           WHERE credit_id = ? AND status = 'earned' AND EXISTS (SELECT 1 FROM marau_booking_adjustments WHERE adjustment_id = ?)`
+        ).bind(now, staff.operatorName, bookingId, adjId, creditId, adjId),
+      ]);
     } catch (err) {
-      // The booking already carries a credit (UNIQUE booking_id): hand the credit back so it can be used elsewhere.
-      await env.DB.prepare(`UPDATE marau_reward_credits SET status = 'earned', applied_at = NULL, applied_by = NULL, applied_booking_id = NULL, applied_cents = NULL WHERE credit_id = ? AND applied_booking_id = ?`).bind(creditId, bookingId).run();
-      if (/UNIQUE/i.test(String(err && err.message))) return json({ error: 'BOOKING_ALREADY_HAS_A_CREDIT' }, 409);
+      // The batch rolled back as a unit: nothing is half-applied. Report it; the retry starts from a clean 'earned' credit.
+      console.error('[marau-preview] credit application failed and was rolled back', err);
+      return json({ error: 'APPLICATION_FAILED_NOTHING_CHANGED', detail: 'the credit was not applied and no partial state was left; it is safe to retry' }, 503);
+    }
+    if (batch[0].meta.changes === 1 && batch[1].meta.changes === 1) {
+      const credit = await env.DB.prepare('SELECT amount_cents, applied_cents FROM marau_reward_credits WHERE credit_id = ?').bind(creditId).first();
+      return json({ ok: true, operator: staff.operatorName, applied_fjd: fjd(credit.applied_cents), unused_fjd: fjd(credit.amount_cents - credit.applied_cents), fare: await fareFor(env, bookingId), demonstration_data: true });
+    }
+    return explainNotApplied(env, creditId, bookingId);
+  }
+
+  /** The batch changed nothing: decide whether this is a harmless replay (report the WINNER), a repair, or a real refusal. */
+  async function explainNotApplied(env, creditId, bookingId) {
+    const credit = await env.DB.prepare('SELECT * FROM marau_reward_credits WHERE credit_id = ?').bind(creditId).first();
+    if (credit.status === 'applied') {
+      if (credit.applied_booking_id !== bookingId) return json({ error: 'CREDIT_ALREADY_APPLIED_ELSEWHERE', applied_booking_id: credit.applied_booking_id }, 409);
+      const repaired = await repairMissingAdjustment(env, credit);
+      return json({ ok: true, repeated: true, repaired, operator: credit.applied_by, applied_fjd: fjd(credit.applied_cents), unused_fjd: fjd(credit.amount_cents - credit.applied_cents), fare: await fareFor(env, bookingId), demonstration_data: true });
+    }
+    if (credit.status !== 'earned') return json({ error: 'CREDIT_NOT_APPLICABLE', status: credit.status, detail: credit.status === 'pending' ? 'the purchase is not yet fulfilled and paid' : undefined }, 409);
+    const booking = await env.DB.prepare(
+      `SELECT id FROM marau_test_bookings WHERE id = ? AND guest_session_id = ? AND leg_type = 'return' AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ?`
+    ).bind(bookingId, credit.beneficiary_session_id, nowIso()).first();
+    if (!booking) return json({ error: 'NOT_AN_ELIGIBLE_RETURN_TRANSFER', detail: "the booking must be the credit holder's own upcoming, uncancelled RETURN transfer" }, 409);
+    return json({ error: 'BOOKING_FULLY_COVERED', detail: 'this return transfer already has no amount left to discount' }, 409);
+  }
+
+  /** A credit the OLD workflow left 'applied' with no adjustment: write the adjustment it should have, attributed to the original operator. */
+  async function repairMissingAdjustment(env, credit) {
+    const live = await env.DB.prepare(`SELECT 1 AS ok FROM marau_booking_adjustments WHERE credit_id = ? AND status IN ${LIVE_ADJ}`).bind(credit.credit_id).first();
+    if (live) return false;
+    try {
+      const res = await env.DB.prepare(
+        `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at)
+         SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(COALESCE(?, x.amount), x.orig - x.used), x.orig - x.used - MIN(COALESCE(?, x.amount), x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?
+         ${ADJUSTMENT_SOURCE} AND c.status = 'applied') x
+         WHERE x.orig - x.used > 0`
+      ).bind(idFor('adj'), credit.applied_cents, credit.applied_cents, credit.applied_by || 'unknown', nowIso(), credit.applied_booking_id, nowIso(), credit.credit_id).run();
+      return res.meta.changes === 1;
+    } catch (err) {
+      if (/UNIQUE/i.test(String(err && err.message))) return false; // a concurrent retry already repaired it
       throw err;
     }
-    return json({ ok: true, fare: await fareFor(env, bookingId), demonstration_data: true });
   }
 
-  async function ensureAdjustment(env, credit, bookingId, operator, originalCents) {
-    const existing = await env.DB.prepare('SELECT adjustment_id FROM marau_booking_adjustments WHERE credit_id = ?').bind(credit.credit_id).first();
-    if (existing) return existing.adjustment_id;
-    let original = originalCents;
-    if (original == null) {
-      const b = await env.DB.prepare('SELECT quoted_amount FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
-      original = Math.round(Number(b.quoted_amount) * 100);
+  /** Staff settle a flagged reversal (e.g. the extra amount was collected): the discount leaves the amount due, attributed. */
+  async function resolveAdjustment(request, env, adjustmentId) {
+    const staff = await requireStaffIdentity(request, env);
+    if (!staff) return json({ error: 'unauthorized - a valid staff identity token (x-marau-staff-token) is required' }, 401);
+    let b; try { b = await request.json(); } catch { b = {}; }
+    const note = String(b.note || '').trim().slice(0, 300);
+    if (note.length < 3) return json({ error: 'a resolution note is required' }, 400);
+    const adj = await env.DB.prepare('SELECT * FROM marau_booking_adjustments WHERE adjustment_id = ?').bind(adjustmentId).first();
+    if (!adj) return json({ error: 'adjustment not found' }, 404);
+    const res = await env.DB.batch([
+      env.DB.prepare(`UPDATE marau_booking_adjustments SET status = 'reversal_resolved', resolved_by = ?, resolved_at = ?, resolution_note = ? WHERE adjustment_id = ? AND status = 'reversal_pending_staff'`).bind(staff.operatorName, nowIso(), note, adjustmentId),
+      env.DB.prepare(
+        `UPDATE marau_reward_credits SET needs_manual_adjustment = 0 WHERE credit_id = ? AND status = 'reversed'
+           AND NOT EXISTS (SELECT 1 FROM marau_booking_adjustments a WHERE a.credit_id = marau_reward_credits.credit_id AND a.status = 'reversal_pending_staff')`
+      ).bind(adj.credit_id),
+    ]);
+    if (res[0].meta.changes !== 1) {
+      const cur = await env.DB.prepare('SELECT status, resolved_by FROM marau_booking_adjustments WHERE adjustment_id = ?').bind(adjustmentId).first();
+      if (cur.status === 'reversal_resolved') return json({ ok: true, repeated: true, original_operator: cur.resolved_by, fare: await fareFor(env, adj.booking_id), demonstration_data: true });
+      return json({ error: 'NOT_AWAITING_A_STAFF_DECISION', status: cur.status }, 409);
     }
-    const creditCents = credit.applied_cents ?? Math.min(credit.amount_cents, original);
-    const id = idFor('adj');
-    await env.DB.prepare(
-      `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at)
-       VALUES (?, ?, ?, 'referral_credit', ?, ?, ?, NULL, 1, ?, 'applied', ?, ?)`
-    ).bind(id, bookingId, credit.credit_id, original, creditCents, original - creditCents, credit.funding_source, operator, nowIso()).run();
-    return id;
+    return json({ ok: true, resolved_by: staff.operatorName, fare: await fareFor(env, adj.booking_id), demonstration_data: true });
   }
 
-  /** Original fare, credit and amount due as three SEPARATE numbers, plus the quote history. Never mutates anything. */
+  /** Original fare, credits and amount due as SEPARATE numbers, plus the quote history. Never mutates anything. */
   async function fareFor(env, bookingId) {
     const b = await env.DB.prepare('SELECT id, quoted_amount, leg_type, created_at FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
     if (!b) return null;
     const original = Math.round(Number(b.quoted_amount) * 100);
-    const adj = await env.DB.prepare('SELECT * FROM marau_booking_adjustments WHERE booking_id = ?').bind(bookingId).first();
+    const { results: adjs } = await env.DB.prepare('SELECT * FROM marau_booking_adjustments WHERE booking_id = ? ORDER BY created_at, adjustment_id').bind(bookingId).all();
     const history = [{ event: 'original_quote', fjd: fjd(original), at: b.created_at }];
-    if (!adj) return { original_fare_fjd: fjd(original), referral_credit_fjd: 0, amount_due_fjd: fjd(original), operator_payout_unchanged: true, quote_history: history };
-    history.push({ event: adj.status === 'applied' ? 'referral_credit_applied' : 'referral_credit_reversal_pending_staff', credit_fjd: fjd(adj.credit_cents), at: adj.created_at });
+    const live = adjs.filter((a) => a.status === 'applied' || a.status === 'reversal_pending_staff');
+    for (const a of adjs) history.push({ event: `referral_credit_${a.status}`, credit_fjd: fjd(a.credit_cents), at: a.created_at });
+    const credit = live.reduce((n, a) => n + a.credit_cents, 0);
+    if (!adjs.length) return { original_fare_fjd: fjd(original), referral_credit_fjd: 0, amount_due_fjd: fjd(original), operator_payout_unchanged: true, quote_history: history };
     return {
-      original_fare_fjd: fjd(adj.original_quote_cents),
-      referral_credit_fjd: fjd(adj.credit_cents),
-      amount_due_fjd: fjd(adj.amount_due_cents),
-      operator_payout_unchanged: adj.operator_payout_unchanged === 1,
-      funded_by: adj.funded_by,
-      adjustment_status: adj.status,
+      original_fare_fjd: fjd(original),
+      referral_credit_fjd: fjd(credit),
+      amount_due_fjd: fjd(original - credit),
+      operator_payout_unchanged: adjs.every((a) => a.operator_payout_unchanged === 1),
+      funded_by: live.length ? live[0].funded_by : adjs[0].funded_by,
+      adjustment_status: live.some((a) => a.status === 'reversal_pending_staff') ? 'reversal_pending_staff' : live.length ? 'applied' : adjs[adjs.length - 1].status,
+      adjustments: live.map((a) => ({ adjustment_id: a.adjustment_id, credit_fjd: fjd(a.credit_cents), status: a.status })),
       quote_history: history,
     };
   }
@@ -264,6 +389,7 @@ export function createReferrals(deps) {
   async function guestReferral(request, env) {
     const session = await requireGuestSession(request, env);
     if (!session) return json({ error: 'unauthorized - invalid or revoked access token' }, 401);
+    await reconcileApplications(env);
     const code = await ensureCode(env, session.session_id);
     const base = baseUrl(request, env);
     const policy = await readPolicy(env);
@@ -311,7 +437,7 @@ export function createReferrals(deps) {
     const staff = await requireStaffIdentity(request, env);
     if (!staff) return json({ error: 'unauthorized - a valid staff identity token (x-marau-staff-token) is required' }, 401);
     const p = await readPolicy(env);
-    return json({ policy: { mode: p.mode, amount_fjd: fjd(p.amount_cents), cap_per_referrer_fjd: fjd(p.cap_cents_per_referrer), min_purchase_fjd: fjd(p.min_purchase_cents), qualify_on: p.qualify_on, funding_source: p.funding_source, live_approved_by: p.live_approved_by, updated_by: p.updated_by }, demonstration_data: true });
+    return json({ policy: { mode: p.mode, amount_fjd: fjd(p.amount_cents), cap_per_referrer_fjd: fjd(p.cap_cents_per_referrer), min_purchase_fjd: fjd(p.min_purchase_cents), qualify_on: p.qualify_on, require_payment: p.require_payment, funding_source: p.funding_source, live_approved_by: p.live_approved_by, updated_by: p.updated_by }, demonstration_data: true });
   }
 
   async function setPolicy(request, env) {
@@ -329,21 +455,23 @@ export function createReferrals(deps) {
     if (cap !== undefined && !(cap > 0 && cap <= 1000000)) errors.push('cap_per_referrer_fjd must be a positive FJD amount');
     if (min !== undefined && !(min >= 0)) errors.push('min_purchase_fjd must be zero or more');
     if (b.qualify_on !== undefined && !['confirmed', 'fulfilled'].includes(b.qualify_on)) errors.push("qualify_on must be 'confirmed' or 'fulfilled'");
+    if (b.require_payment !== undefined && !['none', 'paid_in_full'].includes(b.require_payment)) errors.push("require_payment must be 'none' or 'paid_in_full'");
     if (errors.length) return json({ error: 'validation failed', details: errors }, 400);
     const cur = await readPolicy(env);
     const next = {
       mode: mode ?? cur.mode,
       amount: amount ?? cur.amount_cents, cap: cap ?? cur.cap_cents_per_referrer, min: min ?? cur.min_purchase_cents,
-      qualify_on: b.qualify_on ?? cur.qualify_on, funding: b.funding_source ? String(b.funding_source).slice(0, 80) : cur.funding_source,
+      qualify_on: b.qualify_on ?? cur.qualify_on, require_payment: b.require_payment ?? cur.require_payment, funding: b.funding_source ? String(b.funding_source).slice(0, 80) : cur.funding_source,
     };
-    await env.DB.prepare(`UPDATE marau_reward_policy SET mode = ?, amount_cents = ?, cap_cents_per_referrer = ?, min_purchase_cents = ?, qualify_on = ?, funding_source = ?, updated_by = ?, updated_at = ? WHERE id = 1`)
-      .bind(next.mode, next.amount, next.cap, next.min, next.qualify_on, next.funding, staff.operatorName, nowIso()).run();
+    await env.DB.prepare(`UPDATE marau_reward_policy SET mode = ?, amount_cents = ?, cap_cents_per_referrer = ?, min_purchase_cents = ?, qualify_on = ?, require_payment = ?, funding_source = ?, updated_by = ?, updated_at = ? WHERE id = 1`)
+      .bind(next.mode, next.amount, next.cap, next.min, next.qualify_on, next.require_payment, next.funding, staff.operatorName, nowIso()).run();
     return getPolicy(request, env);
   }
 
   async function listCredits(request, env) {
     const staff = await requireStaffIdentity(request, env);
     if (!staff) return json({ error: 'unauthorized - a valid staff identity token (x-marau-staff-token) is required' }, 401);
+    await reconcileApplications(env);
     const { results } = await env.DB.prepare(
       `SELECT c.*, gs.guest_phone, gs.guest_email, gs.whatsapp_available FROM marau_reward_credits c JOIN guest_sessions gs ON gs.session_id = c.beneficiary_session_id ORDER BY c.created_at DESC LIMIT 200`
     ).all();
@@ -395,8 +523,9 @@ export function createReferrals(deps) {
     if (m === 'POST' && p === '/preview/admin/rewards/policy') return setPolicy(request, env);
     if (m === 'GET' && p === '/preview/admin/rewards/credits') return listCredits(request, env);
     x = p.match(/^\/preview\/admin\/rewards\/credits\/(cr_[^/]+)\/apply$/); if (m === 'POST' && x) return applyCredit(request, env, x[1]);
+    x = p.match(/^\/preview\/admin\/rewards\/adjustments\/(adj_[^/]+)\/resolve$/); if (m === 'POST' && x) return resolveAdjustment(request, env, x[1]);
     return null;
   }
 
-  return { route, attribute, ensureCode, onRequestTransition, reportExtras, fareFor };
+  return { route, attribute, ensureCode, onRequestTransition, reconcileRequest, reconcileApplications, reportExtras, fareFor };
 }

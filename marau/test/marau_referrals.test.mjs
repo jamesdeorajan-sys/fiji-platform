@@ -26,7 +26,7 @@ const inDays = (d, h = 0) => new Date(Date.now() + d * 86400_000 + h * 3600_000)
 const db = (env, sql, ...b) => env.DB.prepare(sql).bind(...b).first();
 const all = async (env, sql, ...b) => (await env.DB.prepare(sql).bind(...b).all()).results;
 
-async function setup(policy = { mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 50, qualify_on: 'fulfilled' }) {
+async function setup(policy = { mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 50, qualify_on: 'fulfilled', require_payment: 'none' }) {
   const env = makeEnv();
   for (const [tok, name] of [['staff-tok-ana', 'Ana (ops)'], ['staff-tok-bala', 'Bala (ops)']]) await call(env, '/preview/admin/staff-identities', { method: 'POST', headers: admin(env), body: { token: tok, operator_name: name } });
   if (policy) {
@@ -293,7 +293,7 @@ test('only a NEW guest can be referred, attribution is first-touch, and bad/unkn
 
 test('qualification: minimum purchase, earn-on-confirm policy, one credit per friend however many purchases, and per-referrer cap', async () => {
   // below minimum purchase (FJ$120 offer vs min FJ$200)
-  let { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 200, qualify_on: 'fulfilled' });
+  let { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 200, qualify_on: 'fulfilled' , require_payment: 'none' });
   let a = await newGuest(env); let f = await friendJoins(env, (await referralOf(env, a.token)).data.code);
   let r = await purchase(env, f.token, offerId, 1); await act(env, r.data.request.request_id, 'confirm'); await act(env, r.data.request.request_id, 'fulfil');
   assert.equal((await credits(env)).length, 0, 'below the minimum purchase');
@@ -301,13 +301,13 @@ test('qualification: minimum purchase, earn-on-confirm policy, one credit per fr
   assert.equal(r.data.existing, true);
 
   // earn on confirmation
-  ({ env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 0, qualify_on: 'confirmed' }));
+  ({ env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 0, qualify_on: 'confirmed' , require_payment: 'none' }));
   a = await newGuest(env); f = await friendJoins(env, (await referralOf(env, a.token)).data.code);
   r = await purchase(env, f.token, offerId, 1); await act(env, r.data.request.request_id, 'confirm');
   assert.deepEqual((await credits(env)).map((c) => c.status), ['earned']);
 
   // per-referrer cap: cap 15, reward 10 -> the second friend's purchase is capped
-  ({ env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 15, min_purchase_fjd: 0, qualify_on: 'fulfilled' }));
+  ({ env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 15, min_purchase_fjd: 0, qualify_on: 'fulfilled' , require_payment: 'none' }));
   a = await newGuest(env); const code = (await referralOf(env, a.token)).data.code;
   const f1 = await friendJoins(env, code); const f2 = await friendJoins(env, code);
   for (const friend of [f1, f2]) { const p = await purchase(env, friend.token, offerId); await act(env, p.data.request.request_id, 'confirm'); await act(env, p.data.request.request_id, 'fulfil'); }
@@ -384,7 +384,7 @@ test('saved, declined and expired purchases never earn: pay-later requests alone
 // ============================================================ applying a credit
 
 test('only the holder\'s own upcoming, uncancelled RETURN transfer can receive a credit; credit is capped at the fare', async () => {
-  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'fulfilled' });
+  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'fulfilled' , require_payment: 'none' });
   const a = await newGuest(env); const other = await newGuest(env);
   const code = (await referralOf(env, a.token)).data.code;
   const makeCredit = async () => { const f = await friendJoins(env, code); const r = (await purchase(env, f.token, offerId)).data.request.request_id; await act(env, r, 'confirm'); await act(env, r, 'fulfil'); return (await credits(env)).at(-1).credit_id; };
@@ -410,7 +410,7 @@ test('only the holder\'s own upcoming, uncancelled RETURN transfer can receive a
 });
 
 test('CONCURRENT redemption: one credit cannot go to two bookings; two credits cannot both land on one booking; nothing is double-applied', async () => {
-  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'fulfilled' });
+  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'fulfilled' , require_payment: 'none' });
   const a = await newGuest(env); const code = (await referralOf(env, a.token)).data.code;
   const makeCredit = async () => { const f = await friendJoins(env, code); const r = (await purchase(env, f.token, offerId)).data.request.request_id; await act(env, r, 'confirm'); await act(env, r, 'fulfil'); return (await credits(env)).at(-1).credit_id; };
   const c1 = await makeCredit(); const c2 = await makeCredit();
@@ -421,20 +421,20 @@ test('CONCURRENT redemption: one credit cannot go to two bookings; two credits c
   assert.deepEqual([x.status, y.status].sort(), [200, 409]);
   assert.equal((await all(env, 'SELECT * FROM marau_booking_adjustments WHERE credit_id = ?', c1)).length, 1);
 
-  // two credits, one booking, at once (b2 is free unless c1 landed there)
+  // two credits, one booking, at once
   const target = (await db(env, 'SELECT booking_id FROM marau_booking_adjustments WHERE credit_id = ?', c1)).booking_id === b1 ? b2 : b1;
   const c3 = await makeCredit();
   const [p, q] = await Promise.all([apply(env, c2, target, 'staff-tok-ana'), apply(env, c3, target, 'staff-tok-bala')]);
-  assert.deepEqual([p.status, q.status].sort(), [200, 409]);
-  assert.equal((await all(env, 'SELECT * FROM marau_booking_adjustments WHERE booking_id = ?', target)).length, 1);
+  // ROUND 2: a return booking may now carry SEVERAL credits (bounded by its amount due), so both land - exactly once each.
+  assert.deepEqual([p.status, q.status].sort(), [200, 200]);
+  assert.equal((await all(env, 'SELECT * FROM marau_booking_adjustments WHERE booking_id = ?', target)).length, 2);
   const states = (await credits(env)).map((c) => c.status);
-  assert.equal(states.filter((s) => s === 'applied').length, 2, 'exactly the credits that landed are applied');
-  assert.equal(states.filter((s) => s === 'earned').length, 1, 'the loser was handed back, still usable');
-  assert.equal((await all(env, 'SELECT * FROM marau_booking_adjustments')).length, 2);
+  assert.equal(states.filter((s) => s === 'applied').length, 3, 'every credit that landed is applied exactly once');
+  assert.equal((await all(env, 'SELECT * FROM marau_booking_adjustments')).length, 3);
 });
 
 test('concurrent qualification: simultaneous fulfilment/confirmation events create exactly one credit', async () => {
-  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'confirmed' });
+  const { env, offerId } = await setup({ mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 100, min_purchase_fjd: 0, qualify_on: 'confirmed' , require_payment: 'none' });
   const a = await newGuest(env); const f = await friendJoins(env, (await referralOf(env, a.token)).data.code);
   const r = (await purchase(env, f.token, offerId)).data.request.request_id;
   await Promise.all([act(env, r, 'confirm', {}, 'staff-tok-ana'), act(env, r, 'confirm', {}, 'staff-tok-bala'), act(env, r, 'confirm', {}, 'staff-tok-ana')]);

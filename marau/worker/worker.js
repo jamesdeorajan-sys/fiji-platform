@@ -519,7 +519,7 @@ async function handleGetTrip(request, env) {
     guest_email: session.guest_email,
     guest_phone: session.guest_phone,
     whatsapp_available: session.whatsapp_available === 1 ? true : session.whatsapp_available === 0 ? false : null,
-    bookings: await Promise.all(bookings.map(async (b) => ({ ...b, fare: await referrals.fareFor(env, b.id) }))),
+    bookings: await (async () => { await referrals.reconcileApplications(env); return Promise.all(bookings.map(async (b) => ({ ...b, fare: await referrals.fareFor(env, b.id) }))); })(),
     offer_requests: await experience.offerRequestsForSession(env, session.session_id),
     deal_requests: dealRequests.map((r) => ({
       request_id: r.request_id,

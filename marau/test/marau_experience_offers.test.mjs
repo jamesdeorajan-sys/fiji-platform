@@ -478,8 +478,15 @@ test('missing WhatsApp: the guest can still book and request; staff see an email
   const staffView = (await call(env, '/preview/admin/offers/requests', { headers: staffH(env, 'staff-tok-ana') })).data.requests[0];
   assert.equal(staffView.contact.whatsapp_available, false);
   assert.equal(staffView.follow_up.channel, 'email');
-  assert.equal(staffView.follow_up.owner, 'Bala (ops)');
-  assert.equal(staffView.follow_up.owner_missing, false);
+  // ROUND 2: the guest follow-up owner is the PERSISTED assignment (not the offer's fulfilment owner, which is shown separately).
+  assert.equal(staffView.fulfilment_owner, 'Bala (ops)');
+  assert.equal(staffView.follow_up.owner, null);
+  assert.equal(staffView.follow_up.owner_missing, true, 'unassigned until a named staff member takes it');
+  const sess = await env.DB.prepare('SELECT session_id FROM guest_sessions WHERE access_token = ?').bind(guest.token).first();
+  assert.equal((await call(env, `/preview/admin/guests/${sess.session_id}/follow-up-owner`, { method: 'POST', headers: staffH(env, 'staff-tok-ana'), body: { owner: 'Bala (ops)' } })).status, 200);
+  const assigned = (await call(env, '/preview/admin/offers/requests', { headers: staffH(env, 'staff-tok-ana') })).data.requests[0];
+  assert.equal(assigned.follow_up.owner, 'Bala (ops)');
+  assert.equal(assigned.follow_up.owner_missing, false);
   assert.ok(staffView.contact.email && staffView.contact.phone, 'both phone and email are held for staff');
 });
 

@@ -444,8 +444,11 @@ export function createExperienceOffers(deps) {
     const status = url.searchParams.get('status');
     const where = status ? 'WHERE r.status = ?' : '';
     const stmt = env.DB.prepare(
-      `SELECT r.*, o.title, o.status AS offer_status, o.fulfilment_owner, o.starts_at, gs.guest_phone, gs.guest_email, gs.whatsapp_available
+      `SELECT r.*, o.title, o.status AS offer_status, o.fulfilment_owner, o.starts_at, gs.guest_phone, gs.guest_email, gs.whatsapp_available, fo.owner AS follow_up_owner,
+              (SELECT COALESCE(SUM(CASE WHEN p.event_type = 'paid' THEN p.amount_cents ELSE 0 END), 0) FROM marau_offer_payments p WHERE p.request_id = r.request_id) AS paid_cents,
+              (SELECT COALESCE(SUM(CASE WHEN p.event_type = 'refunded' THEN p.amount_cents ELSE 0 END), 0) FROM marau_offer_payments p WHERE p.request_id = r.request_id) AS refunded_cents
        FROM marau_offer_requests r JOIN marau_experience_offers o ON o.offer_id = r.offer_id JOIN guest_sessions gs ON gs.session_id = r.guest_session_id
+       LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = r.guest_session_id
        ${where} ORDER BY r.created_at DESC LIMIT 200`
     );
     const { results } = await (status ? stmt.bind(status) : stmt).all();
@@ -456,7 +459,8 @@ export function createExperienceOffers(deps) {
         needs_human_follow_up: r.offer_status === 'withdrawn' && ['confirmed', 'fulfilled'].includes(r.status),
         // STAFF-ONLY contact facts, needed to serve the guest. Never returned by any guest/public endpoint.
         contact: { phone: r.guest_phone, email: r.guest_email, whatsapp_available: r.whatsapp_available === 1 ? true : r.whatsapp_available === 0 ? false : null },
-        follow_up: followUpPlan({ whatsappAvailable: r.whatsapp_available, owner: r.fulfilment_owner }),
+        follow_up: followUpPlan({ whatsappAvailable: r.whatsapp_available, owner: r.follow_up_owner }),
+        payment: { paid_fjd: fjd(r.paid_cents), refunded_fjd: fjd(r.refunded_cents), net_paid_fjd: fjd(r.paid_cents - r.refunded_cents), status: r.refunded_cents > 0 ? 'refunded' : r.paid_cents >= r.total_cents ? 'paid_in_full' : r.paid_cents > 0 ? 'part_paid' : 'unpaid' },
       })),
       demonstration_data: true,
     });
@@ -515,6 +519,82 @@ export function createExperienceOffers(deps) {
     return json({ error: 'INVALID_TRANSITION', from: row.status, action }, 409);
   }
 
+  // ----------------------------------------------------------------- payment evidence
+
+  const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'other'];
+  const NET_PAID_SQL = `(SELECT COALESCE(SUM(CASE event_type WHEN 'paid' THEN amount_cents ELSE -amount_cents END), 0) FROM marau_offer_payments WHERE request_id = ?)`;
+
+  /**
+   * Staff record evidence that a guest PAID for (or was REFUNDED for) a purchase. Marau collects nothing: this is a record of
+   * what a named human saw, and it is the only thing that can satisfy a "paid in full" reward policy. Idempotent per
+   * (request, event_key); paid can never exceed the total, a refund can never exceed what was paid - both enforced INSIDE the
+   * one INSERT, so concurrent or out-of-order events cannot over-record.
+   */
+  async function recordPayment(request, env, requestId) {
+    const s = await staffOr401(request, env); if (s.error) return s.error;
+    const j = await readJson(request); const b = j.body || {};
+    const errors = [];
+    if (!['paid', 'refunded'].includes(b.event)) errors.push("event must be 'paid' or 'refunded'");
+    const cents = toCents(b.amount_fjd);
+    if (!(cents > 0 && cents <= 10_000_000)) errors.push('amount_fjd must be a positive FJD amount');
+    if (!PAYMENT_METHODS.includes(b.method)) errors.push(`method must be one of ${PAYMENT_METHODS.join(', ')}`);
+    const eventKey = typeof b.event_key === 'string' ? b.event_key.trim() : '';
+    if (eventKey.length < 1 || eventKey.length > 80) errors.push('event_key (a unique id for this payment event, so a retry cannot double-record) is required');
+    if (errors.length) return json({ error: 'validation failed', details: errors }, 400);
+    const reference = b.reference ? String(b.reference).trim().slice(0, 80) : null;
+
+    const req = await env.DB.prepare('SELECT * FROM marau_offer_requests WHERE request_id = ?').bind(requestId).first();
+    if (!req) return json({ error: 'request not found' }, 404);
+    if (!['confirmed', 'fulfilled', 'cancelled_by_guest', 'cancelled_by_staff'].includes(req.status)) {
+      return json({ error: 'REQUEST_NOT_PAYABLE', status: req.status, detail: 'payment evidence can only be recorded for a confirmed purchase (or one later cancelled)' }, 409);
+    }
+    // An exact repeat of an event already recorded is a replay, whatever the running totals now allow.
+    const prior0 = await env.DB.prepare('SELECT * FROM marau_offer_payments WHERE request_id = ? AND event_key = ?').bind(requestId, eventKey).first();
+    if (prior0) return replayPayment(env, requestId, prior0, b.event, cents);
+    const boundSql = b.event === 'paid'
+      ? `${NET_PAID_SQL} + ? <= (SELECT total_cents FROM marau_offer_requests WHERE request_id = ?)`
+      : `? <= ${NET_PAID_SQL}`;
+    const boundArgs = b.event === 'paid' ? [requestId, cents, requestId] : [cents, requestId];
+    const paymentId = idFor('pay');
+    let inserted;
+    try {
+      inserted = await env.DB.prepare(
+        `INSERT INTO marau_offer_payments (payment_id, request_id, event_type, amount_cents, method, reference, event_key, recorded_by, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${boundSql}`
+      ).bind(paymentId, requestId, b.event, cents, b.method, reference, eventKey, s.operator, nowIso(), ...boundArgs).run();
+    } catch (err) {
+      if (!/UNIQUE/i.test(String(err && err.message))) throw err;
+      const prior = await env.DB.prepare('SELECT * FROM marau_offer_payments WHERE request_id = ? AND event_key = ?').bind(requestId, eventKey).first();
+      return replayPayment(env, requestId, prior, b.event, cents); // a concurrent identical event won the insert
+    }
+    if (inserted.meta.changes !== 1) {
+      const t = await paymentTotals(env, requestId);
+      return b.event === 'paid'
+        ? json({ error: 'OVERPAYMENT', detail: 'this would record more than the purchase total', total_fjd: fjd(req.total_cents), net_paid_fjd: t.net_paid_fjd }, 409)
+        : json({ error: 'REFUND_EXCEEDS_PAYMENT', detail: 'a refund cannot exceed what has been recorded as paid', net_paid_fjd: t.net_paid_fjd }, 409);
+    }
+    await logEvent(env, { offerId: req.offer_id, requestId, type: `payment_${b.event}`, actor: s.operator, detail: { amount_fjd: fjd(cents), method: b.method, event_key: eventKey } });
+    if (hooks.onRequestTransition) await hooks.onRequestTransition(env, { request: req, from: req.status, to: req.status, operator: s.operator });
+    const row = await env.DB.prepare('SELECT * FROM marau_offer_payments WHERE payment_id = ?').bind(paymentId).first();
+    return json({ ok: true, payment: paymentShape(row), totals: await paymentTotals(env, requestId), demonstration_data: true });
+  }
+
+  async function replayPayment(env, requestId, prior, event, cents) {
+    if (prior && prior.event_type === event && prior.amount_cents === cents) {
+      return json({ ok: true, repeated: true, original_operator: prior.recorded_by, payment: paymentShape(prior), totals: await paymentTotals(env, requestId), demonstration_data: true });
+    }
+    return json({ error: 'EVENT_KEY_REUSED', detail: 'that event_key was already used for a different payment event' }, 409);
+  }
+
+  const paymentShape = (p) => ({ payment_id: p.payment_id, event: p.event_type, amount_fjd: fjd(p.amount_cents), method: p.method, reference: p.reference, recorded_by: p.recorded_by, recorded_at: p.created_at });
+
+  async function paymentTotals(env, requestId) {
+    const r = await env.DB.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN event_type = 'paid' THEN amount_cents END), 0) AS paid, COALESCE(SUM(CASE WHEN event_type = 'refunded' THEN amount_cents END), 0) AS refunded FROM marau_offer_payments WHERE request_id = ?`
+    ).bind(requestId).first();
+    return { paid_fjd: fjd(r.paid), refunded_fjd: fjd(r.refunded), net_paid_fjd: fjd(r.paid - r.refunded) };
+  }
+
   // ---------------------------------------------------------------- editions
 
   async function upsertEdition(request, env) {
@@ -569,6 +649,7 @@ export function createExperienceOffers(deps) {
     const by = Object.fromEntries(results.map((r) => [r.status, r]));
     const sum = (statuses, key) => statuses.reduce((a, st) => a + ((by[st] && by[st][key]) || 0), 0);
     const requestsTotal = results.reduce((a, r) => a + r.n, 0);
+    const pay = await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN event_type = 'paid' THEN amount_cents ELSE -amount_cents END), 0) AS net FROM marau_offer_payments`).first();
     const extra = hooks.reportExtras ? await hooks.reportExtras(env) : {};
     return json({
       // Each figure is labelled for exactly what it is. QUOTED VALUE IS NOT COLLECTED REVENUE; nothing here is paid.
@@ -580,12 +661,14 @@ export function createExperienceOffers(deps) {
       quoted_value_open_fjd: fjd(sum(['requested'], 'total_cents')),
       confirmed_sales_value_fjd: fjd(sum(['confirmed', 'fulfilled'], 'total_cents')),
       fulfilled_sales_value_fjd: fjd(sum(['fulfilled'], 'total_cents')),
+      payment_evidenced_net_fjd: fjd(pay.net),
       expected_contribution_fjd_before_rewards: fjd(sum(['confirmed', 'fulfilled'], 'contribution_cents')),
       realised_contribution_fjd_before_rewards: fjd(sum(['fulfilled'], 'contribution_cents')),
       ...extra,
       labels: {
         quoted_value: 'what open requests would be worth if confirmed - NOT revenue',
         confirmed_sales: 'requests a human has confirmed (payment not collected by Marau)',
+        payment_evidenced: 'payments minus refunds that a named staff member recorded as seen - evidence, not a bank reconciliation',
         contribution: 'price minus supplier cost per place, before any referral reward funding',
       },
       demonstration_data: true,
@@ -635,6 +718,7 @@ export function createExperienceOffers(deps) {
     if (m === 'GET' && p === '/preview/admin/offers/report') return report(request, env);
     if (m === 'GET' && p === '/preview/admin/offers/requests') return listRequestsStaff(request, env, url);
     x = p.match(/^\/preview\/admin\/offers\/(off_[^/]+)\/(publish|withdraw)$/); if (m === 'POST' && x) return x[2] === 'publish' ? publishOffer(request, env, x[1]) : withdrawOffer(request, env, x[1]);
+    x = p.match(/^\/preview\/admin\/offers\/requests\/(req_[^/]+)\/payment$/); if (m === 'POST' && x) return recordPayment(request, env, x[1]);
     x = p.match(/^\/preview\/admin\/offers\/requests\/(req_[^/]+)\/(confirm|decline|fulfil|cancel)$/); if (m === 'POST' && x) return staffTransition(request, env, x[1], x[2]);
     if (m === 'POST' && p === '/preview/admin/editions') return upsertEdition(request, env);
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/publish$/); if (m === 'POST' && x) return publishEdition(request, env, decodeURIComponent(x[1]));
