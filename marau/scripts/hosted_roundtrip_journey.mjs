@@ -12,7 +12,9 @@ const [BASE, ADMIN] = process.argv.slice(2);
 if (!BASE || !ADMIN) { console.error('usage: node scripts/hosted_roundtrip_journey.mjs <base url> <admin test token>'); process.exit(2); }
 const RUN = Date.now().toString(36);
 const checks = [];
-const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), ...(detail !== undefined ? { detail } : {}) });
+// Detail is kept ONLY for a failing check, and any guest access token in it is redacted: evidence files are committed.
+const redact = (d) => JSON.parse(JSON.stringify(d === undefined ? null : d).replace(/tok_[0-9a-f-]{36}/g, 'tok_REDACTED'));
+const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), ...(!ok && detail !== undefined ? { detail: redact(detail) } : {}) });
 const api = async (path, { method = 'GET', body, headers = {} } = {}) => {
   const r = await fetch(BASE + path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text(); let d; try { d = JSON.parse(t); } catch { d = t; }
