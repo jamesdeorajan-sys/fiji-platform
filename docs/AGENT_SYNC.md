@@ -1091,3 +1091,9 @@ served via the WhatsApp ground-team workflow, not a genuine fulfillment
 failure. Three additional rows initially flagged as possibly-real
 (guest names "Ji Jjk" / "James I'm" / "Juh Jjj", all sharing phone
 `0478302777`) are confirmed by James to be his own test bookings.
+
+## CHECKPOINT 2026-10-05 - Marau leg clarity (phone feedback) (Claude)
+- James tested the OLDER RC1 preview (single generic pickup form), not the RC2 round-trip preview. Fixed on branch `ceo/marau-leg-clarity` (code `4e510ea`, docs `cd6969f`), PREVIEW ONLY; hosted Worker `marau-stage1-preview-legs` `efc611e1-ed06-4de8-9f2c-a56036325dd5`. No production change, no migration, rewards OFF, RC1 and legs DB preserved.
+- Guest Trip: ARRIVAL and RETURN TO AIRPORT cards, each reading its OWN recorded date (with year), pickup time ("Fiji time"), pickup location, destination, status; missing = "Awaiting pickup details"; no reuse of arrival values, no inference from flight time (an inferred pickup location shows as awaiting).
+- Synthetic form: Arrival / Return to airport (standalone) / Round trip (separate return date-time, hotel, fare); contradictory direction refused (server 400 + client message), nothing saved.
+- Evidence: local Marau 414/414 (13 new; red-first commit e1f9428). Hosted synthetic journey 40/40 (one earlier run aborted on a transient `fetch failed` with 0 checks, re-run passed). Hosted browser (guest link only): both legs correct initially, after switching chips, after reload, and in a freshly opened tab; form labels and direction guard confirmed. NO physical-phone evidence.
