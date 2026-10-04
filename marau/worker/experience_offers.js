@@ -376,6 +376,7 @@ export function createExperienceOffers(deps) {
     if (!session) return json({ error: 'unauthorized - invalid or revoked access token' }, 401);
     await expireLapsedHolds(env);
     const now = nowIso();
+    const prior = await env.DB.prepare('SELECT status FROM marau_offer_requests WHERE request_id = ? AND guest_session_id = ?').bind(requestId, session.session_id).first();
     const res = await env.DB.prepare(
       `UPDATE marau_offer_requests SET status = 'cancelled_by_guest', updated_at = ?
        WHERE request_id = ? AND guest_session_id = ? AND status IN ('requested', 'confirmed')
@@ -383,7 +384,11 @@ export function createExperienceOffers(deps) {
     ).bind(now, requestId, session.session_id, now).run();
     const row = await env.DB.prepare('SELECT * FROM marau_offer_requests WHERE request_id = ? AND guest_session_id = ?').bind(requestId, session.session_id).first();
     if (!row) return json({ error: 'request not found' }, 404);
-    if (res.meta.changes === 1) { await logEvent(env, { offerId: row.offer_id, requestId, type: 'request_cancelled_by_guest', actor: `guest:${session.session_id}` }); return json({ ok: true, request: requestShape(row), demonstration_data: true }); }
+    if (res.meta.changes === 1) {
+      await logEvent(env, { offerId: row.offer_id, requestId, type: 'request_cancelled_by_guest', actor: `guest:${session.session_id}` });
+      if (hooks.onRequestTransition) await hooks.onRequestTransition(env, { request: row, from: prior && prior.status, to: 'cancelled_by_guest', operator: null });
+      return json({ ok: true, request: requestShape(row), demonstration_data: true });
+    }
     if (row.status === 'cancelled_by_guest') return json({ ok: true, already: true, request: requestShape(row), demonstration_data: true });
     if (['requested', 'confirmed'].includes(row.status)) return json({ error: 'CANCELLATION_WINDOW_CLOSED', detail: 'the booking deadline has passed - please ask the team to cancel for you' }, 409);
     return json({ error: 'REQUEST_NOT_CANCELLABLE', status: row.status }, 409);

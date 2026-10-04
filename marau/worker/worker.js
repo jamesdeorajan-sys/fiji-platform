@@ -34,6 +34,7 @@ import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.
 import { confirmReservationAtSource } from './source_confirm.js';
 import { createNadiSourceClient } from './nadi_source_client.js';
 import { createExperienceOffers } from './experience_offers.js';
+import { createReferrals } from './referrals.js';
 import { followUpPlan } from './contact_policy.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
@@ -173,6 +174,12 @@ function validateBookingInput(body) {
   }
   if (!(Number.isFinite(Number(body.quoted_amount)) && Number(body.quoted_amount) >= 0)) {
     errors.push('quoted_amount must be a non-negative number');
+  }
+  if (body.leg_type !== undefined && body.leg_type !== null && !['arrival', 'return', 'other'].includes(body.leg_type)) {
+    errors.push("leg_type must be 'arrival', 'return', 'other' or omitted");
+  }
+  if (body.referral_code !== undefined && body.referral_code !== null && typeof body.referral_code !== 'string') {
+    errors.push('referral_code must be a string when supplied');
   }
   if (body.whatsapp_available !== undefined && body.whatsapp_available !== null && typeof body.whatsapp_available !== 'boolean') {
     errors.push('whatsapp_available must be true, false, or omitted/null (unknown) — it is recorded, never required');
@@ -344,8 +351,8 @@ async function handleCreateBooking(request, env) {
   const insertResult = await env.DB
     .prepare(
       `INSERT OR IGNORE INTO marau_test_bookings
-        (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, attempt_secret, test_data, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 1, ?, ?)`
+        (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, attempt_secret, test_data, created_at, updated_at, leg_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 1, ?, ?, ?)`
     )
     .bind(
       clientBookingRef,
@@ -359,11 +366,19 @@ async function handleCreateBooking(request, env) {
       Number(body.quoted_amount),
       attemptSecret,
       nowIso(),
-      nowIso()
+      nowIso(),
+      body.leg_type || null
     )
     .run();
 
   if (insertResult.meta.changes === 1) {
+    // A referral code attributes this brand-new guest to the referrer (first touch only; self-referral and
+    // existing-guest cases are recorded as rejected). It can never fail the booking, and the response says only
+    // whether the code was applied - never who referred whom.
+    let referralApplied = false;
+    if (body.referral_code) {
+      try { referralApplied = (await referrals.attribute(env, { code: body.referral_code, referredSession: session })).attributed; } catch (err) { console.error('[marau-preview] referral attribution failed', err); }
+    }
     return json(
       {
         booking_reference: clientBookingRef,
@@ -371,6 +386,7 @@ async function handleCreateBooking(request, env) {
         message: 'Awaiting human confirmation',
         access_token: session.access_token,
         was_new_booking: true,
+        referral_applied: referralApplied,
         demonstration_data: true,
         link_offer: linkOffer,
       },
@@ -502,7 +518,7 @@ async function handleGetTrip(request, env) {
     guest_email: session.guest_email,
     guest_phone: session.guest_phone,
     whatsapp_available: session.whatsapp_available === 1 ? true : session.whatsapp_available === 0 ? false : null,
-    bookings,
+    bookings: await Promise.all(bookings.map(async (b) => ({ ...b, fare: await referrals.fareFor(env, b.id) }))),
     offer_requests: await experience.offerRequestsForSession(env, session.session_id),
     deal_requests: dealRequests.map((r) => ({
       request_id: r.request_id,
@@ -2444,9 +2460,11 @@ async function recordStaffDecision(env, { token, subjectType, subjectId, decisio
 // ---------------------------------------------------------------------
 // Experience offers (October revenue slice) - see worker/experience_offers.js
 // ---------------------------------------------------------------------
+const referrals = createReferrals({ json, html, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, guestAppHtml: GUEST_APP_HTML });
 const experience = createExperienceOffers({
   json, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, normalizePickupDatetime,
   toFijiWallClock: toFijiWallClockInputValue, formatFijiDateTime, composeOfferHandoffMessage,
+  hooks: { onRequestTransition: referrals.onRequestTransition, reportExtras: referrals.reportExtras },
 });
 
 // ---------------------------------------------------------------------
@@ -2511,9 +2529,13 @@ export default {
       if (method === 'GET' && pathname === '/preview/staff/review') return await handleStaffReviewPage(env, url.searchParams.get('token'));
       if (method === 'POST' && pathname === '/preview/staff/review/decide') return await handleStaffReviewDecide(request, env);
 
-      // ---- Experience offers: guest/public routes ----
+      // ---- Experience offers + referrals: guest/public routes ----
       if (pathname.startsWith('/preview/offers')) {
         const r = await experience.route(request, env, url);
+        if (r) return r;
+      }
+      if (pathname.startsWith('/r/') || pathname.startsWith('/preview/referral')) {
+        const r = await referrals.route(request, env, url);
         if (r) return r;
       }
 
@@ -2561,6 +2583,10 @@ export default {
         // requires an authenticated per-staff identity token).
         if (/^\/preview\/admin\/(offers|suppliers|editions)(\/|$)/.test(pathname)) {
           const r = await experience.route(request, env, url);
+          if (r) return r;
+        }
+        if (pathname.startsWith('/preview/admin/rewards')) {
+          const r = await referrals.route(request, env, url);
           if (r) return r;
         }
       }
