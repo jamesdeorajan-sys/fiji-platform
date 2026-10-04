@@ -58,8 +58,11 @@ try {
   await api(`/preview/admin/suppliers/${sup.data.supplier_id}/verify`, { method: 'POST', headers: staff(ANA) });
 
   // ---- reward policy: ships OFF; set a SYNTHETIC preview policy (FJ$10 is an illustration, not an approved rule)
+  // The preview DB is shared with earlier runs (e.g. a browser acceptance run leaves rewards in preview mode), so start by
+  // switching rewards OFF; the shipping default (off, no amount, no cap) is proven by the migration/upgrade tests.
+  await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'off' } });
   const pol0 = (await api('/preview/admin/rewards/policy', { headers: staff(ANA) })).data.policy;
-  check('policy starts OFF with no pre-approved amount (or was left off by an earlier run)', pol0.mode === 'off');
+  check('rewards can be switched OFF, and live mode is un-settable below', pol0.mode === 'off');
   const live = await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'live' } });
   check('LIVE rewards cannot be switched on through the API', live.status === 409 && live.data.error === 'LIVE_REWARDS_REQUIRE_OWNER_APPROVAL');
   await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 50, qualify_on: 'fulfilled', require_payment: 'paid_in_full', funding_source: 'synthetic_test_budget' } });

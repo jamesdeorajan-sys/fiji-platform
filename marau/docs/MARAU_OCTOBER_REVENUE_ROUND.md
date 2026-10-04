@@ -1,5 +1,10 @@
 # Marau October revenue round - evidence, dependencies, decisions (2026-10-04)
 
+> **CORRECTION (2026-10-04, later round):** the line below saying the staff console sign-in "renders at mobile width" overstated
+> the browser evidence. The HTML rendered, but the page script crashed at load (`__name is not defined`) on preview 83e9b919, so
+> the guest app and `/staff` were not functional there. Fixed and re-verified in `MARAU_REWARD_INTEGRITY_ROUND.md` (defect D14).
+
+
 Scope: local implementation + isolated preview only. No production deploy/migration, real guest, fare change, payment, WhatsApp send or public offer. Issue #59 work untouched.
 
 ## Commits
