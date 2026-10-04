@@ -1,0 +1,317 @@
+✖ ORDERING: a refund delivered BEFORE its payment record is retained, flagged as awaiting its payment, and reconciles when the payment arrives - the refund is never lost (344.6291ms)
+✖ ORDERING: the supported matrix - replays are no-ops, a refund may not exceed the purchase total, gross payments may not exceed it, an unpayable request refuses evidence (83.1983ms)
+✖ LATE WRITE (insert): a cancellation lands after the qualification facts were read but before the credit is inserted - no redeemable credit may result (131.4402ms)
+✖ LATE WRITE (insert): a REFUND recorded in the same window cannot leave an earned credit either (93.9839ms)
+✖ LATE WRITE (promotion): a refund lands between reading the facts and promoting a pending credit to earned - the credit never becomes redeemable (78.1262ms)
+✖ RECOVERY WITHOUT GUEST ACTION: a stale redeemable credit for an ineligible purchase is reversed by the next STAFF read, and apply refuses it in the same statement (79.3335ms)
+✖ RECOVERY: a credit whose qualifying facts are all true but whose promotion never ran (payment recorded, hook lost) is promoted by the next staff read (58.614ms)
+✖ MIRROR SHAPES: the classifier reports each representative source shape explicitly - direction is never equated with a round-trip relationship (1.0197ms)
+✖ MIRROR SHAPES: through the real sync path each shape lands with its leg type and shape recorded; unusable rows are refused, never guessed (47.3839ms)
+✖ CREDIT ELIGIBILITY BY SHAPE: a declared Marau return applies; a standalone departure needs explicit staff confirmation (recorded); a round trip and an unclassified row never apply (79.6034ms)
+✖ POLICY SNAPSHOT: an existing credit keeps the terms it was promised under (amount, stage, payment requirement); later policy changes affect NEW credits only (70.0805ms)
+✖ POLICY SNAPSHOT: a credit created before payment evidence existed (no require_payment in its snapshot) keeps the original fulfilled-only promise (49.9719ms)
+✖ POLICY OFF is a FREEZE: no new credits, no promotion, no application; nothing is deleted or reversed; turning it back on resumes under the stored terms (69.3845ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 0
+ℹ fail 13
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2143.1118
+
+✖ failing tests:
+
+test at test\marau_closeout.test.mjs:80:1
+✖ ORDERING: a refund delivered BEFORE its payment record is retained, flagged as awaiting its payment, and reconciles when the payment arrives - the refund is never lost (344.6291ms)
+  AssertionError [ERR_ASSERTION]: {"error":"REFUND_EXCEEDS_PAYMENT","detail":"a refund cannot exceed what has been recorded as paid","net_paid_fjd":0}
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:88:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:106:1
+✖ ORDERING: the supported matrix - replays are no-ops, a refund may not exceed the purchase total, gross payments may not exceed it, an unpayable request refuses evidence (83.1983ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'REFUND_EXCEEDS_PAYMENT'
+  - 'REFUND_EXCEEDS_TOTAL'
+                    ^
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:112:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'REFUND_EXCEEDS_PAYMENT',
+    expected: 'REFUND_EXCEEDS_TOTAL',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:127:1
+✖ LATE WRITE (insert): a cancellation lands after the qualification facts were read but before the credit is inserted - no redeemable credit may result (131.4402ms)
+  AssertionError [ERR_ASSERTION]: no live credit may exist for a cancelled purchase (found ["earned"])
+  + actual - expected
+  
+  + [
+  +   {
+  +     amount_cents: 1000,
+  +     applied_at: null,
+  +     applied_booking_id: null,
+  +     applied_by: null,
+  +     applied_cents: null,
+  +     beneficiary_session_id: 'gs_f6bd5226-22ee-4fd3-9c30-59975582b30b',
+  +     created_at: '2026-10-04T10:59:28.633Z',
+  +     credit_id: 'cr_508df3b7-3a4a-421b-bfe9-55850c694afd',
+  +     earned_at: '2026-10-04T10:59:28.633Z',
+  +     funding_source: 'marau_marketing_budget',
+  +     needs_manual_adjustment: 0,
+  +     policy_snapshot: '{"amount_cents":1000,"cap_cents_per_referrer":2000,"min_purchase_cents":0,"qualify_on":"confirmed","require_payment":"none","mode":"preview"}',
+  +     qualifying_request_id: 'req_3421e17c-1d76-4c33-8c89-5adb7120e2fd',
+  +     referral_id: 'ref_3552f719-0f45-48e8-a845-635df954c69f',
+  +     referred_session_id: 'gs_36f6b286-c625-4d68-b3c8-3ff42c880ea7',
+  +     reversal_reason: null,
+  +     reversed_at: null,
+  +     status: 'earned'
+  +   }
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:139:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { credit_id: 'cr_508df3b7-3a4a-421b-bfe9-55850c694afd', referral_id: 'ref_3552f719-0f45-48e8-a845-635df954c69f', beneficiary_session_id: 'gs_f6bd5226-22ee-4fd3-9c30-59975582b30b', referred_session_id: 'gs_36f6b286-c625-4d68-b3c8-3ff42c880ea7', qualifying_request_id: 'req_3421e17c-1d76-4c33-8c89-5adb7120e2fd', amount_cents: 1000, status: 'earned', funding_source: 'marau_marketing_budget', policy_snapshot: '{"amount_cents":1000,"cap_cents_per_referrer":2000,"min_purchase_cents":0,"qualify_on":"confirmed","require_payment":"none","mode":"preview"}', created_at: '2026-10-04T10:59:28.633Z', earned_at: '2026-10-04T10:59:28.633Z', applied_at: null, applied_by: null, applied_booking_id: null, applied_cents: null, reversed_at: null, reversal_reason: null, needs_manual_adjustment: 0 } ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:143:1
+✖ LATE WRITE (insert): a REFUND recorded in the same window cannot leave an earned credit either (93.9839ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + [
+  +   {
+  +     amount_cents: 1000,
+  +     applied_at: null,
+  +     applied_booking_id: null,
+  +     applied_by: null,
+  +     applied_cents: null,
+  +     beneficiary_session_id: 'gs_c52de559-0c90-4a5d-bf11-7a285116e823',
+  +     created_at: '2026-10-04T10:59:28.732Z',
+  +     credit_id: 'cr_73ac11a6-fe30-4701-af6e-6788aad49fd4',
+  +     earned_at: '2026-10-04T10:59:28.732Z',
+  +     funding_source: 'marau_marketing_budget',
+  +     needs_manual_adjustment: 0,
+  +     policy_snapshot: '{"amount_cents":1000,"cap_cents_per_referrer":2000,"min_purchase_cents":0,"qualify_on":"confirmed","require_payment":"none","mode":"preview"}',
+  +     qualifying_request_id: 'req_6696c008-aa56-4d36-b2dc-e1357a457c8d',
+  +     referral_id: 'ref_dde4ec01-4030-42f6-8b26-dd3ef7f66ea2',
+  +     referred_session_id: 'gs_b55c6659-2732-4f0e-9b94-eaa23b69f086',
+  +     reversal_reason: null,
+  +     reversed_at: null,
+  +     status: 'earned'
+  +   }
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:153:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { credit_id: 'cr_73ac11a6-fe30-4701-af6e-6788aad49fd4', referral_id: 'ref_dde4ec01-4030-42f6-8b26-dd3ef7f66ea2', beneficiary_session_id: 'gs_c52de559-0c90-4a5d-bf11-7a285116e823', referred_session_id: 'gs_b55c6659-2732-4f0e-9b94-eaa23b69f086', qualifying_request_id: 'req_6696c008-aa56-4d36-b2dc-e1357a457c8d', amount_cents: 1000, status: 'earned', funding_source: 'marau_marketing_budget', policy_snapshot: '{"amount_cents":1000,"cap_cents_per_referrer":2000,"min_purchase_cents":0,"qualify_on":"confirmed","require_payment":"none","mode":"preview"}', created_at: '2026-10-04T10:59:28.732Z', earned_at: '2026-10-04T10:59:28.732Z', applied_at: null, applied_by: null, applied_booking_id: null, applied_cents: null, reversed_at: null, reversal_reason: null, needs_manual_adjustment: 0 } ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:156:1
+✖ LATE WRITE (promotion): a refund lands between reading the facts and promoting a pending credit to earned - the credit never becomes redeemable (78.1262ms)
+  AssertionError [ERR_ASSERTION]: the credit must not be earned for a refunded purchase (is earned)
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:171:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'earned',
+    expected: 'earned',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:175:1
+✖ RECOVERY WITHOUT GUEST ACTION: a stale redeemable credit for an ineligible purchase is reversed by the next STAFF read, and apply refuses it in the same statement (79.3335ms)
+  AssertionError [ERR_ASSERTION]: apply itself refuses a credit whose purchase is no longer eligible
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:186:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:199:1
+✖ RECOVERY: a credit whose qualifying facts are all true but whose promotion never ran (payment recorded, hook lost) is promoted by the next staff read (58.614ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'pending'
+  -   'earned'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:207:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'pending' ],
+    expected: [ 'earned' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:221:1
+✖ MIRROR SHAPES: the classifier reports each representative source shape explicitly - direction is never equated with a round-trip relationship (1.0197ms)
+  AssertionError [ERR_ASSERTION]: one-way arrival
+  + actual - expected
+  
+    {
+      credit_basis: 'none',
+  +   leg_type: 'other',
+  +   shape: 'stub'
+  -   leg_type: 'arrival',
+  -   shape: 'one_way_arrival'
+    }
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:235:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { leg_type: 'other', shape: 'stub', credit_basis: 'none' },
+    expected: { leg_type: 'arrival', shape: 'one_way_arrival', credit_basis: 'none' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:241:1
+✖ MIRROR SHAPES: through the real sync path each shape lands with its leg type and shape recorded; unusable rows are refused, never guessed (47.3839ms)
+  AssertionError [ERR_ASSERTION]: one-way arrival
+  + actual - expected
+  
+    [
+      'arrival',
+  +   undefined
+  -   'one_way_arrival'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:252:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'arrival', undefined ],
+    expected: [ 'arrival', 'one_way_arrival' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:268:1
+✖ CREDIT ELIGIBILITY BY SHAPE: a declared Marau return applies; a standalone departure needs explicit staff confirmation (recorded); a round trip and an unclassified row never apply (79.6034ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:283:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:303:1
+✖ POLICY SNAPSHOT: an existing credit keeps the terms it was promised under (amount, stage, payment requirement); later policy changes affect NEW credits only (70.0805ms)
+  AssertionError [ERR_ASSERTION]: earned under the original terms and the original amount; the new min purchase/cap do not void it
+  + actual - expected
+  
+    [
+  +   'pending',
+  -   'earned',
+      1000
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:316:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'pending', 1000 ],
+    expected: [ 'earned', 1000 ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:325:1
+✖ POLICY SNAPSHOT: a credit created before payment evidence existed (no require_payment in its snapshot) keeps the original fulfilled-only promise (49.9719ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'pending'
+  - 'earned'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:332:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'pending',
+    expected: 'earned',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_closeout.test.mjs:335:1
+✖ POLICY OFF is a FREEZE: no new credits, no promotion, no application; nothing is deleted or reversed; turning it back on resumes under the stored terms (69.3845ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_closeout.test.mjs:352:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

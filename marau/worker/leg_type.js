@@ -16,3 +16,6 @@ export function classifyLeg(pickupZone, destinationZone) {
   if (to && !from) return 'return';
   return 'other';
 }
+
+// RED-BASELINE STUB (replaced in the fix commit)
+export function classifyMirroredShape() { return { leg_type: 'other', shape: 'stub', credit_basis: 'none' }; }
