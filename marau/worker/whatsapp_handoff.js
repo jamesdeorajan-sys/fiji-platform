@@ -39,6 +39,24 @@ export function composeDealHandoffMessage({ opsNumber, dealRequestId, offer }) {
   };
 }
 
+/**
+ * Private enquiry text for ONE experience-offer request. Retains the offer and the human-readable reference so staff can
+ * find the request instantly; full internal ids stay as structured fields, out of the message text. NEVER sends and never
+ * builds a wa.me link - same rule as every other composer in this file.
+ */
+export function composeOfferHandoffMessage({ opsNumber, request, offer }) {
+  const fiji = formatFijiDateTime(offer.starts_at);
+  const total = formatFijiCurrency(request.total_cents / 100);
+  return {
+    to: opsNumber,
+    reference: request.reference,
+    request_id: request.request_id,
+    offer_id: request.offer_id,
+    message: `Marau offer enquiry ${request.reference}: ${offer.title} (${offer.location}) on ${fiji.day} at ${fiji.time} Fiji time, ${request.places} place${request.places === 1 ? '' : 's'}, ${total} total, currently "${request.status}". Guest would like to speak with the team about this offer.`,
+    note: 'PREVIEW MOCK - this message is composed for review only. Marau never sends it and never opens WhatsApp.',
+  };
+}
+
 export function composeTripHandoffMessage({ opsNumber, booking }) {
   if (!booking) {
     return {

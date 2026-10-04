@@ -23,16 +23,18 @@ import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
 import { buildAssistResponse } from './ai_assist.js';
 import { GUEST_APP_HTML, ADMIN_APP_HTML } from './pages.js';
 import { evaluateOfferEligibility } from './offer_eligibility.js';
-import { composeDealHandoffMessage, composeTripHandoffMessage } from './whatsapp_handoff.js';
+import { composeDealHandoffMessage, composeTripHandoffMessage, composeOfferHandoffMessage } from './whatsapp_handoff.js';
 import { findPayloadMismatch } from './booking_conflict.js';
 import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } from './vehicle_allocation.js';
-import { normalizePickupDatetime } from './fiji_time.js';
+import { normalizePickupDatetime, toFijiWallClockInputValue, formatFijiDateTime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
 import { confirmReservationAtSource } from './source_confirm.js';
 import { createNadiSourceClient } from './nadi_source_client.js';
+import { createExperienceOffers } from './experience_offers.js';
+import { followUpPlan } from './contact_policy.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -501,6 +503,7 @@ async function handleGetTrip(request, env) {
     guest_phone: session.guest_phone,
     whatsapp_available: session.whatsapp_available === 1 ? true : session.whatsapp_available === 0 ? false : null,
     bookings,
+    offer_requests: await experience.offerRequestsForSession(env, session.session_id),
     deal_requests: dealRequests.map((r) => ({
       request_id: r.request_id,
       status: r.status,
@@ -2439,6 +2442,14 @@ async function recordStaffDecision(env, { token, subjectType, subjectId, decisio
 }
 
 // ---------------------------------------------------------------------
+// Experience offers (October revenue slice) - see worker/experience_offers.js
+// ---------------------------------------------------------------------
+const experience = createExperienceOffers({
+  json, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, normalizePickupDatetime,
+  toFijiWallClock: toFijiWallClockInputValue, formatFijiDateTime, composeOfferHandoffMessage,
+});
+
+// ---------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------
 
@@ -2500,6 +2511,12 @@ export default {
       if (method === 'GET' && pathname === '/preview/staff/review') return await handleStaffReviewPage(env, url.searchParams.get('token'));
       if (method === 'POST' && pathname === '/preview/staff/review/decide') return await handleStaffReviewDecide(request, env);
 
+      // ---- Experience offers: guest/public routes ----
+      if (pathname.startsWith('/preview/offers')) {
+        const r = await experience.route(request, env, url);
+        if (r) return r;
+      }
+
       // ---- Admin routes: all require the test-only admin bearer token ----
       if (pathname.startsWith('/preview/admin/')) {
         if (!requireAdmin(request, env)) return json({ error: 'unauthorized — admin test token required' }, 401);
@@ -2539,6 +2556,13 @@ export default {
         if (method === 'GET' && pathname === '/preview/admin/change-requests') return await handleAdminListChangeRequests(env);
         const changeDecisionMatch = pathname.match(/^\/preview\/admin\/change-requests\/([^/]+)\/(approve|reject)$/);
         if (method === 'POST' && changeDecisionMatch) return await handleAdminDecideChangeRequest(env, changeDecisionMatch[1], changeDecisionMatch[2]);
+
+        // Experience offers - staff routes (shared admin credential already required above; each handler additionally
+        // requires an authenticated per-staff identity token).
+        if (/^\/preview\/admin\/(offers|suppliers|editions)(\/|$)/.test(pathname)) {
+          const r = await experience.route(request, env, url);
+          if (r) return r;
+        }
       }
 
       return json({ error: 'not found' }, 404);
