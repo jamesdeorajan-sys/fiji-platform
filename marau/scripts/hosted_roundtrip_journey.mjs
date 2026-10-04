@@ -124,8 +124,10 @@ try {
   const apply2 = (bid) => api(`/preview/admin/rewards/credits/${credit2.credit_id}/apply`, { method: 'POST', headers: S(ANA), body: { booking_id: bid } });
   const refused = await apply2(L2.return.id);
   check('no redemption eligibility is inferred: credit refused LEG_STATUS_UNVERIFIED', refused.status === 409 && refused.data.error === 'LEG_STATUS_UNVERIFIED');
-  const noEvidence = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming' } });
-  const ver = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming', evidence: 'synthetic hosted check: confirmed by phone that the return is still booked' } });
+  // RC4: a verdict is tied to the current itinerary - the basis staff were shown in Needs attention
+  const basis2 = ((await api('/preview/admin/guests?attention=1', { headers: S(ANA) })).data.guests.find((x) => x.contact.email === b2.guest_email) || { uncertain_returns: [{}] }).uncertain_returns[0].itinerary_basis;
+  const noEvidence = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming', itinerary_basis: basis2 } });
+  const ver = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming', itinerary_basis: basis2, evidence: 'synthetic hosted check: confirmed by phone that the return is still booked' } });
   check('STAFF VERIFICATION needs evidence; records the named actor and time; says the source is unchanged', noEvidence.status === 400 && ver.status === 200 && ver.data.source_unchanged === true && ver.data.leg.verified_by === `Bala (roundtrip ${RUN})` && Boolean(ver.data.leg.verified_at));
   const afterVerify = legsOf(await trip(tok2));
   check('after verification the leg is confirmed, the arrival still reads as the source reported it, and the credit can apply', afterVerify.return.status === 'confirmed' && afterVerify.return.status_uncertainty == null && afterVerify.arrival.source_status === 'completed' && (await apply2(L2.return.id)).status === 200);
