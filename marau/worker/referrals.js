@@ -26,6 +26,7 @@
  */
 import { qrSvg } from './qr.js';
 import { followUpPlan } from './contact_policy.js';
+import { legStatusBasis } from './leg_type.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L: survives being read aloud or typed
 const CODE_LENGTH = 8;
@@ -583,12 +584,18 @@ export function createReferrals(deps) {
     if (!['return_upcoming', 'return_not_going_ahead'].includes(b.verdict)) errors.push("verdict must be 'return_upcoming' or 'return_not_going_ahead'");
     const evidence = typeof b.evidence === 'string' ? b.evidence.trim() : '';
     if (evidence.length < 10) errors.push('evidence is required: say what was checked, with whom and when (at least 10 characters)');
+    if (typeof b.itinerary_basis !== 'string' || !b.itinerary_basis) errors.push('itinerary_basis is required: the itinerary you checked, exactly as shown in Needs attention, so the verification is tied to it');
     if (errors.length) return json({ error: 'validation failed', details: errors }, 400);
-    const leg = await env.DB.prepare('SELECT id, leg_key, status, status_uncertainty, source_status, pickup_datetime FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
+    const leg = await env.DB.prepare(`SELECT id, leg_key, status, status_uncertainty, source_status, pickup_datetime, pickup_zone, destination_zone,
+      (SELECT a.pickup_datetime FROM marau_test_bookings a WHERE a.source_booking_ref = marau_test_bookings.source_booking_ref AND a.leg_key = 'arrival') AS arrival_pickup_datetime FROM marau_test_bookings WHERE id = ?`).bind(bookingId).first();
     if (!leg) return json({ error: 'booking not found' }, 404);
     if (!leg.status_uncertainty) return json({ error: 'NOTHING_TO_VERIFY', detail: 'this leg carries no status uncertainty' }, 409);
     const now = nowIso();
-    const basis = `${leg.source_status}|${leg.pickup_datetime}`;
+    const basis = legStatusBasis({ source_status: leg.source_status, return_pickup_datetime: leg.pickup_datetime, return_pickup_zone: leg.pickup_zone, return_destination_zone: leg.destination_zone, arrival_pickup_datetime: leg.arrival_pickup_datetime });
+    if (b.itinerary_basis !== basis) {
+      return json({ error: 'ITINERARY_CHANGED', detail: 'The itinerary changed since you looked at it - nothing was recorded. Reload Needs attention, check the current return details and verify again.',
+        current: { booking_id: bookingId, return_pickup_datetime: leg.pickup_datetime, pickup_zone: leg.pickup_zone, destination_zone: leg.destination_zone, source_status: leg.source_status, itinerary_basis: basis } }, 409);
+    }
     const newStatus = b.verdict === 'return_upcoming' ? 'confirmed' : 'cancelled';
     // The source is NEVER written or read here: this records a Marau-side fact with its evidence, attributed to the named actor.
     await env.DB.batch([
@@ -705,7 +712,7 @@ export function createReferrals(deps) {
     const out = [];
     for (const c of results) {
       const { results: returns } = c.status === 'earned'
-        ? await env.DB.prepare(`SELECT id, client_booking_ref, pickup_datetime, quoted_amount, leg_type, leg_key, leg_value_status, leg_value_cents, source_total_cents, source_settlement_fjd_cents, status_uncertainty FROM marau_test_bookings WHERE guest_session_id = ? AND leg_type IN ('return', 'departure') AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ? ORDER BY pickup_datetime ASC`).bind(c.beneficiary_session_id, nowIso()).all()
+        ? await env.DB.prepare(`SELECT id, client_booking_ref, pickup_datetime, quoted_amount, leg_type, leg_key, leg_value_status, leg_value_cents, source_total_cents, source_settlement_fjd_cents, status_uncertainty, source_status, pickup_zone, destination_zone, (SELECT a.pickup_datetime FROM marau_test_bookings a WHERE a.source_booking_ref = marau_test_bookings.source_booking_ref AND a.leg_key = 'arrival') AS arrival_pickup_datetime FROM marau_test_bookings WHERE guest_session_id = ? AND leg_type IN ('return', 'departure') AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ? ORDER BY pickup_datetime ASC`).bind(c.beneficiary_session_id, nowIso()).all()
         : { results: [] };
       const { results: noteRows } = await env.DB.prepare(`SELECT source_booking_ref, return_leg_state FROM marau_test_bookings WHERE guest_session_id = ? AND leg_key = 'arrival' AND return_leg_state IN ('missing_return_details', 'unsupported_direction')`).bind(c.beneficiary_session_id).all();
       const notes = noteRows.map((x) => ({ code: x.return_leg_state === 'missing_return_details' ? 'RETURN_DETAILS_MISSING' : 'RETURN_SHAPE_UNSUPPORTED', source_booking_ref: x.source_booking_ref }));
@@ -714,6 +721,7 @@ export function createReferrals(deps) {
         applied_booking_id: c.applied_booking_id, applied_by: c.applied_by, reversal_reason: c.reversal_reason,
         eligible_return_transfers: returns.map((r) => (r.leg_key
           ? { booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, leg_type: r.leg_type, leg_key: r.leg_key, needs_staff_confirmation: false, status_uncertainty: r.status_uncertainty || null, needs_status_verification: Boolean(r.status_uncertainty),
+              itinerary_basis: r.status_uncertainty ? legStatusBasis({ source_status: r.source_status, return_pickup_datetime: r.pickup_datetime, return_pickup_zone: r.pickup_zone, return_destination_zone: r.destination_zone, arrival_pickup_datetime: r.arrival_pickup_datetime }) : null,
               return_value_status: r.leg_value_status === 'allocated' ? 'allocated' : 'RETURN_VALUE_UNRESOLVED', original_fare_fjd: r.leg_value_status === 'allocated' ? fjd(r.leg_value_cents) : null,
               source_total_fjd: fjd(r.source_total_cents), source_settlement_fjd: fjd(r.source_settlement_fjd_cents) }
           : { booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, original_fare_fjd: r.quoted_amount, leg_type: r.leg_type, needs_staff_confirmation: r.leg_type === 'departure' })),

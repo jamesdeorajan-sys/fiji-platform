@@ -14,6 +14,7 @@
  */
 import { followUpPlan, followUpChannel, maySend, sendDecision, validatePhone, validateEmail } from './contact_policy.js';
 import { normalizePickupDatetime } from './fiji_time.js';
+import { legStatusBasis } from './leg_type.js';
 
 export function createGuestContact(deps) {
   const { json, requireStaffIdentity, requireGuestSession, nowIso } = deps;
@@ -111,6 +112,20 @@ export function createGuestContact(deps) {
        FROM guest_sessions gs LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = gs.session_id ${where} ORDER BY gs.created_at DESC LIMIT 200`
     );
     const { results } = await (sessionId ? stmt.bind(now, sessionId) : stmt.bind(now)).all();
+    // RC4: an uncertain return is a PILOT attention item, independent of reward credits. Staff see the facts they must check, and the
+    // basis their verdict will be tied to.
+    const { results: uncertainRows } = await env.DB.prepare(
+      `SELECT b.id, b.guest_session_id, b.client_booking_ref, b.pickup_datetime, b.pickup_zone, b.destination_zone, b.source_status,
+              (SELECT a.pickup_datetime FROM marau_test_bookings a WHERE a.source_booking_ref = b.source_booking_ref AND a.leg_key = 'arrival') AS arrival_pickup_datetime
+       FROM marau_test_bookings b WHERE b.status_uncertainty IS NOT NULL ORDER BY b.pickup_datetime`
+    ).all();
+    const uncertainBySession = new Map();
+    for (const u of uncertainRows) {
+      const list = uncertainBySession.get(u.guest_session_id) || [];
+      list.push({ booking_id: u.id, reference: u.client_booking_ref, return_pickup_datetime: u.pickup_datetime, pickup_zone: u.pickup_zone, destination_zone: u.destination_zone, source_status: u.source_status, arrival_pickup_datetime: u.arrival_pickup_datetime,
+        itinerary_basis: legStatusBasis({ source_status: u.source_status, return_pickup_datetime: u.pickup_datetime, return_pickup_zone: u.pickup_zone, return_destination_zone: u.destination_zone, arrival_pickup_datetime: u.arrival_pickup_datetime }) });
+      uncertainBySession.set(u.guest_session_id, list);
+    }
     return results.map((g) => {
       const plan = followUpPlan({ whatsappAvailable: g.whatsapp_available, owner: g.follow_up_owner });
       const attention = [];
@@ -119,6 +134,8 @@ export function createGuestContact(deps) {
       if (g.withdrawn_offer_guests > 0) attention.push('confirmed_offer_was_withdrawn');
       if (g.credits_earned > 0) attention.push('earned_credit_ready_to_apply');
       if (g.credits_need_staff > 0) attention.push('credit_reversal_needs_staff_decision');
+      const uncertainReturns = uncertainBySession.get(g.session_id) || [];
+      if (uncertainReturns.length > 0) attention.push('return_status_needs_verification');
       return {
         session_id: g.session_id,
         contact: {
@@ -133,6 +150,7 @@ export function createGuestContact(deps) {
         offers: { open: g.offers_open, confirmed: g.offers_confirmed, fulfilled: g.offers_fulfilled },
         referral: { friends_joined: g.friends_joined, credits_earned: g.credits_earned },
         attention,
+        uncertain_returns: uncertainReturns,
       };
     });
   }

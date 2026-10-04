@@ -534,6 +534,8 @@ async function handleCreateBooking(request, env) {
 const GUEST_HIDDEN_BOOKING_FIELDS = ['status_verified_by', 'status_verified_at', 'status_verification_evidence', 'source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'source_kind', 'source_origin', 'source_authenticated', 'leg_value_rule_id', 'leg_note', 'parent_booking_id'];
 function guestBookingView(b) {
   const out = { ...b };
+  // a plain boolean only: that staff checked the return is still going ahead - never who, when or the evidence
+  out.staff_checked_status = Boolean(b.status_verified_at) && !b.status_uncertainty && b.leg_note === 'verified_by_staff_upcoming';
   for (const k of GUEST_HIDDEN_BOOKING_FIELDS) delete out[k];
   return out;
 }

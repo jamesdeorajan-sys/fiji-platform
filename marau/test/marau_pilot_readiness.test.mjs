@@ -12,6 +12,7 @@ import { installNetworkGuard } from './network_guard.mjs';
 import { makeEnv, synthGuest } from './fixtures.mjs';
 import worker, { createGuestSession, createSessionAndOfferLink, nowIso } from '../worker/worker.js';
 import { normalizePickupDatetime } from '../worker/fiji_time.js';
+import { legStatusBasis } from '../worker/leg_type.js';
 import { syncRealBookingEvent } from '../worker/real_booking_sync.js';
 
 installNetworkGuard();
@@ -68,7 +69,9 @@ async function earnCredit(ctx) {
   return { creditId: (await all(env, 'SELECT * FROM marau_reward_credits ORDER BY created_at')).at(-1).credit_id, rid };
 }
 const apply = (env, creditId, bookingId, tok = 'staff-tok-ana') => call(env, `/preview/admin/rewards/credits/${creditId}/apply`, { method: 'POST', headers: staffH(env, tok), body: { booking_id: bookingId } });
-const verify = (env, bookingId, body, tok = 'staff-tok-bala') => call(env, `/preview/admin/bookings/${bookingId}/verify-status`, { method: 'POST', headers: staffH(env, tok), body });
+const basisFor = async (env, id) => { const l = await env.DB.prepare(`SELECT source_status, pickup_datetime, pickup_zone, destination_zone, (SELECT a.pickup_datetime FROM marau_test_bookings a WHERE a.source_booking_ref = marau_test_bookings.source_booking_ref AND a.leg_key = 'arrival') AS ap FROM marau_test_bookings WHERE id = ?`).bind(id).first(); return legStatusBasis({ source_status: l.source_status, return_pickup_datetime: l.pickup_datetime, return_pickup_zone: l.pickup_zone, return_destination_zone: l.destination_zone, arrival_pickup_datetime: l.ap }); };
+// RC4: a verdict is tied to the CURRENT itinerary; the helper supplies the basis staff would have been shown (tests of the basis itself live in marau_uncertain_return_pilot)
+const verify = async (env, bookingId, body, tok = 'staff-tok-bala') => call(env, `/preview/admin/bookings/${bookingId}/verify-status`, { method: 'POST', headers: staffH(env, tok), body: { itinerary_basis: await basisFor(env, bookingId), ...body } });
 const tripOf = async (ctx) => (await call(ctx.env, '/preview/trip', { headers: guestH(ctx.session.access_token) })).data;
 
 // ====================================================================== 1. COMPLETED-STATUS AMBIGUITY

@@ -62,13 +62,32 @@ export function createStaffConsole(deps) {
       '</table><p class="small muted" style="margin-top:6px">Shares, requests and quoted value are NOT sales. Contribution is price minus supplier cost.</p>';
   }
 
+  function fijiWhen(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Awaiting pickup details';
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'Pacific/Fiji', weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(d) + ' Fiji time';
+  }
+  // RC4: an uncertain return, independent of reward credits. Staff check the facts shown, then record a verdict tied to this exact
+  // itinerary (data-basis). The source booking is never changed and nothing here assigns a driver or takes payment.
+  function uncertainReturnsHtml(list) {
+    if (!list || !list.length) return '';
+    return list.map(function (u) {
+      var attrs = ' data-verify-status="' + esc(u.booking_id) + '" data-basis="' + esc(u.itinerary_basis) + '"';
+      return '<div class="small" style="margin:6px 0;padding:8px;border:1px solid var(--line);border-radius:10px"><p><span class="pill warn">return status needs verification</span> ' + esc(u.reference) + '</p>' +
+        '<p>The source says <b>' + esc(u.source_status) + '</b> but this return is still ahead: <b>' + esc(fijiWhen(u.return_pickup_datetime)) + '</b>, from <b>' + esc(u.pickup_zone) + '</b> to <b>' + esc(u.destination_zone) + '</b>.</p>' +
+        '<p class="muted">Check it with the guest or hotel, then record what you found. The source booking is not changed; this does not assign a driver or take payment.</p>' +
+        '<button class="btn btn-light"' + attrs + ' data-verdict="return_upcoming" type="button">Verify: still going ahead</button> ' +
+        '<button class="btn btn-light"' + attrs + ' data-verdict="return_not_going_ahead" type="button">Not going ahead</button></div>';
+    }).join('');
+  }
+
   function guestsHtml(guests) {
     if (!guests.length) return '<p class="muted small">Nobody needs attention.</p>';
     return guests.map(function (g) {
       var flags = g.attention.map(function (a) { return '<span class="pill warn">' + esc(a.split('_').join(' ')) + '</span>'; }).join(' ');
       return '<div style="border-bottom:1px solid var(--line);padding:8px 0"><p class="small"><b>' + esc(g.contact.phone) + '</b> - ' + esc(g.contact.email) + '</p>' +
         '<p class="small muted">Follow up by <b>' + esc(g.follow_up.channel) + '</b> (' + esc(g.follow_up.reason) + ') - owner: <b>' + esc(g.follow_up.owner || 'none') + '</b> - marketing: ' + esc(g.marketing_consent) + '</p>' +
-        '<p style="margin:4px 0">' + flags + '</p>' +
+        '<p style="margin:4px 0">' + flags + '</p>' + uncertainReturnsHtml(g.uncertain_returns) +
         '<div class="row"><input data-owner-input="' + esc(g.session_id) + '" placeholder="owner (a staff name)"><button class="btn btn-light" data-assign-owner="' + esc(g.session_id) + '" type="button">Assign owner</button></div></div>';
     }).join('');
   }
@@ -104,7 +123,7 @@ export function createStaffConsole(deps) {
       if (c.status === 'earned') {
         var options = c.eligible_return_transfers.filter(function (b) { return !b.needs_status_verification; }).map(function (b) { return '<option value="' + esc(b.booking_id) + '">' + esc(b.reference) + ' - ' + money(b.original_fare_fjd) + '</option>'; }).join('');
         var uncertain = c.eligible_return_transfers.filter(function (b) { return b.needs_status_verification; }).map(function (b) {
-          return '<p class="small"><span class="pill warn">status uncertain</span> ' + esc(b.reference) + ' - the source says completed but this return is still upcoming. <button class="btn btn-light" data-verify-status="' + esc(b.booking_id) + '" type="button">Verify with evidence</button></p>';
+          return '<p class="small"><span class="pill warn">status uncertain</span> ' + esc(b.reference) + ' - the source says completed but this return is still upcoming. <button class="btn btn-light" data-verify-status="' + esc(b.booking_id) + '" data-basis="' + esc(b.itinerary_basis) + '" type="button">Verify with evidence</button></p>';
         }).join('');
         apply = uncertain + (options ? '<div class="row"><select data-credit-booking="' + esc(c.credit_id) + '">' + options + '</select><button class="btn btn-primary" data-apply-credit="' + esc(c.credit_id) + '" type="button">Apply to return transfer</button></div>' : (uncertain ? '' : '<p class="small muted">No eligible upcoming return transfer yet.</p>'));
       }
@@ -236,8 +255,9 @@ export function createStaffConsole(deps) {
     });
     each('[data-verify-status]', function (b) {
       b.onclick = function () {
+        var verdict = b.getAttribute('data-verdict') || 'return_upcoming';
         var evidence = prompt('Evidence (what you checked, with whom, when)? The source booking is NOT changed.');
-        if (evidence) act('POST', '/preview/admin/bookings/' + b.getAttribute('data-verify-status') + '/verify-status', { verdict: 'return_upcoming', evidence: evidence }, 'Status verified and recorded.');
+        if (evidence) act('POST', '/preview/admin/bookings/' + b.getAttribute('data-verify-status') + '/verify-status', { verdict: verdict, evidence: evidence, itinerary_basis: b.getAttribute('data-basis') }, 'Status verification recorded.');
       };
     });
     each('[data-assign-owner]', function (b) {

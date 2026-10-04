@@ -182,7 +182,7 @@ test('staff see booking, offer, referral and follow-up status in one place; none
   const listed = (await call(env, '/preview/admin/guests', { headers: staffH(env) })).data.guests.find((x) => x.session_id === g.sessionId);
   assert.ok(listed.contact.phone && listed.contact.email, 'both channels are held for staff');
   assert.equal(listed.trips.bookings, 1);
-  assert.deepEqual(Object.keys(listed).sort(), ['attention', 'contact', 'follow_up', 'marketing_consent', 'offers', 'referral', 'session_id', 'trips']);
+  assert.deepEqual(Object.keys(listed).sort(), ['attention', 'contact', 'follow_up', 'marketing_consent', 'offers', 'referral', 'session_id', 'trips', 'uncertain_returns']);
   assert.equal((await call(env, '/preview/admin/guests')).status, 401);
   assert.equal((await call(env, '/preview/admin/guests', { headers: admin(env) })).status, 401);
   assert.equal((await call(env, '/preview/admin/guests', { headers: guestH(friend.token) })).status, 401, 'a guest token is not staff access');

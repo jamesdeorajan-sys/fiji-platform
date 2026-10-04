@@ -173,7 +173,7 @@
  */
 
 import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
-import { classifyMirroredShape, deriveReturnLeg } from './leg_type.js';
+import { classifyMirroredShape, deriveReturnLeg, legStatusBasis } from './leg_type.js';
 
 // Every real event_type this round directly confirmed exists in the
 // current REPOSITORY source (30c6187) — repository inspection, not proof
@@ -567,7 +567,7 @@ async function mirrorLegs(env, parentId, sourceBooking, sourceBookingRef, { nowI
     let status = sourceCancelled ? 'cancelled' : marauStatus;
     let uncertainty = null; let note = null;
     if (ambiguous) {
-      const basis = `${sourceBooking.status}|${pickupDatetime}`;
+      const basis = legStatusBasis({ source_status: sourceBooking.status, return_pickup_datetime: pickupDatetime, return_pickup_zone: leg.pickup_zone, return_destination_zone: leg.destination_zone, arrival_pickup_datetime: parent.pickup_datetime });
       const verdict = existingReturn ? await env.DB.prepare('SELECT verdict FROM marau_leg_status_verifications WHERE booking_id = ? AND basis = ? ORDER BY id DESC LIMIT 1').bind(existingReturn.id, basis).first() : null;
       if (verdict && verdict.verdict === 'return_not_going_ahead') { status = 'cancelled'; note = 'verified_by_staff_not_going_ahead'; }
       else if (verdict && verdict.verdict === 'return_upcoming') { note = 'verified_by_staff_upcoming'; }
@@ -591,6 +591,10 @@ async function mirrorLegs(env, parentId, sourceBooking, sourceBookingRef, { nowI
        WHERE source_booking_ref = ? AND leg_key = 'return' AND ${live}`
     ).bind(leg.pickup_zone, leg.destination_zone, sourceBooking.vehicle_type, pickupDatetime, status, leg.pickup_basis, note, now,
       sourceBooking.status, sourceBooking.assigned_driver_id != null ? String(sourceBooking.assigned_driver_id) : null, parentId, uncertainty, total, total, total, ...common, sourceBookingRef, ...liveArgs).run();
+    // A re-opened uncertainty means the verification no longer applies: its visible fields are cleared (the history row stays).
+    if (uncertainty) {
+      await env.DB.prepare(`UPDATE marau_test_bookings SET status_verified_by = NULL, status_verified_at = NULL, status_verification_evidence = NULL WHERE source_booking_ref = ? AND leg_key = 'return' AND ${live}`).bind(sourceBookingRef, ...liveArgs).run();
+    }
   } else if (existingReturn && existingReturn.status !== 'cancelled') {
     await env.DB.prepare(
       `UPDATE marau_test_bookings SET status = 'cancelled', leg_note = 'return_details_removed_or_incomplete', updated_at = ?, source_status = ?

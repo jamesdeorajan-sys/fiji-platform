@@ -16,6 +16,7 @@ import { installNetworkGuard } from './network_guard.mjs';
 import { makeEnv, synthGuest } from './fixtures.mjs';
 import worker, { createGuestSession, createSessionAndOfferLink, nowIso } from '../worker/worker.js';
 import { normalizePickupDatetime } from '../worker/fiji_time.js';
+import { legStatusBasis } from '../worker/leg_type.js';
 import { syncRealBookingEvent } from '../worker/real_booking_sync.js';
 import { createNadiBookingReader } from '../worker/nadi_booking_reader.js';
 
@@ -413,7 +414,8 @@ test('ACCEPTANCE (arrival already completed): the return is still eligible and t
   await sync(env, r, source, { type: 'completed', status: 'completed' });
   const credit = await earnCredit(ctx);
   assert.equal((await apply(env, credit, ret.id)).data.error, 'LEG_STATUS_UNVERIFIED', 'completed-while-upcoming is uncertain: no redemption until staff verify');
-  const vv = await call(env, `/preview/admin/bookings/${ret.id}/verify-status`, { method: 'POST', headers: staffH(env), body: { verdict: 'return_upcoming', evidence: 'confirmed by phone that the return is still booked' } });
+  const basisFor = async (env, id) => { const l = await env.DB.prepare(`SELECT source_status, pickup_datetime, pickup_zone, destination_zone, (SELECT a.pickup_datetime FROM marau_test_bookings a WHERE a.source_booking_ref = marau_test_bookings.source_booking_ref AND a.leg_key = 'arrival') AS ap FROM marau_test_bookings WHERE id = ?`).bind(id).first(); return legStatusBasis({ source_status: l.source_status, return_pickup_datetime: l.pickup_datetime, return_pickup_zone: l.pickup_zone, return_destination_zone: l.destination_zone, arrival_pickup_datetime: l.ap }); };
+  const vv = await call(env, `/preview/admin/bookings/${ret.id}/verify-status`, { method: 'POST', headers: staffH(env), body: { verdict: 'return_upcoming', itinerary_basis: await basisFor(env, ret.id), evidence: 'confirmed by phone that the return is still booked' } });
   assert.equal(vv.status, 200, JSON.stringify(vv.data));
   const ok = await apply(env, credit, ret.id);
   assert.equal(ok.status, 200, JSON.stringify(ok.data));

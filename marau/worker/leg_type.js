@@ -22,6 +22,16 @@ const AIRPORT = /airport/i;
 const ITINERARY_KEYS = ['return_date', 'return_time', 'return_pickup_location', 'trip_type'];
 const present = (v) => typeof v === 'string' && v.trim() !== '';
 
+/**
+ * The ITINERARY a staff status verification rests on (RC4). Every fact that could change what "this return is still going ahead"
+ * means is part of it: the source's booking-level status, the return's pickup date/time, pickup location and destination, and the
+ * arrival's pickup date/time. A verification is recorded against this string; any change to any part of it invalidates the
+ * verification, and a staff member must confirm the basis they were SHOWN, so they can never verify an itinerary that has since moved.
+ */
+export function legStatusBasis(f) {
+  return ['v2', f.source_status, f.return_pickup_datetime, f.return_pickup_zone, f.return_destination_zone, f.arrival_pickup_datetime].map((x) => (x == null ? '' : String(x))).join('|');
+}
+
 /** Direction only: 'arrival' | 'departure' | 'other'. An unknown end is 'other' - never guessed. */
 export function classifyLeg(pickupZone, destinationZone) {
   if (!present(pickupZone) || !present(destinationZone)) return 'other';

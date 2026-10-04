@@ -292,6 +292,7 @@ export function createOffersClient(deps) {
       legRow('Pickup location', pickup) +
       legRow('Destination', dest) +
       legRow('Status', status) +
+      (b && b.staff_checked_status === true && b.status === 'confirmed' && !b.status_uncertainty ? '<p class="leg-note small">Our team checked that this return transfer is still going ahead. This check does not assign a driver or take payment.</p>' : '') +
       '</div>';
   }
   function journeyHtml(bookings, activeId) {

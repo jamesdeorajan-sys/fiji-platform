@@ -74,6 +74,7 @@ test('NEEDS ATTENTION, rewards OFF: an uncertain return is listed for staff with
 
 test('a normal (non-ambiguous) booking is NOT flagged', async () => {
   const env = makeEnv(); const r = src(); const source = sourceOf(r);
+  await call(env, '/preview/admin/staff-identities', { method: 'POST', headers: admin(env), body: { token: 'staff-tok-bala', operator_name: 'Bala (ops)' } });
   await sync(env, r, source, 'created', 'accepted');
   assert.equal((await queue(env)).length, 0);
 });
