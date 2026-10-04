@@ -238,7 +238,7 @@ ${SHARED_STYLE}
         <label for="f-phone">Mobile number</label>
         <input id="f-phone" type="tel" required autocomplete="tel">
         <label><input id="f-wa" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> This number can receive WhatsApp</label>
-        <label><input id="f-consent" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> Send me occasional deals (optional - trip messages are always sent)</label>
+        <label><input id="f-consent" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> Send me occasional deals (optional - this is separate from trip messages)</label>
         <label for="f-leg">Trip leg</label>
         <select id="f-leg"><option value="arrival">Arrival transfer</option><option value="return">Return transfer</option></select>
         <div class="row">

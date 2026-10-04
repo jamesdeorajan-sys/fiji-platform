@@ -2592,7 +2592,7 @@ export default {
           const r = await experience.route(request, env, url);
           if (r) return r;
         }
-        if (/^\/preview\/admin\/(guests|messages)(\/|$)/.test(pathname) || /^\/preview\/admin\/editions\/[^/]+\/recipients$/.test(pathname)) {
+        if (/^\/preview\/admin\/(guests|messages|follow-ups|suppressions)(\/|$)/.test(pathname) || /^\/preview\/admin\/editions\/[^/]+\/recipients$/.test(pathname)) {
           const r = await guestContact.route(request, env, url);
           if (r) return r;
         }

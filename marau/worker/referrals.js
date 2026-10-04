@@ -473,7 +473,8 @@ export function createReferrals(deps) {
     if (!staff) return json({ error: 'unauthorized - a valid staff identity token (x-marau-staff-token) is required' }, 401);
     await reconcileApplications(env);
     const { results } = await env.DB.prepare(
-      `SELECT c.*, gs.guest_phone, gs.guest_email, gs.whatsapp_available FROM marau_reward_credits c JOIN guest_sessions gs ON gs.session_id = c.beneficiary_session_id ORDER BY c.created_at DESC LIMIT 200`
+      `SELECT c.*, gs.guest_phone, gs.guest_email, gs.whatsapp_available, fo.owner AS follow_up_owner FROM marau_reward_credits c JOIN guest_sessions gs ON gs.session_id = c.beneficiary_session_id
+       LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = c.beneficiary_session_id ORDER BY c.created_at DESC LIMIT 200`
     ).all();
     const out = [];
     for (const c of results) {
@@ -485,7 +486,7 @@ export function createReferrals(deps) {
         applied_booking_id: c.applied_booking_id, applied_by: c.applied_by, reversal_reason: c.reversal_reason,
         eligible_return_transfers: returns.map((r) => ({ booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, original_fare_fjd: r.quoted_amount })),
         // STAFF-ONLY: how to reach the credit holder.
-        holder: { phone: c.guest_phone, email: c.guest_email, follow_up: followUpPlan({ whatsappAvailable: c.whatsapp_available, owner: null }) },
+        holder: { phone: c.guest_phone, email: c.guest_email, follow_up: followUpPlan({ whatsappAvailable: c.whatsapp_available, owner: c.follow_up_owner }) },
       });
     }
     return json({ credits: out, demonstration_data: true });

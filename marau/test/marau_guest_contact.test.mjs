@@ -147,7 +147,7 @@ test('essential vs promotional: essential is always allowed; promotional needs e
   await call(env, '/preview/trip/contact', { method: 'POST', headers: guestH(yes.token), body: { marketing_consent: 'withheld' } });
   assert.equal((await all(env, 'SELECT * FROM marau_consent_events WHERE guest_session_id = ?', yes.sessionId)).length, 2);
   assert.equal((await call(env, '/preview/trip/contact')).status, 401);
-  assert.match((await call(env, '/preview/trip/contact', { headers: guestH(none.token) })).data.essential_messages, /always sent/);
+  assert.match((await call(env, '/preview/trip/contact', { headers: guestH(none.token) })).data.essential_messages, /do not depend on marketing consent/);
 });
 
 test('a promotional deal edition reaches only consenting guests - and every guest can still browse every offer', async () => {

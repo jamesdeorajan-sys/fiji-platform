@@ -49,11 +49,57 @@ export function followUpPlan({ whatsappAvailable, owner }) {
   };
 }
 
-/** May a message with this purpose be sent to a guest with this consent? Essential: always. Promotional: only if granted. */
+/**
+ * PURPOSE-LEVEL check only: is this KIND of message ever allowed for this consent? It is NOT permission to deliver. Delivery
+ * additionally needs a booking relationship, a usable channel and no suppression - see sendDecision below.
+ */
 export function maySend({ purpose, marketingConsent }) {
   if (MESSAGE_PURPOSES.essential.includes(purpose)) return true;
   if (MESSAGE_PURPOSES.promotional.includes(purpose)) return marketingConsent === 'granted';
   return false; // an unrecognised purpose is never assumed to be allowed
+}
+
+/**
+ * May THIS message be sent to THIS guest over THIS channel, and if not, why not? Pure; sends nothing. "Essential" is a
+ * purpose, not universal delivery permission: every message still needs
+ *   1. a RECIPIENT with a booking relationship with Marau (no cold messaging);
+ *   2. a CHANNEL the guest can actually receive on (WhatsApp not known-unavailable; a syntactically valid phone / email);
+ *   3. NO SUPPRESSION on that channel (a recorded delivery failure blocks every purpose; a marketing opt-out blocks
+ *      promotional only, and never stops essential trip messages);
+ * and promotional messages additionally need marketing consent 'granted'.
+ * `deliverability` is always 'unverified': Marau has no proof any address or number actually receives messages.
+ */
+export function sendDecision({ purpose, channel, marketingConsent, whatsappAvailable, phone, email, hasBookingRelationship, suppressions = [] }) {
+  const essential = MESSAGE_PURPOSES.essential.includes(purpose);
+  const promotional = MESSAGE_PURPOSES.promotional.includes(purpose);
+  const purposeReasons = [];
+  if (!essential && !promotional) purposeReasons.push('unrecognised_purpose');
+  if (!hasBookingRelationship) purposeReasons.push('no_booking_relationship');
+  if (promotional && marketingConsent !== 'granted') purposeReasons.push('no_marketing_consent');
+
+  const channelProblems = (ch) => {
+    const out = [];
+    if (ch === 'whatsapp') {
+      if (whatsappAvailable === false || whatsappAvailable === 0) out.push('whatsapp_unavailable');
+      if (!validatePhone(phone)) out.push('no_valid_phone');
+    } else if (ch === 'email') {
+      if (!validateEmail(email)) out.push('no_valid_email');
+    } else if (ch === 'phone') {
+      if (!validatePhone(phone)) out.push('no_valid_phone');
+    } else out.push('unknown_channel');
+    if (suppressions.some((s) => s.channel === ch && (s.kind === 'delivery_failure' || (promotional && s.kind === 'marketing_opt_out')))) out.push('channel_suppressed');
+    return out;
+  };
+
+  const chosen = channel || followUpChannel(whatsappAvailable);
+  const problems = channelProblems(chosen);
+  const reasons = [...purposeReasons, ...problems];
+  const allowed = reasons.length === 0;
+  let suggested = null;
+  if (!allowed && purposeReasons.length === 0) {
+    suggested = ['email', 'whatsapp'].find((ch) => ch !== chosen && channelProblems(ch).length === 0) || null;
+  }
+  return { allowed, channel: chosen, reasons, suggested_channel: suggested, deliverability: 'unverified' };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

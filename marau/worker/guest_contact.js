@@ -7,10 +7,12 @@
  *  - WhatsApp availability is a separate recorded fact (true / false / unknown) that never blocks a booking.
  *  - A guest without WhatsApp is followed up by EMAIL, and a NAMED staff owner (a real staff identity) can be assigned;
  *    anyone lacking WhatsApp and an owner is surfaced in the attention queue rather than left to fall through.
- *  - ESSENTIAL trip communication is always permitted. PROMOTIONAL messages require an explicit 'granted' consent, which is
+ *  - ESSENTIAL trip communication does not need marketing consent - but it is NOT blanket delivery permission: every send is
+ *    still subject to recipient, channel capability and suppression checks (sendDecision). PROMOTIONAL messages additionally
+ *    require an explicit 'granted' consent, which is
  *    never assumed (default 'unknown'), can be withdrawn by the guest at any time, and is evidenced by an append-only log.
  */
-import { followUpPlan, maySend } from './contact_policy.js';
+import { followUpPlan, followUpChannel, maySend, sendDecision, validatePhone, validateEmail } from './contact_policy.js';
 
 export function createGuestContact(deps) {
   const { json, requireStaffIdentity, requireGuestSession, nowIso } = deps;
@@ -42,7 +44,7 @@ export function createGuestContact(deps) {
       whatsapp_available: row.whatsapp_available === 1 ? true : row.whatsapp_available === 0 ? false : null,
       marketing_consent: row.marketing_consent,
       marketing_consent_at: row.marketing_consent_at,
-      essential_messages: 'booking confirmations, driver details, schedule changes, cancellations and safety notices are always sent - they do not depend on marketing consent',
+      essential_messages: 'trip messages (confirmations, driver details, changes, cancellations, safety) do not depend on marketing consent. We send them over the contact details you gave us, so please keep them correct.',
       contact_person: owner ? owner.owner : null,
       demonstration_data: true,
     });
@@ -118,7 +120,12 @@ export function createGuestContact(deps) {
       if (g.credits_need_staff > 0) attention.push('credit_reversal_needs_staff_decision');
       return {
         session_id: g.session_id,
-        contact: { phone: g.guest_phone, email: g.guest_email, whatsapp_available: g.whatsapp_available === 1 ? true : g.whatsapp_available === 0 ? false : null },
+        contact: {
+          phone: g.guest_phone, email: g.guest_email, whatsapp_available: g.whatsapp_available === 1 ? true : g.whatsapp_available === 0 ? false : null,
+          // COLLECTED + well-formed is all Marau can say. It has never confirmed that either address actually receives anything.
+          details_valid: { phone: Boolean(validatePhone(g.guest_phone)), email: Boolean(validateEmail(g.guest_email)) },
+          deliverability: { status: 'unverified', note: 'details were collected and are well-formed; that is not proof a message will arrive - nothing has been sent or verified' },
+        },
         follow_up: plan,
         marketing_consent: g.marketing_consent,
         trips: { bookings: g.bookings, next_pickup: g.next_pickup },
@@ -136,18 +143,73 @@ export function createGuestContact(deps) {
     return json({ guests, demonstration_data: true });
   }
 
+  async function activeSuppressions(env, sessionId = null) {
+    const stmt = env.DB.prepare(`SELECT id, guest_session_id, channel, kind, reason, recorded_by, created_at FROM marau_suppressions WHERE lifted_at IS NULL ${sessionId ? 'AND guest_session_id = ?' : ''}`);
+    const { results } = await (sessionId ? stmt.bind(sessionId) : stmt).all();
+    return results;
+  }
+
+  function decisionFor(g, purpose, channel, suppressions) {
+    return sendDecision({
+      purpose, channel, marketingConsent: g.marketing_consent, whatsappAvailable: g.contact.whatsapp_available,
+      phone: g.contact.phone, email: g.contact.email, hasBookingRelationship: g.trips.bookings > 0,
+      suppressions: suppressions.filter((s) => s.guest_session_id === g.session_id),
+    });
+  }
+
   async function checkMessage(request, env) {
     const st = await staffOr401(request, env); if (st.error) return st.error;
     let b;
     try { b = await request.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
     const [g] = await guestSummaries(env, { sessionId: String(b.session_id || '') });
     if (!g) return json({ error: 'guest not found' }, 404);
-    const allowed = maySend({ purpose: String(b.purpose || ''), marketingConsent: g.marketing_consent });
+    const purpose = String(b.purpose || '');
+    const d = decisionFor(g, purpose, b.channel ? String(b.channel) : undefined, await activeSuppressions(env, g.session_id));
     return json({
-      allowed, purpose: b.purpose, channel: g.follow_up.channel,
-      reason: allowed ? 'permitted' : g.marketing_consent === 'granted' ? 'unrecognised purpose' : `promotional messages need marketing consent 'granted' (this guest: '${g.marketing_consent}')`,
+      allowed: d.allowed, purpose, channel: d.channel, reasons: d.reasons, suggested_channel: d.suggested_channel, deliverability: d.deliverability,
+      reason: d.allowed ? 'permitted' : [d.reasons.includes('no_marketing_consent') ? `promotional messages need marketing consent 'granted' (this guest: '${g.marketing_consent}')` : null, ...d.reasons.filter((r) => r !== 'no_marketing_consent')].filter(Boolean).join('; '),
+      note: 'permission to send is not proof of delivery: contact details are collected and well-formed, never verified',
       nothing_was_sent: true,
     });
+  }
+
+  async function addSuppression(request, env, sessionId) {
+    const st = await staffOr401(request, env); if (st.error) return st.error;
+    let b;
+    try { b = await request.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
+    if (!['whatsapp', 'email', 'phone'].includes(b.channel)) return json({ error: "channel must be 'whatsapp', 'email' or 'phone'" }, 400);
+    if (!['delivery_failure', 'marketing_opt_out'].includes(b.kind)) return json({ error: "kind must be 'delivery_failure' or 'marketing_opt_out'" }, 400);
+    const guest = await env.DB.prepare('SELECT 1 AS ok FROM guest_sessions WHERE session_id = ?').bind(sessionId).first();
+    if (!guest) return json({ error: 'guest not found' }, 404);
+    const r = await env.DB.prepare('INSERT INTO marau_suppressions (guest_session_id, channel, kind, reason, recorded_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(sessionId, b.channel, b.kind, b.reason ? String(b.reason).slice(0, 200) : null, st.operator, nowIso()).run();
+    return json({ ok: true, suppression_id: r.meta.last_row_id, recorded_by: st.operator, demonstration_data: true }, 201);
+  }
+
+  async function liftSuppression(request, env, id) {
+    const st = await staffOr401(request, env); if (st.error) return st.error;
+    const r = await env.DB.prepare('UPDATE marau_suppressions SET lifted_at = ?, lifted_by = ? WHERE id = ? AND lifted_at IS NULL').bind(nowIso(), st.operator, Number(id)).run();
+    if (r.meta.changes === 1) return json({ ok: true, lifted_by: st.operator, demonstration_data: true });
+    const row = await env.DB.prepare('SELECT lifted_by FROM marau_suppressions WHERE id = ?').bind(Number(id)).first();
+    if (!row) return json({ error: 'suppression not found' }, 404);
+    return json({ ok: true, repeated: true, original_operator: row.lifted_by, demonstration_data: true });
+  }
+
+  /** Everything that needs a human, grouped by NAMED owner - with an explicit unassigned queue so nothing falls through. */
+  async function followUpQueue(request, env) {
+    const st = await staffOr401(request, env); if (st.error) return st.error;
+    const items = [];
+    const push = (kind, r, since, detail) => items.push({ kind, session_id: r.session_id, reference: r.reference || null, channel: followUpChannel(r.whatsapp_available), fallback: followUpChannel(r.whatsapp_available) === 'email' ? 'phone' : 'email', owner: r.owner || null, since, detail, deliverability: 'unverified' });
+    const q = async (sql) => (await env.DB.prepare(sql).all()).results;
+    for (const r of await q(`SELECT gs.session_id, gs.whatsapp_available, fo.owner, q.reference AS reference, q.created_at AS since FROM marau_offer_requests q JOIN guest_sessions gs ON gs.session_id = q.guest_session_id LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = gs.session_id WHERE q.status = 'requested'`)) push('offer_request_awaiting_a_human', r, r.since, 'confirm or decline');
+    for (const r of await q(`SELECT gs.session_id, gs.whatsapp_available, fo.owner, c.credit_id AS reference, c.earned_at AS since FROM marau_reward_credits c JOIN guest_sessions gs ON gs.session_id = c.beneficiary_session_id LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = gs.session_id WHERE c.status = 'earned'`)) push('earned_credit_ready_to_apply', r, r.since, 'apply to the holder\'s return transfer');
+    for (const r of await q(`SELECT gs.session_id, gs.whatsapp_available, fo.owner, c.credit_id AS reference, c.reversed_at AS since FROM marau_reward_credits c JOIN guest_sessions gs ON gs.session_id = c.beneficiary_session_id LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = gs.session_id WHERE c.needs_manual_adjustment = 1`)) push('credit_reversal_needs_staff_decision', r, r.since, 'a discount was given and the purchase was reversed');
+    for (const r of await q(`SELECT gs.session_id, gs.whatsapp_available, fo.owner, q.reference AS reference, q.updated_at AS since FROM marau_offer_requests q JOIN marau_experience_offers o ON o.offer_id = q.offer_id JOIN guest_sessions gs ON gs.session_id = q.guest_session_id LEFT JOIN marau_follow_up_owners fo ON fo.guest_session_id = gs.session_id WHERE o.status = 'withdrawn' AND q.status IN ('confirmed', 'fulfilled')`)) push('confirmed_offer_was_withdrawn', r, r.since, 'tell the guest and arrange an alternative or refund');
+    items.sort((a, b) => String(a.since).localeCompare(String(b.since)));
+    const unassigned = items.filter((i) => !i.owner);
+    const byOwner = {};
+    for (const i of items.filter((x) => x.owner)) (byOwner[i.owner] = byOwner[i.owner] || []).push(i);
+    return json({ unassigned, by_owner: byOwner, counts: { total: items.length, unassigned: unassigned.length }, demonstration_data: true });
   }
 
   async function editionRecipients(request, env, editionId) {
@@ -155,12 +217,21 @@ export function createGuestContact(deps) {
     const ed = await env.DB.prepare('SELECT edition_id, status FROM marau_deal_editions WHERE edition_id = ?').bind(editionId).first();
     if (!ed) return json({ error: 'edition not found' }, 404);
     const guests = await guestSummaries(env);
-    const eligible = guests.filter((g) => maySend({ purpose: 'deal_edition', marketingConsent: g.marketing_consent }));
+    const suppressions = await activeSuppressions(env);
+    const eligible = []; const excluded = {};
+    for (const g of guests) {
+      const d = decisionFor(g, 'deal_edition', undefined, suppressions);
+      if (d.allowed) eligible.push({ session_id: g.session_id, channel: d.channel });
+      else if (d.suggested_channel) eligible.push({ session_id: g.session_id, channel: d.suggested_channel });
+      else for (const reason of new Set(d.reasons)) excluded[reason] = (excluded[reason] || 0) + 1;
+    }
     return json({
       edition_id: editionId, edition_status: ed.status,
-      promotional_eligible: eligible.map((g) => ({ session_id: g.session_id, channel: g.follow_up.channel })),
-      excluded_without_consent: guests.length - eligible.length,
-      note: 'a deal edition is promotional: only guests who granted marketing consent are eligible. Every guest can still BROWSE all offers in the app at any time. Nothing is sent.',
+      promotional_eligible: eligible,
+      excluded_without_consent: guests.length - eligible.length, // kept for compatibility: everyone not eligible, for any reason
+      excluded_by_reason: excluded,
+      level: 'grouping only: an edition is a prepared set of offers plus this recipient PREVIEW - nothing generates, schedules or delivers it',
+      note: 'a deal edition is promotional: only guests who granted marketing consent, on a usable unsuppressed channel, are eligible. Every guest can still BROWSE all offers in the app at any time. Nothing is sent.',
       nothing_was_sent: true,
     });
   }
@@ -173,6 +244,9 @@ export function createGuestContact(deps) {
     x = p.match(/^\/preview\/admin\/guests\/(gs_[^/]+)\/whatsapp$/); if (m === 'POST' && x) return staffRecordWhatsapp(request, env, x[1]);
     if (m === 'GET' && p === '/preview/admin/guests') return listGuests(request, env, url);
     if (m === 'POST' && p === '/preview/admin/messages/check') return checkMessage(request, env);
+    x = p.match(/^\/preview\/admin\/guests\/(gs_[^/]+)\/suppressions$/); if (m === 'POST' && x) return addSuppression(request, env, x[1]);
+    x = p.match(/^\/preview\/admin\/suppressions\/(\d+)\/lift$/); if (m === 'POST' && x) return liftSuppression(request, env, x[1]);
+    if (m === 'GET' && p === '/preview/admin/follow-ups') return followUpQueue(request, env);
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/recipients$/); if (m === 'GET' && x) return editionRecipients(request, env, decodeURIComponent(x[1]));
     return null;
   }
