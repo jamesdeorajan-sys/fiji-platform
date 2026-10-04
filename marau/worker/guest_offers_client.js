@@ -10,6 +10,18 @@ export function createOffersClient(deps) {
   var authFetch = deps.authFetch;
   // A failed network call must never leave a control disabled or the guest wondering what happened.
   var OFFLINE = 'No connection - nothing was sent. Please try again.';
+  // Server refusals are machine codes; a guest must only ever read a plain sentence.
+  function offerErrorText(data) {
+    var e = data && data.error;
+    if (e === 'OFFER_EXPIRED') return 'Sorry, this offer has ended.';
+    if (e === 'SOLD_OUT') return 'Sorry, this offer is sold out.';
+    if (e === 'BOOKING_DEADLINE_PASSED') return 'Booking for this offer has closed.';
+    if (e === 'OFFER_NOT_AVAILABLE' || e === 'OFFER_NOT_FOUND') return 'This offer is no longer available.';
+    if (e === 'INSUFFICIENT_CAPACITY') return 'Only ' + Number(data.places_left) + ' place(s) are left - please choose fewer.';
+    if (e === 'CANCELLATION_WINDOW_CLOSED') return 'The booking deadline has passed - please ask our team to cancel for you.';
+    if (data && data.detail && !/^[A-Z_]+$/.test(String(data.detail))) return String(data.detail);
+    return 'Could not complete that. Please try again.';
+  }
   var toast = deps.toast;
   var renderMockWhatsApp = deps.renderMockWhatsApp;
   var formatFijiCurrency = deps.formatFijiCurrency;
@@ -144,7 +156,7 @@ export function createOffersClient(deps) {
         var places = select ? Number(select.value) : 1;
         btn.disabled = true;
         authFetch('/preview/offers/' + encodeURIComponent(offerId) + '/request', { method: 'POST', body: JSON.stringify({ places: places, client_request_ref: requestRefFor(offerId) }) }).then(function (res) {
-          if (!res.ok) { btn.disabled = false; toast((res.data && (res.data.detail || res.data.error)) || 'Could not send your request.'); return; }
+          if (!res.ok) { btn.disabled = false; toast(offerErrorText(res.data)); reload(); return; }
           toast('Request ' + res.data.request.reference + ' received. Nothing was charged.');
           reload();
           onChanged();
@@ -184,7 +196,7 @@ export function createOffersClient(deps) {
     els.myOffersList.querySelectorAll('[data-cancel-request]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         authFetch('/preview/offers/requests/' + encodeURIComponent(btn.getAttribute('data-cancel-request')) + '/cancel', { method: 'POST' }).then(function (res) {
-          toast(res.ok ? 'Request cancelled.' : ((res.data && (res.data.detail || res.data.error)) || 'Could not cancel.'));
+          toast(res.ok ? 'Request cancelled.' : offerErrorText(res.data));
           onChanged();
           loadOffers();
         }, function () { toast(OFFLINE); });

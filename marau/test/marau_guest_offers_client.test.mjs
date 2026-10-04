@@ -158,3 +158,30 @@ test('NETWORK FAILURE: a failed request re-enables the button and says nothing w
     process.off('unhandledRejection', onUnhandled);
   }
 });
+
+test('EXPIRED / SOLD OUT / CLOSED: the guest reads a plain sentence (never a machine code) and the offer list refreshes so the stale card disappears', async () => {
+  const cases = [
+    [{ error: 'OFFER_EXPIRED' }, /ended|expired/i],
+    [{ error: 'SOLD_OUT', places_left: 0 }, /sold out/i],
+    [{ error: 'BOOKING_DEADLINE_PASSED' }, /closed/i],
+    [{ error: 'OFFER_NOT_AVAILABLE', detail: 'this offer is withdrawn or not currently available' }, /no longer available|withdrawn/i],
+    [{ error: 'INSUFFICIENT_CAPACITY', places_left: 2, requested: 4 }, /2/],
+    [{ error: 'SOMETHING_NEW_AND_UNMAPPED' }, /could not|try again/i],
+  ];
+  for (const [data, expected] of cases) {
+    const toasts = []; const paths = [];
+    let handler = null;
+    const btn = { disabled: false, getAttribute: () => 'off_1', addEventListener: (ev, fn) => { if (ev === 'click') handler = fn; } };
+    const root = { innerHTML: '', querySelectorAll: (sel) => (sel === '[data-request-offer]' ? [btn] : []), querySelector: () => null };
+    const authFetch = async (path) => { paths.push(path); if (path === '/preview/offers') return { ok: true, data: { offers: [offer()], editions: { current_slot: null, next_slot: null, morning: [], afternoon: [] } } }; return { ok: false, status: 410, data }; };
+    const c = makeClient({ authFetch, toast: (m) => toasts.push(m), els: { offersList: root } });
+    await c.loadOffers();
+    handler();
+    await new Promise((r) => setTimeout(r, 20));
+    const msg = toasts[toasts.length - 1];
+    assert.match(msg, expected, JSON.stringify(data));
+    assert.equal(/[A-Z]{3,}_[A-Z]{3,}/.test(msg), false, `a raw machine code reached the guest: ${msg}`);
+    assert.equal(btn.disabled, false);
+    assert.equal(paths.filter((p) => p === '/preview/offers').length, 2, 'the offer list is refreshed after a refusal');
+  }
+});
