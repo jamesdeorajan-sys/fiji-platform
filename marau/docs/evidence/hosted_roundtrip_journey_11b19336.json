@@ -1,0 +1,154 @@
+{
+  "run": "mutrcl3l",
+  "base": "https://marau-stage1-preview-legs.helpronline.workers.dev",
+  "evidence_label": "HOSTED SYNTHETIC (isolated preview)",
+  "passed": 22,
+  "failed": 7,
+  "checks": [
+    {
+      "name": "synthetic source seeded with the REAL schema field names",
+      "ok": true
+    },
+    {
+      "name": "sync creates the mirror",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "created": true,
+        "session": {
+          "session_id": "gs_5abf2a71-0bd2-4e92-b1cd-5d3d4ce73751",
+          "guest_contact_key": "+15005568060",
+          "guest_email": "rt.mutrcl3l.1@example.test",
+          "guest_phone": "+15005568060",
+          "whatsapp_available": null,
+          "access_token": "tok_21db0ee7-b2bd-4b28-8c9c-dcade80c1a1f",
+          "access_token_revoked": 0,
+          "test_data": 1,
+          "created_at": "2026-10-04T11:48:57.760Z",
+          "last_accessed_at": null
+        },
+        "marau_booking_id": 73,
+        "link_offer": null,
+        "status": "confirmed",
+        "claim_took_over": false,
+        "mock_staff_alert": {
+          "message": "New transfer reservation 45361451 awaiting confirmation. Reply or tap the review link to confirm once vehicle/driver is arranged.",
+          "review_link": "https://marau-stage1-preview-legs.helpronline.workers.dev/preview/staff/review?token=review_6124b69a-b2c2-447c-9b5f-e098d10c2918"
+        },
+        "demonstration_data": true
+      }
+    },
+    {
+      "name": "the guest's trip holds BOTH legs of the one source booking",
+      "ok": true
+    },
+    {
+      "name": "dates, locations and status preserved; the return pickup is the RECORDED location",
+      "ok": true
+    },
+    {
+      "name": "the return leg is NOT given the whole quote or a share: value unresolved",
+      "ok": true
+    },
+    {
+      "name": "guest trip carries NO operator-side figures or provenance",
+      "ok": true
+    },
+    {
+      "name": "repeated sync does not duplicate legs",
+      "ok": true
+    },
+    {
+      "name": "a qualifying referred purchase earns exactly one credit for the source-booking guest",
+      "ok": false
+    },
+    {
+      "name": "RETURN_VALUE_UNRESOLVED: no approved allocation rule -> refused, credit stays earned",
+      "ok": false
+    },
+    {
+      "name": "staff listing shows the return as a target with NO invented fare, and the source total/settlement preserved",
+      "ok": false
+    },
+    {
+      "name": "the arrival leg is never a credit target",
+      "ok": false
+    },
+    {
+      "name": "a PROPOSED rule changes nothing",
+      "ok": false
+    },
+    {
+      "name": "approval is attributed and can only be a synthetic-preview approval (owner basis ignored)",
+      "ok": true
+    },
+    {
+      "name": "credit applies ONLY to the return: booking total 170, credit 10, amount due 160; return value allocated 68",
+      "ok": true
+    },
+    {
+      "name": "one booking balance, identical from both legs; operator payout unchanged",
+      "ok": true
+    },
+    {
+      "name": "repeated sync after application: still two legs, same balance, no second adjustment",
+      "ok": true
+    },
+    {
+      "name": "a source edit to the return time reaches the SAME return leg (same id, new time); the credit stays",
+      "ok": true,
+      "detail": [
+        "2026-10-13T22:30:00.000Z",
+        "2026-10-14T05:00:00.000Z"
+      ]
+    },
+    {
+      "name": "return removed at the source: the SAME return leg is cancelled, arrival intact, credit released, balance back to the full total",
+      "ok": true
+    },
+    {
+      "name": "ARRIVAL COMPLETED: the upcoming return is still a live leg (assumption recorded)",
+      "ok": true
+    },
+    {
+      "name": "MISSING RETURN DETAILS: no return leg is invented; the arrival says so",
+      "ok": true
+    },
+    {
+      "name": "SOURCE CANCELLATION cancels the return leg too",
+      "ok": true
+    },
+    {
+      "name": "demonstration provenance: the preview mirrors from the SYNTHETIC source (test_data = 1, not authenticated)",
+      "ok": true
+    },
+    {
+      "name": "PILOT review: live offer availability and consent-eligible recipients, nothing sent",
+      "ok": true
+    },
+    {
+      "name": "PILOT: prepare is refused before a review",
+      "ok": false
+    },
+    {
+      "name": "PILOT: review recorded by a named staff member; recipients prepared; nothing sent",
+      "ok": false
+    },
+    {
+      "name": "PILOT: manual send then reply recorded, idempotent, original operator kept",
+      "ok": true
+    },
+    {
+      "name": "PILOT: a guest who withdrew consent drops out of the recipient list",
+      "ok": true
+    },
+    {
+      "name": "PILOT: no guest can read it",
+      "ok": true
+    },
+    {
+      "name": "rewards left OFF at the end",
+      "ok": true
+    }
+  ]
+}
