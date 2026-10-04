@@ -37,6 +37,11 @@ import { shortBookingReference, humanizeZoneLabel, humanizeVehicleClassLabel, fo
 import { createOffersClient } from './guest_offers_client.js';
 import { createStaffConsole } from './staff_console.js';
 
+// Wrangler's bundler (esbuild keepNames) rewrites functions so that their toString() contains calls to a helper named
+// __name that exists only in the Worker bundle. The page has no such helper, so every embedded client threw a ReferenceError at
+// load and the app never rendered (found by the real browser acceptance run). Every served script defines it first.
+export const BUNDLER_NAME_SHIM = 'var __name = function (fn) { return fn; };';
+
 // Splicing these functions' own source into the emitted <script> means
 // the browser runs literally the same code marau/test/*.test.mjs already
 // unit-tests against a fake storage — not a hand-copied duplicate that
@@ -305,6 +310,7 @@ ${SHARED_STYLE}
 <div class="toast" id="toast"></div>
 
 <script>
+${BUNDLER_NAME_SHIM}
 ${EMBEDDED_CLIENT_IDEMPOTENCY}
 (function () {
   var API = '';
@@ -895,6 +901,7 @@ ${SHARED_STYLE}
 <div class="toast" id="toast"></div>
 
 <script>
+${BUNDLER_NAME_SHIM}
 (function () {
   var token = null;
   var els = {};
@@ -1071,6 +1078,7 @@ ${SHARED_STYLE}
 </div>
 <div class="toast" id="toast"></div>
 <script>
+${BUNDLER_NAME_SHIM}
 ${createStaffConsole.toString()}
 createStaffConsole({ document: document, storage: sessionStorage, fetchImpl: function (u, o) { return fetch(u, o); }, prompt: function (m) { return window.prompt(m); } }).init();
 </script>

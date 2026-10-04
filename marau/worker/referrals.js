@@ -88,20 +88,21 @@ export function createReferrals(deps) {
   // ------------------------------------------------------------- codes / links
 
   async function ensureCode(env, sessionId) {
-    // A merged guest may hold several codes (every one keeps working); the OLDEST is the one they are shown.
-    const oldest = () => env.DB.prepare('SELECT code FROM marau_referral_codes WHERE guest_session_id = ? ORDER BY created_at, code LIMIT 1').bind(sessionId).first();
-    const existing = await oldest();
+    // A guest who merged an earlier session keeps the code that session already shared (the OLDEST in their lineage).
+    const inLineage = () => env.DB.prepare(
+      `SELECT code FROM marau_referral_codes WHERE guest_session_id = ? OR guest_session_id IN (SELECT from_session_id FROM marau_session_merges WHERE to_session_id = ?) ORDER BY created_at, code LIMIT 1`
+    ).bind(sessionId, sessionId).first();
+    const existing = await inLineage();
     if (existing) return existing.code;
     for (let i = 0; i < 6; i += 1) {
       const code = generateReferralCode();
       try {
-        // ONE statement: a session can never receive a second code by racing calls.
-        const res = await env.DB.prepare('INSERT INTO marau_referral_codes (code, guest_session_id, created_at) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM marau_referral_codes WHERE guest_session_id = ?)').bind(code, sessionId, nowIso(), sessionId).run();
-        if (res.meta.changes === 1) return code;
-        const raced = await oldest();
-        if (raced) return raced.code; // a concurrent call for the same guest won
+        await env.DB.prepare('INSERT INTO marau_referral_codes (code, guest_session_id, created_at) VALUES (?, ?, ?)').bind(code, sessionId, nowIso()).run();
+        return code;
       } catch (err) {
-        if (!/UNIQUE/i.test(String(err && err.message))) throw err; // a code collision: try another
+        if (!/UNIQUE/i.test(String(err && err.message))) throw err;
+        const raced = await inLineage();
+        if (raced) return raced.code; // a concurrent call for the same guest won
       }
     }
     throw new Error('could not allocate a referral code');
@@ -117,7 +118,8 @@ export function createReferrals(deps) {
     if (!isWellFormedCode(clean)) return { attributed: false, reason: 'no_valid_code' };
     const codeRow = await env.DB.prepare('SELECT * FROM marau_referral_codes WHERE code = ?').bind(clean).first();
     if (!codeRow) return { attributed: false, reason: 'unknown_code' };
-    const referrer = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(codeRow.guest_session_id).first();
+    const owner = await env.DB.prepare('SELECT to_session_id FROM marau_session_merges WHERE from_session_id = ?').bind(codeRow.guest_session_id).first();
+    const referrer = await env.DB.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(owner ? owner.to_session_id : codeRow.guest_session_id).first();
     if (!referrer) return { attributed: false, reason: 'unknown_code' };
 
     const sameEmail = referrer.guest_email && referredSession.guest_email && String(referrer.guest_email).toLowerCase() === String(referredSession.guest_email).toLowerCase();

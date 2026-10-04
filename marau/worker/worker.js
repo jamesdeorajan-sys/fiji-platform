@@ -610,7 +610,8 @@ function mergeSessionStatements(env, fromId, toId) {
          marketing_consent = (SELECT ${mergedConsent} FROM guest_sessions n, guest_sessions o WHERE n.session_id = ? AND o.session_id = ?),
          whatsapp_available = COALESCE(whatsapp_available, (SELECT whatsapp_available FROM guest_sessions WHERE session_id = ?))
        WHERE session_id = ?`, toId, fromId, fromId, toId),
-    P('UPDATE marau_referral_codes SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P('UPDATE marau_session_merges SET to_session_id = ? WHERE to_session_id = ?', toId, fromId),
+    P('INSERT OR REPLACE INTO marau_session_merges (from_session_id, to_session_id, merged_at) VALUES (?, ?, ?)', fromId, toId, nowIso()),
     P('UPDATE OR IGNORE marau_referrals SET referrer_session_id = ? WHERE referrer_session_id = ?', toId, fromId),
     P('UPDATE OR IGNORE marau_referrals SET referred_session_id = ? WHERE referred_session_id = ?', toId, fromId),
     P('UPDATE marau_reward_credits SET beneficiary_session_id = ? WHERE beneficiary_session_id = ?', toId, fromId),
