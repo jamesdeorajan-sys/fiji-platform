@@ -851,6 +851,19 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   });
 
+  // Opening a DIFFERENT private link in an already-open tab only changes the hash (no page load), which used to leave the
+  // previous guest's trip on screen under the new link. If the hash carries a link that is not the one stored for this
+  // device, reload onto it. (setToken stores the link BEFORE it changes the hash, so the app's own hash change never reloads.)
+  window.addEventListener('hashchange', function () {
+    var m = location.hash.match(/tok=([^&]+)/);
+    if (!m) return;
+    var stored = null;
+    try { stored = sessionStorage.getItem('marau_tok'); } catch (e) {}
+    if (!stored) { try { stored = localStorage.getItem('marau_tok'); } catch (e) {} }
+    if (!stored) { try { stored = getCookie('marau_tok'); } catch (e) {} }
+    if (m[1] !== stored) location.reload();
+  });
+
   loadTrip();
   loadDeals();
   offersClient.loadOffers();

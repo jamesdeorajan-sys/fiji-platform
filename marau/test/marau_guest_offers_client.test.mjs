@@ -185,3 +185,25 @@ test('EXPIRED / SOLD OUT / CLOSED: the guest reads a plain sentence (never a mac
     assert.equal(paths.filter((p) => p === '/preview/offers').length, 2, 'the offer list is refreshed after a refusal');
   }
 });
+
+test('PRIVATE LINK SWITCH: opening a DIFFERENT private link in an already-open tab (a hash change, no page load) reloads onto it instead of keeping the previous guest on screen', () => {
+  const marker = "window.addEventListener('hashchange'";
+  const start = GUEST_APP_HTML.indexOf(marker);
+  assert.ok(start !== -1, 'the app listens for a private-link hash change');
+  const closer = '\n  });';
+  const end = GUEST_APP_HTML.indexOf(closer, start) + closer.length;
+  const body = GUEST_APP_HTML.slice(start, end);
+  let handler = null; let reloads = 0;
+  const run = ({ stored, hash }) => {
+    reloads = 0;
+    const loc = { hash, reload: () => { reloads += 1; } };
+    const store = { getItem: () => stored };
+    new Function('window', 'location', 'sessionStorage', 'localStorage', 'getCookie', body)({ addEventListener: (ev, fn) => { if (ev === 'hashchange') handler = fn; } }, loc, store, store, () => stored);
+    handler();
+    return reloads;
+  };
+  assert.equal(run({ stored: 'tok_AAA', hash: '#tok=tok_AAA' }), 0, 'the same private link does not reload');
+  assert.equal(run({ stored: 'tok_AAA', hash: '' }), 0, 'clearing the link does not reload');
+  assert.equal(run({ stored: 'tok_AAA', hash: '#tok=tok_BBB' }), 1, 'a DIFFERENT private link reloads');
+  assert.equal(run({ stored: null, hash: '#tok=tok_BBB' }), 1, 'a link when nothing is stored reloads (it will be adopted on load)');
+});
