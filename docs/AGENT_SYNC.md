@@ -1102,3 +1102,8 @@ failure. Three additional rows initially flagged as possibly-real
 - Candidate: branch `ceo/marau-leg-clarity`, tag `marau-leg-clarity-rc3`, docs head `13208ca`, code `a7b8d3c`; hosted Worker `marau-stage1-preview-legs` `615f1da8-2cc1-4f8d-91ab-ca66e5ba2bbf` (supersedes `efc611e1`; only change: form amount label -> "Arrival fare (FJD)" / "Return fare (FJD)" for a standalone return, matching the stored leg amount). Local 415/415; hosted journey 40/40. No production change.
 - Acceptance record: phone evidence is PARTIAL (updated form, journey choices, separate arrival/return fields seen); saved dates, reopening, QR scan, private-link switching NOT yet proven. Desktop evidence preserved: hosted RC2 return pickup 10:30 AM Fiji time, Mon 13 Oct 2031. 2031 fixture dates intentional (stay upcoming).
 - OUTSTANDING: hosted staff-console browser acceptance (needs credentialed operator; not typed into non-local pages).
+
+## CORRECTION + FINAL GATE 2026-10-05 - Marau RC3 (Claude)
+- CORRECTION to the previous checkpoint: James's earlier desktop screenshot showed the return pickup as **Tuesday, Oct 13, no year**. The author's 2031 fixture (Mon 13 Oct 2031, 10:30 AM Fiji) is SEPARATE author evidence, not a record of James's screenshot.
+- RC3 unchanged: code `a7b8d3c`, Worker `615f1da8`, tag `marau-leg-clarity-rc3`; docs head `ed1522e`; no production change.
+- Hosted staff-console browser acceptance: BLOCKED by the rule against entering credentials into non-local pages (workers.dev host); no credential created, so nothing to revoke. Human checklist + consolidated gate (passed / outstanding / commercial C1-C8) in marau/docs/MARAU_RELEASE_GATE.md.
