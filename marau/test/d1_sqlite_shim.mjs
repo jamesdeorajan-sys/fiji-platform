@@ -74,6 +74,8 @@ export function createTestD1({ migrationsDirs = MIGRATIONS_DIRS } = {}) {
 
   function makeStatement(sql, boundArgs = []) {
     return {
+      sql,
+      boundArgs,
       bind(...args) {
         return makeStatement(sql, args.map(coerce));
       },
@@ -126,6 +128,30 @@ export function createTestD1({ migrationsDirs = MIGRATIONS_DIRS } = {}) {
     },
     exec(sql) {
       sqlite.exec(sql);
+    },
+    // D1's batch(): the statements run in order inside ONE implicit transaction - if any statement throws, every earlier
+    // write in the batch is rolled back. Everything runs synchronously, so nothing can interleave inside a batch.
+    async batch(statements) {
+      sqlite.exec('BEGIN');
+      const out = [];
+      try {
+        for (const st of statements) {
+          const stmt = sqlite.prepare(st.sql);
+          const isRead = /^\s*(WITH|SELECT)\b/i.test(st.sql);
+          if (isRead) {
+            const results = stmt.all(...st.boundArgs);
+            out.push({ success: true, results, meta: { changes: 0 } });
+          } else {
+            const info = stmt.run(...st.boundArgs);
+            out.push({ success: true, results: [], meta: { changes: info.changes, last_row_id: Number(info.lastInsertRowid) } });
+          }
+        }
+        sqlite.exec('COMMIT');
+      } catch (err) {
+        try { sqlite.exec('ROLLBACK'); } catch { /* already rolled back */ }
+        throw shimError(err, 'batch');
+      }
+      return out;
     },
     // Direct escape hatch for test setup/assertions that don't need the
     // Promise-based D1 shape (e.g. seeding fixtures synchronously).

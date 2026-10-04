@@ -1,0 +1,451 @@
+[marau-preview] unhandled error Error: injected adjustment fault (sql: INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, st)
+    at shimError (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:115:21)
+    at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:108:17)
+    at ensureAdjustment (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/referrals.js:238:135)
+    ... 5 lines matching cause stack trace ...
+    at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+  cause: Error: injected adjustment fault
+      at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:102:29)
+      at ensureAdjustment (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/referrals.js:238:135)
+      at async applyCredit (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/referrals.js:215:7)
+      at async Object.fetch (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/worker.js:2600:21)
+      at async call (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:17:15)
+      at async TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:282:15)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 1811,
+    errstr: 'constraint failed'
+  },
+  isConstraintViolation: false
+}
+✖ PAYMENT: fulfilled-but-UNPAID does not earn credit under the pay-later policy; payment evidence then earns exactly one (127.7658ms)
+✔ PAYMENT: paid BEFORE fulfilment earns at fulfilment (either order ends in the same state) (44.1944ms)
+✖ PAYMENT: repeated payment events are idempotent by event key; a different key may not overpay; a key may not change amount (40.1074ms)
+✖ PAYMENT: a refund with no recorded payment is refused (events must arrive in a state-consistent order) (42.2521ms)
+✖ PAYMENT: partial payment does not qualify; completing it does (41.1317ms)
+✖ PAYMENT: a refund after earning reverses the credit; after APPLYING it flags the discount for a human and never silently changes the fare (49.9044ms)
+✔ PAYMENT: a payment recorded AFTER cancellation never resurrects the credit; cancel-then-pay and pay-then-cancel end the same (41.3034ms)
+✖ PAYMENT: require_payment is policy-configurable: "none" earns on fulfilment alone; an invalid value is refused; the default is paid_in_full (29.4986ms)
+✖ PAYMENT: payments need a staff identity; the operator is recorded from the token, not the body; guests cannot post them (41.9632ms)
+✖ APPLY: two OVERLAPPING apply calls for the same credit + booking both succeed, make one adjustment, and report the WINNER as operator (50.4452ms)
+✖ APPLY: a retry that follows success keeps the winning operator and creates nothing (39.1476ms)
+✖ APPLY: a FAULT after the credit is claimed but before the adjustment exists leaves NOTHING half-done (no applied credit without an adjustment) (49.4374ms)
+✖ APPLY: a PARTIAL state left by the old workflow (applied, no adjustment) is repaired by a same-booking retry with the ORIGINAL operator (43.7603ms)
+[marau-preview] unhandled error Error: UNIQUE constraint failed: marau_booking_adjustments.credit_id (sql: INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, st)
+    at shimError (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:115:21)
+    at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:108:17)
+    at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:122:188)
+    ... 6 lines matching cause stack trace ...
+    at async Test.run (node:internal/test_runner/test:1389:7) {
+  cause: Error: UNIQUE constraint failed: marau_booking_adjustments.credit_id
+      at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/d1_sqlite_shim.mjs:102:29)
+      at Object.run (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:122:188)
+      at async ensureAdjustment (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/referrals.js:235:5)
+      at async applyCredit (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/referrals.js:196:7)
+      at async Object.fetch (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/worker.js:2600:21)
+      at async call (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:17:15)
+      at async Promise.all (index 0)
+      at async TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:316:18)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 2067,
+    errstr: 'constraint failed'
+  },
+  isConstraintViolation: true
+}
+✖ APPLY: two RETRIES overlapping the adjustment insert of a partial state never error and never double-insert (61.8862ms)
+✖ REVERSAL RACE (a): purchase reversed AFTER it read the credit as earned but BEFORE its write, while redemption wins in between (41.9635ms)
+✖ REVERSAL RACE (b): redemption claimed the credit and is about to write the adjustment when the purchase is reversed (41.2205ms)
+✔ REVERSAL RACE (c): the two run fully concurrently - whichever order wins, every state agrees (262.7519ms)
+✖ RETURN CANCELLED DURING REDEMPTION: the booking is cancelled after the redemption checked it but before the adjustment is written (41.0383ms)
+✖ RETURN CANCELLED AFTER APPLICATION (even if no cancellation hook ever ran): the next read releases the credit and drops the discount (39.4944ms)
+✔ RETURN CANCELLED BEFORE APPLICATION: refused as not eligible (39.9592ms)
+✖ MULTIPLE CREDITS: two earned credits apply to ONE return booking, bounded by the amount due; quote and payout untouched (42.4157ms)
+✖ MULTIPLE CREDITS: credits can never exceed the amount due - the second is capped at the remainder and the unused part is reported, not hidden (44.9903ms)
+✖ MULTIPLE CREDITS: a fully covered booking refuses further credits and leaves them earned (41.7619ms)
+✔ MULTIPLE CREDITS: two different credits applied to the same booking concurrently never exceed the fare (187.6586ms)
+✔ MULTIPLE CREDITS: the per-referrer cap still bounds how many credits can be EARNED at all (44.6441ms)
+✖ MULTIPLE CREDITS: staff resolving a flagged reversal clears the attention state and restores the amount due, with attribution (56.8243ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 6
+ℹ fail 20
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1781.3305
+
+✖ failing tests:
+
+test at test\marau_reward_integrity.test.mjs:135:1
+✖ PAYMENT: fulfilled-but-UNPAID does not earn credit under the pay-later policy; payment evidence then earns exactly one (127.7658ms)
+  AssertionError [ERR_ASSERTION]: fulfilled but unpaid must stay pending
+  + actual - expected
+  
+    [
+  +   'earned'
+  -   'pending'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:139:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'earned' ],
+    expected: [ 'pending' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:157:1
+✖ PAYMENT: repeated payment events are idempotent by event key; a different key may not overpay; a key may not change amount (40.1074ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - true
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:163:76)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:171:1
+✖ PAYMENT: a refund with no recorded payment is refused (events must arrive in a state-consistent order) (42.2521ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:176:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:181:1
+✖ PAYMENT: partial payment does not qualify; completing it does (41.1317ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'earned'
+  -   'pending'
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:186:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'earned' ],
+    expected: [ 'pending' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:191:1
+✖ PAYMENT: a refund after earning reverses the credit; after APPLYING it flags the discount for a human and never silently changes the fare (49.9044ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'applied'
+  - 'reversed'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:202:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'applied',
+    expected: 'reversed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:223:1
+✖ PAYMENT: require_payment is policy-configurable: "none" earns on fulfilment alone; an invalid value is refused; the default is paid_in_full (29.4986ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'paid_in_full'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:226:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'paid_in_full',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:234:1
+✖ PAYMENT: payments need a staff identity; the operator is recorded from the token, not the body; guests cannot post them (41.9632ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 401
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:238:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 401,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:256:1
+✖ APPLY: two OVERLAPPING apply calls for the same credit + booking both succeed, make one adjustment, and report the WINNER as operator (50.4452ms)
+  AssertionError [ERR_ASSERTION]: [{"ok":true,"fare":{"original_fare_fjd":100,"referral_credit_fjd":10,"amount_due_fjd":90,"operator_payout_unchanged":true,"funded_by":"marau_marketing_budget","adjustment_status":"applied","quote_history":[{"event":"original_quote","fjd":100,"at":"2026-10-04T01:15:51.058Z"},{"event":"referral_credit_applied","credit_fjd":10,"at":"2026-10-04T01:15:51.064Z"}]},"demonstration_data":true},{"error":"CREDIT_NOT_APPLICABLE","detail":"another redemption won the race"}]
+  + actual - expected
+  
+    [
+      200,
+  +   409
+  -   200
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:259:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 200, 409 ],
+    expected: [ 200, 200 ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:267:1
+✖ APPLY: a retry that follows success keeps the winning operator and creates nothing (39.1476ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'Ana (ops)'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:273:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'Ana (ops)',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:278:1
+✖ APPLY: a FAULT after the credit is claimed but before the adjustment exists leaves NOTHING half-done (no applied credit without an adjustment) (49.4374ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'Bala (ops)'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:293:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'Bala (ops)',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:297:1
+✖ APPLY: a PARTIAL state left by the old workflow (applied, no adjustment) is repaired by a same-booking retry with the ORIGINAL operator (43.7603ms)
+  AssertionError [ERR_ASSERTION]: the retry never takes over attribution
+  + actual - expected
+  
+  + undefined
+  - 'Ana (ops)'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:302:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'Ana (ops)',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:307:1
+✖ APPLY: two RETRIES overlapping the adjustment insert of a partial state never error and never double-insert (61.8862ms)
+  AssertionError [ERR_ASSERTION]: [{"error":"internal error","detail":"UNIQUE constraint failed: marau_booking_adjustments.credit_id (sql: INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, st)"},{"ok":true,"repeated":true,"fare":{"original_fare_fjd":100,"referral_credit_fjd":10,"amount_due_fjd":90,"operator_payout_unchanged":true,"funded_by":"marau_marketing_budget","adjustment_status":"applied","quote_history":[{"event":"original_quote","fjd":100,"at":"2026-10-04T01:15:51.230Z"},{"event":"referral_credit_applied","credit_fjd":10,"at":"2026-10-04T01:15:51.235Z"}]},"demonstration_data":true}]
+  + actual - expected
+  
+    [
+  +   500,
+      200,
+  -   200
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:317:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 500, 200 ],
+    expected: [ 200, 200 ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:322:1
+✖ REVERSAL RACE (a): purchase reversed AFTER it read the credit as earned but BEFORE its write, while redemption wins in between (41.9635ms)
+  AssertionError [ERR_ASSERTION]: reversal-race-a credit cr_1a860fd8-1442-4225-8c32-162053ad7ba2 status=reversed: its adjustment must be pending staff review
+      at assertLedgerConsistent (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:99:16)
+      at async TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:331:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:340:1
+✖ REVERSAL RACE (b): redemption claimed the credit and is about to write the adjustment when the purchase is reversed (41.2205ms)
+  AssertionError [ERR_ASSERTION]: reversal-race-b credit cr_0f97090c-a5cb-42ba-81d5-76f1f3166d23 status=reversed: its adjustment must be pending staff review
+      at assertLedgerConsistent (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:99:16)
+      at async TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:349:3)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:361:1
+✖ RETURN CANCELLED DURING REDEMPTION: the booking is cancelled after the redemption checked it but before the adjustment is written (41.0383ms)
+  AssertionError [ERR_ASSERTION]: {"ok":true,"fare":{"original_fare_fjd":100,"referral_credit_fjd":10,"amount_due_fjd":90,"operator_payout_unchanged":true,"funded_by":"marau_marketing_budget","adjustment_status":"applied","quote_history":[{"event":"original_quote","fjd":100,"at":"2026-10-04T01:15:51.638Z"},{"event":"referral_credit_applied","credit_fjd":10,"at":"2026-10-04T01:15:51.646Z"}]},"demonstration_data":true}
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:369:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:374:1
+✖ RETURN CANCELLED AFTER APPLICATION (even if no cancellation hook ever ran): the next read releases the credit and drops the discount (39.4944ms)
+  AssertionError [ERR_ASSERTION]: the credit is released for another return transfer
+  + actual - expected
+  
+  + 'applied'
+  - 'earned'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:380:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'applied',
+    expected: 'earned',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:409:1
+✖ MULTIPLE CREDITS: two earned credits apply to ONE return booking, bounded by the amount due; quote and payout untouched (42.4157ms)
+  AssertionError [ERR_ASSERTION]: {"error":"BOOKING_ALREADY_HAS_A_CREDIT"}
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:413:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:423:1
+✖ MULTIPLE CREDITS: credits can never exceed the amount due - the second is capped at the remainder and the unused part is reported, not hidden (44.9903ms)
+  AssertionError [ERR_ASSERTION]: {"error":"BOOKING_ALREADY_HAS_A_CREDIT"}
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:427:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:434:1
+✖ MULTIPLE CREDITS: a fully covered booking refuses further credits and leaves them earned (41.7619ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'BOOKING_ALREADY_HAS_A_CREDIT'
+  - 'BOOKING_FULLY_COVERED'
+             ^
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:440:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'BOOKING_ALREADY_HAS_A_CREDIT',
+    expected: 'BOOKING_FULLY_COVERED',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_reward_integrity.test.mjs:463:1
+✖ MULTIPLE CREDITS: staff resolving a flagged reversal clears the attention state and restores the amount due, with attribution (56.8243ms)
+  AssertionError [ERR_ASSERTION]: {"error":"not found"}
+  
+  404 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_reward_integrity.test.mjs:475:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
