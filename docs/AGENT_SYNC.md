@@ -1121,3 +1121,10 @@ failure. Three additional rows initially flagged as possibly-real
 - Fixture status: operator fixtures do NOT exist on the hosted preview. The seed script now verifies fixtures on the target host; one throwaway proof run verified 9/9, then guests revoked and its 2 staff identities deleted (0 remain). Local seeds are not hosted fixtures.
 - Finding O5: with rewards OFF an approved allocation rule on the shared preview still gives a new return leg a value (not gated by policy mode) -> production post-release check: no approved rule.
 - WAITING for human acceptance and James's explicit release decision. No production change, real guest or message.
+
+## CHECKPOINT 2026-10-05 - Marau RC4 finish: shared-DB reconciliation, Not-going-ahead, O5 (Claude)
+- CORRECTION: RC3 is unchanged only as Worker code/version. RC3 and RC4 share ONE preview D1 (`marau-stage1-legs-db`), written to by hosted scripts. Reconciliation in `marau/docs/MARAU_SHARED_PREVIEW_DB_RECONCILIATION.md`: 18 allocation rules all retired (none approved), policy off, credits 17 earned/9 applied unchanged by RC4 runs, fixtures by origin, 47 synthetic staff identities. One RC4 script retired a rule it did not create; removed from the script. Recommendation (not done): a dedicated D1 for RC4.
+- RC4 FROZEN: code `7df9958`, tag `marau-rc4-uncertain-return`, Worker `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b` (confirmed current). New work is tests/scripts/docs only (docs head on `ceo/marau-rc4-uncertain-return`).
+- Not going ahead e2e, rewards OFF: local + hosted 31/31 (queue, guest Cancelled, audit row read back via read-only D1 query, repeat 409, invalidation, source/money unchanged); credit ineligibility proven locally with a real earned credit.
+- O5 clarified: return-value allocation (rule-gated, reconcile sweep) vs reward earning/promotion/application (OFF-gated). Proven with an approved rule KEPT: earning/application hosted, promotion local-only.
+- Local Marau 427/427, engine 247/247. Human acceptance still pending; fixtures to be seeded and verified at handoff time. No production change, real guest, message or fare change.
