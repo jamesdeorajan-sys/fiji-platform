@@ -546,6 +546,8 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     var fiji = formatFijiDateTime(active.pickup_datetime);
     var pillClass = STATUS_PILL[active.status] || 'warn';
     var statusLabel = STATUS_LABEL[active.status] || active.status;
+    // An upcoming return inside a booking the system marks completed: shown, never presented as confirmed.
+    var uncertainNote = active.status_uncertainty ? '<p class="small" style="margin:10px 0 0">The booking system shows this trip as completed, but this return transfer is still ahead. Our team is checking it - you do not need to do anything.</p>' : '';
 
     var switcher = '';
     if (sorted.length > 1) {
@@ -583,6 +585,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
         '<div class="fact">Vehicle<b>' + active.vehicle_type + '</b></div>' +
         '<div class="fact">Status<b>' + statusLabel + '</b></div>' +
       '</div>' +
+      uncertainNote +
       '<div class="pickup-actions"><button class="btn btn-onlagoon" id="changeBtn" type="button">Request a change</button></div>' +
       '</article>' + (offersClient ? offersClient.fareHtml(active.fare) : '');
 

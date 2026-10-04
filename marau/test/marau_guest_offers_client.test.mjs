@@ -255,3 +255,9 @@ test('fare for a ROUND TRIP held in one booking is labelled as the booking total
   assert.equal(/return transfer fare/.test(html), false);
   assert.match(c.fareHtml({ original_fare_fjd: 100, referral_credit_fjd: 10, amount_due_fjd: 90 }), /Your return transfer fare/, 'the single-leg wording is unchanged');
 });
+
+test('an upcoming return inside a booking the source marks completed is shown with plain wording that the team is checking it (never as confirmed)', () => {
+  assert.match(GUEST_APP_HTML, /active\.status_uncertainty/);
+  assert.match(GUEST_APP_HTML, /this return transfer is still ahead\. Our team is checking it/);
+  assert.equal(GUEST_APP_HTML.includes('`'), false);
+});
