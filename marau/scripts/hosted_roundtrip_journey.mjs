@@ -96,11 +96,40 @@ try {
   t = await trip(token); L = legsOf(t);
   check('return removed at the source: the SAME return leg is cancelled, arrival intact, credit released, balance back to the full total', L.return.status === 'cancelled' && L.arrival.status === 'confirmed' && L.arrival.return_leg_state === 'missing_return_details' && L.arrival.fare.amount_due_fjd === 170);
 
+  // ---- 3b. return restored, then a source quote change after credit
+  await seed({ ...b1 }); await sync(b1);
+  t = await trip(token); L = legsOf(t);
+  const reapply = await apply(L.return.id);
+  check('return restored: the SAME leg returns, the credit was NOT silently re-applied (staff re-apply gives one live adjustment)', L.return.status === 'confirmed' && L.arrival.fare.amount_due_fjd === 170 && reapply.status === 200 && reapply.data.fare.adjustments.length === 1);
+  await seed({ ...b1, quoted_amount: 200, settlement_amount_fjd: 175 }); await sync(b1);
+  await api('/preview/admin/rewards/credits', { headers: S(ANA) });
+  t = await trip(token); L = legsOf(t);
+  check('SOURCE QUOTE CHANGE after credit: both legs show total 200, credit 10, due 190, the change flagged; operator settlement never reaches the guest', [L.arrival, L.return].every((x) => x.fare.booking_total_fjd === 200 && x.fare.amount_due_fjd === 190 && x.fare.quote_changed_since_credit === true && x.fare.booking_total_at_credit_fjd === 170) && !/175/.test(JSON.stringify(t)));
+
   // ---- 4. arrival already completed; missing return details; source cancellation
   const b2 = sourceBody(); await seed(b2); const s2 = await sync(b2, 'created');
   await seed({ ...b2, status: 'completed' }); await sync(b2, 'completed', 'completed');
-  const L2 = legsOf(await trip(s2.data.session.access_token));
-  check('ARRIVAL COMPLETED: the upcoming return is still a live leg (assumption recorded)', L2.return.status === 'confirmed' && L2.arrival.source_status === 'completed');
+  const tok2 = s2.data.session.access_token;
+  const L2 = legsOf(await trip(tok2));
+  check('ARRIVAL COMPLETED: the upcoming return stays VISIBLE but is PENDING with an explicit status uncertainty (never inferred as confirmed)', L2.return.status === 'pending' && L2.return.status_uncertainty === 'source_completed_while_return_upcoming' && L2.arrival.source_status === 'completed');
+  check('...and the guest trip never shows who verified or the evidence', !/status_verified_by|status_verification_evidence/.test(JSON.stringify(await trip(tok2))));
+  const code2 = (await api('/preview/referral', { headers: G(tok2) })).data.code;
+  const friend2 = await api('/preview/bookings', { method: 'POST', body: { guest_email: `rt.friend2.${RUN}@example.test`, guest_phone: `+1500559${String(Math.floor(1000 + Math.random() * 8999))}`, whatsapp_available: true, pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'Sedan', quoted_amount: 80, pickup_datetime: inDays(2).slice(0, 16), referral_code: code2 } });
+  const rid2 = (await api(`/preview/offers/${offer}/request`, { method: 'POST', headers: G(friend2.data.access_token), body: { places: 1 } })).data.request.request_id;
+  const act2 = (a, b = {}) => api(`/preview/admin/offers/requests/${rid2}/${a}`, { method: 'POST', headers: S(ANA), body: b });
+  await act2('confirm'); await act2('payment', { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `rt2-${RUN}` }); await act2('fulfil');
+  const credit2 = (await api('/preview/admin/rewards/credits', { headers: S(ANA) })).data.credits.find((c) => c.status === 'earned' && c.holder.email === b2.guest_email);
+  const apply2 = (bid) => api(`/preview/admin/rewards/credits/${credit2.credit_id}/apply`, { method: 'POST', headers: S(ANA), body: { booking_id: bid } });
+  const refused = await apply2(L2.return.id);
+  check('no redemption eligibility is inferred: credit refused LEG_STATUS_UNVERIFIED', refused.status === 409 && refused.data.error === 'LEG_STATUS_UNVERIFIED');
+  const noEvidence = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming' } });
+  const ver = await api(`/preview/admin/bookings/${L2.return.id}/verify-status`, { method: 'POST', headers: S(BALA), body: { verdict: 'return_upcoming', evidence: 'synthetic hosted check: confirmed by phone that the return is still booked' } });
+  check('STAFF VERIFICATION needs evidence; records the named actor and time; says the source is unchanged', noEvidence.status === 400 && ver.status === 200 && ver.data.source_unchanged === true && ver.data.leg.verified_by === `Bala (roundtrip ${RUN})` && Boolean(ver.data.leg.verified_at));
+  const afterVerify = legsOf(await trip(tok2));
+  check('after verification the leg is confirmed, the arrival still reads as the source reported it, and the credit can apply', afterVerify.return.status === 'confirmed' && afterVerify.return.status_uncertainty == null && afterVerify.arrival.source_status === 'completed' && (await apply2(L2.return.id)).status === 200);
+  await seed({ ...b2, status: 'completed', return_time: '16:00' }); await sync(b2, 'completed', 'completed');
+  check('a change to the facts the verification rested on brings the uncertainty back', legsOf(await trip(tok2)).return.status_uncertainty === 'source_completed_while_return_upcoming');
+  await seed({ ...b2, status: 'completed', return_time: '16:00' });
   const b3 = sourceBody({ return_time: null }); await seed(b3); const s3 = await sync(b3, 'created');
   const t3 = await trip(s3.data.session.access_token);
   check('MISSING RETURN DETAILS: no return leg is invented; the arrival says so', t3.bookings.length === 1 && t3.bookings[0].return_leg_state === 'missing_return_details');
@@ -132,6 +161,20 @@ try {
   await api('/preview/trip/contact', { method: 'POST', headers: G(rcpt.data.access_token), body: { marketing_consent: 'withheld' } });
   const after = await api(`/preview/admin/editions/${E}/review`, { headers: S(ANA) });
   check('PILOT: a guest who withdrew consent drops out of the recipient list', !after.data.recipients.some((r) => r.session_id === mine.session_id));
+  // ---- timing contract
+  const r2 = await api('/preview/bookings', { method: 'POST', body: { guest_email: `rt.rcpt2.${RUN}@example.test`, guest_phone: `+1500559${String(Math.floor(1000 + Math.random() * 8999))}`, whatsapp_available: true, pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'Sedan', quoted_amount: 80, pickup_datetime: inDays(2).slice(0, 16) } });
+  await api('/preview/trip/contact', { method: 'POST', headers: G(r2.data.access_token), body: { marketing_consent: 'granted' } });
+  const prep2 = await api(`/preview/admin/editions/${E}/sends/prepare`, { method: 'POST', headers: S(ANA), body: {} });
+  const mine2 = (await api(`/preview/admin/editions/${E}/review`, { headers: S(ANA) })).data.recipients.find((r) => r.contact.email === `rt.rcpt2.${RUN}@example.test`);
+  const chk = await api(`/preview/admin/editions/${E}/sends/${mine2.session_id}/check`, { method: 'POST', headers: S(BALA), body: {} });
+  check('PRE-SEND CHECK: facts hold -> the message text is handed out (no link/contact), checked_by recorded, and it says the app cannot stop an external send', prep2.status === 200 && chk.status === 200 && chk.data.eligible === true && /Synthetic snorkel/.test(chk.data.message_text) && !/https?:|wa\.me|@/.test(chk.data.message_text) && /cannot/.test(chk.data.app_cannot_prevent_external_send));
+  await api('/preview/trip/contact', { method: 'POST', headers: G(r2.data.access_token), body: { marketing_consent: 'withheld' } });
+  const chk2 = await api(`/preview/admin/editions/${E}/sends/${mine2.session_id}/check`, { method: 'POST', headers: S(BALA), body: {} });
+  check('consent withdrawn after preparation: the check REFUSES with reasons and the entry is invalidated', chk2.status === 409 && chk2.data.error === 'NOT_ELIGIBLE_TO_SEND' && chk2.data.reasons.includes('no_marketing_consent'));
+  const honest = await api(`/preview/admin/editions/${E}/sends/${mine2.session_id}/outcome`, { method: 'POST', headers: S(ANA), body: { status: 'sent_manually', note: 'sent before I saw the withdrawal' } });
+  check('HONEST OUTCOME: the send is RECORDED and flagged contrary to eligibility (not refused, not hidden)', honest.status === 200 && honest.data.sent_contrary_to_eligibility === true && honest.data.send.sent_eligibility === 'contrary_to_eligibility' && honest.data.send.updated_by === `Ana (roundtrip ${RUN})`);
+  const sl = (await api(`/preview/admin/editions/${E}/sends`, { headers: S(ANA) })).data;
+  check('the send list counts stale entries and sends made contrary to eligibility', sl.summary.sent_contrary_to_eligibility >= 1 && typeof sl.summary.stale === 'number');
   check('PILOT: no guest can read it', (await api(`/preview/admin/editions/${E}/sends`, { headers: G(rcpt.data.access_token) })).status === 401);
 } catch (err) {
   check('journey completed without an unexpected error', false, String(err && err.stack ? err.stack : err));
