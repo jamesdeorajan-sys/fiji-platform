@@ -11,7 +11,7 @@ allocation approval exists, and no real record can resolve a return value.
 | T2 | Production Marau Worker + D1 + migrations 0035-0043 (none exist) | there is nothing to deploy to | release gate |
 | T3 | Nadi milestone38 (attempt identity) | operator identity stays `service-asserted`, not authenticated | release gate |
 | T4 | Mirror rows `test_data = 0` + owner-approved provenance path | live eligibility needs it; no approved path exists | release gate |
-| T5 | Physical-phone evidence (camera QR scan, real iOS/Android) | never collected | James (checklists) |
+| T5 | Physical-phone evidence (camera QR scan, real iOS/Android) | partial: form, journey choices, arrival/return fields seen; saved dates, reopening, QR, link switching open | James (checklists) |
 | T6 | Source team to confirm what booking-level `completed` means for a round trip | Marau now treats it as **uncertain** and requires staff verification, so this is no longer a hidden assumption - but confirming it removes the manual step | source team |
 
 ## B. Commercial decisions (yours)

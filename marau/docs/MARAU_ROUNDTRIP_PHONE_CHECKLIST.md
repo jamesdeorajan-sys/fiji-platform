@@ -15,7 +15,9 @@
 | 7 | Phone A | Reopen Link A from your home screen/history. | Your original round trip again (not Link B's). | |
 
 Record: phone models/OS/browser · did the camera scan work first time · anything that looked wrong or showed someone else's information.
-**Until this table is filled in, physical-phone evidence for the round-trip preview does not exist.**
+**Already evidenced on a phone (James's screenshots):** the updated synthetic form, the journey choices and the separate arrival/return date-time fields. **Still to confirm with this table:** saved dates on the Trip view (rows 1-2, 5-6), reopening a link (row 7), QR scanning (row 4) and switching between private links (rows 5-7).
+**Desktop evidence preserved:** hosted RC2 shows the return pickup at 10:30 AM Fiji time on Monday, Oct 13, 2031.
+**Fixture dates:** the 2031 dates are intentional (far-future so the legs stay upcoming); the amount field is now **Arrival fare (FJD)** (**Return fare (FJD)** for a standalone return).
 
 ## Update: leg clarity (Worker `efc611e1`, commit `4e510ea`)
 On your Trip you should now see two cards, each with its OWN values:
