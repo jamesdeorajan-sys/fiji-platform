@@ -1,0 +1,133 @@
+{
+  "run": "muug9beq",
+  "base": "https://marau-stage1-preview-rc4.helpronline.workers.dev",
+  "evidence_label": "HOSTED SYNTHETIC, rewards OFF (isolated preview, API level; not staff-console browser acceptance)",
+  "passed": 31,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "PRECONDITION: rewards policy is OFF (script sets no policy)",
+      "ok": true
+    },
+    {
+      "name": "INFO: allocation rules present at start are left as they are (statuses: retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired,retired)",
+      "ok": true
+    },
+    {
+      "name": "before: a normal booking is not in the attention queue",
+      "ok": true
+    },
+    {
+      "name": "NEEDS ATTENTION (rewards OFF): the uncertain return is listed with the facts to check",
+      "ok": true
+    },
+    {
+      "name": "a verdict without the itinerary basis is refused (400)",
+      "ok": true
+    },
+    {
+      "name": "a stale/wrong basis is refused (409 ITINERARY_CHANGED) and records nothing",
+      "ok": true
+    },
+    {
+      "name": "a request without a valid staff identity is refused (401)",
+      "ok": true
+    },
+    {
+      "name": "verification recorded: actor, timestamp, source unchanged",
+      "ok": true
+    },
+    {
+      "name": "source provenance and money fields identical before and after verification",
+      "ok": true
+    },
+    {
+      "name": "guest sees the return confirmed with a plain staff-checked flag; never who verified or the evidence",
+      "ok": true
+    },
+    {
+      "name": "the item leaves the attention queue",
+      "ok": true
+    },
+    {
+      "name": "REWARDS OFF: no credit exists for this guest (return-value allocation is a separate thing, checked in section 3)",
+      "ok": true
+    },
+    {
+      "name": "INVALIDATION: a changed return time re-opens the item, clears the guest note and the status goes back to pending",
+      "ok": true
+    },
+    {
+      "name": "the old basis cannot be reused after the change (409)",
+      "ok": true
+    },
+    {
+      "name": "re-verification against the NEW basis works",
+      "ok": true
+    },
+    {
+      "name": "NGO: the uncertain return is in the staff queue",
+      "ok": true
+    },
+    {
+      "name": "NGO: recorded under the named staff identity; source stated unchanged",
+      "ok": true
+    },
+    {
+      "name": "NGO: the item leaves the queue",
+      "ok": true
+    },
+    {
+      "name": "NGO: the guest sees Cancelled, no staff-checked note, no verifier or evidence",
+      "ok": true
+    },
+    {
+      "name": "NGO: source row, provenance and money identical before and after",
+      "ok": true
+    },
+    {
+      "name": "NGO: a repeated action is a no-op (409 NOTHING_TO_VERIFY)",
+      "ok": true
+    },
+    {
+      "name": "NGO: a later itinerary change re-opens it (pending, uncertain, new basis) rather than leaving it cancelled",
+      "ok": true
+    },
+    {
+      "name": "NGO: the old basis cannot be reused (409 ITINERARY_CHANGED)",
+      "ok": true
+    },
+    {
+      "name": "O5: an APPROVED synthetic allocation rule exists for the whole of this section (it is not deleted to make a check pass)",
+      "ok": true
+    },
+    {
+      "name": "O5: rewards policy is still OFF",
+      "ok": true
+    },
+    {
+      "name": "O5 (1) ALLOCATION still happens with rewards OFF: the return leg is valued by the approved rule (allocation is rule-gated, not mode-gated)",
+      "ok": true
+    },
+    {
+      "name": "O5 (2) EARNING is blocked: the referred purchase was fulfilled and paid, yet NO credit exists for the referrer",
+      "ok": true
+    },
+    {
+      "name": "O5 (3) APPLICATION is blocked (409 REWARDS_OFF) on an allocated return leg, and the credit is left earned",
+      "ok": true
+    },
+    {
+      "name": "INFO: PROMOTION-blocked is proven by the local suite (pre-existing pending credits on this preview: 0; creating one needs rewards ON, which this script never does)",
+      "ok": true
+    },
+    {
+      "name": "CLEANUP: only the rule this section created was retired",
+      "ok": true
+    },
+    {
+      "name": "rewards still OFF at the end",
+      "ok": true
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Marau - hosted staff-console acceptance: operator handoff
 
-**Baseline RC3 is preserved** (code `a7b8d3c`, hosted Worker `615f1da8-2cc1-4f8d-91ab-ca66e5ba2bbf`, untouched). **This acceptance is for the successor RC4** (code `7df9958`, hosted Worker `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b`), which adds the uncertain-return workflow as a pilot requirement. This is a *human-operated* check: the author does not type credentials into the hosted page. Synthetic data only; nothing is sent to anyone; rewards stay OFF. Takes about 15 minutes.
+**Baseline RC3 is preserved** (code `a7b8d3c`, hosted Worker `615f1da8-2cc1-4f8d-91ab-ca66e5ba2bbf`; its Worker code/version is unchanged, but it shares the preview database with RC4 - see `MARAU_SHARED_PREVIEW_DB_RECONCILIATION.md`). **This acceptance is for the successor RC4** (code `7df9958`, hosted Worker `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b`), which adds the uncertain-return workflow as a pilot requirement. This is a *human-operated* check: the author does not type credentials into the hosted page. Synthetic data only; nothing is sent to anyone; rewards stay OFF. Takes about 15 minutes.
 
 **Hosted staff console (RC4):** https://marau-stage1-preview-rc4.helpronline.workers.dev/staff
 (Guest links and the Trip page live on the same host. Isolated preview: its own Worker, sharing the preview D1 `marau-stage1-legs-db` with RC3 (no migration was needed). Not production, not RC1.)
@@ -66,3 +66,24 @@ So rotation would break only the author's scripts, but it requires a redeploy, w
 
 ## F. Leftovers to know about
 Earlier automated runs created staff identities named like `Ana (roundtrip <run>)` / `Bala (roundtrip <run>)` in the same preview DB. They are not part of this handoff and are not touched; they are useless without the admin token.
+
+
+## G. Handoff-day runbook on the exact RC4 host (frozen candidate)
+**Frozen candidate:** RC4 code `7df9958` (tag `marau-rc4-uncertain-return`), Worker `marau-stage1-preview-rc4` version `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b`, host `https://marau-stage1-preview-rc4.helpronline.workers.dev`. No code change is allowed between now and the end of acceptance; if one is needed it is a new candidate and this acceptance restarts. Before starting, the engineer confirms the live version: `wrangler deployments list --name marau-stage1-preview-rc4` shows `1ae9a441` as current.
+
+**Do not start until:** nobody is running `hosted_roundtrip_journey.mjs`, the RC3 Worker, or any other hosted script against the shared database (see `MARAU_SHARED_PREVIEW_DB_RECONCILIATION.md`, section 5). Needs attention will still list leftover synthetic uncertain returns; your fixture is the one with email `acceptance.<run>.uncertain@example.test`.
+
+**Handoff-time sequence (all on the exact RC4 host, none of it happens before the operator is ready):**
+1. Confirm the Worker version above and that the reward policy is OFF (the seed script checks the second).
+2. Seed the temporary fixtures: `ADMIN_TOKEN=<admin token> node scripts/staff_acceptance_credentials.mjs seed https://marau-stage1-preview-rc4.helpronline.workers.dev <private file>`. **Every `VERIFIED` line must appear and the private file must say `fixtures_verified: true`.** If any line says `FAILED`, stop: the fixtures are not ready. These are the only fixtures that exist, and only after this step.
+3. Deliver the secrets as in section B. The operator runs steps 1-8.
+4. Clean up (section E), touching ONLY what step 2 created.
+
+**What cleanup removes, exactly (and what it does not):**
+| Created by | Removed at cleanup? |
+|---|---|
+| the two `Acceptance Operator A/B (<run>)` staff identities | **yes** - one `DELETE ... WHERE operator_name IN (...)` naming exactly those two |
+| the three seeded guests (`recipient_with_consent`, `recipient_without_consent`, `uncertain_return`) | **links revoked** (verified 401); the rows remain, labelled synthetic (there is no delete API) |
+| the synthetic source booking behind `uncertain_return` (and its 16:00 change from step 8c) | no - it stays, labelled synthetic |
+| supplier, offer, edition, send log, owner assignment made by the operator in steps 2-7, labelled "(acceptance)" | no - no delete API; they stay |
+| the shared admin token, any other staff identity, any allocation rule, the reward policy, RC3 | **never touched** |

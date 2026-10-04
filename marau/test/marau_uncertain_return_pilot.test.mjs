@@ -183,3 +183,59 @@ test('STAFF CONSOLE: the Needs-attention list renders the uncertain return with 
   const credits = c.creditsHtml([{ credit_id: 'cr_1', status: 'earned', amount_fjd: 10, funding_source: 'x', needs_manual_adjustment: false, holder: { phone: '+1' }, eligible_return_transfers: [{ booking_id: 7, reference: 'RET-1', original_fare_fjd: 68, needs_status_verification: true, itinerary_basis: 'BASIS-1' }] }]);
   assert.match(credits, /data-basis="BASIS-1"/, 'the credit-panel button carries the basis too');
 });
+
+// ====================================================================== RC4 FINISH: "Not going ahead", end to end, rewards OFF
+const MONEY_AND_SOURCE = ['source_status', 'source_kind', 'source_origin', 'source_authenticated', 'test_data', 'source_total_cents', 'source_currency', 'source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'source_assigned_driver_id', 'quoted_amount', 'leg_value_status', 'leg_value_cents', 'leg_value_rule_id', 'pickup_zone', 'destination_zone', 'pickup_datetime', 'vehicle_type'];
+const pick = (row, cols) => Object.fromEntries(cols.map((k) => [k, row[k]]));
+
+test('NOT GOING AHEAD end to end (rewards OFF): leaves the queue, the guest sees Cancelled, the decision is on record, a repeat is a no-op, a later itinerary change re-opens it - and the source, provenance and money never move', async () => {
+  const c = await uncertain(); const leg = await ret(c.env, c.r);
+  const arrBefore = (await legs(c.env, c.r)).find((x) => x.leg_key === 'arrival');
+  const moneyBefore = pick(leg, MONEY_AND_SOURCE);
+  const u = (await queue(c.env))[0].uncertain_returns[0]; const reads = c.source.reads;
+  const NOTE = 'Hotel desk confirmed at 09:40 the guest checks out early and has cancelled the return';
+  assert.equal((await all(c.env, 'SELECT * FROM marau_reward_credits')).length, 0, 'rewards OFF: no credit exists');
+
+  const first = await verify(c.env, leg.id, { verdict: 'return_not_going_ahead', evidence: NOTE, itinerary_basis: u.itinerary_basis });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.deepEqual([first.data.source_unchanged, first.data.leg.status, first.data.leg.verified_by], [true, 'cancelled', 'Bala (ops)']);
+  // staff queue
+  assert.equal((await queue(c.env)).length, 0, 'the item leaves Needs attention');
+  // guest status: cancelled, with no verifier or evidence, and no staff-checked note
+  const trip = (await call(c.env, '/preview/trip', { headers: guestH(c.session.access_token) })).data;
+  const g = trip.bookings.find((b) => b.leg_key === 'return');
+  assert.equal(g.status, 'cancelled'); assert.equal(g.staff_checked_status, false);
+  for (const secret of ['Bala', NOTE, 'status_verified_by', 'status_verification_evidence', 'itinerary_basis']) assert.equal(JSON.stringify(trip).includes(secret), false, secret);
+  // audit record
+  const rows = await all(c.env, 'SELECT * FROM marau_leg_status_verifications');
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].booking_id, rows[0].verdict, rows[0].actor, rows[0].evidence, rows[0].basis], [leg.id, 'return_not_going_ahead', 'Bala (ops)', NOTE, u.itinerary_basis]);
+  assert.ok(rows[0].created_at);
+  // source, provenance and money untouched; the arrival row untouched; the source was not called
+  const afterRow = await ret(c.env, c.r);
+  assert.deepEqual(pick(afterRow, MONEY_AND_SOURCE), moneyBefore);
+  assert.deepEqual((await legs(c.env, c.r)).find((x) => x.leg_key === 'arrival'), arrBefore);
+  assert.equal(c.source.reads, reads);
+  for (const t of ['marau_reward_credits', 'marau_booking_adjustments', 'marau_offer_requests']) assert.equal((await all(c.env, `SELECT * FROM ${t}`)).length, 0, t);
+
+  // repeated action: refused, nothing added; repeated sync with the same facts keeps it cancelled
+  const again = await verify(c.env, leg.id, { verdict: 'return_not_going_ahead', evidence: NOTE, itinerary_basis: u.itinerary_basis });
+  assert.equal(again.status, 409); assert.equal(again.data.error, 'NOTHING_TO_VERIFY');
+  assert.equal((await verify(c.env, leg.id, { verdict: 'return_upcoming', evidence: NOTE, itinerary_basis: u.itinerary_basis })).status, 409, 'a contrary verdict on a settled leg is refused too');
+  for (let i = 0; i < 3; i += 1) await sync(c.env, c.r, c.source, 'completed', 'completed');
+  assert.equal((await ret(c.env, c.r)).status, 'cancelled');
+  assert.equal((await all(c.env, 'SELECT * FROM marau_leg_status_verifications')).length, 1, 'no extra record');
+
+  // a LATER itinerary change: the cancellation was about the old itinerary, so the item re-opens (never silently stays cancelled or revives as confirmed)
+  c.source.set({ ...c.r, status: 'completed', return_time: '16:00' }); await sync(c.env, c.r, c.source, 'completed', 'completed');
+  const reopened = await ret(c.env, c.r);
+  assert.equal(reopened.status, 'pending'); assert.equal(reopened.status_uncertainty, 'source_completed_while_return_upcoming');
+  assert.deepEqual([reopened.status_verified_by, reopened.status_verified_at, reopened.status_verification_evidence], [null, null, null]);
+  const u2 = (await queue(c.env))[0].uncertain_returns[0];
+  assert.notEqual(u2.itinerary_basis, u.itinerary_basis);
+  assert.equal((await verify(c.env, leg.id, { verdict: 'return_not_going_ahead', evidence: NOTE, itinerary_basis: u.itinerary_basis })).data.error, 'ITINERARY_CHANGED');
+  assert.equal((await all(c.env, 'SELECT * FROM marau_leg_status_verifications')).length, 1, 'the earlier decision is kept as history');
+  // money and source facts: only the itinerary the SOURCE itself changed differ; nothing monetary moved
+  const money = ['source_total_cents', 'source_currency', 'source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'quoted_amount', 'leg_value_status', 'leg_value_cents', 'source_kind', 'source_origin', 'source_authenticated', 'test_data'];
+  assert.deepEqual(pick(reopened, money), pick(leg, money));
+});

@@ -352,3 +352,70 @@ test('RETURN CANCELLED THEN RESTORED: the credit is released, NOT silently re-ap
   assert.equal((await apply(ctx.env, creditId, ret.id)).status, 409);
   assert.equal((await all(ctx.env, `SELECT * FROM marau_booking_adjustments WHERE status IN ('applied','reversal_pending_staff')`)).length, 0);
 });
+
+// ====================================================================== RC4 FINISH: "Not going ahead" with rewards, and the O5 boundary
+// The three things that are easy to confuse: (1) RETURN-VALUE ALLOCATION (a leg gets a value from an approved rule at sync time),
+// (2) REWARD EARNING / PROMOTION (a credit comes into being and becomes redeemable), (3) APPLICATION (a credit lands on a booking).
+// Rewards OFF gates (2) and (3) and says nothing about (1). An approved rule is deliberately KEPT in every test below.
+const setMode = (env, mode) => call(env, '/preview/admin/rewards/policy', { method: 'POST', headers: staffH(env), body: { ...POLICY, mode } });
+const ruleStatuses = async (env) => (await all(env, 'SELECT status FROM marau_return_allocation_rules')).map((x) => x.status);
+
+test('NOT GOING AHEAD vs a credit: the cancelled return is not a redemption target, a later itinerary change re-opens it as UNVERIFIED (never silently eligible), and the credit is never consumed', async () => {
+  const ctx = await programme({ status: 'completed' });
+  const { creditId } = await earnCredit(ctx);
+  const ret = legOf(await legs(ctx.env, ctx.r), 'return');
+  assert.equal((await verify(ctx.env, ret.id, { verdict: 'return_not_going_ahead', evidence: 'the guest told the hotel desk they fly home early' })).status, 200);
+  assert.equal((await one(ctx.env, 'SELECT status FROM marau_test_bookings WHERE id = ?', ret.id)).status, 'cancelled');
+  const refused = await apply(ctx.env, creditId, ret.id);
+  assert.equal(refused.status >= 400, true, JSON.stringify(refused.data));
+  assert.equal((await one(ctx.env, 'SELECT status FROM marau_reward_credits WHERE credit_id = ?', creditId)).status, 'earned', 'the credit is untouched');
+  const listed = (await call(ctx.env, '/preview/admin/rewards/credits', { headers: staffH(ctx.env) })).data.credits.find((c) => c.credit_id === creditId);
+  assert.equal(listed.eligible_return_transfers.some((t) => t.booking_id === ret.id), false, 'a cancelled return is not offered as a target');
+  assert.equal((await verify(ctx.env, ret.id, { verdict: 'return_not_going_ahead', evidence: 'the guest told the hotel desk they fly home early' })).data.error, 'NOTHING_TO_VERIFY');
+  ctx.source.set({ ...ctx.r, status: 'completed', return_time: '16:00' }); await sync(ctx.env, ctx.r, ctx.source, 'completed', 'completed');
+  const back = legOf(await legs(ctx.env, ctx.r), 'return');
+  assert.equal(back.status, 'pending'); assert.equal(back.status_uncertainty, 'source_completed_while_return_upcoming');
+  const again = await apply(ctx.env, creditId, back.id);
+  assert.equal(again.status, 409); assert.equal(again.data.error, 'LEG_STATUS_UNVERIFIED');
+  assert.equal((await all(ctx.env, `SELECT * FROM marau_booking_adjustments WHERE status IN ('applied','reversal_pending')`)).length, 0);
+  assert.equal((await all(ctx.env, 'SELECT * FROM marau_leg_status_verifications')).length, 1, 'the earlier decision stays on record');
+});
+
+test('O5 - ALLOCATION IS NOT EARNING: with an APPROVED rule present and rewards OFF, a return leg is still VALUED (allocation is rule-gated only) but NO credit is earned, promoted or applied', async () => {
+  const ctx = await programme({ status: 'completed' }); // approves a 40% synthetic rule and sets the policy to preview
+  assert.deepEqual(await ruleStatuses(ctx.env), ['approved']);
+  const code = (await call(ctx.env, '/preview/referral', { headers: guestH(ctx.session.access_token) })).data.code;
+  const mkFriend = async () => (await call(ctx.env, '/preview/bookings', { method: 'POST', body: { ...synthGuest({ leg_type: 'arrival' }), referral_code: code } })).data.access_token;
+  const request = async (tok) => (await call(ctx.env, `/preview/offers/${ctx.offerId}/request`, { method: 'POST', headers: guestH(tok), body: { places: 1 } })).data.request.request_id;
+  const act = (rid, a, b = {}) => call(ctx.env, `/preview/admin/offers/requests/${rid}/${a}`, { method: 'POST', headers: staffH(ctx.env), body: b });
+  const earned = await earnCredit(ctx);
+  const ridPending = await request(await mkFriend()); await act(ridPending, 'confirm'); await act(ridPending, 'fulfil');
+  const pending = await all(ctx.env, `SELECT * FROM marau_reward_credits WHERE status = 'pending'`);
+  assert.equal(pending.length, 1, 'a pending credit exists (fulfilled, not yet paid)');
+  const ridLater = await request(await mkFriend()); await act(ridLater, 'confirm');
+  const countBefore = (await all(ctx.env, 'SELECT credit_id FROM marau_reward_credits')).length;
+
+  assert.equal((await setMode(ctx.env, 'off')).status, 200);
+  assert.deepEqual(await ruleStatuses(ctx.env), ['approved'], 'the rule is KEPT approved: the test does not rely on deleting or retiring it');
+
+  // (1) ALLOCATION still happens: it is gated by the approved rule only
+  const r2 = src(); const s2 = sourceOf(r2); await sync(ctx.env, r2, s2, 'created', 'accepted');
+  assert.equal(legOf(await legs(ctx.env, r2), 'return').leg_value_status, 'unresolved', 'allocation is applied by the reconcile sweep (any staff or guest read), not at sync');
+  await call(ctx.env, '/preview/admin/rewards/credits', { headers: staffH(ctx.env) }); // runs the sweep
+  assert.equal(legOf(await legs(ctx.env, r2), 'return').leg_value_status, 'allocated', 'return-value allocation is NOT switched off by the rewards mode');
+  // (2a) EARNING blocked
+  await act(ridLater, 'payment', { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `p2-${ridLater}` }); await act(ridLater, 'fulfil');
+  assert.equal((await all(ctx.env, 'SELECT credit_id FROM marau_reward_credits')).length, countBefore, 'no new credit while OFF');
+  // (2b) PROMOTION blocked
+  await act(ridPending, 'payment', { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `p3-${ridPending}` });
+  await call(ctx.env, '/preview/admin/rewards/credits', { headers: staffH(ctx.env) });
+  assert.equal((await one(ctx.env, 'SELECT status FROM marau_reward_credits WHERE credit_id = ?', pending[0].credit_id)).status, 'pending', 'not promoted to earned while OFF');
+  // (3) APPLICATION blocked, on a return leg that DOES carry an allocated value
+  const ret = legOf(await legs(ctx.env, ctx.r), 'return'); await verify(ctx.env, ret.id, { verdict: 'return_upcoming', evidence: 'confirmed by phone with the guest, still ahead' });
+  assert.equal((await one(ctx.env, 'SELECT leg_value_status FROM marau_test_bookings WHERE id = ?', ret.id)).leg_value_status, 'allocated');
+  const blocked = await apply(ctx.env, earned.creditId, ret.id);
+  assert.equal(blocked.status, 409); assert.equal(blocked.data.error, 'REWARDS_OFF');
+  assert.equal((await one(ctx.env, 'SELECT status FROM marau_reward_credits WHERE credit_id = ?', earned.creditId)).status, 'earned');
+  assert.equal((await all(ctx.env, `SELECT * FROM marau_booking_adjustments WHERE status IN ('applied','reversal_pending')`)).length, 0);
+  assert.deepEqual(await ruleStatuses(ctx.env), ['approved'], 'still approved at the end');
+});
