@@ -6,6 +6,8 @@ You need **two phones** (call them Phone A and Phone B). Phone B must be a diffe
 
 Preview address: `https://marau-stage1-preview.helpronline.workers.dev/`  (release candidate Worker `496b4d98`)
 
+**Rewards are OFF for every check below** (the referral card says "Referral rewards are not switched on yet"); no reward amount is promised, earned or applied in this walkthrough. Your **private trip link is sent to you privately in chat** - it is never written into this repository; treat it like a password and do not paste it anywhere public. Round-trip legs and the manual deals pilot are NOT part of this RC1 phone test (they live on the separate `ceo/marau-roundtrip-legs` preview).
+
 ## Steps
 
 | # | On | Do this | You should see | Result (fill in) |
