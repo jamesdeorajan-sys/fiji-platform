@@ -113,7 +113,7 @@ test('WORKFLOW: review -> prepare -> record manual send -> record outcome; every
   assert.deepEqual(list.summary, { prepared: 0, sent_manually: 0, not_sent: 1, replied: 1, bounced: 0, opted_out: 0 });
   assert.equal(list.nothing_was_sent, true);
   const events = await all(env, 'SELECT to_status, actor FROM marau_edition_send_events ORDER BY id');
-  assert.ok(events.length >= 4 && events.every((e) => e.actor));
+  assert.equal(events.length, 3, 'one event per real transition; repeats and refused moves log nothing'); assert.ok(events.every((e) => e.actor));
 });
 
 test('A SEND IS RE-CHECKED AT THE MOMENT IT IS RECORDED: withdrawn consent, a new suppression, or no open offer blocks it, and the row stays prepared', async () => {
