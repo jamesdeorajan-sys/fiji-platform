@@ -173,7 +173,7 @@
  */
 
 import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
-import { classifyLeg } from './leg_type.js';
+import { classifyMirroredShape } from './leg_type.js';
 
 // Every real event_type this round directly confirmed exists in the
 // current REPOSITORY source (30c6187) — repository inspection, not proof
@@ -369,8 +369,8 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
     .prepare(
       `INSERT OR IGNORE INTO marau_test_bookings
         (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at,
-         source_booking_ref, source_status, source_assigned_driver_id, source_event_type, source_event_id, source_snapshot_sequence, source_synced_at, sync_state, source_sync_owned, source_write_generation, leg_type)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1, 1, ?
+         source_booking_ref, source_status, source_assigned_driver_id, source_event_type, source_event_id, source_snapshot_sequence, source_synced_at, sync_state, source_sync_owned, source_write_generation, leg_type, leg_shape)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_LATEST_FEED', 1, 1, ?, ?
        WHERE EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`
     )
     .bind(
@@ -393,7 +393,8 @@ async function createOrRecoverOwnedRow(env, sourceBookingRef, sourceBooking, { n
       provenance.eventId,
       provenance.snapshotSequence,
       now,
-      classifyLeg(sourceBooking.pickup_zone, sourceBooking.destination_zone),
+      classifyMirroredShape(sourceBooking).leg_type,
+      classifyMirroredShape(sourceBooking).shape,
       sourceBookingRef,
       claimToken,
       now
@@ -467,7 +468,7 @@ async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, 
       `UPDATE marau_test_bookings SET
          status = ?, pickup_zone = ?, destination_zone = ?, vehicle_type = ?, pickup_datetime = ?, quoted_amount = ?,
          updated_at = ?, source_status = ?, source_assigned_driver_id = ?, source_event_type = ?, source_event_id = ?, source_snapshot_sequence = ?, source_synced_at = ?,
-         leg_type = ?,
+         leg_type = ?, leg_shape = ?,
          source_write_generation = source_write_generation + 1,
          sync_state = 'IN_LATEST_FEED', sync_last_error = NULL
        WHERE id = ?
@@ -489,7 +490,8 @@ async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, 
       provenance.eventId,
       provenance.snapshotSequence,
       now,
-      classifyLeg(sourceBooking.pickup_zone, sourceBooking.destination_zone),
+      classifyMirroredShape(sourceBooking).leg_type,
+      classifyMirroredShape(sourceBooking).shape,
       existingBookingRow.id,
       expectedGeneration,
       sourceBookingRef,

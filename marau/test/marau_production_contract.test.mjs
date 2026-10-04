@@ -114,9 +114,9 @@ test('BOUNDARY: the readback exposes the source\'s own operator attestation, so 
 
 test('LEG CLASSIFICATION: airport -> elsewhere is an arrival, elsewhere -> airport is a return, anything else is "other"', () => {
   assert.equal(classifyLeg('Nadi Airport', 'Denarau'), 'arrival');
-  assert.equal(classifyLeg('Denarau', 'Nadi Airport'), 'return');
+  assert.equal(classifyLeg('Denarau', 'Nadi Airport'), 'departure', 'direction only - never a round-trip relationship');
   assert.equal(classifyLeg('NAD_AIRPORT', 'DENARAU'), 'arrival');
-  assert.equal(classifyLeg('DENARAU', 'NAD_AIRPORT'), 'return');
+  assert.equal(classifyLeg('DENARAU', 'NAD_AIRPORT'), 'departure');
   assert.equal(classifyLeg('Nausori Airport', 'Suva'), 'arrival');
   assert.equal(classifyLeg('Nadi Airport', 'Nausori Airport'), 'other', 'airport to airport is not a holiday leg');
   assert.equal(classifyLeg('Denarau', 'Coral Coast'), 'other');
@@ -125,7 +125,7 @@ test('LEG CLASSIFICATION: airport -> elsewhere is an arrival, elsewhere -> airpo
 });
 
 let n = 0;
-const realBooking = (over = {}) => { n += 1; return { id: 9500 + n, source_booking_ref: `mirror-${n}`, guest_email: `mirror${n}@example.test`, guest_phone: `+150055503${String(n).padStart(2, '0')}`, whatsapp_available: null, pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'Sedan', pickup_date: '2031-10-05', pickup_time: '09:00', quoted_amount: 45, assigned_driver_id: 'drv_1', status: 'accepted', ...over }; };
+const realBooking = (over = {}) => { n += 1; return { id: 9500 + n, source_booking_ref: `mirror-${n}`, guest_email: `mirror${n}@example.test`, guest_phone: `+150055503${String(n).padStart(2, '0')}`, whatsapp_available: null, pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'Sedan', pickup_date: '2031-10-05', pickup_time: '09:00', quoted_amount: 45, assigned_driver_id: 'drv_1', status: 'accepted', return_date: null, return_time: null, return_pickup_location: null, trip_type: 'one-way', ...over }; };
 const sourceOf = (...rows) => { const m = new Map(rows.map((r) => [String(r.source_booking_ref), { ...r }])); return { set: (r) => m.set(String(r.source_booking_ref), { ...r }), reader: async (ref) => (m.has(String(ref)) ? { ...m.get(String(ref)) } : null) }; };
 const deps = (source) => ({ createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader: source.reader });
 let ev = 5000;
@@ -138,7 +138,7 @@ test('RETURN-LEG MIRROR: a mirrored real booking carries its leg type, and a lat
   assert.equal((await syncRealBookingEvent(env, arr.source_booking_ref, created(arr), deps(source))).ok, true);
   assert.equal((await syncRealBookingEvent(env, ret.source_booking_ref, created(ret), deps(source))).ok, true);
   const legs = Object.fromEntries((await all(env, 'SELECT source_booking_ref, leg_type FROM marau_test_bookings WHERE source_booking_ref IS NOT NULL')).map((r) => [r.source_booking_ref, r.leg_type]));
-  assert.deepEqual(legs, { [arr.source_booking_ref]: 'arrival', [ret.source_booking_ref]: 'return' });
+  assert.deepEqual(legs, { [arr.source_booking_ref]: 'arrival', [ret.source_booking_ref]: 'departure' });
   // The source later changes the destination: the leg follows the source, never a stale guess.
   source.set({ ...ret, pickup_zone: 'Denarau', destination_zone: 'Coral Coast' });
   await syncRealBookingEvent(env, ret.source_booking_ref, { event_type: 'accepted', new_status: 'accepted', source_event_id: ++ev, booking_id: ret.id }, deps(source));
@@ -201,7 +201,7 @@ test('MERGE: after the verified link, the holder\'s credit, referral link, conse
   assert.deepEqual(ref.credits.map((c) => c.status), ['earned'], 'the earned credit is visible to the merged session');
 
   const credit = (await all(env, 'SELECT credit_id FROM marau_reward_credits'))[0];
-  const applied = await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id } });
+  const applied = await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id, relationship_confirmed: true } });
   assert.equal(applied.status, 200, JSON.stringify(applied.data));
   assert.equal(applied.data.fare.amount_due_fjd, 90);
   const tripAfter = (await call(env, '/preview/trip', { headers: guestH(sessN.access_token) })).data;
@@ -219,7 +219,7 @@ test('MERGE: a credit is NOT applicable to a return booking of a DIFFERENT, unli
   const ctx = await programme();
   const { env, retRow } = ctx; // deliberately NOT linked
   const credit = (await all(env, 'SELECT credit_id FROM marau_reward_credits'))[0];
-  const r = await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id } });
+  const r = await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id, relationship_confirmed: true } });
   assert.equal(r.status, 409);
   assert.equal(r.data.error, 'NOT_AN_ELIGIBLE_RETURN_TRANSFER');
 });
@@ -246,7 +246,7 @@ test('QUOTE CHANGE: if the source re-quotes a return after a credit was applied,
   const { env, sessN, retRow } = ctx;
   await verifiedLink(ctx);
   const credit = (await all(env, 'SELECT credit_id FROM marau_reward_credits'))[0];
-  await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id } });
+  await call(env, `/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: staffH(env), body: { booking_id: retRow.id, relationship_confirmed: true } });
   await env.DB.prepare('UPDATE marau_test_bookings SET quoted_amount = 120 WHERE id = ?').bind(retRow.id).run(); // the source re-quoted
   const fare = (await call(env, '/preview/trip', { headers: guestH(sessN.access_token) })).data.bookings.find((b) => b.id === retRow.id).fare;
   assert.equal(fare.original_fare_fjd, 120);

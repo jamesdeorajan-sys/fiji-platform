@@ -122,7 +122,7 @@ test('ORDERING: the supported matrix - replays are no-ops, a refund may not exce
 // ============================================================ 2. LATE WRITES / INTERLEAVINGS
 
 const EARN_ON_CONFIRM = { ...POLICY, qualify_on: 'confirmed', require_payment: 'none' };
-const readCredit = /SELECT credit_id, status FROM marau_reward_credits WHERE qualifying_request_id/;
+const readCredit = /SELECT credit_id, status[^]*FROM marau_reward_credits WHERE qualifying_request_id/;
 
 test('LATE WRITE (insert): a cancellation lands after the qualification facts were read but before the credit is inserted - no redeemable credit may result', async () => {
   const { env, offerId } = await setup(EARN_ON_CONFIRM);

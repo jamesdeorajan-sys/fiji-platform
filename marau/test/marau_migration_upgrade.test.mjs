@@ -11,11 +11,11 @@ import { DatabaseSync } from 'node:sqlite';
 
 const dirs = [path.join(process.cwd(), '..', 'smart-return-trigger-fill', 'migrations'), path.join(process.cwd(), 'migrations')];
 const files = dirs.flatMap((d) => fs.readdirSync(d).filter((f) => f.endsWith('.sql')).sort().map((f) => ({ f, sql: fs.readFileSync(path.join(d, f), 'utf8') })));
-const before = files.filter(({ f }) => !/^003[89]|^0040/.test(f));
-const upgrade = files.filter(({ f }) => /^003[89]|^0040/.test(f));
+const before = files.filter(({ f }) => !/^003[89]|^004[01]/.test(f));
+const upgrade = files.filter(({ f }) => /^003[89]|^004[01]/.test(f));
 
-test('0038-0040 apply over a populated 0037 database: every row kept, adjustments carried, no dangling foreign key', () => {
-  assert.deepEqual(upgrade.map(({ f }) => f.slice(0, 4)), ['0038', '0039', '0040'], 'the upgrade set is exactly the three new migrations');
+test('0038-0041 apply over a populated 0037 database: every row kept, adjustments carried, no dangling foreign key', () => {
+  assert.deepEqual(upgrade.map(({ f }) => f.slice(0, 4)), ['0038', '0039', '0040', '0041'], 'the upgrade set is exactly the four new migrations');
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = OFF;');
   for (const { sql } of before) db.exec(sql);

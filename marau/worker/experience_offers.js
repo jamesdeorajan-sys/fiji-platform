@@ -460,7 +460,7 @@ export function createExperienceOffers(deps) {
         // STAFF-ONLY contact facts, needed to serve the guest. Never returned by any guest/public endpoint.
         contact: { phone: r.guest_phone, email: r.guest_email, whatsapp_available: r.whatsapp_available === 1 ? true : r.whatsapp_available === 0 ? false : null },
         follow_up: followUpPlan({ whatsappAvailable: r.whatsapp_available, owner: r.follow_up_owner }),
-        payment: { paid_fjd: fjd(r.paid_cents), refunded_fjd: fjd(r.refunded_cents), net_paid_fjd: fjd(r.paid_cents - r.refunded_cents), status: r.refunded_cents > 0 ? 'refunded' : r.paid_cents >= r.total_cents ? 'paid_in_full' : r.paid_cents > 0 ? 'part_paid' : 'unpaid' },
+        payment: { paid_fjd: fjd(r.paid_cents), refunded_fjd: fjd(r.refunded_cents), net_paid_fjd: fjd(r.paid_cents - r.refunded_cents), status: r.refunded_cents > 0 ? 'refunded' : r.paid_cents >= r.total_cents ? 'paid_in_full' : r.paid_cents > 0 ? 'part_paid' : 'unpaid', reconciliation: reconciliation(r.paid_cents, r.refunded_cents).status },
       })),
       demonstration_data: true,
     });
@@ -551,10 +551,12 @@ export function createExperienceOffers(deps) {
     // An exact repeat of an event already recorded is a replay, whatever the running totals now allow.
     const prior0 = await env.DB.prepare('SELECT * FROM marau_offer_payments WHERE request_id = ? AND event_key = ?').bind(requestId, eventKey).first();
     if (prior0) return replayPayment(env, requestId, prior0, b.event, cents);
-    const boundSql = b.event === 'paid'
-      ? `${NET_PAID_SQL} + ? <= (SELECT total_cents FROM marau_offer_requests WHERE request_id = ?)`
-      : `? <= ${NET_PAID_SQL}`;
-    const boundArgs = b.event === 'paid' ? [requestId, cents, requestId] : [cents, requestId];
+    // Bounds are on GROSS totals, not on the running net, so events may be recorded in either order: a refund delivered before
+    // its payment record is kept (and shown as awaiting that record), never rejected and lost. A refund can never exceed the
+    // purchase total, and payments can never exceed it either (a re-payment after a refund must be a NEW purchase).
+    const GROSS = (type) => `(SELECT COALESCE(SUM(amount_cents), 0) FROM marau_offer_payments WHERE request_id = ? AND event_type = '${type}')`;
+    const boundSql = `${GROSS(b.event)} + ? <= (SELECT total_cents FROM marau_offer_requests WHERE request_id = ?)`;
+    const boundArgs = [requestId, cents, requestId];
     const paymentId = idFor('pay');
     let inserted;
     try {
@@ -570,13 +572,14 @@ export function createExperienceOffers(deps) {
     if (inserted.meta.changes !== 1) {
       const t = await paymentTotals(env, requestId);
       return b.event === 'paid'
-        ? json({ error: 'OVERPAYMENT', detail: 'this would record more than the purchase total', total_fjd: fjd(req.total_cents), net_paid_fjd: t.net_paid_fjd }, 409)
-        : json({ error: 'REFUND_EXCEEDS_PAYMENT', detail: 'a refund cannot exceed what has been recorded as paid', net_paid_fjd: t.net_paid_fjd }, 409);
+        ? json({ error: 'OVERPAYMENT', detail: 'recorded payments would exceed the purchase total; a re-payment after a refund must be a new purchase', total_fjd: fjd(req.total_cents), net_paid_fjd: t.net_paid_fjd }, 409)
+        : json({ error: 'REFUND_EXCEEDS_TOTAL', detail: 'recorded refunds would exceed the purchase total', total_fjd: fjd(req.total_cents), net_paid_fjd: t.net_paid_fjd }, 409);
     }
     await logEvent(env, { offerId: req.offer_id, requestId, type: `payment_${b.event}`, actor: s.operator, detail: { amount_fjd: fjd(cents), method: b.method, event_key: eventKey } });
     if (hooks.onRequestTransition) await hooks.onRequestTransition(env, { request: req, from: req.status, to: req.status, operator: s.operator });
     const row = await env.DB.prepare('SELECT * FROM marau_offer_payments WHERE payment_id = ?').bind(paymentId).first();
-    return json({ ok: true, payment: paymentShape(row), totals: await paymentTotals(env, requestId), demonstration_data: true });
+    const totals = await paymentTotals(env, requestId);
+    return json({ ok: true, payment: paymentShape(row), totals, reconciliation: totals.reconciliation, demonstration_data: true });
   }
 
   async function replayPayment(env, requestId, prior, event, cents) {
@@ -592,7 +595,13 @@ export function createExperienceOffers(deps) {
     const r = await env.DB.prepare(
       `SELECT COALESCE(SUM(CASE WHEN event_type = 'paid' THEN amount_cents END), 0) AS paid, COALESCE(SUM(CASE WHEN event_type = 'refunded' THEN amount_cents END), 0) AS refunded FROM marau_offer_payments WHERE request_id = ?`
     ).bind(requestId).first();
-    return { paid_fjd: fjd(r.paid), refunded_fjd: fjd(r.refunded), net_paid_fjd: fjd(r.paid - r.refunded) };
+    return { paid_fjd: fjd(r.paid), refunded_fjd: fjd(r.refunded), net_paid_fjd: fjd(r.paid - r.refunded), reconciliation: reconciliation(r.paid, r.refunded) };
+  }
+
+  /** none | matched | refund_awaiting_payment_record (a refund recorded before the payment it refunds). */
+  function reconciliation(paidCents, refundedCents) {
+    if (!(refundedCents > 0)) return { status: 'none' };
+    return refundedCents > paidCents ? { status: 'refund_awaiting_payment_record', unmatched_refund_fjd: fjd(refundedCents - paidCents) } : { status: 'matched' };
   }
 
   // ---------------------------------------------------------------- editions

@@ -168,13 +168,13 @@ test('PAYMENT: repeated payment events are idempotent by event key; a different 
   assert.equal((await credits(env)).length, 1);
 });
 
-test('PAYMENT: a refund with no recorded payment is refused (events must arrive in a state-consistent order)', async () => {
+test('PAYMENT (superseded by the closeout round): a refund delivered before any payment record is now RETAINED and reconciles later - see marau_closeout.test.mjs; only a refund beyond the purchase total is refused', async () => {
   const { env, offerId } = await setup();
   const referrer = await newGuest(env);
   const rid = await qualifyingFriend(env, offerId, referrer.token, { pay_: false, fulfil: false });
-  const r = await pay(env, rid, { event: 'refunded', amount_fjd: 120, method: 'card', event_key: 'rf-first' });
+  const r = await pay(env, rid, { event: 'refunded', amount_fjd: 500, method: 'card', event_key: 'rf-big' });
   assert.equal(r.status, 409);
-  assert.equal(r.data.error, 'REFUND_EXCEEDS_PAYMENT');
+  assert.equal(r.data.error, 'REFUND_EXCEEDS_TOTAL');
   assert.equal((await all(env, 'SELECT * FROM marau_offer_payments')).length, 0);
 });
 
