@@ -79,10 +79,11 @@ export function createReferrals(deps) {
     return false;
   }
 
-  function publicPolicyView(policy, env) {
-    const active = policyPermits(policy, 1, env);
+  // `sessionIsTestData`: whether THIS guest could actually earn under the policy. A guest who could not is promised nothing.
+  function publicPolicyView(policy, sessionIsTestData, env) {
+    const active = policyPermits(policy, sessionIsTestData, env);
     if (!active) return { rewards_active: false, message: 'Referral rewards are not switched on yet. You can still share the link.' };
-    return { rewards_active: true, reward_fjd: fjd(policy.amount_cents), cap_fjd: fjd(policy.cap_cents_per_referrer), qualify_on: policy.qualify_on, minimum_purchase_fjd: fjd(policy.min_purchase_cents) };
+    return { rewards_active: true, requires_payment: policy.require_payment === 'paid_in_full', reward_fjd: fjd(policy.amount_cents), cap_fjd: fjd(policy.cap_cents_per_referrer), qualify_on: policy.qualify_on, minimum_purchase_fjd: fjd(policy.min_purchase_cents) };
   }
 
   // ------------------------------------------------------------- codes / links
@@ -411,7 +412,7 @@ export function createReferrals(deps) {
       qr_svg_url: `${base}/preview/referral/qr.svg?code=${code}`,
       // A share link carries only the public code. It reveals no booking, name, contact or trip detail.
       share_reveals: 'only that a friend invited them to Marau',
-      policy: publicPolicyView(policy, env),
+      policy: publicPolicyView(policy, session.test_data, env),
       friends_joined: friends.n,
       shares_tapped: shares.n,
       credits: credits.map((c) => ({ credit_id: c.credit_id, status: c.status, amount_fjd: fjd(c.amount_cents), applied_to_booking: c.applied_booking_id, applied_fjd: fjd(c.applied_cents), needs_staff_attention: c.needs_manual_adjustment === 1 })),

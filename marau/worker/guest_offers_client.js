@@ -8,6 +8,8 @@
  */
 export function createOffersClient(deps) {
   var authFetch = deps.authFetch;
+  // A failed network call must never leave a control disabled or the guest wondering what happened.
+  var OFFLINE = 'No connection - nothing was sent. Please try again.';
   var toast = deps.toast;
   var renderMockWhatsApp = deps.renderMockWhatsApp;
   var formatFijiCurrency = deps.formatFijiCurrency;
@@ -99,7 +101,7 @@ export function createOffersClient(deps) {
       return '<p class="small" style="margin:4px 0"><span class="pill ' + (c.status === 'reversed' ? 'bad' : '') + '">' + esc(c.status) + '</span> ' + esc(formatFijiCurrency(c.amount_fjd)) + ' - ' + esc(CREDIT_LABEL[c.status] || '') + (c.needs_staff_attention ? ' (our team will be in touch)' : '') + '</p>';
     }).join('');
     var policy = ref.policy && ref.policy.rewards_active
-      ? '<p class="small">When a friend you invite completes an experience, you earn ' + esc(formatFijiCurrency(ref.policy.reward_fjd)) + ' off your return transfer (up to ' + esc(formatFijiCurrency(ref.policy.cap_fjd)) + ' in total).</p>'
+      ? '<p class="small">When a friend you invite ' + (ref.policy.requires_payment ? 'books, pays for and completes' : 'completes') + ' an experience, you earn ' + esc(formatFijiCurrency(ref.policy.reward_fjd)) + ' off your return transfer (up to ' + esc(formatFijiCurrency(ref.policy.cap_fjd)) + ' in total).</p>'
       : '<p class="small muted">' + esc(ref.policy && ref.policy.message) + '</p>';
     return '<h2>Invite a friend</h2>' + policy +
       '<p class="small muted" style="margin-top:6px">This link is safe to share. It shows only that a friend invited them - never your trip, name or contact details.</p>' +
@@ -146,7 +148,7 @@ export function createOffersClient(deps) {
           toast('Request ' + res.data.request.reference + ' received. Nothing was charged.');
           reload();
           onChanged();
-        });
+        }, function () { btn.disabled = false; toast(OFFLINE); });
       });
     });
   }
@@ -171,7 +173,7 @@ export function createOffersClient(deps) {
         var all = els.offersNearTrip.querySelector('#seeAllOffers');
         if (all) all.addEventListener('click', function () { if (deps.showView) deps.showView('offers'); });
       }
-    });
+    }, function () { /* offline: keep what is already on screen */ });
   }
 
   function renderMyRequests(requests) {
@@ -185,7 +187,7 @@ export function createOffersClient(deps) {
           toast(res.ok ? 'Request cancelled.' : ((res.data && (res.data.detail || res.data.error)) || 'Could not cancel.'));
           onChanged();
           loadOffers();
-        });
+        }, function () { toast(OFFLINE); });
       });
     });
     els.myOffersList.querySelectorAll('[data-handoff-request]').forEach(function (btn) {
@@ -194,7 +196,7 @@ export function createOffersClient(deps) {
         authFetch('/preview/offers/requests/' + encodeURIComponent(id) + '/whatsapp-handoff', { method: 'POST' }).then(function (res) {
           if (!res.ok) { toast('Could not prepare the message.'); return; }
           renderMockWhatsApp(els.myOffersList.querySelector('[data-request-handoff="' + id + '"]'), res.data.handoff);
-        });
+        }, function () { toast(OFFLINE); });
       });
     });
   }
@@ -209,11 +211,11 @@ export function createOffersClient(deps) {
       var shareBtn = els.referralPanel.querySelector('#refShare');
       copy.addEventListener('click', function () { copyText(res.data.share_url).then(function () { toast('Link copied.'); }); });
       shareBtn.addEventListener('click', function () {
-        authFetch('/preview/referral/share', { method: 'POST' });
+        authFetch('/preview/referral/share', { method: 'POST' }).catch(function () { /* the share tap is only a count; never block sharing on it */ });
         if (share) share({ title: 'Marau', text: 'Join me on Marau for Fiji deals', url: res.data.share_url }).catch(function () { copyText(res.data.share_url).then(function () { toast('Link copied.'); }); });
         else copyText(res.data.share_url).then(function () { toast('Link copied.'); });
       });
-    });
+    }, function () { /* offline: leave the card as it is */ });
   }
 
   function loadContact() {
@@ -223,12 +225,12 @@ export function createOffersClient(deps) {
       els.contactPanel.style.display = 'block';
       els.contactPanel.innerHTML = contactHtml(res.data);
       els.contactPanel.querySelector('#ctWa').addEventListener('change', function (e) {
-        authFetch('/preview/trip/contact', { method: 'POST', body: JSON.stringify({ whatsapp_available: e.target.checked }) }).then(function () { toast('Saved.'); loadContact(); });
+        authFetch('/preview/trip/contact', { method: 'POST', body: JSON.stringify({ whatsapp_available: e.target.checked }) }).then(function () { toast('Saved.'); loadContact(); }, function () { toast(OFFLINE); loadContact(); });
       });
       els.contactPanel.querySelector('#ctMk').addEventListener('change', function (e) {
-        authFetch('/preview/trip/contact', { method: 'POST', body: JSON.stringify({ marketing_consent: e.target.checked ? 'granted' : 'withheld' }) }).then(function () { toast(e.target.checked ? 'Thanks - we will send occasional deals.' : 'Done - no promotional messages.'); loadContact(); });
+        authFetch('/preview/trip/contact', { method: 'POST', body: JSON.stringify({ marketing_consent: e.target.checked ? 'granted' : 'withheld' }) }).then(function () { toast(e.target.checked ? 'Thanks - we will send occasional deals.' : 'Done - no promotional messages.'); loadContact(); }, function () { toast(OFFLINE); loadContact(); });
       });
-    });
+    }, function () { /* offline: leave the card as it is */ });
   }
 
   return { esc: esc, offerCardHtml: offerCardHtml, requestRowHtml: requestRowHtml, fareHtml: fareHtml, referralHtml: referralHtml, contactHtml: contactHtml, editionsHtml: editionsHtml, requestRefFor: requestRefFor, loadOffers: loadOffers, renderMyRequests: renderMyRequests, loadReferral: loadReferral, loadContact: loadContact };

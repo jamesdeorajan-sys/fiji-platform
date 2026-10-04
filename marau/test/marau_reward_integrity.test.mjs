@@ -477,3 +477,21 @@ test('MULTIPLE CREDITS: staff resolving a flagged reversal clears the attention 
   assert.equal((await one(env, 'SELECT needs_manual_adjustment FROM marau_reward_credits WHERE status = ?', 'reversed')).needs_manual_adjustment, 0);
   await assertLedgerConsistent(env, 'resolved');
 });
+
+// ====================================================================== 4. WHAT A GUEST IS TOLD (found in the guest-browser run)
+
+test('PUBLIC PROMISE: a reward is described only to a guest who could actually earn it (a non-synthetic session in preview mode is told rewards are not on), and the wording says the friend must PAY when payment is required', async () => {
+  const { env } = await setup();
+  const synthetic = await newGuest(env);
+  const real = await newGuest(env);
+  await env.DB.prepare('UPDATE guest_sessions SET test_data = 0 WHERE session_id = ?').bind(real.sessionId).run();
+  const s = (await call(env, '/preview/referral', { headers: guestH(synthetic.token) })).data.policy;
+  const r = (await call(env, '/preview/referral', { headers: guestH(real.token) })).data.policy;
+  assert.equal(s.rewards_active, true);
+  assert.equal(s.requires_payment, true, 'the friend must pay - the guest is told so');
+  assert.equal(r.rewards_active, false, 'a guest who cannot earn is never promised a reward');
+  assert.match(r.message, /not switched on/);
+  // The off state promises nothing at all.
+  await call(env, '/preview/admin/rewards/policy', { method: 'POST', headers: staffH(env), body: { mode: 'off' } });
+  assert.equal((await call(env, '/preview/referral', { headers: guestH(synthetic.token) })).data.policy.rewards_active, false);
+});

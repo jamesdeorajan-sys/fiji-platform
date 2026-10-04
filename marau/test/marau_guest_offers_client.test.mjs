@@ -122,3 +122,39 @@ test('editions: morning/afternoon sections only appear when prepared; otherwise 
   assert.equal(html.includes('Afternoon deals'), false);
   assert.match(c.editionsHtml({ editions: { current_slot: null, next_slot: 'morning', morning: [], afternoon: [] } }, {}), /go live later today \(Fiji time\)\. Everything is still open to browse/);
 });
+
+// ---- found in the real guest-browser run: a failed network call left the Request button disabled with no message ----
+
+test('NETWORK FAILURE: a failed request re-enables the button and says nothing was sent; no unhandled rejection; loaders survive an offline refresh', async () => {
+  const unhandled = [];
+  const onUnhandled = (e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const toasts = [];
+    let handler = null;
+    const btn = { disabled: false, getAttribute: () => 'off_1', addEventListener: (ev, fn) => { if (ev === 'click') handler = fn; } };
+    const root = { innerHTML: '', querySelectorAll: (sel) => (sel === '[data-request-offer]' ? [btn] : []), querySelector: () => null };
+    let online = true;
+    const authFetch = async (path) => {
+      if (!online) throw new TypeError('Failed to fetch');
+      if (path === '/preview/offers') return { ok: true, data: { offers: [offer()], editions: { current_slot: null, next_slot: null, morning: [], afternoon: [] } } };
+      return { ok: true, data: {} };
+    };
+    const c = makeClient({ authFetch, toast: (m) => toasts.push(m), els: { offersList: root } });
+    await c.loadOffers();
+    assert.equal(typeof handler, 'function', 'the Request button is wired');
+    online = false;
+    handler();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(btn.disabled, false, 'the button must not stay disabled after a network failure');
+    assert.ok(toasts.some((m) => /no connection|nothing was sent|try again/i.test(m)), `the guest is told what happened (toasts: ${JSON.stringify(toasts)})`);
+    // An offline refresh must resolve (keep what is on screen) rather than reject.
+    await assert.doesNotReject(() => c.loadOffers());
+    await assert.doesNotReject(() => c.loadReferral());
+    await assert.doesNotReject(() => c.loadContact());
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(unhandled.map(String), [], 'no unhandled promise rejection');
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+});
