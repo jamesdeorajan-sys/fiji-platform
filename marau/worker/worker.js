@@ -32,6 +32,7 @@ import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './ic
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
 import { confirmReservationAtSource } from './source_confirm.js';
+import { createNadiSourceClient } from './nadi_source_client.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -2033,7 +2034,14 @@ async function handleAdminSourceApiConfirm(request, env, sourceBookingRef) {
   const staffIdentity = await requireStaffIdentity(request, env);
   if (!staffIdentity) return json({ error: 'unauthorized — a valid staff identity token (x-marau-staff-token) is required to confirm at the source' }, 401);
 
-  const client = syntheticSourceApiClient(env, { simulateResponseLoss: Boolean(simulateResponseLoss) });
+  // The SYNTHETIC source is the default and the only one the preview ever uses. The client for the PROPOSED real
+  // contract (worker/nadi_source_client.js) is selected only when NADI_SOURCE_BASE_URL is explicitly configured - it
+  // is not set in wrangler.toml, and the real endpoints it targets are not deployed. It exists so the contract can
+  // be proven against the real worker.js in-process (test/marau_source_real_contract.test.mjs), not as an integration.
+  const usingProposedRealContract = Boolean(env.NADI_SOURCE_BASE_URL);
+  const client = usingProposedRealContract
+    ? createNadiSourceClient({ baseUrl: env.NADI_SOURCE_BASE_URL, adminToken: env.NADI_SOURCE_ADMIN_TOKEN, fetchImpl: env.NADI_SOURCE_FETCH })
+    : syntheticSourceApiClient(env, { simulateResponseLoss: Boolean(simulateResponseLoss) });
   const confirmResult = await confirmReservationAtSource(env, client, {
     sourceBookingRef,
     driverId,
@@ -2047,12 +2055,13 @@ async function handleAdminSourceApiConfirm(request, env, sourceBookingRef) {
   // source_cancelled outcome still syncs — the source's own true
   // current state is exactly what the guest should see; an unresolved
   // outcome does NOT sync, since nothing new is actually known yet.
-  const syncResult = ['confirmed', 'conflict', 'source_cancelled'].includes(confirmResult.status)
+  // The mirror refresh reads the synthetic source table; a real-source reader is a separate, later slice.
+  const syncResult = !usingProposedRealContract && ['confirmed', 'conflict', 'source_cancelled'].includes(confirmResult.status)
     ? await syncAfterBookingConfirmation(env, sourceBookingRef)
     : null;
 
   const httpStatus = confirmResult.ok ? 200 : confirmResult.status === 'unresolved' ? 202 : confirmResult.status ? 409 : 422;
-  return json({ ...confirmResult, sync: syncResult, demonstration_data: true }, httpStatus);
+  return json({ ...confirmResult, source_kind: usingProposedRealContract ? 'proposed-real-contract' : 'synthetic', sync: syncResult, demonstration_data: true }, httpStatus);
 }
 
 // ---------------------------------------------------------------------

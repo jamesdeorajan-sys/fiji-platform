@@ -334,7 +334,7 @@ async function finalizeOutcome(env, row, { status, confirmedDriverId, recoveredV
            SET status = ?, confirmed_driver_id = ?, recovered_via_readback = ?, decided_at = ?
          WHERE source_booking_ref = ? AND attempt_id = ? AND status IN ('reserved', 'unresolved')`
       )
-      .bind(status, confirmedDriverId ?? null, recoveredViaReadback ? 1 : 0, now, row.source_booking_ref, row.attempt_id)
+      .bind(status, confirmedDriverId == null ? null : String(confirmedDriverId), recoveredViaReadback ? 1 : 0, now, row.source_booking_ref, row.attempt_id)
       .run();
     // Fix 4: VERIFIED, never assumed — an affected-row count of zero
     // means this write did not apply (a concurrent finalize already
