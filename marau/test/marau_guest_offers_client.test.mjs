@@ -207,3 +207,41 @@ test('PRIVATE LINK SWITCH: opening a DIFFERENT private link in an already-open t
   assert.equal(run({ stored: 'tok_AAA', hash: '#tok=tok_BBB' }), 1, 'a DIFFERENT private link reloads');
   assert.equal(run({ stored: null, hash: '#tok=tok_BBB' }), 1, 'a link when nothing is stored reloads (it will be adopted on load)');
 });
+
+test('COPY / SHARE FEEDBACK: "Link copied" is said only when the copy really succeeded; a denied or missing clipboard selects the link and says how to copy it by hand', async () => {
+  const run = async ({ copyText, share }) => {
+    const toasts = []; const unhandled = []; const onUn = (e) => unhandled.push(e); process.on('unhandledRejection', onUn);
+    const handlers = {}; let selected = 0;
+    const panel = {
+      style: {}, set innerHTML(v) {}, get innerHTML() { return ''; },
+      querySelector: (sel) => ({ '#refCopy': { addEventListener: (ev, fn) => { handlers.copy = fn; } }, '#refShare': { addEventListener: (ev, fn) => { handlers.share = fn; } }, '#refLink': { select: () => { selected += 1; } } }[sel] || null),
+    };
+    const authFetch = async (path) => (path === '/preview/referral' ? { ok: true, data: { share_url: 'https://x.test/r/ABCD2345', qr_svg_url: 'https://x.test/q', friends_joined: 0, credits: [], policy: { rewards_active: false, message: 'm' } } } : { ok: true, data: {} });
+    const c = makeClient({ authFetch, toast: (m) => toasts.push(m), els: { referralPanel: panel }, copyText, share });
+    await c.loadReferral();
+    return { handlers, toasts, selected: () => selected, finish: async () => { await new Promise((r) => setTimeout(r, 20)); process.off('unhandledRejection', onUn); return unhandled; } };
+  };
+  // 1. a real copy
+  let t = await run({ copyText: async () => {}, share: null });
+  t.handlers.copy(); await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(t.toasts, ['Link copied.']); assert.equal(t.selected(), 0);
+  assert.deepEqual(await t.finish(), []);
+  // 2. clipboard permission DENIED (found in the real browser run): no false "copied", the link is selected, no unhandled rejection
+  t = await run({ copyText: async () => { throw new Error('NotAllowedError'); }, share: null });
+  t.handlers.copy(); await new Promise((r) => setTimeout(r, 10));
+  assert.equal(t.toasts.some((m) => /^Link copied/.test(m)), false, 'never claims a copy that failed');
+  assert.ok(t.toasts.some((m) => /copy it|press and hold|select/i.test(m)), `tells the guest what to do (${JSON.stringify(t.toasts)})`);
+  assert.equal(t.selected(), 1, 'the link is selected for a manual copy');
+  assert.deepEqual(await t.finish(), [], 'no unhandled rejection');
+  // 3. Share with no native share and a denied clipboard behaves the same way
+  t = await run({ copyText: async () => { throw new Error('NotAllowedError'); }, share: null });
+  t.handlers.share(); await new Promise((r) => setTimeout(r, 10));
+  assert.equal(t.toasts.some((m) => /^Link copied/.test(m)), false);
+  assert.equal(t.selected(), 1);
+  assert.deepEqual(await t.finish(), []);
+  // 4. native share cancelled/failed falls back to the same honest copy path
+  t = await run({ copyText: async () => {}, share: async () => { throw new Error('AbortError'); } });
+  t.handlers.share(); await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(t.toasts, ['Link copied.']);
+  assert.deepEqual(await t.finish(), []);
+});

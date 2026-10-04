@@ -219,13 +219,21 @@ export function createOffersClient(deps) {
       if (!res.ok) { els.referralPanel.style.display = 'none'; return; }
       els.referralPanel.style.display = 'block';
       els.referralPanel.innerHTML = referralHtml(res.data);
+      // Say "copied" only when it really was. A denied or missing clipboard selects the link and tells the guest how to copy it.
+      function copyLink() {
+        return Promise.resolve().then(function () { return copyText(res.data.share_url); }).then(function () { toast('Link copied.'); }, function () {
+          var box = els.referralPanel.querySelector('#refLink');
+          if (box && box.select) box.select();
+          toast('Could not copy automatically - the link is selected, press and hold it to copy.');
+        });
+      }
       var copy = els.referralPanel.querySelector('#refCopy');
       var shareBtn = els.referralPanel.querySelector('#refShare');
-      copy.addEventListener('click', function () { copyText(res.data.share_url).then(function () { toast('Link copied.'); }); });
+      copy.addEventListener('click', function () { copyLink(); });
       shareBtn.addEventListener('click', function () {
         authFetch('/preview/referral/share', { method: 'POST' }).catch(function () { /* the share tap is only a count; never block sharing on it */ });
-        if (share) share({ title: 'Marau', text: 'Join me on Marau for Fiji deals', url: res.data.share_url }).catch(function () { copyText(res.data.share_url).then(function () { toast('Link copied.'); }); });
-        else copyText(res.data.share_url).then(function () { toast('Link copied.'); });
+        if (share) Promise.resolve().then(function () { return share({ title: 'Marau', text: 'Join me on Marau for Fiji deals', url: res.data.share_url }); }).catch(function () { copyLink(); });
+        else copyLink();
       });
     }, function () { /* offline: leave the card as it is */ });
   }

@@ -689,7 +689,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     showView: showView,
     onChanged: function () { if (getToken()) authFetch('/preview/trip').then(function (r) { if (r.ok) { renderPickupCard(r.data); offersClient.renderMyRequests(r.data.offer_requests); } }); },
     share: navigator.share ? function (d) { return navigator.share(d); } : null,
-    copyText: function (t) { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t) : Promise.resolve(); },
+    copyText: function (t) { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t) : Promise.reject(new Error('no clipboard')); },
   });
 
   // Public referral landing (/r/CODE): remember the code so the friend's own NEW booking is attributed. It carries no
