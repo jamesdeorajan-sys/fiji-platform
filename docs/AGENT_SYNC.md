@@ -1113,3 +1113,11 @@ failure. Three additional rows initially flagged as possibly-real
 - Shared preview admin token NOT rotated: dependents identified (author scripts only; no cron/route/service binding); rotating needs a redeploy = new Worker version ID with identical code, so only if the token was shared beyond James.
 - Findings for James: "Verify with evidence" is reachable only beside an earned reward credit (rewards-only; pilot O2); referral card still visible with rewards OFF (O1).
 - WAITING for human acceptance results and James's explicit release decision. No production deployment, real guest import or outbound message.
+
+## CHECKPOINT 2026-10-05 - Marau RC4: uncertain-return verification as a PILOT requirement (Claude)
+- RC3 preserved (code `a7b8d3c`, Worker `615f1da8`). Successor RC4: branch `ceo/marau-rc4-uncertain-return`, red tests `68232c0`, **code `7df9958`**, tag `marau-rc4-uncertain-return`; hosted Worker `marau-stage1-preview-rc4` `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b` (own Worker, same legs D1, no migration, RC3 Worker untouched). Docs head `60d2b97`+.
+- Change: uncertain return in Needs attention independent of credits; verdict (named staff, timestamp, evidence) tied to the current itinerary basis, `ITINERARY_CHANGED` if it moved; any change to source status / return time / location / destination / arrival time invalidates it; guest note implies no driver/payment; source and provenance untouched. Referral card unchanged.
+- Evidence: LOCAL Marau 424/424, engine 247/247. HOSTED SYNTHETIC rewards OFF (API level) 16/16; journey 40/40. Not staff-console browser acceptance (human step, now 8 steps).
+- Fixture status: operator fixtures do NOT exist on the hosted preview. The seed script now verifies fixtures on the target host; one throwaway proof run verified 9/9, then guests revoked and its 2 staff identities deleted (0 remain). Local seeds are not hosted fixtures.
+- Finding O5: with rewards OFF an approved allocation rule on the shared preview still gives a new return leg a value (not gated by policy mode) -> production post-release check: no approved rule.
+- WAITING for human acceptance and James's explicit release decision. No production change, real guest or message.
