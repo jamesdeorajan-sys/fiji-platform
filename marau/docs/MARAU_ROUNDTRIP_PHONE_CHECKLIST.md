@@ -16,3 +16,11 @@
 
 Record: phone models/OS/browser · did the camera scan work first time · anything that looked wrong or showed someone else's information.
 **Until this table is filled in, physical-phone evidence for the round-trip preview does not exist.**
+
+## Update: leg clarity (Worker `efc611e1`, commit `4e510ea`)
+On your Trip you should now see two cards, each with its OWN values:
+- **ARRIVAL** - Date (with year), Pickup time "... Fiji time", Pickup location, Destination, Status.
+- **RETURN TO AIRPORT** - Return date (with year), Hotel pickup time "... Fiji time", Pickup location (the hotel), Destination (the airport), Status.
+Anything not recorded reads **Awaiting pickup details** - the return never borrows the arrival's date/time, and the hotel pickup time is never worked out from a flight time.
+Tapping the ARRIVAL / RETURN chips changes the selected leg only; both cards keep their own dates after a reload or reopening the link.
+**Synthetic test form:** choose Arrival, Return to airport (standalone) or Round trip. Labels change to "Arrival pickup date & time" / "Return pickup date & time (Fiji time)"; Round trip asks for separate return date/time, return hotel and return fare. A contradictory direction (e.g. Return with Nadi Airport -> Denarau) is explained and not saved. Old RC1 link = the previous single-date form; use the RC2 link instead.

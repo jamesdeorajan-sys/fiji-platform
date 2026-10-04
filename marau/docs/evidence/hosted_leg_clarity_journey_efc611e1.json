@@ -1,0 +1,169 @@
+{
+  "run": "muue5wxo",
+  "base": "https://marau-stage1-preview-legs.helpronline.workers.dev",
+  "evidence_label": "HOSTED SYNTHETIC (isolated preview)",
+  "passed": 40,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "synthetic source seeded with the REAL schema field names",
+      "ok": true
+    },
+    {
+      "name": "sync creates the mirror",
+      "ok": true
+    },
+    {
+      "name": "the guest's trip holds BOTH legs of the one source booking",
+      "ok": true
+    },
+    {
+      "name": "dates, locations and status preserved; the return pickup is the RECORDED location",
+      "ok": true
+    },
+    {
+      "name": "the return leg is NOT given the whole quote or a share: value unresolved",
+      "ok": true
+    },
+    {
+      "name": "guest trip carries NO operator-side figures or provenance",
+      "ok": true
+    },
+    {
+      "name": "repeated sync does not duplicate legs",
+      "ok": true
+    },
+    {
+      "name": "a qualifying referred purchase earns exactly one credit for the source-booking guest",
+      "ok": true
+    },
+    {
+      "name": "RETURN_VALUE_UNRESOLVED: no approved allocation rule -> refused, credit stays earned",
+      "ok": true
+    },
+    {
+      "name": "staff listing shows the return as a target with NO invented fare, and the source total/settlement preserved",
+      "ok": true
+    },
+    {
+      "name": "the arrival leg is never a credit target",
+      "ok": true
+    },
+    {
+      "name": "a PROPOSED rule changes nothing",
+      "ok": true
+    },
+    {
+      "name": "approval is attributed and can only be a synthetic-preview approval (owner basis ignored)",
+      "ok": true
+    },
+    {
+      "name": "credit applies ONLY to the return: booking total 170, credit 10, amount due 160; return value allocated 68",
+      "ok": true
+    },
+    {
+      "name": "one booking balance, identical from both legs; operator payout unchanged",
+      "ok": true
+    },
+    {
+      "name": "repeated sync after application: still two legs, same balance, no second adjustment",
+      "ok": true
+    },
+    {
+      "name": "a source edit to the return time reaches the SAME return leg (same id, new time); the credit stays",
+      "ok": true
+    },
+    {
+      "name": "return removed at the source: the SAME return leg is cancelled, arrival intact, credit released, balance back to the full total",
+      "ok": true
+    },
+    {
+      "name": "return restored: the SAME leg returns, the credit was NOT silently re-applied (staff re-apply gives one live adjustment)",
+      "ok": true
+    },
+    {
+      "name": "SOURCE QUOTE CHANGE after credit: both legs show total 200, credit 10, due 190, the change flagged; operator settlement never reaches the guest",
+      "ok": true
+    },
+    {
+      "name": "ARRIVAL COMPLETED: the upcoming return stays VISIBLE but is PENDING with an explicit status uncertainty (never inferred as confirmed)",
+      "ok": true
+    },
+    {
+      "name": "...and the guest trip never shows who verified or the evidence",
+      "ok": true
+    },
+    {
+      "name": "no redemption eligibility is inferred: credit refused LEG_STATUS_UNVERIFIED",
+      "ok": true
+    },
+    {
+      "name": "STAFF VERIFICATION needs evidence; records the named actor and time; says the source is unchanged",
+      "ok": true
+    },
+    {
+      "name": "after verification the leg is confirmed, the arrival still reads as the source reported it, and the credit can apply",
+      "ok": true
+    },
+    {
+      "name": "a change to the facts the verification rested on brings the uncertainty back",
+      "ok": true
+    },
+    {
+      "name": "MISSING RETURN DETAILS: no return leg is invented; the arrival says so",
+      "ok": true
+    },
+    {
+      "name": "SOURCE CANCELLATION cancels the return leg too",
+      "ok": true
+    },
+    {
+      "name": "demonstration provenance: the preview mirrors from the SYNTHETIC source (test_data = 1, not authenticated)",
+      "ok": true
+    },
+    {
+      "name": "PILOT review: live offer availability and consent-eligible recipients, nothing sent",
+      "ok": true
+    },
+    {
+      "name": "PILOT: prepare is refused before a review",
+      "ok": true
+    },
+    {
+      "name": "PILOT: review recorded by a named staff member; recipients prepared; nothing sent",
+      "ok": true
+    },
+    {
+      "name": "PILOT: manual send then reply recorded, idempotent, original operator kept",
+      "ok": true
+    },
+    {
+      "name": "PILOT: a guest who withdrew consent drops out of the recipient list",
+      "ok": true
+    },
+    {
+      "name": "PRE-SEND CHECK: facts hold -> the message text is handed out (no link/contact), checked_by recorded, and it says the app cannot stop an external send",
+      "ok": true
+    },
+    {
+      "name": "consent withdrawn after preparation: the check REFUSES with reasons and the entry is invalidated",
+      "ok": true
+    },
+    {
+      "name": "HONEST OUTCOME: the send is RECORDED and flagged contrary to eligibility (not refused, not hidden)",
+      "ok": true
+    },
+    {
+      "name": "the send list counts stale entries and sends made contrary to eligibility",
+      "ok": true
+    },
+    {
+      "name": "PILOT: no guest can read it",
+      "ok": true
+    },
+    {
+      "name": "rewards left OFF at the end",
+      "ok": true
+    }
+  ]
+}
