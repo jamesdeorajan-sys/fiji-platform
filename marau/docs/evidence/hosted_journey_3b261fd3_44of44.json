@@ -1,0 +1,203 @@
+{
+  "run": "mut5e1tx",
+  "base": "https://marau-stage1-preview.helpronline.workers.dev",
+  "evidence_label": "HOSTED SYNTHETIC (isolated preview)",
+  "passed": 44,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "staff identity required: shared admin credential alone is refused",
+      "ok": true
+    },
+    {
+      "name": "an offer cannot publish for an UNVERIFIED supplier",
+      "ok": true
+    },
+    {
+      "name": "policy starts OFF with no pre-approved amount (or was left off by an earlier run)",
+      "ok": true
+    },
+    {
+      "name": "LIVE rewards cannot be switched on through the API",
+      "ok": true
+    },
+    {
+      "name": "verified supplier + owner -> offer created and published",
+      "ok": true
+    },
+    {
+      "name": "guest has a Marau trip (arrival + return) and sees the offer beside it",
+      "ok": true
+    },
+    {
+      "name": "PUBLIC referral link is separate from the PRIVATE trip token and reveals nothing",
+      "ok": true
+    },
+    {
+      "name": "public landing page and QR are served anonymously and carry no private data",
+      "ok": true
+    },
+    {
+      "name": "referral guest view requires the private token",
+      "ok": true
+    },
+    {
+      "name": "friend joins through the link and is attributed (response says only \"applied\")",
+      "ok": true
+    },
+    {
+      "name": "self-referral (referrer's own phone) is NOT attributed",
+      "ok": true
+    },
+    {
+      "name": "request saved; a repeated request returns the SAME request",
+      "ok": true
+    },
+    {
+      "name": "human confirmation records the operator from the STAFF TOKEN (spoofed body field ignored)",
+      "ok": true
+    },
+    {
+      "name": "a repeat confirm by another staff member changes nothing",
+      "ok": true
+    },
+    {
+      "name": "SAVED request earned nothing; confirmation makes the credit only PENDING",
+      "ok": true
+    },
+    {
+      "name": "FULFILLED BUT UNPAID does not earn credit (pay-later policy)",
+      "ok": true
+    },
+    {
+      "name": "payment evidence recorded by a named staff member; a repeat is a no-op reporting the original operator",
+      "ok": true
+    },
+    {
+      "name": "a refund beyond what was paid is refused",
+      "ok": true
+    },
+    {
+      "name": "fulfilled AND paid earns exactly one credit, funding source recorded",
+      "ok": true
+    },
+    {
+      "name": "CONCURRENT redemption: exactly one of two simultaneous applications wins",
+      "ok": true,
+      "detail": [
+        409,
+        200
+      ]
+    },
+    {
+      "name": "exactly ONE credit adjustment exists",
+      "ok": true
+    },
+    {
+      "name": "guest sees original fare, credit and amount due SEPARATELY (100 / 10 / 90)",
+      "ok": true
+    },
+    {
+      "name": "original quote is unchanged in the database",
+      "ok": true
+    },
+    {
+      "name": "SOLD OUT under concurrency: capacity 1, two simultaneous requests -> exactly one place held",
+      "ok": true
+    },
+    {
+      "name": "the loser is told SOLD_OUT",
+      "ok": true
+    },
+    {
+      "name": "EXPIRED offer: refused (410) and not listed",
+      "ok": true
+    },
+    {
+      "name": "WITHDRAWAL declines open requests but flags (never silently cancels) confirmed guests",
+      "ok": true
+    },
+    {
+      "name": "guest CANCELLATION before the deadline releases the place",
+      "ok": true
+    },
+    {
+      "name": "...and the released place can be taken by someone else",
+      "ok": true
+    },
+    {
+      "name": "reversing the purchase AFTER a credit was applied flags it for a human; the fare is not silently changed",
+      "ok": true
+    },
+    {
+      "name": "MISSING WHATSAPP: guest can still request; staff see an email fallback and a missing-owner flag",
+      "ok": true
+    },
+    {
+      "name": "a NAMED staff owner can be assigned; a made-up name is refused",
+      "ok": true
+    },
+    {
+      "name": "promotional needs consent (unknown -> not allowed); essential trip messages always allowed; nothing sent",
+      "ok": true
+    },
+    {
+      "name": "PRIVATE data is private: another guest cannot touch a request; enquiry text has the reference, no contact, no wa.me link",
+      "ok": true
+    },
+    {
+      "name": "public surfaces contain no guest email/phone/cost/owner",
+      "ok": true
+    },
+    {
+      "name": "browse-anytime: anonymous browsing lists every published offer",
+      "ok": true
+    },
+    {
+      "name": "a second friend's paid purchase earns a second credit (still within the synthetic cap)",
+      "ok": true
+    },
+    {
+      "name": "SECOND credit applies to the SAME return booking: original 100, credits 20, amount due 80, two separate adjustments",
+      "ok": true
+    },
+    {
+      "name": "FOLLOW-UP QUEUE: unassigned items are explicit, and move under their named owner once assigned",
+      "ok": true
+    },
+    {
+      "name": "NO-WHATSAPP: essential message on WhatsApp is refused (whatsapp_unavailable) with EMAIL suggested; deliverability labelled unverified; nothing sent",
+      "ok": true
+    },
+    {
+      "name": "a recorded delivery failure blocks that channel even for an essential message",
+      "ok": true
+    },
+    {
+      "name": "report labels quoted value as NOT revenue and separates shares/attributions/credits/funding/payment evidence",
+      "ok": true
+    },
+    {
+      "name": "report snapshot (all hosted synthetic data accumulated in the preview DB)",
+      "ok": true,
+      "detail": {
+        "requests_total": 21,
+        "requests_confirmed": 3,
+        "requests_fulfilled": 2,
+        "confirmed_sales_value_fjd": 600,
+        "realised_contribution_fjd_before_rewards": 80,
+        "reward_credits": {
+          "pending": 0,
+          "earned": 0,
+          "applied": 2,
+          "reversed": 3
+        },
+        "reward_funding_committed_fjd": 20
+      }
+    },
+    {
+      "name": "policy restored to OFF at the end of the run",
+      "ok": true
+    }
+  ]
+}

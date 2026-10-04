@@ -62,7 +62,7 @@ try {
   check('policy starts OFF with no pre-approved amount (or was left off by an earlier run)', pol0.mode === 'off');
   const live = await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'live' } });
   check('LIVE rewards cannot be switched on through the API', live.status === 409 && live.data.error === 'LIVE_REWARDS_REQUIRE_OWNER_APPROVAL');
-  await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 50, qualify_on: 'fulfilled', funding_source: 'synthetic_test_budget' } });
+  await api('/preview/admin/rewards/policy', { method: 'POST', headers: staff(ANA), body: { mode: 'preview', amount_fjd: 10, cap_per_referrer_fjd: 20, min_purchase_fjd: 50, qualify_on: 'fulfilled', require_payment: 'paid_in_full', funding_source: 'synthetic_test_budget' } });
 
   // ---- the acceptance journey
   const offer = await publishedOffer(sup.data.supplier_id);
@@ -99,8 +99,13 @@ try {
   const credPending = wranglerJson(`SELECT status FROM marau_reward_credits WHERE qualifying_request_id = '${rid}'`);
   check('SAVED request earned nothing; confirmation makes the credit only PENDING', credPending.length === 1 && credPending[0].status === 'pending' && creditsAfterSave >= 0);
   await api(`/preview/admin/offers/requests/${rid}/fulfil`, { method: 'POST', headers: staff(ANA), body: {} });
+  check('FULFILLED BUT UNPAID does not earn credit (pay-later policy)', wranglerJson(`SELECT status FROM marau_reward_credits WHERE qualifying_request_id = '${rid}'`)[0].status === 'pending');
+  const payRes = await api(`/preview/admin/offers/requests/${rid}/payment`, { method: 'POST', headers: staff(BALA), body: { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `hosted-${RUN}` } });
+  const payAgain = await api(`/preview/admin/offers/requests/${rid}/payment`, { method: 'POST', headers: staff(ANA), body: { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `hosted-${RUN}` } });
+  check('payment evidence recorded by a named staff member; a repeat is a no-op reporting the original operator', payRes.status === 200 && payAgain.data.repeated === true && payAgain.data.original_operator === `Bala (demo ops ${RUN})`);
+  check('a refund beyond what was paid is refused', (await api(`/preview/admin/offers/requests/${rid}/payment`, { method: 'POST', headers: staff(ANA), body: { event: 'refunded', amount_fjd: 500, method: 'cash', event_key: `over-${RUN}` } })).status === 409);
   const credit = wranglerJson(`SELECT credit_id, status, amount_cents, funding_source FROM marau_reward_credits WHERE qualifying_request_id = '${rid}'`)[0];
-  check('fulfilment earns exactly one credit, funding source recorded', credit.status === 'earned' && credit.amount_cents === 1000 && credit.funding_source === 'synthetic_test_budget');
+  check('fulfilled AND paid earns exactly one credit, funding source recorded', credit.status === 'earned' && credit.amount_cents === 1000 && credit.funding_source === 'synthetic_test_budget');
 
   // concurrent redemption of one credit against two return bookings
   wrangler(`INSERT INTO marau_test_bookings (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at, leg_type) SELECT 'RET2-${RUN}', session_id, guest_email, guest_phone, 'DENARAU', 'NAD_AIRPORT', 'Sedan', '${inDays(13)}', 100, 'pending', 1, '${new Date().toISOString()}', '${new Date().toISOString()}', 'return' FROM guest_sessions WHERE session_id = '${referrer.sessionId}'`);
@@ -163,9 +168,36 @@ try {
   check('public surfaces contain no guest email/phone/cost/owner', !pub.includes('example.test') && !pub.includes('cost_per_place') && !pub.includes('fulfilment_owner'));
   check('browse-anytime: anonymous browsing lists every published offer', (await api('/preview/offers')).data.browse_all === true);
 
+  // multiple credits on one return booking (needs a second earned credit for the same referrer)
+  const friend2 = await newGuest({ referral_code: ref.code });
+  const rid2 = (await api(`/preview/offers/${offer.id}/request`, { method: 'POST', headers: guest(friend2.token), body: { places: 1 } })).data.request.request_id;
+  await api(`/preview/admin/offers/requests/${rid2}/confirm`, { method: 'POST', headers: staff(ANA), body: {} });
+  await api(`/preview/admin/offers/requests/${rid2}/payment`, { method: 'POST', headers: staff(ANA), body: { event: 'paid', amount_fjd: 120, method: 'card', event_key: `m2-${RUN}` } });
+  await api(`/preview/admin/offers/requests/${rid2}/fulfil`, { method: 'POST', headers: staff(ANA), body: {} });
+  const credit2 = wranglerJson(`SELECT credit_id, status FROM marau_reward_credits WHERE qualifying_request_id = '${rid2}'`)[0];
+  check('a second friend\'s paid purchase earns a second credit (still within the synthetic cap)', credit2 && credit2.status === 'earned');
+  if (credit2 && credit2.status === 'earned') {
+    const second = await api(`/preview/admin/rewards/credits/${credit2.credit_id}/apply`, { method: 'POST', headers: staff(BALA), body: { booking_id: landed } });
+    check('SECOND credit applies to the SAME return booking: original 100, credits 20, amount due 80, two separate adjustments', second.status === 200 && second.data.fare.original_fare_fjd === 100 && second.data.fare.referral_credit_fjd === 20 && second.data.fare.amount_due_fjd === 80 && second.data.fare.adjustments.length === 2);
+  }
+
+  // follow-up ownership and the unassigned queue
+  const noWa2 = await newGuest({ whatsapp_available: false });
+  await api(`/preview/offers/${off2.id}/request`, { method: 'POST', headers: guest(noWa2.token), body: { places: 1 } });
+  const q1 = (await api('/preview/admin/follow-ups', { headers: staff(ANA) })).data;
+  const sawUnassigned = q1.unassigned.some((i) => i.session_id === noWa2.sessionId);
+  await api(`/preview/admin/guests/${noWa2.sessionId}/follow-up-owner`, { method: 'POST', headers: staff(BALA), body: { owner: `Bala (demo ops ${RUN})` } });
+  const q2 = (await api('/preview/admin/follow-ups', { headers: staff(ANA) })).data;
+  check('FOLLOW-UP QUEUE: unassigned items are explicit, and move under their named owner once assigned', q1.counts.unassigned >= 1 && sawUnassigned && !q2.unassigned.some((i) => i.session_id === noWa2.sessionId) && (q2.by_owner[`Bala (demo ops ${RUN})`] || []).some((i) => i.session_id === noWa2.sessionId));
+  const waCheck = (await api('/preview/admin/messages/check', { method: 'POST', headers: staff(ANA), body: { session_id: noWa2.sessionId, purpose: 'booking_confirmation', channel: 'whatsapp' } })).data;
+  check('NO-WHATSAPP: essential message on WhatsApp is refused (whatsapp_unavailable) with EMAIL suggested; deliverability labelled unverified; nothing sent', waCheck.allowed === false && waCheck.reasons.includes('whatsapp_unavailable') && waCheck.suggested_channel === 'email' && waCheck.deliverability === 'unverified' && waCheck.nothing_was_sent === true);
+  await api(`/preview/admin/guests/${noWa2.sessionId}/suppressions`, { method: 'POST', headers: staff(ANA), body: { channel: 'email', kind: 'delivery_failure', reason: 'synthetic bounce' } });
+  const supp = (await api('/preview/admin/messages/check', { method: 'POST', headers: staff(ANA), body: { session_id: noWa2.sessionId, purpose: 'booking_confirmation', channel: 'email' } })).data;
+  check('a recorded delivery failure blocks that channel even for an essential message', supp.allowed === false && supp.reasons.includes('channel_suppressed'));
+
   // report
   const rep = (await api('/preview/admin/offers/report', { headers: staff(ANA) })).data;
-  check('report labels quoted value as NOT revenue and separates shares/attributions/credits/funding', /NOT revenue/.test(rep.labels.quoted_value) && typeof rep.referral_shares_tapped === 'number' && typeof rep.reward_funding_committed_fjd === 'number');
+  check('report labels quoted value as NOT revenue and separates shares/attributions/credits/funding/payment evidence', /NOT revenue/.test(rep.labels.quoted_value) && typeof rep.referral_shares_tapped === 'number' && typeof rep.reward_funding_committed_fjd === 'number' && typeof rep.payment_evidenced_net_fjd === 'number');
   checks.push({ name: 'report snapshot (all hosted synthetic data accumulated in the preview DB)', ok: true, detail: { requests_total: rep.requests_total, requests_confirmed: rep.requests_confirmed, requests_fulfilled: rep.requests_fulfilled, confirmed_sales_value_fjd: rep.confirmed_sales_value_fjd, realised_contribution_fjd_before_rewards: rep.realised_contribution_fjd_before_rewards, reward_credits: rep.reward_credits, reward_funding_committed_fjd: rep.reward_funding_committed_fjd } });
 } catch (err) {
   check('journey completed without an unexpected error', false, String(err && err.stack ? err.stack : err));
