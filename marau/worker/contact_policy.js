@@ -55,3 +55,39 @@ export function maySend({ purpose, marketingConsent }) {
   if (MESSAGE_PURPOSES.promotional.includes(purpose)) return marketingConsent === 'granted';
   return false; // an unrecognised purpose is never assumed to be allowed
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Server-side validation. The real transfer sites require phone client-side and enforce only phone server-side (Issue
+// #59's own open item); Marau enforces BOTH from the start, with checks stricter than a bare pattern match.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Returns the digits-with-optional-leading-plus form when `raw` is a plausible phone number, else null. */
+export function validatePhone(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^[+0-9()\-.\s]+$/.test(trimmed)) return null;
+  const plus = trimmed.startsWith('+') ? '+' : '';
+  if (trimmed.indexOf('+', 1) !== -1) return null; // a plus is only ever a leading international prefix
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  if (digits.length < 7 || digits.length > 15) return null; // E.164 allows at most 15 digits
+  if (/^(\d)\1+$/.test(digits)) return null; // 0000000, 1111111...: placeholder numbers
+  return plus + digits;
+}
+
+/** Returns the lower-cased address when `raw` is a plausible email address, else null. */
+export function validateEmail(raw) {
+  if (typeof raw !== 'string') return null;
+  const e = raw.trim();
+  if (e.length < 6 || e.length > 254) return null;
+  const at = e.indexOf('@');
+  if (at < 1 || at !== e.lastIndexOf('@')) return null;
+  const local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  if (local.length > 64 || /\s/.test(e) || e.includes('..')) return null;
+  if (local.startsWith('.') || local.endsWith('.')) return null;
+  const labels = domain.split('.');
+  if (labels.length < 2) return null;
+  if (!labels.every((l) => l.length >= 1 && l.length <= 63 && /^[A-Za-z0-9-]+$/.test(l) && !l.startsWith('-') && !l.endsWith('-'))) return null;
+  if (labels[labels.length - 1].length < 2) return null;
+  return e.toLowerCase();
+}

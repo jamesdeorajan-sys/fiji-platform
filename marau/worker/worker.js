@@ -35,7 +35,8 @@ import { confirmReservationAtSource } from './source_confirm.js';
 import { createNadiSourceClient } from './nadi_source_client.js';
 import { createExperienceOffers } from './experience_offers.js';
 import { createReferrals } from './referrals.js';
-import { followUpPlan } from './contact_policy.js';
+import { validatePhone, validateEmail } from './contact_policy.js';
+import { createGuestContact } from './guest_contact.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
@@ -144,14 +145,6 @@ function guestCookieToken(request) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-// Loose, deliberately permissive validation — this is synthetic preview
-// data, not a real KYC check. The point being proven is that the SERVER
-// enforces presence and shape at all, not that it's a production-grade
-// validator (Issue #59's own open item: guest_email is client-required
-// but NOT server-enforced on the real sites today — Marau fixes that gap
-// for its own booking flow from the start).
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^\+?[0-9()\-.\s]{7,20}$/;
 
 function normalizePhone(phone) {
   return String(phone).replace(/[^0-9+]/g, '');
@@ -164,8 +157,13 @@ function sixDigitCode() {
 function validateBookingInput(body) {
   const errors = [];
   if (!body || typeof body !== 'object') return ['request body must be a JSON object'];
-  if (!body.guest_email || !EMAIL_RE.test(String(body.guest_email))) errors.push('guest_email is required and must look like an email address');
-  if (!body.guest_phone || !PHONE_RE.test(String(body.guest_phone))) errors.push('guest_phone is required and must look like a phone number');
+  // BOTH contact channels are required and validated server-side (stricter than a bare pattern): the real transfer sites
+  // enforce only the phone on the server today (Issue #59 open item), so Marau closes that gap for its own flow.
+  if (!validateEmail(body.guest_email)) errors.push('guest_email is required and must be a valid email address');
+  if (!validatePhone(body.guest_phone)) errors.push('guest_phone is required and must be a valid phone number (7-15 digits, optional leading +)');
+  if (body.marketing_consent !== undefined && body.marketing_consent !== null && !['granted', 'withheld'].includes(body.marketing_consent)) {
+    errors.push("marketing_consent must be 'granted', 'withheld' or omitted (omitted means unknown, which does not permit promotional messages)");
+  }
   for (const field of ['pickup_zone', 'destination_zone', 'vehicle_type', 'pickup_datetime']) {
     if (!body[field]) errors.push(`${field} is required`);
   }
@@ -375,6 +373,9 @@ async function handleCreateBooking(request, env) {
     // A referral code attributes this brand-new guest to the referrer (first touch only; self-referral and
     // existing-guest cases are recorded as rejected). It can never fail the booking, and the response says only
     // whether the code was applied - never who referred whom.
+    if (body.marketing_consent === 'granted' || body.marketing_consent === 'withheld') {
+      try { await guestContact.setConsent(env, session.session_id, body.marketing_consent, { source: 'booking_form', actor: `guest:${session.session_id}` }); } catch (err) { console.error('[marau-preview] consent record failed', err); }
+    }
     let referralApplied = false;
     if (body.referral_code) {
       try { referralApplied = (await referrals.attribute(env, { code: body.referral_code, referredSession: session })).attributed; } catch (err) { console.error('[marau-preview] referral attribution failed', err); }
@@ -2460,6 +2461,7 @@ async function recordStaffDecision(env, { token, subjectType, subjectId, decisio
 // ---------------------------------------------------------------------
 // Experience offers (October revenue slice) - see worker/experience_offers.js
 // ---------------------------------------------------------------------
+const guestContact = createGuestContact({ json, requireStaffIdentity, requireGuestSession, nowIso });
 const referrals = createReferrals({ json, html, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, guestAppHtml: GUEST_APP_HTML });
 const experience = createExperienceOffers({
   json, requireStaffIdentity, requireGuestSession, nowIso, cryptoRandomId, normalizePickupDatetime,
@@ -2534,6 +2536,10 @@ export default {
         const r = await experience.route(request, env, url);
         if (r) return r;
       }
+      if (pathname === '/preview/trip/contact') {
+        const r = await guestContact.route(request, env, url);
+        if (r) return r;
+      }
       if (pathname.startsWith('/r/') || pathname.startsWith('/preview/referral')) {
         const r = await referrals.route(request, env, url);
         if (r) return r;
@@ -2583,6 +2589,10 @@ export default {
         // requires an authenticated per-staff identity token).
         if (/^\/preview\/admin\/(offers|suppliers|editions)(\/|$)/.test(pathname)) {
           const r = await experience.route(request, env, url);
+          if (r) return r;
+        }
+        if (/^\/preview\/admin\/(guests|messages)(\/|$)/.test(pathname) || /^\/preview\/admin\/editions\/[^/]+\/recipients$/.test(pathname)) {
+          const r = await guestContact.route(request, env, url);
           if (r) return r;
         }
         if (pathname.startsWith('/preview/admin/rewards')) {
