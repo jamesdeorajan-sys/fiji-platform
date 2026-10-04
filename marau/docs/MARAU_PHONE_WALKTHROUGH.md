@@ -1,4 +1,6 @@
-# Marau preview - real-phone walkthrough for James (about 15 minutes)
+# RC1 (marau-preview-rc1) - real-phone walkthrough for James (about 15 minutes)
+
+*This checklist is for **RC1** only. The round-trip preview has its own: `MARAU_ROUNDTRIP_PHONE_CHECKLIST.md`.*
 
 **Synthetic data only.** This is an isolated preview: nothing here is a real booking, message or payment, and rewards are **OFF**.
 Use made-up details only: email like `you.test1@example.test`, phone like `+15005550142`. Never type a real phone number, email or name.
