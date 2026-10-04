@@ -27,7 +27,8 @@ Verify "no code after the deployed commit": `git diff --stat 2b8faea marau-round
 | HOSTED BROWSER (guest side) | On the hosted legs preview, with the two synthetic private links: Link A shows both legs Confirmed; Link B shows the return as *Awaiting human confirmation* with the plain-language uncertainty sentence. No credentials typed; screenshots show page content only |
 | LOCAL BROWSER (staff console) | The staff console panel (pilot + verify button) was driven earlier on a local 127.0.0.1 demo server. **Not driven on the hosted preview**: that would mean typing staff credentials into a non-local page, which I do not do. The hosted staff pilot workflow was exercised through the hosted API by the script above |
 | PHYSICAL PHONE (partial) | James's latest phone screenshots cover the **updated synthetic form**, the **journey choices** (Arrival / Return to airport / Round trip) and the **separate arrival and return date-time fields**. They do **not** yet prove: saved dates on the Trip view, reopening a private link, QR scanning, or private-link switching (checklist rows 1-7 below remain open) |
-| DESKTOP BROWSER (hosted RC2, preserved) | On the hosted legs preview the RETURN TO AIRPORT card shows **return pickup 10:30 AM Fiji time on Monday, Oct 13, 2031** from Sofitel Denarau lobby to Nadi Airport; the ARRIVAL card shows Monday, Oct 6, 2031, 9:00 AM Fiji time. Checked initially, after switching legs, after reload and in a freshly opened tab (Worker `efc611e1`; unchanged in `615f1da8`, which only relabels a form field). This is desktop evidence, not phone evidence |
+| **JAMES'S DESKTOP SCREENSHOT (earlier, preserved as recorded)** | James's earlier desktop screenshot showed the return pickup as **Tuesday, Oct 13, with NO year displayed**. That is James's evidence and it is not relabelled as anything else. (Under the pre-RC3 build the year was not shown; RC3 now shows it.) |
+| AUTHOR BROWSER, hosted RC3-line (SEPARATE evidence, not James's) | A separate synthetic **2031 fixture** created by the author on the hosted legs preview shows ARRIVAL Monday, Oct 6, 2031, 9:00 AM Fiji time and RETURN TO AIRPORT **Monday, Oct 13, 2031, 10:30 AM Fiji time**, from Sofitel Denarau lobby to Nadi Airport; correct initially, after switching legs, after reload and in a fresh tab (Worker `efc611e1`; `615f1da8` differs only by a form label). This is author evidence on an author-created fixture; it is **not** the record of James's screenshot, and the weekday/year differ because it is a different fixture |
 
 ## Gate status
 
@@ -61,3 +62,38 @@ redacted, and the evidence script now records detail only for failing checks and
 - **Fare labels:** the form's amount is stored as the quoted amount of the leg being created, in FJD. It is therefore labelled **Arrival fare (FJD)** for Arrival and Round trip (the return's own amount is the separate **Return fare (FJD)**), and **Return fare (FJD)** for a standalone return.
 - **Still OUTSTANDING: hosted staff-console browser acceptance.** The staff console has not been driven on the hosted preview (staff credentials are not typed into non-local pages); it is exercised through the hosted API and a local demo server only. Needs James or a credentialed operator.
 - No production deployment, migration, real guest import, outbound message or fare change.
+
+
+## FINAL CONSOLIDATED RELEASE-GATE RESULT (RC3 held fixed)
+
+**Exact candidate identity.** Repo `marau-stage1`, branch `ceo/marau-leg-clarity`, tag `marau-leg-clarity-rc3`. **Code commit `a7b8d3c`** (everything after it is docs/evidence only; `git diff --stat a7b8d3c HEAD -- marau/worker marau/migrations` is empty). Hosted: Worker `marau-stage1-preview-legs` version **`615f1da8-2cc1-4f8d-91ab-ca66e5ba2bbf`** on D1 `marau-stage1-legs-db` (migrations through 0043; none added). RC1 (`marau-preview-rc1`, `496b4d98`) preserved. Nadi read endpoint `7d268e5` NOT deployed. No production change anywhere.
+
+**PASSED (with evidence class):**
+- LOCAL AUTHOR-RUN: Marau 415/415 (incl. 14 leg-clarity tests, red-first commit `e1f9428`), engine 247/247, Nadi 111/111 (as last recorded).
+- HOSTED SYNTHETIC: `scripts/hosted_roundtrip_journey.mjs` 40/40 on `615f1da8` (`docs/evidence/hosted_leg_clarity_journey_615f1da8.json`).
+- AUTHOR HOSTED BROWSER (guest side): both legs' own date/time/location/status after switching, reload and a fresh tab; form labels and direction guard shown (2031 fixture).
+- JAMES PHONE (partial): updated synthetic form, journey choices, separate arrival/return date-time fields.
+- JAMES DESKTOP: earlier screenshot (Tuesday, Oct 13, no year) - recorded as-is.
+
+**OUTSTANDING:**
+1. **Hosted staff-console browser acceptance - BLOCKED, see below.**
+2. Phone: saved dates on the Trip view, reopening a private link, QR scan, private-link switching (checklist rows 1-7).
+3. Technical blockers T1-T4, T6 (decision sheet): Nadi read endpoint deploy, production Worker/D1/migrations, milestone38, mirror `test_data=0`/approved provenance, source meaning of booking-level `completed`.
+4. Edition delivery + human-team workflow (not started).
+
+**COMMERCIAL DECISIONS (James):** C1 return pricing (recommend explicit return amount at source for future bookings); C2 existing bookings (recommend one approved envelope + named-staff allocation); C3 reward terms; C4 partial-refund rule and payment-evidence owner; C5 pilot sender/owner/rota/text/consent wording/caps/quiet hours; C6 who may verify an uncertain return; C7 wa.me handoff; C8 non-FJD quotes. Rewards remain OFF; live allocation and reward policy disabled.
+
+### Hosted staff-console acceptance: BLOCKED (not attempted)
+- **Exact restriction:** my operating rules prohibit entering passwords, tokens or API keys into any form field on a page that is not a local development host (`localhost`, `127.0.0.1`, `[::1]`, `*.localhost`, `*.test`). The staff console at `https://marau-stage1-preview-legs.helpronline.workers.dev/staff` is a `workers.dev` host, and signing in needs an admin test token and a staff identity token typed into its fields. The rule applies even to a temporary, least-privilege, synthetic credential, and I may not work around it (for example by injecting the token into page storage or script, which is the same act). The test-credential exception covers only local hosts.
+- **Consequence:** no operator credential was created, so there is nothing to revoke or verify as revoked. The preview's existing `MARAU_ADMIN_TEST_TOKEN` (a Worker variable, never stored in the repo) was not used in any browser field.
+- **What is covered instead:** the same staff workflow was exercised through the hosted API (40/40) and the staff console was driven in a browser on the local `127.0.0.1` demo server (`scripts/local_pilot_demo_server.mjs`). Neither is hosted staff-console browser acceptance.
+
+**Short human-operated checklist (about 10 minutes, on the hosted preview, synthetic data only):**
+1. Open `/staff` on the hosted legs preview. Enter the admin test token and a staff name you choose (e.g. `Acceptance Operator`). Do not screenshot the sign-in fields.
+2. Create a pilot edition and a recipient with granted marketing consent (use the harness form); run **Prepare sends**.
+3. For one recipient press **Check before send**: message text appears, no link/phone/email in it, and the page states the app cannot stop an external send.
+4. Withdraw that recipient's consent (Contact preferences on their Trip), press **Check before send** again: it must refuse with `no_marketing_consent`.
+5. Record outcome **Sent manually**: it must be recorded and flagged **contrary to eligibility**.
+6. On a leg showing *Awaiting human confirmation* with the uncertainty sentence, use **Verify status** with evidence of 10+ characters: the leg becomes Confirmed; the source is stated unchanged; the guest page never shows who verified or the evidence.
+7. Afterwards ask the engineer to rotate `MARAU_ADMIN_TEST_TOKEN` (a redeploy with a new `--var`) and confirm the old value returns 401.
+Record: date, who ran it, browser, any step that differed.

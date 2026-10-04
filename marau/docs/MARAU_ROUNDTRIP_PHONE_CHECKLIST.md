@@ -16,8 +16,8 @@
 
 Record: phone models/OS/browser · did the camera scan work first time · anything that looked wrong or showed someone else's information.
 **Already evidenced on a phone (James's screenshots):** the updated synthetic form, the journey choices and the separate arrival/return date-time fields. **Still to confirm with this table:** saved dates on the Trip view (rows 1-2, 5-6), reopening a link (row 7), QR scanning (row 4) and switching between private links (rows 5-7).
-**Desktop evidence preserved:** hosted RC2 shows the return pickup at 10:30 AM Fiji time on Monday, Oct 13, 2031.
-**Fixture dates:** the 2031 dates are intentional (far-future so the legs stay upcoming); the amount field is now **Arrival fare (FJD)** (**Return fare (FJD)** for a standalone return).
+**Desktop evidence (James's, as recorded):** an earlier desktop screenshot showed the return pickup on Tuesday, Oct 13 with no year. The author's separate 2031 synthetic fixture (Monday, Oct 13, 2031, 10:30 AM Fiji time) is different evidence and is not a substitute for it.
+**Fixture dates:** the author's 2031 dates are intentional (far-future so the legs stay upcoming); the amount field is now **Arrival fare (FJD)** (**Return fare (FJD)** for a standalone return).
 
 ## Update: leg clarity (Worker `efc611e1`, commit `4e510ea`)
 On your Trip you should now see two cards, each with its OWN values:
