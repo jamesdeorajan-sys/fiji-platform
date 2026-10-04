@@ -1,6 +1,6 @@
-# Marau - minimal pilot release package (PREPARED, NOT RELEASED)
+# Marau - minimal pilot release package (PREPARED, NOT RELEASED) - successor candidate RC4
 
-**Status: a proposal for James's decision. Nothing here has been deployed, migrated, imported or sent.** No production deployment, no real guest import, no outbound message. The package waits for (1) the human acceptance results (hosted staff console, physical phone) and (2) James's explicit release decision. RC3 is frozen.
+**Status: a proposal for James's decision. Nothing here has been deployed, migrated, imported or sent.** No production deployment, no real guest import, no outbound message. The package waits for (1) the human acceptance results (hosted staff console, physical phone) and (2) James's explicit release decision. RC3 (`a7b8d3c`) is preserved as the baseline; the successor **RC4** (section 3) adds the uncertain-return workflow, which is a pilot requirement.
 
 ## 1. What the pilot is
 Three things, for real guests, with a human in the loop:
@@ -23,24 +23,27 @@ Three things, for real guests, with a human in the loop:
 | P8 | Operator identity authenticated at the source (Nadi milestone38) | only for confirming bookings **at the source** from Marau | |
 | P9 | Sender, owner per Fiji date + slot, rota, message text, consent wording, cap, quiet hours (C5) | **required** | |
 | P10 | Physical-phone acceptance (saved dates, reopening, QR, link switching) | **required** (guest Trip) - QR only if the referral card stays | |
-| P11 | Hosted staff-console human acceptance (handoff doc) | **required** | |
+| P11 | Hosted staff-console human acceptance (handoff doc, now including the uncertain-return step) | **required** | |
+| P12 | **Uncertain-return verification**: Needs-attention item independent of credits; verdict by a named staff identity with timestamp + evidence, tied to the current itinerary; invalidated when source facts change; source and provenance untouched; no driver/payment implied | **required** (RC4: done in code, hosted API-verified with rewards OFF) | |
 | R1 | Return-leg pricing at source (explicit return amount) or approved staff allocation envelope (C1/C2) | | **yes** |
 | R2 | Reward terms: amount, cap, minimum purchase, stage (C3) | | **yes** |
 | R3 | Payment evidence owner and partial-refund rule (C4) | | **yes** |
-| R4 | Staff status verification ("Verify with evidence") | | **yes** - it is shown only beside an earned credit |
+| R4 | Credit redemption target eligibility (a credit may land on a verified return only) | | **yes** - still enforced via `LEG_STATUS_UNVERIFIED`; the verification itself is now P12 |
 | R5 | Referral policy, funding source, live-mode approval + environment flag | | **yes** (cannot be set through any API today) |
 | R6 | Non-FJD conversion rule (C8) | | **yes** |
 
 ### Open pilot decisions that the preview does NOT settle (James)
 - **O1 - referral card on the guest Trip.** With rewards OFF it reads "Referral rewards are not switched on yet" and offers sharing. Keep as is, or hide it for the pilot? Hiding is a code change, so it needs a new candidate.
-- **O2 - uncertain return with rewards OFF.** A completed-arrival/upcoming-return booking shows the return as "Awaiting human confirmation" with an explanatory sentence, and the only staff clearing button is tied to credits. In the pilot it simply stays pending for the guest. Accept this, or request a Needs-attention entry (new candidate).
+- **O2 - RESOLVED in RC4:** uncertain returns now appear in Needs attention with their own verify / not-going-ahead controls, independent of credits.
+- **O5 - leg values are gated by an approved allocation rule, not by the rewards mode.** With the policy OFF, an approved synthetic allocation rule still gives a new return leg a value (seen on the shared preview). In production no rule may be approved; this is a post-release check.
 - **O3 - WhatsApp handoff (C7)** stays off until a number is chosen.
 - **O4 - who holds named roles (P6/P9)** and the sender channel.
 
-## 3. Exact candidate identity (frozen)
+## 3. Exact candidate identity
 | Item | Value |
 |---|---|
-| Repo / branch | `marau-stage1` / `ceo/marau-leg-clarity` |
+| **SUCCESSOR RC4** | branch `ceo/marau-rc4-uncertain-return`, **code commit `7df9958`** (red tests `68232c0` first, then the fix `7df9958`); hosted Worker `marau-stage1-preview-rc4` **`1ae9a441-3a2d-4000-bc03-1e5627c1ba9b`** on the same D1 `marau-stage1-legs-db`, no migration; Marau 424/424 local; hosted rewards-OFF check 16/16 and regression journey 40/40 (`docs/evidence/hosted_rc4_*`) |
+| Baseline RC3 | branch `ceo/marau-leg-clarity` |
 | **Code commit (RC3)** | **`a7b8d3c`** (`a7b8d3c0d4fe006a852c87eff1f9f41d0c1d31d0`) |
 | Tag | `marau-leg-clarity-rc3` -> `13208ca` (docs only after the code commit) |
 | Docs head at preparation | the branch head containing this file (docs/scripts only; `git diff --stat a7b8d3c HEAD -- marau/worker marau/migrations` must be empty) |
@@ -51,7 +54,7 @@ Three things, for real guests, with a human in the loop:
 | Source read endpoint | Nadi branch `ceo/nadi-booking-read-itinerary` `7d268e5` - **NOT deployed** |
 | Preserved, not part of the release | RC1 `marau-preview-rc1` (Worker `496b4d98`); round-trip preview `marau-roundtrip-preview-1` |
 
-A release uses **exactly `a7b8d3c`'s `marau/worker` and `marau/migrations`**. Any change (for example O1/O2) is a new candidate with its own tests and acceptance; it is not folded into RC3.
+A release uses **exactly the approved candidate's `marau/worker` and `marau/migrations`** (RC4 `7df9958` if accepted; RC3 `a7b8d3c` lacks the P12 workflow and is therefore NOT sufficient for the pilot). Any further change (for example O1) is a new candidate with its own tests and acceptance.
 
 ## 4. Pre-release gates (all must be true before James is asked to decide)
 1. Human acceptance results received: hosted staff console (all seven steps) and physical phone (checklist rows 1-7).
@@ -80,9 +83,9 @@ Create the dedicated production D1 first (never `nadi-marketplace-db` or `vakavi
 
 ## 7. Post-release checks (first hour, then each pilot day)
 1. Worker serves `/` and `/preview/trip` (with a staff-created test link) with HTTP 200; `/staff` and admin routes **refuse** an unauthenticated request.
-2. Rewards policy mode reads **Off**; no reward credit rows; `MARAU_ALLOW_LIVE_REWARDS` unset.
+2. Rewards policy mode reads **Off**; no reward credit rows; `MARAU_ALLOW_LIVE_REWARDS` unset; **no approved allocation rule exists** (O5).
 3. First fed booking: the Trip shows each leg's own date/time/location/status; provenance fields match the approved path (P3); an unrecorded return pickup reads "Awaiting pickup details".
-4. A booking marked completed with an upcoming return shows the pending/uncertainty state (P4).
+4. A booking marked completed with an upcoming return shows the pending/uncertainty state (P4) **and appears in Needs attention** with the facts to check; a staff verification clears it and a later source change re-opens it (P12).
 5. Consent: a guest without granted consent never appears as eligible in an edition review.
 6. No outbound traffic from the Worker (no WhatsApp/email/send credentials configured; the edition send log shows only staff-recorded outcomes).
 7. Staff identity list contains only the named operators; no `Acceptance`/`Ana (roundtrip` preview identities exist in production.

@@ -35,6 +35,11 @@ try {
   const pol = await api('/preview/admin/rewards/policy', { headers: S });
   check('PRECONDITION: rewards policy is OFF (script sets no policy)', pol.status === 200 && pol.data.policy && pol.data.policy.mode === 'off', pol.data);
   if (!(pol.data.policy && pol.data.policy.mode === 'off')) throw new Error('rewards policy is not off - aborting without writing');
+  // The preview DB is shared across runs and an earlier run may have left an APPROVED synthetic allocation rule, which would give a new return
+  // leg a value even with rewards OFF. For a faithful rewards-OFF run, retire any approved rule first (as the journey script does) and say so.
+  const rules = (await api('/preview/admin/rewards/allocation-rules', { headers: S })).data.rules || [];
+  for (const r of rules.filter((x) => x.status === 'approved')) await api(`/preview/admin/rewards/allocation-rules/${r.rule_id}/retire`, { method: 'POST', headers: S, body: { note: 'reset before a rewards-OFF run' } });
+  check('PRECONDITION: no approved allocation rule remains', ((await api('/preview/admin/rewards/allocation-rules', { headers: S })).data.rules || []).every((x) => x.status !== 'approved'));
   const b = body(); await seed(b);
   const created = await sync(b, 'created', 'accepted');
   const tok = created.data.session.access_token;
@@ -58,7 +63,7 @@ try {
   check('guest sees the return confirmed with a plain staff-checked flag; never who verified or the evidence', ret.status === 'confirmed' && ret.staff_checked_status === true && !/status_verified_by|status_verification_evidence|Bala|itinerary_basis/.test(JSON.stringify(trip)));
   check('the item leaves the attention queue', !(await mine()));
   const credits = (await api('/preview/admin/rewards/credits', { headers: S })).data.credits || [];
-  check('REWARDS OFF throughout: no credit exists for this guest and nothing implies payment or driver', !credits.some((c) => c.holder && c.holder.email === `rc4.${RUN}@example.test`) && ret.leg_value_status === 'unresolved');
+  check('REWARDS OFF throughout: no credit exists for this guest and nothing implies payment or driver', !credits.some((c) => c.holder && c.holder.email === `rc4.${RUN}@example.test`) && ret.leg_value_status === 'unresolved', { credits_for_guest: credits.filter((c) => c.holder && c.holder.email === `rc4.${RUN}@example.test`).length, leg_value_status: ret.leg_value_status, credit_count_total: credits.length });
   await seed({ ...b, status: 'completed', return_time: '16:00' }); await sync(b, 'completed', 'completed');
   const re = await mine();
   const t2 = (await api('/preview/trip', { headers: { authorization: `Bearer ${tok}` } })).data.bookings.find((x) => x.leg_key === 'return');

@@ -1,0 +1,73 @@
+{
+  "run": "muufvqb0",
+  "base": "https://marau-stage1-preview-rc4.helpronline.workers.dev",
+  "evidence_label": "HOSTED SYNTHETIC, rewards OFF (isolated preview, API level; not staff-console browser acceptance)",
+  "passed": 16,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "PRECONDITION: rewards policy is OFF (script sets no policy)",
+      "ok": true
+    },
+    {
+      "name": "PRECONDITION: no approved allocation rule remains",
+      "ok": true
+    },
+    {
+      "name": "before: a normal booking is not in the attention queue",
+      "ok": true
+    },
+    {
+      "name": "NEEDS ATTENTION (rewards OFF): the uncertain return is listed with the facts to check",
+      "ok": true
+    },
+    {
+      "name": "a verdict without the itinerary basis is refused (400)",
+      "ok": true
+    },
+    {
+      "name": "a stale/wrong basis is refused (409 ITINERARY_CHANGED) and records nothing",
+      "ok": true
+    },
+    {
+      "name": "a request without a valid staff identity is refused (401)",
+      "ok": true
+    },
+    {
+      "name": "verification recorded: actor, timestamp, source unchanged",
+      "ok": true
+    },
+    {
+      "name": "source provenance and money fields identical before and after verification",
+      "ok": true
+    },
+    {
+      "name": "guest sees the return confirmed with a plain staff-checked flag; never who verified or the evidence",
+      "ok": true
+    },
+    {
+      "name": "the item leaves the attention queue",
+      "ok": true
+    },
+    {
+      "name": "REWARDS OFF throughout: no credit exists for this guest and nothing implies payment or driver",
+      "ok": true
+    },
+    {
+      "name": "INVALIDATION: a changed return time re-opens the item, clears the guest note and the status goes back to pending",
+      "ok": true
+    },
+    {
+      "name": "the old basis cannot be reused after the change (409)",
+      "ok": true
+    },
+    {
+      "name": "re-verification against the NEW basis works",
+      "ok": true
+    },
+    {
+      "name": "rewards still OFF at the end",
+      "ok": true
+    }
+  ]
+}
