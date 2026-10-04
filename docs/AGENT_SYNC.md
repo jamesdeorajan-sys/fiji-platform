@@ -1107,3 +1107,9 @@ failure. Three additional rows initially flagged as possibly-real
 - CORRECTION to the previous checkpoint: James's earlier desktop screenshot showed the return pickup as **Tuesday, Oct 13, no year**. The author's 2031 fixture (Mon 13 Oct 2031, 10:30 AM Fiji) is SEPARATE author evidence, not a record of James's screenshot.
 - RC3 unchanged: code `a7b8d3c`, Worker `615f1da8`, tag `marau-leg-clarity-rc3`; docs head `ed1522e`; no production change.
 - Hosted staff-console browser acceptance: BLOCKED by the rule against entering credentials into non-local pages (workers.dev host); no credential created, so nothing to revoke. Human checklist + consolidated gate (passed / outstanding / commercial C1-C8) in marau/docs/MARAU_RELEASE_GATE.md.
+
+## CHECKPOINT 2026-10-05 - Marau RC3 frozen; operator handoff + pilot release package PREPARED (Claude)
+- RC3 unchanged (code `a7b8d3c`, Worker `615f1da8`). Added docs/scripts only on `ceo/marau-leg-clarity`: `marau/docs/MARAU_STAFF_ACCEPTANCE_HANDOFF.md` (exact `/staff` URL, delivery rules, synthetic records, 7 steps, scoped cleanup), `marau/docs/MARAU_PILOT_RELEASE_PACKAGE.md` (pilot vs rewards-only requirements, candidate commits, migration order 0001-0006 engine then 0007-0043, rollback, post-release checks), `marau/scripts/staff_acceptance_credentials.mjs` (seed/teardown; tested against the LOCAL demo server only, not run on the hosted preview).
+- Shared preview admin token NOT rotated: dependents identified (author scripts only; no cron/route/service binding); rotating needs a redeploy = new Worker version ID with identical code, so only if the token was shared beyond James.
+- Findings for James: "Verify with evidence" is reachable only beside an earned reward credit (rewards-only; pilot O2); referral card still visible with rewards OFF (O1).
+- WAITING for human acceptance results and James's explicit release decision. No production deployment, real guest import or outbound message.
