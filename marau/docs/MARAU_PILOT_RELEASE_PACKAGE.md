@@ -57,7 +57,7 @@ Three things, for real guests, with a human in the loop:
 A release uses **exactly the approved candidate's `marau/worker` and `marau/migrations`** (RC4 `7df9958` if accepted; RC3 `a7b8d3c` lacks the P12 workflow and is therefore NOT sufficient for the pilot). Any further change (for example O1) is a new candidate with its own tests and acceptance.
 
 ## 4. Pre-release gates (all must be true before James is asked to decide)
-1. Human acceptance results received: hosted staff console (all seven steps) and physical phone (checklist rows 1-7).
+1. Human acceptance results received: hosted staff console (all eight steps, including the uncertain-return step) and physical phone (checklist rows 1-7).
 2. P2-P4 satisfied or consciously waived by James in writing: Nadi read endpoint deployed and verified; provenance path approved; status mapping confirmed with the source team (T6).
 3. P6/P7/P9 named: operators, owners, access-control choice, sender, text, consent wording.
 4. A dated, written release decision from James naming the commit `a7b8d3c` (or a successor).
