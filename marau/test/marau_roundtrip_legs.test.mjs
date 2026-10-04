@@ -103,11 +103,12 @@ function realEnv() {
   return { db, env: { DB: shim, ADMIN_TOKEN: 'real-admin', WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_ID: 'p' } };
 }
 async function createRealRoundTrip(real, over = {}) {
-  const ctx = { waitUntil() {} };
+  const jobs = []; const ctx = { waitUntil: (pr) => jobs.push(pr) };
   globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: 'w' }] }) });
   const res = await realWorker.fetch(new Request('https://real.test/bookings', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.9' },
     body: JSON.stringify({ guest_name: 'Synthetic Guest', guest_phone: '+15005550177', guest_email: 'real.rt@example.test', pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'sedan', quoted_currency: 'FJD', quoted_amount: 170, payment_method: 'cash',
       pickup_date: dayStr(3), pickup_time: '09:00', return_date: dayStr(10), return_time: '10:30', return_pickup_location: 'Sofitel Denarau lobby', trip_type: 'return', client_booking_ref: `FD-REAL${++n}`, ...over }) }), real.env, ctx);
+  await Promise.all(jobs); // let the real worker's background notification finish against the STUB, never the network
   globalThis.fetch = guardFetch;
   assert.equal(res.status, 201, await res.clone().text());
   return (await res.json()).booking_id;
@@ -221,7 +222,7 @@ test('RETURN MISSING OR REMOVED: incomplete return details create NO return leg 
   assert.deepEqual([legOf(rows, 'return').id, legOf(rows, 'return').status, legOf(rows, 'arrival').status], [retId, 'cancelled', 'confirmed']);
   assert.equal(legOf(rows, 'arrival').return_leg_state, 'missing_return_details');
   // restored: the same leg comes back
-  source.set({ ...partial });
+  source.set({ ...partial, return_date: dayStr(10), return_time: '10:30', return_pickup_location: 'Sofitel Denarau lobby' });
   await sync(env, partial, source);
   rows = await legs(env, partial);
   assert.deepEqual([rows.length, legOf(rows, 'return').id, legOf(rows, 'return').status], [2, retId, 'confirmed']);
@@ -467,9 +468,10 @@ test('LIVE ELIGIBILITY: flipping test_data to 0 by hand on demonstration records
     const env = makeEnv(live);
     for (const [t, nm] of [['staff-tok-ana', 'Ana (ops)']]) await call(env, '/preview/admin/staff-identities', { method: 'POST', headers: admin(env), body: { token: t, operator_name: nm } });
     await env.DB.prepare(`UPDATE marau_reward_policy SET mode = 'live', amount_cents = 1000, cap_cents_per_referrer = 2000, qualify_on = 'confirmed', require_payment = 'none', live_approved_by = 'James (test fixture)' WHERE id = 1`).run();
-    const sup = await call(env, '/preview/admin/suppliers', { method: 'POST', headers: staffH(env), body: { name: 'S', fulfilment_owner: 'Ana (ops)' } });
+    const sup = await call(env, '/preview/admin/suppliers', { method: 'POST', headers: staffH(env), body: { name: 'Synthetic Supplier', fulfilment_owner: 'Ana (ops)' } });
     await call(env, `/preview/admin/suppliers/${sup.data.supplier_id}/verify`, { method: 'POST', headers: staffH(env) });
-    const offer = await call(env, '/preview/admin/offers', { method: 'POST', headers: staffH(env), body: { supplier_id: sup.data.supplier_id, title: 'T', location: 'L', inclusions: ['x'], starts_at: inDays(6), book_by: inDays(5), expires_at: inDays(5, 12), capacity: 5, price_per_place_fjd: 120 } });
+    const offer = await call(env, '/preview/admin/offers', { method: 'POST', headers: staffH(env), body: { supplier_id: sup.data.supplier_id, title: 'Synthetic title', location: 'Synthetic place', inclusions: ['boat'], starts_at: inDays(6), book_by: inDays(5), expires_at: inDays(5, 12), capacity: 5, price_per_place_fjd: 120 } });
+    assert.equal(offer.status, 201, JSON.stringify(offer.data));
     await call(env, `/preview/admin/offers/${offer.data.offer_id}/publish`, { method: 'POST', headers: staffH(env) });
     const r = src(); const s = sourceOf(r);
     if (authenticated) s.reader.provenance = { kind: 'nadi_dispatch_api', origin: 'https://dispatch.example.test', authenticated: true, read_only: true };
@@ -481,7 +483,9 @@ test('LIVE ELIGIBILITY: flipping test_data to 0 by hand on demonstration records
     const session = await one(env, 'SELECT * FROM guest_sessions WHERE session_id = ?', rows[0].guest_session_id);
     const code = (await call(env, '/preview/referral', { headers: guestH(session.access_token) })).data.code;
     const f = await call(env, '/preview/bookings', { method: 'POST', body: { ...synthGuest({ leg_type: 'arrival' }), referral_code: code } });
-    const rid = (await call(env, `/preview/offers/${offer.data.offer_id}/request`, { method: 'POST', headers: guestH(f.data.access_token), body: { places: 1 } })).data.request.request_id;
+    const req = await call(env, `/preview/offers/${offer.data.offer_id}/request`, { method: 'POST', headers: guestH(f.data.access_token), body: { places: 1 } });
+    assert.equal(req.status, 201, JSON.stringify(req.data));
+    const rid = req.data.request.request_id;
     await call(env, `/preview/admin/offers/requests/${rid}/confirm`, { method: 'POST', headers: staffH(env), body: {} });
     return all(env, 'SELECT * FROM marau_reward_credits');
   };

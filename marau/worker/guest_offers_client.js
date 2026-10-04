@@ -100,8 +100,8 @@ export function createOffersClient(deps) {
   // Three SEPARATE numbers: the original fare, the credit, and what is now due. Quote history and payout are untouched.
   function fareHtml(fare) {
     if (!fare || !fare.referral_credit_fjd) return '';
-    return '<div class="panel" style="margin:10px 0 0;box-shadow:none"><p class="small muted" style="margin:0 0 4px">Your return transfer fare</p>' +
-      '<p class="small" style="margin:0">Original fare <b style="float:right">' + esc(formatFijiCurrency(fare.original_fare_fjd)) + '</b></p>' +
+    return '<div class="panel" style="margin:10px 0 0;box-shadow:none"><p class="small muted" style="margin:0 0 4px">' + (fare.scope === 'round_trip_booking' ? 'Your booking total (arrival and return together)' : 'Your return transfer fare') + '</p>' +
+      '<p class="small" style="margin:0">' + (fare.scope === 'round_trip_booking' ? 'Booking total' : 'Original fare') + ' <b style="float:right">' + esc(formatFijiCurrency(fare.original_fare_fjd)) + '</b></p>' +
       '<p class="small" style="margin:4px 0 0">Referral credit <b style="float:right">- ' + esc(formatFijiCurrency(fare.referral_credit_fjd)) + '</b></p>' +
       '<p style="margin:6px 0 0;font-weight:700">Amount due <span style="float:right">' + esc(formatFijiCurrency(fare.amount_due_fjd)) + '</span></p>' +
       '<p class="small muted" style="margin:6px 0 0">The credit is funded by Marau. Your original quote and your driver\'s payout are unchanged.' +

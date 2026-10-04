@@ -8,8 +8,11 @@
  *   arrival      airport -> elsewhere, no return fields
  *   departure    elsewhere -> airport, no return fields. Relationship to any arrival is UNPROVEN: a credit may land on it only
  *                with explicit staff confirmation (recorded as relationship_basis).
- *   round_trip   the return is held inside this one booking (return fields / trip_type 'return'). Its fare is one combined
- *                quote, so a credit cannot discount "just the return": UNSUPPORTED for credit.
+ *   round_trip   the return is held inside this one booking (return fields / trip_type 'return') and the booking does NOT start at
+ *                an airport: UNSUPPORTED (no way to say which leg is the holiday return).
+ *   (airport-origin round trip)  mapped to TWO Marau legs of the same source booking: the 'arrival' row (shape
+ *                round_trip_arrival_leg) and a derived 'return' row (round_trip_return_leg) - see deriveReturnLeg. The fare is ONE
+ *                combined quote with no return amount, so the return leg's VALUE stays unresolved until an approved allocation rule.
  *   other        airport-to-airport, or neither end an airport.
  *   unclassified a location is missing/blank, or the source row did not provide the itinerary fields at all (a round trip
  *                cannot be ruled out) - fail closed.
@@ -29,6 +32,28 @@ export function classifyLeg(pickupZone, destinationZone) {
   return 'other';
 }
 
+export function hasReturnFields(row) {
+  return present(row.return_date) || present(row.return_time) || present(row.return_pickup_location) || String(row.trip_type || '').toLowerCase() === 'return';
+}
+
+/**
+ * The return leg of an airport-origin round trip held in ONE source booking.
+ *   state 'none'                  no return fields
+ *   state 'unsupported_direction' return fields but the booking does not start at an airport
+ *   state 'details_missing'       return fields present but the return date/time is missing or unparseable: NO leg is guessed
+ *   state 'complete'              leg: { pickup_zone, pickup_basis, destination_zone, pickup_datetime_raw }
+ * The recorded return pickup location is kept; when absent the pickup is the outbound destination and is marked INFERRED.
+ */
+export function deriveReturnLeg(row, normalizePickupDatetime) {
+  if (!hasReturnFields(row)) return { state: 'none' };
+  if (classifyLeg(row.pickup_zone, row.destination_zone) !== 'arrival') return { state: 'unsupported_direction' };
+  if (!present(row.return_date) || !present(row.return_time)) return { state: 'details_missing' };
+  const raw = `${row.return_date.trim()}T${row.return_time.trim()}`;
+  try { normalizePickupDatetime(raw); } catch { return { state: 'details_missing' }; }
+  const recorded = present(row.return_pickup_location);
+  return { state: 'complete', leg: { pickup_zone: recorded ? row.return_pickup_location.trim() : row.destination_zone, pickup_basis: recorded ? 'recorded' : 'inferred_from_outbound_destination', destination_zone: row.pickup_zone, pickup_datetime_raw: raw } };
+}
+
 /** The full, explicit classification of a mirrored source row. credit_basis: 'none' | 'needs_staff_confirmation' | 'unsupported'. */
 export function classifyMirroredShape(row) {
   if (!present(row && row.pickup_zone) || !present(row && row.destination_zone)) {
@@ -37,9 +62,13 @@ export function classifyMirroredShape(row) {
   if (!ITINERARY_KEYS.some((k) => k in row)) {
     return { leg_type: 'unclassified', shape: 'itinerary_fields_not_provided', credit_basis: 'unsupported' };
   }
-  const hasReturn = present(row.return_date) || present(row.return_time) || present(row.return_pickup_location) || String(row.trip_type || '').toLowerCase() === 'return';
-  if (hasReturn) return { leg_type: 'round_trip', shape: 'round_trip_single_booking', credit_basis: 'unsupported' };
+  const hasReturn = hasReturnFields(row);
   const direction = classifyLeg(row.pickup_zone, row.destination_zone);
+  if (hasReturn && direction === 'arrival') {
+    const complete = Boolean(row.return_date && row.return_time && present(row.return_date) && present(row.return_time));
+    return { leg_type: 'arrival', shape: complete ? 'round_trip_arrival_leg' : 'round_trip_return_details_missing', credit_basis: 'none' };
+  }
+  if (hasReturn) return { leg_type: 'round_trip', shape: 'round_trip_single_booking', credit_basis: 'unsupported' };
   if (direction === 'arrival') return { leg_type: 'arrival', shape: 'one_way_arrival', credit_basis: 'none' };
   if (direction === 'departure') return { leg_type: 'departure', shape: 'standalone_departure', credit_basis: 'needs_staff_confirmation' };
   return { leg_type: 'other', shape: 'direction_not_a_holiday_leg', credit_basis: 'unsupported' };

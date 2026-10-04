@@ -23,7 +23,7 @@
 const DEFAULT_TIMEOUT_MS = 8000;
 
 // Only a plain positive decimal booking id ever reaches the URL path: no whitespace, signs, dots, slashes, queries.
-function bookingIdFromRef(sourceBookingRef) {
+export function bookingIdFromRef(sourceBookingRef) {
   if (typeof sourceBookingRef !== 'string' && typeof sourceBookingRef !== 'number') throw new Error('SOURCE_REF_NOT_A_BOOKING_ID');
   const text = String(sourceBookingRef);
   if (!/^[1-9][0-9]{0,14}$/.test(text)) throw new Error('SOURCE_REF_NOT_A_BOOKING_ID');
@@ -32,7 +32,7 @@ function bookingIdFromRef(sourceBookingRef) {
 
 // The source must be reached over https (loopback http is allowed only for in-process/local tests), with no embedded
 // credentials, query or fragment: the admin credential is only ever attached to requests for this exact origin + path.
-function validatedRoot(baseUrl) {
+export function validatedRoot(baseUrl) {
   let u;
   try { u = new URL(String(baseUrl)); } catch { throw new Error('SOURCE_BASE_URL_INVALID'); }
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);

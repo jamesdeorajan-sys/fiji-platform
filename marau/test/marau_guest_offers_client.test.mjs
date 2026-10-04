@@ -245,3 +245,13 @@ test('COPY / SHARE FEEDBACK: "Link copied" is said only when the copy really suc
   assert.deepEqual(t.toasts, ['Link copied.']);
   assert.deepEqual(await t.finish(), []);
 });
+
+test('fare for a ROUND TRIP held in one booking is labelled as the booking total (both legs), never as "return transfer fare"', () => {
+  const c = makeClient();
+  const html = c.fareHtml({ scope: 'round_trip_booking', original_fare_fjd: 170, booking_total_fjd: 170, referral_credit_fjd: 10, amount_due_fjd: 160 });
+  assert.match(html, /Your booking total \(arrival and return together\)/);
+  assert.match(html, /Booking total <b[^>]*>FJ\$170\.00/);
+  assert.match(html, /Amount due <span[^>]*>FJ\$160\.00/);
+  assert.equal(/return transfer fare/.test(html), false);
+  assert.match(c.fareHtml({ original_fare_fjd: 100, referral_credit_fjd: 10, amount_due_fjd: 90 }), /Your return transfer fare/, 'the single-leg wording is unchanged');
+});

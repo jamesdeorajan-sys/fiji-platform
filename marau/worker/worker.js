@@ -31,6 +31,7 @@ import { selectDefaultBooking } from './booking_selection.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
+import { createNadiBookingReader } from './nadi_booking_reader.js';
 import { confirmReservationAtSource } from './source_confirm.js';
 import { createNadiSourceClient } from './nadi_source_client.js';
 import { createExperienceOffers } from './experience_offers.js';
@@ -492,6 +493,15 @@ async function handleCreateBooking(request, env) {
  * handleRequestDeal), and `source_movement_id` so the shadow-leg source
  * this deal traces back to is never lost ("preserved source lineage").
  */
+// What a guest may see of a booking row: never the operator-side figures (settlement / commission), the source provenance, the
+// allocation rule or the sync notes.
+const GUEST_HIDDEN_BOOKING_FIELDS = ['source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'source_kind', 'source_origin', 'source_authenticated', 'leg_value_rule_id', 'leg_note', 'parent_booking_id'];
+function guestBookingView(b) {
+  const out = { ...b };
+  for (const k of GUEST_HIDDEN_BOOKING_FIELDS) delete out[k];
+  return out;
+}
+
 async function handleGetTrip(request, env) {
   const session = await requireGuestSession(request, env);
   if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
@@ -519,7 +529,7 @@ async function handleGetTrip(request, env) {
     guest_email: session.guest_email,
     guest_phone: session.guest_phone,
     whatsapp_available: session.whatsapp_available === 1 ? true : session.whatsapp_available === 0 ? false : null,
-    bookings: await (async () => { await referrals.reconcileApplications(env); return Promise.all(bookings.map(async (b) => ({ ...b, fare: await referrals.fareFor(env, b.id) }))); })(),
+    bookings: await (async () => { await referrals.reconcileApplications(env); return Promise.all(bookings.map(async (b) => ({ ...guestBookingView(b), fare: await referrals.fareFor(env, b.id) }))); })(),
     offer_requests: await experience.offerRequestsForSession(env, session.session_id),
     deal_requests: dealRequests.map((r) => ({
       request_id: r.request_id,
@@ -1853,11 +1863,26 @@ async function syntheticSourceReader(env, sourceBookingRef) {
     quoted_amount: row.quoted_amount,
     assigned_driver_id: row.assigned_driver_id,
     status: row.status,
+    // the REAL schema's itinerary and amount fields (null when the synthetic booking has none)
+    return_date: row.return_date ?? null,
+    return_time: row.return_time ?? null,
+    return_pickup_location: row.return_pickup_location ?? null,
+    quoted_currency: row.quoted_currency ?? 'FJD',
+    settlement_amount_fjd: row.settlement_amount_fjd ?? null,
+    commission_base_fjd: row.commission_base_fjd ?? null,
   };
 }
 
+// The mirror's reader. The REAL read-only adapter is used only when the integration is explicitly configured (it is not, anywhere);
+// otherwise the synthetic reader is used and every row is recorded as synthetic provenance.
 function syncDeps(env) {
-  return { createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader: (ref) => syntheticSourceReader(env, ref) };
+  let reader;
+  if (env.NADI_SOURCE_BASE_URL && env.NADI_SOURCE_ADMIN_TOKEN) {
+    reader = createNadiBookingReader({ baseUrl: env.NADI_SOURCE_BASE_URL, adminToken: env.NADI_SOURCE_ADMIN_TOKEN, fetchImpl: env.NADI_SOURCE_FETCH });
+  } else {
+    reader = (ref) => syntheticSourceReader(env, ref);
+  }
+  return { createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader };
 }
 
 async function handleAdminSeedSyntheticSource(request, env) {
@@ -1875,13 +1900,16 @@ async function handleAdminSeedSyntheticSource(request, env) {
   await env.DB
     .prepare(
       `INSERT INTO marau_synthetic_source_bookings
-        (source_booking_ref, source_id, guest_email, guest_phone, whatsapp_available, pickup_zone, destination_zone, vehicle_type, pickup_date, pickup_time, quoted_amount, assigned_driver_id, status, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (source_booking_ref, source_id, guest_email, guest_phone, whatsapp_available, pickup_zone, destination_zone, vehicle_type, pickup_date, pickup_time, quoted_amount, assigned_driver_id, status, updated_at,
+         return_date, return_time, return_pickup_location, quoted_currency, settlement_amount_fjd, commission_base_fjd)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(source_booking_ref) DO UPDATE SET
          source_id = excluded.source_id, guest_email = excluded.guest_email, guest_phone = excluded.guest_phone,
          whatsapp_available = excluded.whatsapp_available, pickup_zone = excluded.pickup_zone, destination_zone = excluded.destination_zone,
          vehicle_type = excluded.vehicle_type, pickup_date = excluded.pickup_date, pickup_time = excluded.pickup_time,
-         quoted_amount = excluded.quoted_amount, assigned_driver_id = excluded.assigned_driver_id, status = excluded.status, updated_at = excluded.updated_at`
+         quoted_amount = excluded.quoted_amount, assigned_driver_id = excluded.assigned_driver_id, status = excluded.status, updated_at = excluded.updated_at,
+         return_date = excluded.return_date, return_time = excluded.return_time, return_pickup_location = excluded.return_pickup_location,
+         quoted_currency = excluded.quoted_currency, settlement_amount_fjd = excluded.settlement_amount_fjd, commission_base_fjd = excluded.commission_base_fjd`
     )
     .bind(
       body.source_booking_ref,
@@ -1897,7 +1925,13 @@ async function handleAdminSeedSyntheticSource(request, env) {
       body.quoted_amount ?? null,
       body.assigned_driver_id ?? null,
       body.status,
-      now
+      now,
+      body.return_date ?? null,
+      body.return_time ?? null,
+      body.return_pickup_location ?? null,
+      body.quoted_currency ?? 'FJD',
+      body.settlement_amount_fjd ?? null,
+      body.commission_base_fjd ?? null
     )
     .run();
 

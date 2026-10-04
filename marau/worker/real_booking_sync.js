@@ -173,7 +173,7 @@
  */
 
 import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
-import { classifyMirroredShape } from './leg_type.js';
+import { classifyMirroredShape, deriveReturnLeg } from './leg_type.js';
 
 // Every real event_type this round directly confirmed exists in the
 // current REPOSITORY source (30c6187) — repository inspection, not proof
@@ -517,6 +517,77 @@ async function applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, 
   return { ok: true, applied: true, marau_booking_id: existingBookingRow.id, status: marauStatus };
 }
 
+const SYNTHETIC_PROVENANCE = Object.freeze({ kind: 'synthetic', origin: 'preview-d1', authenticated: false, read_only: true });
+const toCents = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100));
+
+/**
+ * LEG MIRRORING + PROVENANCE, run inside the claim after the guarded write of the booking's primary (arrival) row - including when
+ * that row is terminal-locked (an arrival the source reports 'completed' must not stop a later change to the upcoming return).
+ *
+ *   - Records HOW the row arrived (source_kind / source_origin / source_authenticated). test_data is an OUTPUT of provenance: 0 only
+ *     for an authenticated source on an approved integration path (env MARAU_REAL_SOURCE_APPROVED), never an input anyone can flip.
+ *   - Preserves the original booking total, currency and operator-side figures verbatim, in cents, on every leg.
+ *   - An airport-origin booking with complete return fields gets a derived 'return' leg: SAME source_booking_ref, leg_key 'return',
+ *     unique per (source_booking_ref, leg_key) so a repeated sync cannot duplicate it. Return fields that are missing/unparseable
+ *     create NO leg; removing them later CANCELS the same leg (never deletes or duplicates it); restoring them revives it.
+ *   - The return leg's value is NOT the whole quote and NOT a share of it: it stays 'unresolved' until an approved allocation rule.
+ * Every write is gated on STILL holding the live claim, inside the same statement.
+ */
+async function mirrorLegs(env, parentId, sourceBooking, sourceBookingRef, { nowIso, normalizePickupDatetime, marauStatus, claimToken, provenance }) {
+  const now = nowIso();
+  const prov = provenance || SYNTHETIC_PROVENANCE;
+  const testData = prov.authenticated === true && env.MARAU_REAL_SOURCE_APPROVED === '1' ? 0 : 1;
+  const shape = classifyMirroredShape(sourceBooking);
+  const rt = deriveReturnLeg(sourceBooking, normalizePickupDatetime);
+  const total = toCents(sourceBooking.quoted_amount);
+  const live = `EXISTS (SELECT 1 FROM marau_real_booking_sync_claims WHERE source_booking_ref = ? AND claim_token = ? AND expires_at > ?)`;
+  const liveArgs = [sourceBookingRef, claimToken, now];
+  const parent = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ?').bind(parentId).first();
+  const existingReturn = await env.DB.prepare(`SELECT * FROM marau_test_bookings WHERE source_booking_ref = ? AND leg_key = 'return'`).bind(sourceBookingRef).first();
+
+  const hasLegs = rt.state === 'complete' || rt.state === 'details_missing' || Boolean(existingReturn);
+  const returnState = rt.state === 'complete' ? 'present' : (rt.state === 'details_missing' || (rt.state === 'none' && existingReturn)) ? 'missing_return_details' : rt.state === 'unsupported_direction' ? 'unsupported_direction' : 'none';
+  const common = [total, sourceBooking.quoted_currency ?? null, toCents(sourceBooking.settlement_amount_fjd), toCents(sourceBooking.commission_base_fjd), prov.kind, prov.origin, prov.authenticated === true ? 1 : 0, testData];
+  await env.DB.prepare(
+    `UPDATE marau_test_bookings SET leg_key = ?, return_leg_state = ?, source_total_cents = ?, source_currency = ?, source_settlement_fjd_cents = ?, source_commission_base_fjd_cents = ?,
+       source_kind = ?, source_origin = ?, source_authenticated = ?, test_data = ? WHERE id = ? AND ${live}`
+  ).bind(hasLegs ? 'arrival' : null, returnState, ...common, parentId, ...liveArgs).run();
+  if (testData === 0) await env.DB.prepare('UPDATE guest_sessions SET test_data = 0 WHERE session_id = ?').bind(parent.guest_session_id).run();
+
+  if (rt.state === 'complete') {
+    const leg = rt.leg;
+    const pickupDatetime = normalizePickupDatetime(leg.pickup_datetime_raw);
+    const sourceCancelled = sourceBooking.status === 'cancelled';
+    const upcoming = new Date(pickupDatetime).getTime() > Date.now();
+    const status = sourceCancelled ? 'cancelled' : marauStatus;
+    const note = !sourceCancelled && sourceBooking.status === 'completed' && upcoming
+      ? 'source_status_completed_while_return_upcoming (booking-level completion is treated as the outbound leg; unconfirmed by the source)' : null;
+    // creation: INSERT OR IGNORE keyed by the unique (source_booking_ref, leg_key) identity and by client_booking_ref
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO marau_test_bookings (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at,
+         source_booking_ref, source_sync_owned, leg_key, parent_booking_id, leg_type, leg_shape, pickup_basis, leg_value_status)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 0, 'return', ?, 'return', 'round_trip_return_leg', ?, 'unresolved' WHERE ${live}`
+    ).bind(`REAL-SYNC-${sourceBookingRef}-RETURN`, parent.guest_session_id, parent.guest_email, parent.guest_phone, leg.pickup_zone, leg.destination_zone, sourceBooking.vehicle_type, pickupDatetime, status, testData, now, now,
+      sourceBookingRef, parentId, leg.pickup_basis, ...liveArgs).run();
+    // reconcile from the FRESH read, every time (idempotent): dates, locations, status, provenance, totals
+    await env.DB.prepare(
+      `UPDATE marau_test_bookings SET pickup_zone = ?, destination_zone = ?, vehicle_type = ?, pickup_datetime = ?, status = ?, pickup_basis = ?, leg_note = ?, updated_at = ?,
+         source_status = ?, source_assigned_driver_id = ?, sync_state = 'IN_LATEST_FEED', parent_booking_id = ?,
+         leg_value_status = CASE WHEN source_total_cents IS NOT ? THEN 'unresolved' ELSE COALESCE(leg_value_status, 'unresolved') END,
+         leg_value_cents = CASE WHEN source_total_cents IS NOT ? THEN NULL ELSE leg_value_cents END,
+         leg_value_rule_id = CASE WHEN source_total_cents IS NOT ? THEN NULL ELSE leg_value_rule_id END,
+         source_total_cents = ?, source_currency = ?, source_settlement_fjd_cents = ?, source_commission_base_fjd_cents = ?, source_kind = ?, source_origin = ?, source_authenticated = ?, test_data = ?
+       WHERE source_booking_ref = ? AND leg_key = 'return' AND ${live}`
+    ).bind(leg.pickup_zone, leg.destination_zone, sourceBooking.vehicle_type, pickupDatetime, status, leg.pickup_basis, note, now,
+      sourceBooking.status, sourceBooking.assigned_driver_id != null ? String(sourceBooking.assigned_driver_id) : null, parentId, total, total, total, ...common, sourceBookingRef, ...liveArgs).run();
+  } else if (existingReturn && existingReturn.status !== 'cancelled') {
+    await env.DB.prepare(
+      `UPDATE marau_test_bookings SET status = 'cancelled', leg_note = 'return_details_removed_or_incomplete', updated_at = ?, source_status = ?
+       WHERE source_booking_ref = ? AND leg_key = 'return' AND ${live}`
+    ).bind(now, sourceBooking.status, sourceBookingRef, ...liveArgs).run();
+  }
+}
+
 /**
  * The single, shared claim-acquire → fresh-read → find/create-or-apply
  * → release flow, used identically by both the event-triggered and
@@ -533,8 +604,10 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
   try {
     // FRESH READ — the entire point of this round's fix. Never the
     // caller's own attached payload.
-    const sourceBooking = await reader(sourceBookingRef);
+    let sourceBooking;
+    try { sourceBooking = await reader(sourceBookingRef); } catch (err) { return { ok: false, reason: 'SOURCE_READ_FAILED', detail: String(err && err.message ? err.message : err).slice(0, 120) }; }
     if (!sourceBooking || sourceBooking.id == null) return { ok: false, reason: 'SOURCE_BOOKING_NOT_FOUND' };
+    const legDeps = { nowIso, normalizePickupDatetime, marauStatus: null, claimToken: claim.claimToken, provenance: deps.provenance || reader.provenance || null };
 
     if (provenance.expectedBookingId != null && String(provenance.expectedBookingId) !== String(sourceBooking.id)) {
       return { ok: false, reason: 'BOOKING_EVENT_MISMATCH' };
@@ -547,6 +620,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
     const tripDetails = validateTripDetails(sourceBooking, normalizePickupDatetime);
     if (tripDetails.reason) return { ok: false, reason: tripDetails.reason };
     const { pickupDatetime, quotedAmount } = tripDetails;
+    legDeps.marauStatus = marauStatus;
 
     const existingLink = await env.DB.prepare('SELECT * FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(sourceBookingRef).first();
 
@@ -554,6 +628,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
       const existingBookingRow = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE id = ? AND source_sync_owned = 1').bind(existingLink.marau_booking_id).first();
       if (!existingBookingRow) return { ok: false, reason: 'LINKED_MARAU_BOOKING_MISSING' };
       const applied = await applyFreshRead(env, existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance, sourceBookingRef, claimToken: claim.claimToken });
+      if (applied.ok) await mirrorLegs(env, existingBookingRow.id, sourceBooking, sourceBookingRef, legDeps);
       return { ...applied, claim_took_over: claim.tookOver };
     }
 
@@ -568,6 +643,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
     });
     if (!created.ok) return created;
     if (created.created) {
+      await mirrorLegs(env, created.existingBookingRow.id, sourceBooking, sourceBookingRef, legDeps);
       return { ok: true, created: true, session: created.session, marau_booking_id: created.existingBookingRow.id, link_offer: created.link_offer, status: marauStatus, claim_took_over: claim.tookOver };
     }
 
@@ -576,6 +652,7 @@ async function refreshRealBooking(env, sourceBookingRef, provenance, { deps }) {
     // attempt's own payload) through the same atomic, claim-verified
     // path.
     const applied = await applyFreshRead(env, created.existingBookingRow, sourceBooking, { nowIso, marauStatus, pickupDatetime, quotedAmount, provenance, sourceBookingRef, claimToken: claim.claimToken });
+    if (applied.ok) await mirrorLegs(env, created.existingBookingRow.id, sourceBooking, sourceBookingRef, legDeps);
     return { ...applied, recovered: true, created: false, session: created.session, claim_took_over: claim.tookOver };
   } finally {
     await releaseBookingClaim(env, sourceBookingRef, claim.claimToken);

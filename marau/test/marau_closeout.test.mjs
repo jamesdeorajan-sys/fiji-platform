@@ -221,7 +221,10 @@ async function mirror(env, r) {
 test('MIRROR SHAPES: the classifier reports each representative source shape explicitly - direction is never equated with a round-trip relationship', () => {
   const cases = [
     ['one-way arrival', row(), { leg_type: 'arrival', shape: 'one_way_arrival', credit_basis: 'none' }],
-    ['arrival AND return held in ONE booking', row({ trip_type: 'return', return_date: '2031-10-12', return_time: '10:00', return_pickup_location: 'Denarau' }), { leg_type: 'round_trip', shape: 'round_trip_single_booking', credit_basis: 'unsupported' }],
+    // SUPERSEDED in the round-trip round (RC1 refused this shape): an airport-origin round trip is now mapped to an arrival leg + a derived return leg
+    ['arrival AND return held in ONE booking (airport-origin, complete return details)', row({ trip_type: 'return', return_date: '2031-10-12', return_time: '10:00', return_pickup_location: 'Denarau' }), { leg_type: 'arrival', shape: 'round_trip_arrival_leg', credit_basis: 'none' }],
+    ['the same with the return time missing', row({ trip_type: 'return', return_date: '2031-10-12', return_time: null }), { leg_type: 'arrival', shape: 'round_trip_return_details_missing', credit_basis: 'none' }],
+    ['a round trip that does NOT start at an airport stays unsupported', row({ pickup_zone: 'Denarau', destination_zone: 'Nadi Airport', return_date: '2031-10-12', return_time: '10:00' }), { leg_type: 'round_trip', shape: 'round_trip_single_booking', credit_basis: 'unsupported' }],
     ['round trip, direction not airport related', row({ pickup_zone: 'Denarau', destination_zone: 'Coral Coast', return_date: '2031-10-12' }), { leg_type: 'round_trip', shape: 'round_trip_single_booking', credit_basis: 'unsupported' }],
     ['standalone hotel-to-airport departure', row({ pickup_zone: 'Denarau', destination_zone: 'Nadi Airport' }), { leg_type: 'departure', shape: 'standalone_departure', credit_basis: 'needs_staff_confirmation' }],
     ['a field that LOOKS like a link to an original booking is ignored (the source has no such contract)', row({ pickup_zone: 'Denarau', destination_zone: 'Nadi Airport', original_booking_id: 123, parent_booking_ref: 'x' }), { leg_type: 'departure', shape: 'standalone_departure', credit_basis: 'needs_staff_confirmation' }],
@@ -242,7 +245,8 @@ test('MIRROR SHAPES: through the real sync path each shape lands with its leg ty
   const env = makeEnv();
   const shapes = [
     ['one-way arrival', row(), 'arrival', 'one_way_arrival'],
-    ['round trip in one booking', row({ trip_type: 'return', return_date: '2031-10-12', return_time: '10:00' }), 'round_trip', 'round_trip_single_booking'],
+    ['round trip in one booking (airport-origin)', row({ trip_type: 'return', return_date: '2031-10-12', return_time: '10:00' }), 'arrival', 'round_trip_arrival_leg'],
+    ['round trip NOT starting at an airport', row({ pickup_zone: 'Denarau', destination_zone: 'Nadi Airport', return_date: '2031-10-12', return_time: '10:00' }), 'round_trip', 'round_trip_single_booking'],
     ['standalone departure', row({ pickup_zone: 'Denarau', destination_zone: 'Nadi Airport' }), 'departure', 'standalone_departure'],
     ['airport to airport', row({ pickup_zone: 'Nadi Airport', destination_zone: 'Nausori Airport' }), 'other', 'direction_not_a_holiday_leg'],
   ];
@@ -262,7 +266,7 @@ test('MIRROR SHAPES: through the real sync path each shape lands with its leg ty
   await mirror(env, arr);
   const updated = { ...arr, trip_type: 'return', return_date: '2031-10-12', return_time: '10:00' };
   await syncRealBookingEvent(env, arr.source_booking_ref, { event_type: 'accepted', new_status: 'accepted', source_event_id: ++ev, booking_id: arr.id }, { createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader: sourceOf(updated).reader });
-  assert.deepEqual(Object.values(await one(env, 'SELECT leg_type, leg_shape FROM marau_test_bookings WHERE source_booking_ref = ?', arr.source_booking_ref)), ['round_trip', 'round_trip_single_booking']);
+  assert.deepEqual(Object.values(await one(env, 'SELECT leg_type, leg_shape FROM marau_test_bookings WHERE source_booking_ref = ?', arr.source_booking_ref)), ['arrival', 'round_trip_arrival_leg']);
 });
 
 test('CREDIT ELIGIBILITY BY SHAPE: a declared Marau return applies; a standalone departure needs explicit staff confirmation (recorded); a round trip and an unclassified row never apply', async () => {
