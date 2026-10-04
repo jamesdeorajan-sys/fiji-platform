@@ -449,6 +449,12 @@ export default {
       return handleAdminManualAssign(request, env);
     }
 
+    // ── Marau integration: read-only single-booking read WITH the itinerary fields (return_*), which the list endpoint omits ──
+    const bookingReadMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)$/);
+    if (request.method === 'GET' && bookingReadMatch) {
+      return handleAdminReadBooking(request, env, Number(bookingReadMatch[1]));
+    }
+
     // ── milestone38: confirmation attempt identity readback (no guest data) ──
     const bookingConfirmationMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/confirmation$/);
     if (request.method === 'GET' && bookingConfirmationMatch) {
@@ -2345,6 +2351,29 @@ function confirmationIdentityUnsupportedResponse(err) {
     return json({ ok: false, error: 'CONFIRMATION_ATTEMPT_IDENTITY_UNSUPPORTED', detail: 'migration milestone38-confirmation-attempt-identity.sql has not been applied' }, 501);
   }
   return null;
+}
+
+// Read-only, admin-gated single-booking read for the Marau mirror. It returns exactly the fields a mirror needs to represent a trip
+// faithfully: both legs of a round trip (the return is held on the SAME row as return_date / return_time / return_pickup_location),
+// the single quoted amount and settlement figures, status and assigned driver. There is no separate return amount in this schema -
+// consumers must not invent one. No guest name, no notes, no attribution columns, no driver contact data. Purely additive.
+async function handleAdminReadBooking(request, env, bookingId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+  let row;
+  try {
+    row = await env.DB.prepare(
+      `SELECT id, client_booking_ref, status, assigned_driver_id, guest_phone, guest_email, pickup_zone, destination_zone, vehicle_type,
+              quoted_currency, quoted_amount, settlement_amount_fjd, commission_base_fjd,
+              pickup_date, pickup_time, return_date, return_time, return_pickup_location, flight_number, created_at
+       FROM bookings WHERE id = ?`
+    ).bind(bookingId).first();
+  } catch (err) {
+    console.error('[nadi] booking read failed', err);
+    return json({ ok: false, error: 'Read failed.' }, 500);
+  }
+  if (!row) return json({ ok: false, error: 'Booking not found.' }, 404);
+  return json({ ok: true, booking: row }, 200);
 }
 
 async function readConfirmationState(env, bookingId) {
