@@ -41,6 +41,8 @@ try {
   await api(`/preview/admin/suppliers/${sup.data.supplier_id}/verify`, { method: 'POST', headers: S(ANA) });
   const mkOffer = async (title, cap = 20) => { const o = await api('/preview/admin/offers', { method: 'POST', headers: S(ANA), body: { supplier_id: sup.data.supplier_id, title: `${title} ${RUN}`, location: 'Mamanuca reef (synthetic)', inclusions: ['boat'], starts_at: inDays(6), book_by: inDays(5), expires_at: inDays(5, 12), capacity: cap, price_per_place_fjd: 120, cost_per_place_fjd: 80 } }); await api(`/preview/admin/offers/${o.data.offer_id}/publish`, { method: 'POST', headers: S(ANA) }); return o.data.offer_id; };
   const offer = await mkOffer('Synthetic snorkel');
+  // the preview DB is shared across runs: start with NO approved allocation rule (retire any left by an earlier run)
+  for (const r of (await api('/preview/admin/rewards/allocation-rules', { headers: S(ANA) })).data.rules.filter((x) => x.status === 'approved')) await api(`/preview/admin/rewards/allocation-rules/${r.rule_id}/retire`, { method: 'POST', headers: S(ANA), body: { note: 'reset before a hosted run' } });
 
   // ---- 1. one source booking -> two legs
   const b1 = sourceBody();
@@ -62,7 +64,8 @@ try {
   const rid = (await api(`/preview/offers/${offer}/request`, { method: 'POST', headers: G(friend.data.access_token), body: { places: 1 } })).data.request.request_id;
   const act = (a, b = {}) => api(`/preview/admin/offers/requests/${rid}/${a}`, { method: 'POST', headers: S(ANA), body: b });
   await act('confirm'); await act('payment', { event: 'paid', amount_fjd: 120, method: 'cash', event_key: `rt-${RUN}` }); await act('fulfil');
-  let credits = (await api('/preview/admin/rewards/credits', { headers: S(ANA) })).data.credits.filter((c) => c.status === 'earned');
+  // the preview DB is shared across runs: pick THIS run's guest's credit by its holder, never someone else's
+  let credits = (await api('/preview/admin/rewards/credits', { headers: S(ANA) })).data.credits.filter((c) => c.status === 'earned' && c.holder.email === b1.guest_email);
   const credit = credits[0];
   check('a qualifying referred purchase earns exactly one credit for the source-booking guest', credits.length === 1);
   const apply = (bookingId, tok = ANA) => api(`/preview/admin/rewards/credits/${credit.credit_id}/apply`, { method: 'POST', headers: S(tok), body: { booking_id: bookingId } });
@@ -110,7 +113,8 @@ try {
 
   // ---- 6. the human-led deals pilot
   const offer2 = await mkOffer('Synthetic sunset', 1);
-  const edDate = '2031-04-04'; const edId = `${edDate}:morning`; const E = encodeURIComponent(edId);
+  // unique per run (the preview DB is shared)
+  const edDate = new Date(Date.UTC(2032, 0, 1) + (parseInt(RUN, 36) % 3000) * 86400000).toISOString().slice(0, 10); const edId = `${edDate}:morning`; const E = encodeURIComponent(edId);
   await api('/preview/admin/editions', { method: 'POST', headers: S(ANA), body: { fiji_date: edDate, slot: 'morning', offer_ids: [offer, offer2] } });
   await api(`/preview/admin/editions/${E}/publish`, { method: 'POST', headers: S(ANA) });
   const rcpt = await api('/preview/bookings', { method: 'POST', body: { guest_email: `rt.rcpt.${RUN}@example.test`, guest_phone: `+1500558${String(Math.floor(1000 + Math.random() * 8999))}`, whatsapp_available: true, pickup_zone: 'Nadi Airport', destination_zone: 'Denarau', vehicle_type: 'Sedan', quoted_amount: 80, pickup_datetime: inDays(2).slice(0, 16) } });

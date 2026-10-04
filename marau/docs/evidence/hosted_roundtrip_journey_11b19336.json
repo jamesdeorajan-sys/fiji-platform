@@ -1,9 +1,9 @@
 {
-  "run": "mutrcl3l",
+  "run": "mutrehjh",
   "base": "https://marau-stage1-preview-legs.helpronline.workers.dev",
   "evidence_label": "HOSTED SYNTHETIC (isolated preview)",
-  "passed": 22,
-  "failed": 7,
+  "passed": 29,
+  "failed": 0,
   "checks": [
     {
       "name": "synthetic source seeded with the REAL schema field names",
@@ -16,24 +16,24 @@
         "ok": true,
         "created": true,
         "session": {
-          "session_id": "gs_5abf2a71-0bd2-4e92-b1cd-5d3d4ce73751",
-          "guest_contact_key": "+15005568060",
-          "guest_email": "rt.mutrcl3l.1@example.test",
-          "guest_phone": "+15005568060",
+          "session_id": "gs_7e73e7bc-db53-441f-b0c5-68fa03838161",
+          "guest_contact_key": "+15005562380",
+          "guest_email": "rt.mutrehjh.1@example.test",
+          "guest_phone": "+15005562380",
           "whatsapp_available": null,
-          "access_token": "tok_21db0ee7-b2bd-4b28-8c9c-dcade80c1a1f",
+          "access_token": "tok_3bf4c80c-73b9-4746-adba-3bf5872e4a58",
           "access_token_revoked": 0,
           "test_data": 1,
-          "created_at": "2026-10-04T11:48:57.760Z",
+          "created_at": "2026-10-04T11:50:27.009Z",
           "last_accessed_at": null
         },
-        "marau_booking_id": 73,
+        "marau_booking_id": 135,
         "link_offer": null,
         "status": "confirmed",
         "claim_took_over": false,
         "mock_staff_alert": {
-          "message": "New transfer reservation 45361451 awaiting confirmation. Reply or tap the review link to confirm once vehicle/driver is arranged.",
-          "review_link": "https://marau-stage1-preview-legs.helpronline.workers.dev/preview/staff/review?token=review_6124b69a-b2c2-447c-9b5f-e098d10c2918"
+          "message": "New transfer reservation 46248451 awaiting confirmation. Reply or tap the review link to confirm once vehicle/driver is arranged.",
+          "review_link": "https://marau-stage1-preview-legs.helpronline.workers.dev/preview/staff/review?token=review_b1782b42-7c64-428d-8ab8-e962abba1354"
         },
         "demonstration_data": true
       }
@@ -60,23 +60,23 @@
     },
     {
       "name": "a qualifying referred purchase earns exactly one credit for the source-booking guest",
-      "ok": false
+      "ok": true
     },
     {
       "name": "RETURN_VALUE_UNRESOLVED: no approved allocation rule -> refused, credit stays earned",
-      "ok": false
+      "ok": true
     },
     {
       "name": "staff listing shows the return as a target with NO invented fare, and the source total/settlement preserved",
-      "ok": false
+      "ok": true
     },
     {
       "name": "the arrival leg is never a credit target",
-      "ok": false
+      "ok": true
     },
     {
       "name": "a PROPOSED rule changes nothing",
-      "ok": false
+      "ok": true
     },
     {
       "name": "approval is attributed and can only be a synthetic-preview approval (owner basis ignored)",
@@ -128,11 +128,11 @@
     },
     {
       "name": "PILOT: prepare is refused before a review",
-      "ok": false
+      "ok": true
     },
     {
       "name": "PILOT: review recorded by a named staff member; recipients prepared; nothing sent",
-      "ok": false
+      "ok": true
     },
     {
       "name": "PILOT: manual send then reply recorded, idempotent, original operator kept",
