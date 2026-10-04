@@ -181,3 +181,9 @@ test('FORM direction guard (client): a contradictory direction is explained befo
   assert.equal(c.legDirectionProblem('arrival', 'Nadi Airport', 'Denarau'), null);
   assert.equal(c.legDirectionProblem('arrival', 'Denarau', 'Coral Coast'), null, 'a journey with no airport end is not guessed at');
 });
+
+test('FORM: the amount field is labelled for what is stored - the fare of the leg being created (arrival fare; return fare for a standalone return), in FJD', () => {
+  assert.match(GUEST_APP_HTML, /id="f-amount-label">Arrival fare \(FJD\)</);
+  assert.match(GUEST_APP_HTML, /Return fare \(FJD\)/);
+  assert.equal(GUEST_APP_HTML.includes('Quoted amount'), false);
+});

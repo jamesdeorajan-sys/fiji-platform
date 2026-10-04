@@ -260,7 +260,7 @@ ${SHARED_STYLE}
         </div>
         <div class="row">
           <div><label for="f-vehicle">Vehicle type</label><input id="f-vehicle" required value="Sedan"></div>
-          <div><label for="f-amount">Quoted amount</label><input id="f-amount" type="number" min="0" step="0.01" required value="45"></div>
+          <div><label for="f-amount" id="f-amount-label">Arrival fare (FJD)</label><input id="f-amount" type="number" min="0" step="0.01" required value="45"></div>
         </div>
         <label for="f-when" id="f-when-label">Arrival pickup date &amp; time (Fiji time)</label>
         <input id="f-when" type="datetime-local" required>
@@ -269,7 +269,7 @@ ${SHARED_STYLE}
           <input id="f-return-when" type="datetime-local">
           <label for="f-return-pickup">Return pickup location (the hotel)</label>
           <input id="f-return-pickup" placeholder="e.g. Sofitel Denarau lobby">
-          <label for="f-return-amount">Return fare</label>
+          <label for="f-return-amount">Return fare (FJD)</label>
           <input id="f-return-amount" type="number" min="0" step="0.01">
         </div>
         <button class="btn btn-primary btn-block" type="submit">Save booking request</button>
@@ -751,6 +751,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     if (leg !== 'return' && isAirportName(ds.value) && !isAirportName(pk.value)) { var t2 = pk.value; pk.value = ds.value; ds.value = t2; swapped = true; }
     var isReturn = leg === 'return';
     document.getElementById('f-when-label').textContent = isReturn ? 'Return pickup date & time (Fiji time)' : 'Arrival pickup date & time (Fiji time)';
+    document.getElementById('f-amount-label').textContent = isReturn ? 'Return fare (FJD)' : 'Arrival fare (FJD)';
     document.getElementById('f-pickup-label').textContent = isReturn ? 'Pickup location (the hotel)' : 'Pickup location';
     document.getElementById('f-dest-label').textContent = isReturn ? 'Destination (the airport)' : 'Destination';
     document.getElementById('roundTripFields').style.display = leg === 'round_trip' ? 'block' : 'none';
