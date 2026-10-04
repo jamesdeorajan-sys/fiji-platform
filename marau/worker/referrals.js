@@ -88,17 +88,20 @@ export function createReferrals(deps) {
   // ------------------------------------------------------------- codes / links
 
   async function ensureCode(env, sessionId) {
-    const existing = await env.DB.prepare('SELECT code FROM marau_referral_codes WHERE guest_session_id = ?').bind(sessionId).first();
+    // A merged guest may hold several codes (every one keeps working); the OLDEST is the one they are shown.
+    const oldest = () => env.DB.prepare('SELECT code FROM marau_referral_codes WHERE guest_session_id = ? ORDER BY created_at, code LIMIT 1').bind(sessionId).first();
+    const existing = await oldest();
     if (existing) return existing.code;
     for (let i = 0; i < 6; i += 1) {
       const code = generateReferralCode();
       try {
-        await env.DB.prepare('INSERT INTO marau_referral_codes (code, guest_session_id, created_at) VALUES (?, ?, ?)').bind(code, sessionId, nowIso()).run();
-        return code;
-      } catch (err) {
-        if (!/UNIQUE/i.test(String(err && err.message))) throw err;
-        const raced = await env.DB.prepare('SELECT code FROM marau_referral_codes WHERE guest_session_id = ?').bind(sessionId).first();
+        // ONE statement: a session can never receive a second code by racing calls.
+        const res = await env.DB.prepare('INSERT INTO marau_referral_codes (code, guest_session_id, created_at) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM marau_referral_codes WHERE guest_session_id = ?)').bind(code, sessionId, nowIso(), sessionId).run();
+        if (res.meta.changes === 1) return code;
+        const raced = await oldest();
         if (raced) return raced.code; // a concurrent call for the same guest won
+      } catch (err) {
+        if (!/UNIQUE/i.test(String(err && err.message))) throw err; // a code collision: try another
       }
     }
     throw new Error('could not allocate a referral code');
@@ -370,10 +373,14 @@ export function createReferrals(deps) {
     const history = [{ event: 'original_quote', fjd: fjd(original), at: b.created_at }];
     const live = adjs.filter((a) => a.status === 'applied' || a.status === 'reversal_pending_staff');
     for (const a of adjs) history.push({ event: `referral_credit_${a.status}`, credit_fjd: fjd(a.credit_cents), at: a.created_at });
-    const credit = live.reduce((n, a) => n + a.credit_cents, 0);
+    // The amount due always follows the CURRENT quote (the source may re-quote after a credit was applied); the credit shown
+    // never exceeds it, so amount due can never go negative, and a re-quote is flagged rather than hidden.
+    const credit = Math.min(live.reduce((n, a) => n + a.credit_cents, 0), original);
     if (!adjs.length) return { original_fare_fjd: fjd(original), referral_credit_fjd: 0, amount_due_fjd: fjd(original), operator_payout_unchanged: true, quote_history: history };
+    const quoteChanged = live.some((a) => a.original_quote_cents !== original);
     return {
       original_fare_fjd: fjd(original),
+      ...(quoteChanged ? { quote_changed_since_credit: true, quote_at_credit_fjd: fjd(live[0].original_quote_cents) } : {}),
       referral_credit_fjd: fjd(credit),
       amount_due_fjd: fjd(original - credit),
       operator_payout_unchanged: adjs.every((a) => a.operator_payout_unchanged === 1),

@@ -22,10 +22,23 @@
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
+// Only a plain positive decimal booking id ever reaches the URL path: no whitespace, signs, dots, slashes, queries.
 function bookingIdFromRef(sourceBookingRef) {
-  const n = Number(sourceBookingRef);
-  if (!Number.isInteger(n) || n <= 0) throw new Error('SOURCE_REF_NOT_A_BOOKING_ID');
-  return n;
+  if (typeof sourceBookingRef !== 'string' && typeof sourceBookingRef !== 'number') throw new Error('SOURCE_REF_NOT_A_BOOKING_ID');
+  const text = String(sourceBookingRef);
+  if (!/^[1-9][0-9]{0,14}$/.test(text)) throw new Error('SOURCE_REF_NOT_A_BOOKING_ID');
+  return Number(text);
+}
+
+// The source must be reached over https (loopback http is allowed only for in-process/local tests), with no embedded
+// credentials, query or fragment: the admin credential is only ever attached to requests for this exact origin + path.
+function validatedRoot(baseUrl) {
+  let u;
+  try { u = new URL(String(baseUrl)); } catch { throw new Error('SOURCE_BASE_URL_INVALID'); }
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) throw new Error('SOURCE_BASE_URL_MUST_BE_HTTPS');
+  if (u.username || u.password || u.search || u.hash) throw new Error('SOURCE_BASE_URL_MUST_NOT_CARRY_CREDENTIALS_OR_QUERY');
+  return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`;
 }
 
 function pickConfirmationState(row) {
@@ -35,6 +48,9 @@ function pickConfirmationState(row) {
     assigned_driver_id: row.assigned_driver_id ?? null,
     confirmation_attempt_id: row.confirmation_attempt_id ?? null,
     confirmed_operator: row.confirmed_operator ?? null,
+    // The source's own label for how that operator name was established. 'service-asserted' = vouched for by the calling
+    // service, NOT independently authenticated human identity.
+    confirmed_operator_attestation: row.confirmed_operator_attestation ?? null,
   };
 }
 
@@ -42,15 +58,18 @@ export function createNadiSourceClient({ baseUrl, adminToken, fetchImpl, timeout
   if (!baseUrl) throw new Error('baseUrl is required');
   if (!adminToken) throw new Error('adminToken is required');
   const doFetch = fetchImpl || ((...args) => fetch(...args));
-  const root = String(baseUrl).replace(/\/+$/, '');
+  const root = validatedRoot(baseUrl);
 
   async function call(method, pathname, body) {
     const res = await doFetch(`${root}${pathname}`, {
       method,
       headers: { authorization: `Bearer ${adminToken}`, ...(body ? { 'content-type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      // Never follow a redirect: the admin credential must not be replayed to wherever a (mis)configured host points.
+      redirect: 'manual',
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (res.status >= 300 && res.status < 400) throw new Error(`SOURCE_REDIRECT_REFUSED_${res.status}`);
     let data;
     try {
       data = await res.json();

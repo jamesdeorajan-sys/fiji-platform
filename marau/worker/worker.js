@@ -597,6 +597,32 @@ async function handleRevokeLinkRequest(request, env, linkRequestId) {
   return json({ link_request_id: linkRequestId, status: 'REVOKED' });
 }
 
+/** Every statement a verified session merge needs, in order. Run inside ONE env.DB.batch (a transaction). */
+function mergeSessionStatements(env, fromId, toId) {
+  const P = (sql, ...binds) => env.DB.prepare(sql).bind(...binds);
+  const mergedConsent = `CASE WHEN n.marketing_consent = 'withheld' OR o.marketing_consent = 'withheld' THEN 'withheld' WHEN n.marketing_consent = 'unknown' THEN o.marketing_consent ELSE n.marketing_consent END`;
+  return [
+    P('UPDATE marau_test_bookings SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P(`INSERT INTO marau_consent_events (guest_session_id, from_value, to_value, source, actor, created_at)
+       SELECT n.session_id, n.marketing_consent, ${mergedConsent}, 'session_merge', 'system', ? FROM guest_sessions n, guest_sessions o
+       WHERE n.session_id = ? AND o.session_id = ? AND ${mergedConsent} != n.marketing_consent`, nowIso(), toId, fromId),
+    P(`UPDATE guest_sessions SET
+         marketing_consent = (SELECT ${mergedConsent} FROM guest_sessions n, guest_sessions o WHERE n.session_id = ? AND o.session_id = ?),
+         whatsapp_available = COALESCE(whatsapp_available, (SELECT whatsapp_available FROM guest_sessions WHERE session_id = ?))
+       WHERE session_id = ?`, toId, fromId, fromId, toId),
+    P('UPDATE marau_referral_codes SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P('UPDATE OR IGNORE marau_referrals SET referrer_session_id = ? WHERE referrer_session_id = ?', toId, fromId),
+    P('UPDATE OR IGNORE marau_referrals SET referred_session_id = ? WHERE referred_session_id = ?', toId, fromId),
+    P('UPDATE marau_reward_credits SET beneficiary_session_id = ? WHERE beneficiary_session_id = ?', toId, fromId),
+    P('UPDATE marau_reward_credits SET referred_session_id = ? WHERE referred_session_id = ?', toId, fromId),
+    P('UPDATE OR IGNORE marau_offer_requests SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P('UPDATE marau_share_events SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P('UPDATE marau_suppressions SET guest_session_id = ? WHERE guest_session_id = ?', toId, fromId),
+    P('INSERT OR IGNORE INTO marau_follow_up_owners (guest_session_id, owner, assigned_by, assigned_at) SELECT ?, owner, assigned_by, assigned_at FROM marau_follow_up_owners WHERE guest_session_id = ?', toId, fromId),
+    P('UPDATE guest_sessions SET access_token_revoked = 1 WHERE session_id = ?', fromId),
+  ];
+}
+
 async function handleConfirmLink(request, env) {
   const session = await requireGuestSession(request, env);
   if (!session) return json({ error: 'unauthorized — invalid or revoked access token' }, 401);
@@ -626,15 +652,17 @@ async function handleConfirmLink(request, env) {
     return json({ error: 'INVALID_CODE' }, 400);
   }
 
-  await env.DB
-    .prepare('UPDATE marau_test_bookings SET guest_session_id = ? WHERE guest_session_id = ?')
-    .bind(session.session_id, linkRequest.candidate_session_id)
-    .run();
-  await env.DB.prepare('UPDATE guest_sessions SET access_token_revoked = 1 WHERE session_id = ?').bind(linkRequest.candidate_session_id).run();
-  await env.DB
-    .prepare(`UPDATE guest_link_requests SET status = 'VERIFIED', verified_at = ? WHERE link_request_id = ?`)
-    .bind(nowIso(), body.link_request_id)
-    .run();
+  // ONE atomic batch: the bookings move, the old session is revoked, and every Marau-owned record (referral link, credits,
+  // offer purchases, consent, follow-up owner, suppressions) follows the guest - or none of it happens and the link can be
+  // retried. A merge may never strand a reward on a revoked session, and never loosens a consent or suppression.
+  try {
+    await env.DB.batch(mergeSessionStatements(env, linkRequest.candidate_session_id, session.session_id).concat([
+      env.DB.prepare(`UPDATE guest_link_requests SET status = 'VERIFIED', verified_at = ? WHERE link_request_id = ?`).bind(nowIso(), body.link_request_id),
+    ]));
+  } catch (err) {
+    console.error('[marau-preview] session link failed and was rolled back', err);
+    return json({ error: 'LINK_FAILED_NOTHING_CHANGED', detail: 'nothing was moved; it is safe to retry' }, 503);
+  }
 
   return json({ link_request_id: body.link_request_id, status: 'VERIFIED', merged_into_session_id: session.session_id });
 }
