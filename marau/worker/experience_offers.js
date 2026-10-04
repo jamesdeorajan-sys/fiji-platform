@@ -592,6 +592,29 @@ export function createExperienceOffers(deps) {
     });
   }
 
+  // ----------------------------------------------------------- staff listings
+
+  async function listSuppliers(request, env) {
+    const s = await staffOr401(request, env); if (s.error) return s.error;
+    const { results } = await env.DB.prepare('SELECT supplier_id, name, fulfilment_owner, verification_status, verified_by, verified_at FROM marau_suppliers ORDER BY created_at DESC').all();
+    return json({ suppliers: results, demonstration_data: true });
+  }
+
+  async function listEditions(request, env) {
+    const s = await staffOr401(request, env); if (s.error) return s.error;
+    const { results } = await env.DB.prepare(
+      `SELECT e.edition_id, e.fiji_date, e.slot, e.status, e.published_by, o.offer_id, o.title FROM marau_deal_editions e
+       LEFT JOIN marau_edition_offers eo ON eo.edition_id = e.edition_id LEFT JOIN marau_experience_offers o ON o.offer_id = eo.offer_id
+       ORDER BY e.fiji_date DESC, e.slot ASC, eo.position ASC LIMIT 200`
+    ).all();
+    const by = new Map();
+    for (const r of results) {
+      if (!by.has(r.edition_id)) by.set(r.edition_id, { edition_id: r.edition_id, fiji_date: r.fiji_date, slot: r.slot, status: r.status, published_by: r.published_by, offers: [] });
+      if (r.offer_id) by.get(r.edition_id).offers.push({ offer_id: r.offer_id, title: r.title });
+    }
+    return json({ editions: [...by.values()], demonstration_data: true });
+  }
+
   // ------------------------------------------------------------------ router
 
   /** Returns a Response for an experience-offer route, or null when the path is not one of ours. */
@@ -604,6 +627,8 @@ export function createExperienceOffers(deps) {
     x = p.match(/^\/preview\/offers\/requests\/(req_[^/]+)\/whatsapp-handoff$/); if (m === 'POST' && x) return guestHandoff(request, env, x[1]);
     // staff (the router has already required the shared admin credential for /preview/admin/*)
     if (m === 'POST' && p === '/preview/admin/suppliers') return createSupplier(request, env);
+    if (m === 'GET' && p === '/preview/admin/suppliers') return listSuppliers(request, env);
+    if (m === 'GET' && p === '/preview/admin/editions') return listEditions(request, env);
     x = p.match(/^\/preview\/admin\/suppliers\/(sup_[^/]+)\/(verify|suspend)$/); if (m === 'POST' && x) return setSupplierVerification(request, env, x[1], x[2] === 'verify' ? 'verified' : 'suspended');
     if (m === 'POST' && p === '/preview/admin/offers') return createOffer(request, env);
     if (m === 'GET' && p === '/preview/admin/offers') return listOffersStaff(request, env);

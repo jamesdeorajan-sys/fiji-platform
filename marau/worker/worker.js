@@ -21,7 +21,7 @@ import { createD1Store } from '../../smart-return-trigger-fill/src/db.js';
 import { discoverOffer, validateOffer, activateOffer, holdOffer, fillOffer, expireOffer } from '../../smart-return-trigger-fill/src/offers.js';
 import { cryptoRandomId } from '../../smart-return-trigger-fill/src/model.js';
 import { buildAssistResponse } from './ai_assist.js';
-import { GUEST_APP_HTML, ADMIN_APP_HTML } from './pages.js';
+import { GUEST_APP_HTML, ADMIN_APP_HTML, STAFF_CONSOLE_HTML } from './pages.js';
 import { evaluateOfferEligibility } from './offer_eligibility.js';
 import { composeDealHandoffMessage, composeTripHandoffMessage, composeOfferHandoffMessage } from './whatsapp_handoff.js';
 import { findPayloadMismatch } from './booking_conflict.js';
@@ -2496,6 +2496,7 @@ export default {
       if (method === 'GET' && pathname === '/health') return json({ status: 'ok', mode: 'preview' });
       if (method === 'GET' && (pathname === '/' || pathname === '/app' || pathname === '/index.html')) return html(GUEST_APP_HTML);
       if (method === 'GET' && (pathname === '/admin' || pathname === '/admin.html')) return html(ADMIN_APP_HTML);
+      if (method === 'GET' && pathname === '/staff') return html(STAFF_CONSOLE_HTML);
       // Third independent review, finding 4: home-screen installation is
       // approved Stage 1 scope, independent of (deferred) credits — a
       // real manifest + icon is what makes "Add to Home Screen" an actual

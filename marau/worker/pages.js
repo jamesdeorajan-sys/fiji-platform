@@ -34,6 +34,8 @@ import { getOrCreateClientBookingRef, clearClientBookingRef, getOrCreateAttemptS
 import { formatFijiDateTime, toFijiWallClockInputValue } from './fiji_time.js';
 import { selectDefaultBooking, ACTIVE_BOOKING_STATUSES } from './booking_selection.js';
 import { shortBookingReference, humanizeZoneLabel, humanizeVehicleClassLabel, formatFijiCurrency } from './guest_display.js';
+import { createOffersClient } from './guest_offers_client.js';
+import { createStaffConsole } from './staff_console.js';
 
 // Splicing these functions' own source into the emitted <script> means
 // the browser runs literally the same code marau/test/*.test.mjs already
@@ -68,6 +70,7 @@ ${shortBookingReference.toString()}
 ${humanizeZoneLabel.toString()}
 ${humanizeVehicleClassLabel.toString()}
 ${formatFijiCurrency.toString()}
+${createOffersClient.toString()}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -235,6 +238,9 @@ ${SHARED_STYLE}
         <label for="f-phone">Mobile number</label>
         <input id="f-phone" type="tel" required autocomplete="tel">
         <label><input id="f-wa" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> This number can receive WhatsApp</label>
+        <label><input id="f-consent" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> Send me occasional deals (optional - trip messages are always sent)</label>
+        <label for="f-leg">Trip leg</label>
+        <select id="f-leg"><option value="arrival">Arrival transfer</option><option value="return">Return transfer</option></select>
         <div class="row">
           <div><label for="f-pickup">Pickup zone</label><input id="f-pickup" required value="Nadi Airport"></div>
           <div><label for="f-dest">Destination zone</label><input id="f-dest" required value="Denarau"></div>
@@ -247,6 +253,7 @@ ${SHARED_STYLE}
         <input id="f-when" type="datetime-local" required>
         <button class="btn btn-primary btn-block" type="submit">Save booking request</button>
       </form>
+      <p id="refBanner" class="small" style="display:none;margin-top:8px"><strong>A friend invited you to Marau.</strong> Nothing about who - your booking stays private.</p>
       <p id="startError" class="small" style="color:var(--hibiscus)"></p>
     </div>
   </section>
@@ -255,6 +262,8 @@ ${SHARED_STYLE}
     <div id="linkOfferPanel" class="panel" style="display:none"></div>
     <div id="linkInboxPanel" class="panel" style="display:none"></div>
     <div id="pickupCard"></div>
+    <section class="panel" id="offersNearTrip" style="display:none"></section>
+    <section class="panel" id="myOffersPanel" style="display:none"><h2>Your offer requests</h2><div id="myOffersList" style="margin-top:8px"></div></section>
     <section class="panel" id="dealRequestsPanel" style="display:none">
       <h2>Your deal requests</h2>
       <div id="dealRequestsList" style="margin-top:8px"></div>
@@ -268,7 +277,17 @@ ${SHARED_STYLE}
       <button class="btn btn-light btn-block" id="humanHandoffBtn" type="button">Talk to our team on WhatsApp</button>
       <div id="tripHandoffPanel"></div>
     </section>
+    <section class="panel" id="referralPanel" style="display:none"></section>
+    <section class="panel" id="contactPanel" style="display:none"></section>
     <button class="btn btn-light btn-block" id="revokeBtn" type="button">Revoke this device's access</button>
+  </section>
+
+  <section id="view-offers" class="view">
+    <h1>Offers</h1>
+    <p class="muted small" style="margin-top:6px">Open browsing - every current offer is shown here, any time. Morning and afternoon editions simply highlight a few. Demonstration data only; nothing is charged.</p>
+    <div id="offersEditions" style="margin-top:6px"></div>
+    <h2 style="margin-top:14px">All offers</h2>
+    <div id="offersList" style="margin-top:8px"><p class="muted">Loading offers...</p></div>
   </section>
 
   <section id="view-deals" class="view">
@@ -280,6 +299,7 @@ ${SHARED_STYLE}
 
 <nav class="tabs" role="tablist">
   <button class="tab" data-view="trip" aria-selected="true">Trip</button>
+  <button class="tab" data-view="offers" aria-selected="false">Offers</button>
   <button class="tab" data-view="deals" aria-selected="false">Deals</button>
 </nav>
 <div class="toast" id="toast"></div>
@@ -289,7 +309,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 (function () {
   var API = '';
   var els = {};
-  ['bookingForm','startError','pickupCard','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel','dealRequestsPanel','dealRequestsList','installBanner','installBtn'].forEach(function(id){ els[id] = document.getElementById(id); });
+  ['bookingForm','startError','pickupCard','dealsList','assistQ','assistAnswer','assistBtn','revokeBtn','humanHandoffBtn','tripHandoffPanel','aiDisclosure','toast','linkOfferPanel','linkInboxPanel','dealRequestsPanel','dealRequestsList','installBanner','installBtn','offersNearTrip','myOffersPanel','myOffersList','referralPanel','contactPanel','offersEditions','offersList','refBanner'].forEach(function(id){ els[id] = document.getElementById(id); });
 
   // Home-screen installation (finding 4) — independent of credits, which
   // stay deferred. Chrome/Android fire beforeinstallprompt when the
@@ -485,7 +505,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     document.querySelectorAll('.tab').forEach(function (t) { t.setAttribute('aria-selected', t.dataset.view === name ? 'true' : 'false'); });
   }
   document.querySelectorAll('.tab').forEach(function (t) {
-    t.addEventListener('click', function () { showView(t.dataset.view); });
+    t.addEventListener('click', function () {
+      showView(t.dataset.view);
+      if (t.dataset.view === 'offers' && offersClient) offersClient.loadOffers();
+    });
   });
 
   var STATUS_LABEL = { pending: 'Awaiting human confirmation', confirmed: 'Confirmed', confirmed_unallocated: 'Confirmed — vehicle pending assignment', declined: 'Declined', cancelled: 'Cancelled' };
@@ -555,7 +578,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
         '<div class="fact">Status<b>' + statusLabel + '</b></div>' +
       '</div>' +
       '<div class="pickup-actions"><button class="btn btn-onlagoon" id="changeBtn" type="button">Request a change</button></div>' +
-      '</article>';
+      '</article>' + (offersClient ? offersClient.fareHtml(active.fare) : '');
 
     if (sorted.length > 1) {
       els.pickupCard.querySelectorAll('[data-booking]').forEach(function (btn) {
@@ -650,6 +673,33 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   }
 
+  var offersClient = createOffersClient({
+    authFetch: authFetch,
+    toast: toast,
+    renderMockWhatsApp: renderMockWhatsApp,
+    formatFijiCurrency: formatFijiCurrency,
+    els: els,
+    storage: sessionStorage,
+    showView: showView,
+    onChanged: function () { if (getToken()) authFetch('/preview/trip').then(function (r) { if (r.ok) { renderPickupCard(r.data); offersClient.renderMyRequests(r.data.offer_requests); } }); },
+    share: navigator.share ? function (d) { return navigator.share(d); } : null,
+    copyText: function (t) { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t) : Promise.resolve(); },
+  });
+
+  // Public referral landing (/r/CODE): remember the code so the friend's own NEW booking is attributed. It carries no
+  // booking or guest information, and is separate from the private trip link (the #tok fragment).
+  var refCode = null;
+  (function captureReferral() {
+    var path = location.pathname || '';
+    try {
+      if (path.indexOf('/r/') === 0 && path.length === 11) { refCode = path.slice(3).toUpperCase(); localStorage.setItem('marau_ref', refCode); }
+      else refCode = localStorage.getItem('marau_ref');
+    } catch (e) { /* storage may be blocked; the invitation simply will not be remembered */ }
+    if (refCode) {
+      fetch('/preview/referral/validate/' + encodeURIComponent(refCode)).then(function (r) { if (r.ok) els.refBanner.style.display = 'block'; else refCode = null; });
+    }
+  })();
+
   function loadTrip() {
     if (!getToken()) {
       showView('start');
@@ -659,6 +709,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       if (!res.ok) { clearToken(); showView('start'); return; }
       renderPickupCard(res.data);
       renderDealRequests(res.data.deal_requests);
+      offersClient.renderMyRequests(res.data.offer_requests);
+      offersClient.loadOffers();
+      offersClient.loadReferral();
+      offersClient.loadContact();
       renderLinkOffer();
       loadLinkInbox();
       showView('trip');
@@ -686,7 +740,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       vehicle_type: document.getElementById('f-vehicle').value,
       quoted_amount: Number(document.getElementById('f-amount').value),
       pickup_datetime: document.getElementById('f-when').value,
+      leg_type: document.getElementById('f-leg').value,
     };
+    if (document.getElementById('f-consent').checked) body.marketing_consent = 'granted';
+    if (refCode) body.referral_code = refCode;
     var tok = getToken();
     var headers = { 'content-type': 'application/json' };
     if (tok) headers.authorization = 'Bearer ' + tok;
@@ -694,6 +751,8 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
       .then(function (res) {
         if (!res.ok) { els.startError.textContent = (res.data.details || [res.data.error]).join('; '); return; }
+        try { localStorage.removeItem('marau_ref'); } catch (e) { /* ignore */ }
+        refCode = null;
         clearClientBookingRef(sessionStorage); // this attempt is done — a genuinely NEW booking later gets a fresh key
         clearAttemptSecret(sessionStorage);
         if (res.data.access_token) {
@@ -788,6 +847,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
 
   loadTrip();
   loadDeals();
+  offersClient.loadOffers();
 })();
 </script>
 </body>
@@ -924,6 +984,95 @@ ${SHARED_STYLE}
     if (saved) { els.tokenInput.value = saved; }
   } catch (e) {}
 })();
+</script>
+</body>
+</html>`;
+
+// Staff console for offers, requests, editions, referral credits and the follow-up queue. Every call carries BOTH the shared
+// admin credential and the individual staff token; see worker/staff_console.js.
+export const STAFF_CONSOLE_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0F5E63">
+<meta name="robots" content="noindex">
+<title>Marau staff (preview)</title>
+${FONT_LINK}
+${SHARED_STYLE}
+<style>.panel h2{margin-bottom:6px} details>summary{font-weight:700;cursor:pointer;padding:6px 0} .btn{margin:2px 4px 2px 0}</style>
+</head>
+<body>
+<div class="app" style="max-width:760px;padding-bottom:40px">
+  <header class="top">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Marau staff<span class="brand-sub"> offers and rewards</span></div>
+    <span class="preview-pill">Test only</span>
+  </header>
+  <div class="banner">Preview with synthetic data. Nothing here sends a message, takes a payment or changes a fare. Every decision is recorded against your own staff identity.</div>
+
+  <div class="panel" id="loginPanel">
+    <h2>Sign in</h2>
+    <label for="adminTok">Shared admin token</label><input id="adminTok" type="password" autocomplete="off">
+    <label for="staffTok">Your staff token</label><input id="staffTok" type="password" autocomplete="off">
+    <button class="btn btn-primary btn-block" id="loginBtn" type="button">Sign in</button>
+  </div>
+
+  <div id="consolePanel" style="display:none">
+    <button class="btn btn-light" id="logoutBtn" type="button">Sign out</button>
+    <div class="panel"><h2>Needs attention</h2><div id="rGuests"></div></div>
+    <div class="panel"><h2>Offer requests</h2><div id="rRequests"></div></div>
+    <div class="panel"><h2>Reward credits</h2><div id="rCredits"></div><div id="rPolicy" style="margin-top:8px"></div></div>
+    <div class="panel"><h2>Report</h2><div id="rReport"></div></div>
+
+    <div class="panel">
+      <h2>Suppliers</h2><div id="rSuppliers"></div>
+      <details><summary>Add a supplier</summary>
+        <form id="supplierForm"><label for="sName">Supplier name</label><input id="sName" required>
+        <label for="sOwner">Fulfilment owner (a named staff member)</label><input id="sOwner" required>
+        <button class="btn btn-primary" type="submit">Create (unverified)</button></form></details>
+    </div>
+
+    <div class="panel">
+      <h2>Offers</h2><div id="rOffers"></div>
+      <details><summary>Create an offer</summary>
+        <form id="offerForm">
+          <label for="oSupplier">Supplier</label><select id="oSupplier"></select>
+          <label for="oTitle">Title</label><input id="oTitle" required>
+          <label for="oLocation">Location</label><input id="oLocation" required>
+          <label for="oIncl">Inclusions (comma separated)</label><input id="oIncl" required>
+          <label for="oStarts">Starts (Fiji time)</label><input id="oStarts" type="datetime-local" required>
+          <div class="row"><div><label for="oBookBy">Book by (Fiji, optional)</label><input id="oBookBy" type="datetime-local"></div><div><label for="oExpires">Expires (Fiji, optional)</label><input id="oExpires" type="datetime-local"></div></div>
+          <div class="row"><div><label for="oCap">Places</label><input id="oCap" type="number" min="1" required></div><div><label for="oPrice">FJD per place, all inclusive</label><input id="oPrice" type="number" min="0.01" step="0.01" required></div><div><label for="oCost">Supplier cost per place</label><input id="oCost" type="number" min="0" step="0.01"></div></div>
+          <button class="btn btn-primary" type="submit">Create draft</button>
+        </form></details>
+    </div>
+
+    <div class="panel">
+      <h2>Morning and afternoon editions</h2><div id="rEditions"></div>
+      <details><summary>Prepare an edition</summary>
+        <form id="editionForm">
+          <div class="row"><div><label for="eDate">Fiji date</label><input id="eDate" type="date" required></div><div><label for="eSlot">Slot</label><select id="eSlot"><option value="morning">Morning (07:00)</option><option value="afternoon">Afternoon (14:00)</option></select></div></div>
+          <label for="eOffers">Offer ids (comma separated)</label><input id="eOffers" required>
+          <button class="btn btn-primary" type="submit">Save draft edition</button>
+        </form></details>
+    </div>
+
+    <div class="panel">
+      <h2>Reward policy</h2>
+      <details><summary>Change the preview policy</summary>
+        <form id="policyForm">
+          <label for="pMode">Mode</label><select id="pMode"><option value="off">Off</option><option value="preview">Preview (synthetic guests only)</option></select>
+          <div class="row"><div><label for="pAmount">Reward FJD</label><input id="pAmount" type="number" step="0.01" min="0.01"></div><div><label for="pCap">Cap per referrer FJD</label><input id="pCap" type="number" step="0.01" min="0.01"></div><div><label for="pMin">Minimum purchase FJD</label><input id="pMin" type="number" step="0.01" min="0"></div></div>
+          <label for="pQualify">Earned when the purchase is</label><select id="pQualify"><option value="fulfilled">Fulfilled</option><option value="confirmed">Confirmed</option></select>
+          <button class="btn btn-primary" type="submit">Save policy</button>
+        </form></details>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+${createStaffConsole.toString()}
+createStaffConsole({ document: document, storage: sessionStorage, fetchImpl: function (u, o) { return fetch(u, o); }, prompt: function (m) { return window.prompt(m); } }).init();
 </script>
 </body>
 </html>`;
