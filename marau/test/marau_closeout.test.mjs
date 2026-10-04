@@ -1,6 +1,6 @@
 /* Marau (PREVIEW/TEST ONLY) - CLOSEOUT round: refund-before-payment, late-write interleavings, mirror source shapes, policy-change
  * behaviour. Synthetic data; default-deny network. Evidence label: LOCAL, AUTHOR-RUN. Reward amounts are SYNTHETIC test values.
- * Written red-first against commit 83e... see docs/MARAU_RELEASE_CANDIDATE.md for the before/after table.
+ * Written red-first against commit 939c281 (see docs/evidence/closeout_RED_baseline_939c281.txt); see docs/MARAU_RELEASE_CANDIDATE.md for the before/after table.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
