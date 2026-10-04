@@ -1,0 +1,256 @@
+[pricing-authoritative-unavailable] Could not resolve a real distance for authoritative pricing. - Nadi Airport -> Denarau sedan return, falling back to client-trusted quoted_amount
+[health-alert] send failed: UNMOCKED NETWORK CALL blocked by the Marau offline-suite network guard: POST https://graph.facebook.com/v19.0/p/messages
+✖ ADAPTER: read-only - one GET of one booking id, admin credential only, redirects never followed, nothing but the whitelisted fields comes out (1.3803ms)
+✖ ADAPTER: fail-closed on anything unexpected - wrong id, redirect, auth failure, 5xx, malformed fields, bad reference - and 404 is "not found", not an error (3.5975ms)
+✖ REAL SCHEMA: a round-trip booking created through the REAL nadi worker is read by the adapter and mirrored as two legs - fields exactly as the source stored them (264.0663ms)
+✖ MAPPING: one source booking with arrival + return fields becomes TWO Marau legs of the SAME source booking - dates, locations, status and provenance preserved; the return is not given the whole quote (231.6734ms)
+✖ REPEATED SYNC never duplicates legs; the leg rows keep their ids and identities (85.9691ms)
+✖ SOURCE EDITS reconcile onto the same legs: a changed return date/time/location updates the RETURN only; a changed arrival updates the ARRIVAL only (63.2592ms)
+✖ RETURN MISSING OR REMOVED: incomplete return details create NO return leg (and say so); completing them later creates it; removing them cancels the leg without touching the arrival (71.3307ms)
+✖ RETURN LOCATION missing but date/time present: the leg exists and its pickup is marked INFERRED from the outbound destination, never presented as recorded (57.184ms)
+✖ SOURCE CANCELLATION cancels both legs; ARRIVAL COMPLETED keeps the upcoming return live and still reconcilable, with the assumption recorded (67.6954ms)
+✖ RETURN_VALUE_UNRESOLVED: with no approved allocation rule a credit is REFUSED on the return leg, stays earned, and the target is listed with its value shown as unresolved - not as the full quote and not as half of it (149.2765ms)
+✖ ALLOCATION RULES: proposed is not approved; approval is recorded (synthetic-preview basis only); then the return value is allocated from the ORIGINAL total by that rule and credit applies; the booking total, operator figures and quote are untouched (86.0887ms)
+✖ ALLOCATION: a fixed return value smaller than the credit bounds the credit and reports the unused part; a non-FJD source quote never resolves; retiring a rule makes UNAPPLIED legs unresolved again but does not touch an applied credit (93.3853ms)
+✖ ALLOCATION RULES: validation (positive, bounded), staff identity required, and an owner-basis approval cannot be set through the API (83.0987ms)
+✖ ACCEPTANCE: one source booking (arrival + return) -> Marau trip with both legs -> qualifying referred purchase -> credit applied ONLY to the return -> accurate booking balance; repeated sync changes nothing (81.9491ms)
+✖ ACCEPTANCE (arrival already completed): the return is still eligible and the balance is right; a return that is no longer upcoming is not (65.1532ms)
+✖ ACCEPTANCE (missing return details): the credit has nowhere to land and says so; once the source records the return it can apply (85.9157ms)
+✖ PROVENANCE: demonstration rows are marked; authenticated provenance alone does not make a record live; only the approved integration path does (test_data is an OUTPUT of provenance, never an input) (85.1932ms)
+✖ LIVE ELIGIBILITY: flipping test_data to 0 by hand on demonstration records earns nothing in live mode; a record that arrived through the authenticated, approved path can (78.1164ms)
+✖ C:\Users\James\AppData\Local\Temp\claude\C--Users-James-Desktop-VAKAVITI-MASTER\a8c468c9-8b61-4c40-9acf-bf7f5a2e8175\scratchpad\marau-stage1\marau\test\network_guard.mjs (2.0601ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 0
+ℹ fail 19
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3056.6154
+
+✖ failing tests:
+
+test at test\marau_roundtrip_legs.test.mjs:58:1
+✖ ADAPTER: read-only - one GET of one booking id, admin credential only, redirects never followed, nothing but the whitelisted fields comes out (1.3803ms)
+  Error: not implemented
+      at createNadiBookingReader (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/nadi_booking_reader.js:2:51)
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:60:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+
+test at test\marau_roundtrip_legs.test.mjs:74:1
+✖ ADAPTER: fail-closed on anything unexpected - wrong id, redirect, auth failure, 5xx, malformed fields, bad reference - and 404 is "not found", not an error (3.5975ms)
+  Error: not implemented
+      at createNadiBookingReader (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/nadi_booking_reader.js:2:51)
+      at make (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:75:29)
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:76:22)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at test\marau_roundtrip_legs.test.mjs:116:1
+✖ REAL SCHEMA: a round-trip booking created through the REAL nadi worker is read by the adapter and mirrored as two legs - fields exactly as the source stored them (264.0663ms)
+  Error: not implemented
+      at createNadiBookingReader (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/worker/nadi_booking_reader.js:2:51)
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:120:18)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:141:1
+✖ MAPPING: one source booking with arrival + return fields becomes TWO Marau legs of the SAME source booking - dates, locations, status and provenance preserved; the return is not given the whole quote (231.6734ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:146:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:167:1
+✖ REPEATED SYNC never duplicates legs; the leg rows keep their ids and identities (85.9691ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:173:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:179:1
+✖ SOURCE EDITS reconcile onto the same legs: a changed return date/time/location updates the RETURN only; a changed arrival updates the ARRIVAL only (63.2592ms)
+  TypeError: Cannot read properties of undefined (reading 'pickup_zone')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:187:37)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:197:1
+✖ RETURN MISSING OR REMOVED: incomplete return details create NO return leg (and say so); completing them later creates it; removing them cancels the leg without touching the arrival (71.3307ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'arrival'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:202:40)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'arrival',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:230:1
+✖ RETURN LOCATION missing but date/time present: the leg exists and its pickup is marked INFERRED from the outbound destination, never presented as recorded (57.184ms)
+  TypeError: Cannot read properties of undefined (reading 'pickup_zone')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:233:25)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:236:1
+✖ SOURCE CANCELLATION cancels both legs; ARRIVAL COMPLETED keeps the upcoming return live and still reconcilable, with the assumption recorded (67.6954ms)
+  TypeError: Cannot read properties of undefined (reading 'source_status')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:242:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:285:1
+✖ RETURN_VALUE_UNRESOLVED: with no approved allocation rule a credit is REFUSED on the return leg, stays earned, and the target is listed with its value shown as unresolved - not as the full quote and not as half of it (149.2765ms)
+  TypeError: Cannot read properties of undefined (reading 'id')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:288:42)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:304:1
+✖ ALLOCATION RULES: proposed is not approved; approval is recorded (synthetic-preview basis only); then the return value is allocated from the ORIGINAL total by that rule and credit applies; the booking total, operator figures and quote are untouched (86.0887ms)
+  AssertionError [ERR_ASSERTION]: {"error":"not found"}
+  
+  404 !== 201
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:308:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 201,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:333:1
+✖ ALLOCATION: a fixed return value smaller than the credit bounds the credit and reports the unused part; a non-FJD source quote never resolves; retiring a rule makes UNAPPLIED legs unresolved again but does not touch an applied credit (93.3853ms)
+  TypeError: Cannot read properties of undefined (reading 'rule_id')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:337:68)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:357:1
+✖ ALLOCATION RULES: validation (positive, bounded), staff identity required, and an owner-basis approval cannot be set through the API (83.0987ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 401
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:359:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 401,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:369:1
+✖ ACCEPTANCE: one source booking (arrival + return) -> Marau trip with both legs -> qualifying referred purchase -> credit applied ONLY to the return -> accurate booking balance; repeated sync changes nothing (81.9491ms)
+  TypeError: Cannot read properties of undefined (reading 'rule_id')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:372:75)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:405:1
+✖ ACCEPTANCE (arrival already completed): the return is still eligible and the balance is right; a return that is no longer upcoming is not (65.1532ms)
+  TypeError: Cannot read properties of undefined (reading 'rule_id')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:408:65)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:424:1
+✖ ACCEPTANCE (missing return details): the credit has nowhere to land and says so; once the source records the return it can apply (85.9157ms)
+  TypeError: Cannot read properties of undefined (reading 'rule_id')
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:427:65)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\marau_roundtrip_legs.test.mjs:442:1
+✖ PROVENANCE: demonstration rows are marked; authenticated provenance alone does not make a record live; only the approved integration path does (test_data is an OUTPUT of provenance, never an input) (85.1932ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(rows.every((x) => x.source_kind === 'synthetic' && x.source_authenticated === 0 && x.test_data === 1))
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:447:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test\marau_roundtrip_legs.test.mjs:464:1
+✖ LIVE ELIGIBILITY: flipping test_data to 0 by hand on demonstration records earns nothing in live mode; a record that arrived through the authenticated, approved path can (78.1164ms)
+  TypeError: Cannot read properties of undefined (reading 'request_id')
+      at build (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:484:177)
+      at async TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_roundtrip_legs.test.mjs:488:20)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\network_guard.mjs:33:3
+✖ C:\Users\James\AppData\Local\Temp\claude\C--Users-James-Desktop-VAKAVITI-MASTER\a8c468c9-8b61-4c40-9acf-bf7f5a2e8175\scratchpad\marau-stage1\marau\test\network_guard.mjs (2.0601ms)
+  AssertionError [ERR_ASSERTION]: 1 unmocked outbound network call(s) were attempted during this file's tests — Marau Stage 1 must never send a real WhatsApp message or call a real AI provider
+  + actual - expected
+  
+  + [
+  +   'POST https://graph.facebook.com/v19.0/p/messages'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/network_guard.mjs:34:12)
+      at TestHook.runInAsyncScope (node:async_hooks:227:14)
+      at TestHook.run (node:internal/test_runner/test:1382:25)
+      at TestHook.run (node:internal/test_runner/test:1726:18)
+      at TestHook.run (node:internal/util:581:20)
+      at Test.runHook (node:internal/test_runner/test:1269:20)
+      at after (node:internal/test_runner/test:1322:20)
+      at Test.run (node:internal/test_runner/test:1408:13) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'POST https://graph.facebook.com/v19.0/p/messages' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
