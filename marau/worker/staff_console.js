@@ -102,8 +102,11 @@ export function createStaffConsole(deps) {
     return credits.map(function (c) {
       var apply = '';
       if (c.status === 'earned') {
-        var options = c.eligible_return_transfers.map(function (b) { return '<option value="' + esc(b.booking_id) + '">' + esc(b.reference) + ' - ' + money(b.original_fare_fjd) + '</option>'; }).join('');
-        apply = options ? '<div class="row"><select data-credit-booking="' + esc(c.credit_id) + '">' + options + '</select><button class="btn btn-primary" data-apply-credit="' + esc(c.credit_id) + '" type="button">Apply to return transfer</button></div>' : '<p class="small muted">No eligible upcoming return transfer yet.</p>';
+        var options = c.eligible_return_transfers.filter(function (b) { return !b.needs_status_verification; }).map(function (b) { return '<option value="' + esc(b.booking_id) + '">' + esc(b.reference) + ' - ' + money(b.original_fare_fjd) + '</option>'; }).join('');
+        var uncertain = c.eligible_return_transfers.filter(function (b) { return b.needs_status_verification; }).map(function (b) {
+          return '<p class="small"><span class="pill warn">status uncertain</span> ' + esc(b.reference) + ' - the source says completed but this return is still upcoming. <button class="btn btn-light" data-verify-status="' + esc(b.booking_id) + '" type="button">Verify with evidence</button></p>';
+        }).join('');
+        apply = uncertain + (options ? '<div class="row"><select data-credit-booking="' + esc(c.credit_id) + '">' + options + '</select><button class="btn btn-primary" data-apply-credit="' + esc(c.credit_id) + '" type="button">Apply to return transfer</button></div>' : (uncertain ? '' : '<p class="small muted">No eligible upcoming return transfer yet.</p>'));
       }
       return '<div style="border-bottom:1px solid var(--line);padding:8px 0"><p><b>' + money(c.amount_fjd) + '</b> <span class="pill ' + (c.status === 'reversed' ? 'bad' : '') + '">' + esc(c.status) + '</span>' + (c.needs_manual_adjustment ? ' <span class="pill bad">needs your decision</span>' : '') + '</p>' +
         '<p class="small muted">funded by ' + esc(c.funding_source) + ' - holder ' + esc(c.holder.phone) + '</p>' + apply + '</div>';
@@ -134,18 +137,20 @@ export function createStaffConsole(deps) {
       var status = s ? s.status : null;
       var buttons = '';
       function btn(next, label) { return '<button class="btn btn-light" data-pilot-outcome="' + e + '|' + esc(r.session_id) + '|' + next + '">' + label + '</button> '; }
-      if (status === 'prepared') buttons = btn('sent_manually', 'I sent it') + btn('not_sent', 'Not sent');
+      var stale = s && s.stale_reason ? ' <span class="pill bad">stale: ' + esc(s.stale_reason.split('_').join(' ')) + ' - prepare again</span>' : '';
+      var contrary = s && s.sent_eligibility === 'contrary_to_eligibility' ? ' <span class="pill bad">sent contrary to eligibility: ' + esc(s.sent_eligibility_reasons.join(', ').split('_').join(' ')) + '</span>' : '';
+      if (status === 'prepared') buttons = (s && s.stale_reason ? '' : '<button class="btn btn-primary" data-pilot-check="' + e + '|' + esc(r.session_id) + '">Check and copy message</button> ') + btn('sent_manually', 'I sent it') + btn('not_sent', 'Not sent');
       else if (status === 'sent_manually') buttons = btn('replied', 'Replied') + btn('bounced', 'Bounced') + btn('opted_out', 'Opted out');
       else if (status === 'replied') buttons = btn('opted_out', 'Opted out');
       return '<p class="small" style="border-top:1px solid var(--line);padding-top:6px"><b>' + esc(r.channel) + '</b> - ' + esc(r.contact.phone) + ' / ' + esc(r.contact.email) +
-        ' - <span class="pill">' + esc(status || 'not prepared') + '</span>' + (s && s.updated_by ? ' <span class="muted">by ' + esc(s.updated_by) + '</span>' : '') + '<br>' + buttons + '</p>';
+        ' - <span class="pill">' + esc(status || 'not prepared') + '</span>' + stale + contrary + (s && s.updated_by ? ' <span class="muted">by ' + esc(s.updated_by) + '</span>' : '') + '<br>' + buttons + '</p>';
     }).join('') || '<p class="muted small">No consent-eligible recipients.</p>';
     var excluded = Object.keys(rv.excluded_by_reason).map(function (k) { return esc(k.split('_').join(' ')) + ': ' + esc(rv.excluded_by_reason[k]); }).join(', ');
     return '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px"><p><b>' + e + '</b></p><p class="small">' + offers + '</p>' + reviewLine +
       '<p><button class="btn btn-light" data-pilot-review="' + e + '|approved_for_manual_send">Approve for manual send</button> <button class="btn btn-light" data-pilot-review="' + e + '|needs_changes">Needs changes</button> ' +
       '<button class="btn btn-primary" data-pilot-prepare="' + e + '">Prepare recipient list</button></p>' + rows +
       (excluded ? '<p class="small muted">Not eligible - ' + excluded + '</p>' : '') +
-      '<p class="small muted">Nothing is sent from here. Send by hand, then record what happened.</p></div>';
+      '<p class="small muted">Nothing is sent from here, and this page cannot stop a message sent elsewhere. Check and copy, send by hand, then record what actually happened - even if things changed.</p></div>';
   }
 
   function loadPilot(editions) {
@@ -171,6 +176,15 @@ export function createStaffConsole(deps) {
     });
     each('[data-pilot-prepare]', function (b) {
       b.onclick = function () { act('POST', '/preview/admin/editions/' + encodeURIComponent(b.getAttribute('data-pilot-prepare')) + '/sends/prepare', {}, 'Recipient list prepared. Nothing was sent.'); };
+    });
+    each('[data-pilot-check]', function (b) {
+      b.onclick = function () {
+        var parts = b.getAttribute('data-pilot-check').split('|');
+        call('POST', '/preview/admin/editions/' + encodeURIComponent(parts[0]) + '/sends/' + parts[1] + '/check', {}).then(function (res) {
+          if (res.ok) { prompt('Copy this message (nothing has been sent):', res.data.message_text); toast('Checked just now - all facts hold.'); } else { toast(failMessage(res) + (res.data && res.data.reasons ? ': ' + res.data.reasons.join(', ') : '')); }
+          return refresh();
+        });
+      };
     });
     each('[data-pilot-outcome]', function (b) {
       b.onclick = function () {
@@ -218,6 +232,12 @@ export function createStaffConsole(deps) {
         var body = {};
         if (action === 'cancel' || action === 'decline') { var note = prompt(action === 'cancel' ? 'Reason (required)?' : 'Note for the record (optional)?'); if (action === 'cancel' && !note) return; if (note) body.note = note; }
         act('POST', '/preview/admin/offers/requests/' + b.getAttribute('data-id') + '/' + action, body, 'Done: ' + action + '.');
+      };
+    });
+    each('[data-verify-status]', function (b) {
+      b.onclick = function () {
+        var evidence = prompt('Evidence (what you checked, with whom, when)? The source booking is NOT changed.');
+        if (evidence) act('POST', '/preview/admin/bookings/' + b.getAttribute('data-verify-status') + '/verify-status', { verdict: 'return_upcoming', evidence: evidence }, 'Status verified and recorded.');
       };
     });
     each('[data-assign-owner]', function (b) {

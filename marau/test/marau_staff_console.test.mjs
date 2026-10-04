@@ -142,7 +142,23 @@ test('deals pilot panel: escapes everything, offers only the moves that are lega
   assert.match(html, /gs_b\|replied[\s\S]*gs_b\|bounced[\s\S]*gs_b\|opted_out/);
   assert.match(html, /gs_c\|opted_out/); assert.equal(/gs_c\|sent_manually/.test(html), false);
   assert.match(html, /not prepared/);
-  assert.match(html, /Nothing is sent from here/);
+  assert.match(html, /Nothing is sent from here/); assert.match(html, /cannot stop a message sent elsewhere/);
   assert.match(html, /no marketing consent: 3/);
   assert.match(html, /data-pilot-prepare=/);
+});
+
+test('pilot panel: stale entries are labelled and cannot be copied; a send made contrary to eligibility is flagged; uncertain return legs offer a verification button, not an apply option', async () => {
+  const { console: c } = await servedConsole();
+  const rv = { offers: [{ offer_id: 'o1', title: 'T', state: 'open', places_left: 1 }], review: null, excluded_by_reason: {}, recipients: [
+    { session_id: 'gs_a', channel: 'whatsapp', contact: { phone: '+1', email: 'a@x.test' } }, { session_id: 'gs_b', channel: 'whatsapp', contact: { phone: '+2', email: 'b@x.test' } }, { session_id: 'gs_c', channel: 'email', contact: { phone: '+3', email: 'c@x.test' } }] };
+  const sends = { sends: [{ session_id: 'gs_a', status: 'prepared', stale_reason: 'no_marketing_consent' }, { session_id: 'gs_b', status: 'prepared', stale_reason: null }, { session_id: 'gs_c', status: 'sent_manually', sent_eligibility: 'contrary_to_eligibility', sent_eligibility_reasons: ['no_marketing_consent'] }] };
+  const html = c.pilotHtml('e1', rv, sends);
+  assert.match(html, /stale: no marketing consent - prepare again/);
+  assert.equal(/data-pilot-check="e1\|gs_a"/.test(html), false, 'a stale entry cannot be checked/copied');
+  assert.match(html, /data-pilot-check="e1\|gs_b"/);
+  assert.match(html, /sent contrary to eligibility: no marketing consent/);
+  const credits = c.creditsHtml([{ credit_id: 'cr_1', status: 'earned', amount_fjd: 10, funding_source: 'x', needs_manual_adjustment: false, holder: { phone: '+1' },
+    eligible_return_transfers: [{ booking_id: 7, reference: 'RET-1', original_fare_fjd: 68, needs_status_verification: true, status_uncertainty: 'source_completed_while_return_upcoming' }] }]);
+  assert.match(credits, /status uncertain/); assert.match(credits, /data-verify-status="7"/);
+  assert.equal(credits.includes('data-apply-credit'), false, 'no apply option while the status is uncertain');
 });

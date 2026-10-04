@@ -559,9 +559,20 @@ async function mirrorLegs(env, parentId, sourceBooking, sourceBookingRef, { nowI
     const pickupDatetime = normalizePickupDatetime(leg.pickup_datetime_raw);
     const sourceCancelled = sourceBooking.status === 'cancelled';
     const upcoming = new Date(pickupDatetime).getTime() > Date.now();
-    const status = sourceCancelled ? 'cancelled' : marauStatus;
-    const note = !sourceCancelled && sourceBooking.status === 'completed' && upcoming
-      ? 'source_status_completed_while_return_upcoming (booking-level completion is treated as the outbound leg; unconfirmed by the source)' : null;
+    // STATUS UNCERTAINTY: the source has ONE booking-level status. 'completed' while the return is still upcoming is ambiguous (outbound
+    // only? whole trip?). The return stays visible, is shown as PENDING (never inferred as confirmed), carries status_uncertainty, and
+    // is not eligible for redemption until a named staff member records evidence. A staff verdict is tied to a BASIS (source status +
+    // return pickup time): any change to those facts brings the uncertainty back. The source is never written.
+    const ambiguous = !sourceCancelled && sourceBooking.status === 'completed' && upcoming;
+    let status = sourceCancelled ? 'cancelled' : marauStatus;
+    let uncertainty = null; let note = null;
+    if (ambiguous) {
+      const basis = `${sourceBooking.status}|${pickupDatetime}`;
+      const verdict = existingReturn ? await env.DB.prepare('SELECT verdict FROM marau_leg_status_verifications WHERE booking_id = ? AND basis = ? ORDER BY id DESC LIMIT 1').bind(existingReturn.id, basis).first() : null;
+      if (verdict && verdict.verdict === 'return_not_going_ahead') { status = 'cancelled'; note = 'verified_by_staff_not_going_ahead'; }
+      else if (verdict && verdict.verdict === 'return_upcoming') { note = 'verified_by_staff_upcoming'; }
+      else { status = 'pending'; uncertainty = 'source_completed_while_return_upcoming'; note = 'source_status_completed_while_return_upcoming: the source has one booking-level status; whether the outbound or the whole trip is complete is unconfirmed'; }
+    }
     // creation: INSERT OR IGNORE keyed by the unique (source_booking_ref, leg_key) identity and by client_booking_ref
     await env.DB.prepare(
       `INSERT OR IGNORE INTO marau_test_bookings (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at,
@@ -572,14 +583,14 @@ async function mirrorLegs(env, parentId, sourceBooking, sourceBookingRef, { nowI
     // reconcile from the FRESH read, every time (idempotent): dates, locations, status, provenance, totals
     await env.DB.prepare(
       `UPDATE marau_test_bookings SET pickup_zone = ?, destination_zone = ?, vehicle_type = ?, pickup_datetime = ?, status = ?, pickup_basis = ?, leg_note = ?, updated_at = ?,
-         source_status = ?, source_assigned_driver_id = ?, sync_state = 'IN_LATEST_FEED', parent_booking_id = ?,
+         source_status = ?, source_assigned_driver_id = ?, sync_state = 'IN_LATEST_FEED', parent_booking_id = ?, status_uncertainty = ?,
          leg_value_status = CASE WHEN source_total_cents IS NOT ? THEN 'unresolved' ELSE COALESCE(leg_value_status, 'unresolved') END,
          leg_value_cents = CASE WHEN source_total_cents IS NOT ? THEN NULL ELSE leg_value_cents END,
          leg_value_rule_id = CASE WHEN source_total_cents IS NOT ? THEN NULL ELSE leg_value_rule_id END,
          source_total_cents = ?, source_currency = ?, source_settlement_fjd_cents = ?, source_commission_base_fjd_cents = ?, source_kind = ?, source_origin = ?, source_authenticated = ?, test_data = ?
        WHERE source_booking_ref = ? AND leg_key = 'return' AND ${live}`
     ).bind(leg.pickup_zone, leg.destination_zone, sourceBooking.vehicle_type, pickupDatetime, status, leg.pickup_basis, note, now,
-      sourceBooking.status, sourceBooking.assigned_driver_id != null ? String(sourceBooking.assigned_driver_id) : null, parentId, total, total, total, ...common, sourceBookingRef, ...liveArgs).run();
+      sourceBooking.status, sourceBooking.assigned_driver_id != null ? String(sourceBooking.assigned_driver_id) : null, parentId, uncertainty, total, total, total, ...common, sourceBookingRef, ...liveArgs).run();
   } else if (existingReturn && existingReturn.status !== 'cancelled') {
     await env.DB.prepare(
       `UPDATE marau_test_bookings SET status = 'cancelled', leg_note = 'return_details_removed_or_incomplete', updated_at = ?, source_status = ?

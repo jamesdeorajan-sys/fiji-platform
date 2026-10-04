@@ -110,27 +110,25 @@ test('WORKFLOW: review -> prepare -> record manual send -> record outcome; every
   assert.equal((await outcome(env, g2.sid, 'replied')).status, 409, 'cannot reply before it was sent');
   assert.equal((await outcome(env, g2.sid, 'not_sent', 'phone was off')).data.send.status, 'not_sent');
   const list = (await call(env, `/preview/admin/editions/${encodeURIComponent(EDITION)}/sends`, { headers: staffH(env) })).data;
-  assert.deepEqual(list.summary, { prepared: 0, sent_manually: 0, not_sent: 1, replied: 1, bounced: 0, opted_out: 0 });
+  assert.deepEqual(list.summary, { prepared: 0, sent_manually: 0, not_sent: 1, replied: 1, bounced: 0, opted_out: 0, stale: 0, sent_contrary_to_eligibility: 0 });
   assert.equal(list.nothing_was_sent, true);
   const events = await all(env, 'SELECT to_status, actor FROM marau_edition_send_events ORDER BY id');
   assert.equal(events.length, 3, 'one event per real transition; repeats and refused moves log nothing'); assert.ok(events.every((e) => e.actor));
 });
 
-test('A SEND IS RE-CHECKED AT THE MOMENT IT IS RECORDED: withdrawn consent, a new suppression, or no open offer blocks it, and the row stays prepared', async () => {
+test('A SEND IS EVALUATED AT THE MOMENT IT IS RECORDED (superseded by the readiness round: it is RECORDED honestly, flagged contrary to eligibility, never refused) - see marau_pilot_readiness.test.mjs for the full contract', async () => {
   const { env, a, b } = await setup();
   const g1 = await guest(env); const g2 = await guest(env); const g3 = await guest(env);
   await review(env); await prepare(env);
   await call(env, '/preview/trip/contact', { method: 'POST', headers: guestH(g1.token), body: { marketing_consent: 'withheld' } });
-  const blocked = await outcome(env, g1.sid, 'sent_manually');
-  assert.equal(blocked.status, 409); assert.equal(blocked.data.error, 'RECIPIENT_NO_LONGER_ELIGIBLE'); assert.ok(blocked.data.reasons.includes('no_marketing_consent'));
-  await call(env, `/preview/admin/guests/${g2.sid}/suppressions`, { method: 'POST', headers: staffH(env), body: { channel: 'whatsapp', kind: 'marketing_opt_out' } });
-  await call(env, `/preview/admin/guests/${g2.sid}/suppressions`, { method: 'POST', headers: staffH(env), body: { channel: 'email', kind: 'marketing_opt_out' } });
-  assert.equal((await outcome(env, g2.sid, 'sent_manually')).data.error, 'RECIPIENT_NO_LONGER_ELIGIBLE');
-  assert.equal((await one(env, 'SELECT status FROM marau_edition_sends WHERE guest_session_id = ?', g1.sid)).status, 'prepared');
+  const late = await outcome(env, g1.sid, 'sent_manually');
+  assert.equal(late.status, 200); assert.equal(late.data.sent_contrary_to_eligibility, true); assert.ok(late.data.reasons.includes('no_marketing_consent'));
+  for (const ch of ['whatsapp', 'email']) await call(env, `/preview/admin/guests/${g2.sid}/suppressions`, { method: 'POST', headers: staffH(env), body: { channel: ch, kind: 'marketing_opt_out' } });
+  assert.equal((await outcome(env, g2.sid, 'sent_manually')).data.sent_contrary_to_eligibility, true);
   for (const o of [a, b]) await call(env, `/preview/admin/offers/${o}/withdraw`, { method: 'POST', headers: staffH(env), body: { reason: 'gone' } });
   const none = await outcome(env, g3.sid, 'sent_manually');
-  assert.equal(none.status, 409); assert.equal(none.data.error, 'EDITION_HAS_NO_OPEN_OFFERS');
-  assert.equal((await outcome(env, g3.sid, 'not_sent', 'deal ended before I could send')).status, 200, 'recording that it was NOT sent is always allowed');
+  assert.equal(none.status, 200); assert.ok(none.data.reasons.includes('no_open_offer'));
+  assert.equal((await outcome(env, g3.sid, 'replied')).status, 200, 'later outcomes still record');
 });
 
 test('OUTCOMES FEED CONSENT AND SUPPRESSION: a bounce records a delivery failure on that channel; an opt-out reply withholds marketing consent - both attributed - so the guest drops out of later recipient lists', async () => {

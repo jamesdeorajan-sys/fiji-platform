@@ -13,6 +13,7 @@
  *    never assumed (default 'unknown'), can be withdrawn by the guest at any time, and is evidenced by an append-only log.
  */
 import { followUpPlan, followUpChannel, maySend, sendDecision, validatePhone, validateEmail } from './contact_policy.js';
+import { normalizePickupDatetime } from './fiji_time.js';
 
 export function createGuestContact(deps) {
   const { json, requireStaffIdentity, requireGuestSession, nowIso } = deps;
@@ -239,18 +240,39 @@ export function createGuestContact(deps) {
   // ---------------------------------------------------------------------------------------------------------------
   // HUMAN-LED DEALS PILOT. Staff review a published edition, check live offer availability, pick consent-eligible recipients and
   // RECORD what a person did by hand. Nothing in this section sends, schedules or delivers anything; every response says so.
+  //
+  // THE TIMING CONTRACT (what this app can and cannot do):
+  //   * It CANNOT technically prevent a person from sending a message outside it. Nothing here can stop a phone.
+  //   * Immediately before staff prepare/copy a message, POST .../check RE-CHECKS consent, suppression, offer availability and edition
+  //     expiry, and hands out the message text ONLY when every one holds.
+  //   * A prepared entry is INVALIDATED (stale_reason) the moment a relevant fact changes - on the next read, check or prepare.
+  //   * A send that a person actually made is RECORDED AS IT HAPPENED, even if consent changed or the edition expired afterwards. It is
+  //     flagged 'contrary_to_eligibility' with the reasons - never refused, never hidden, and never confused with 'not_sent'.
   // ---------------------------------------------------------------------------------------------------------------
   const PILOT_LEVEL = 'manual pilot: a human reviews the edition and sends by hand outside Marau; Marau records review, recipients and outcomes only - nothing is generated, scheduled, sent or delivered';
+  const CANNOT_PREVENT = 'this app cannot technically prevent an external manual send; it only withholds the message text when the facts say do not send, invalidates stale entries, and records what actually happened';
   const SEND_TRANSITIONS = { prepared: ['sent_manually', 'not_sent'], sent_manually: ['replied', 'bounced', 'opted_out'], replied: ['opted_out'], not_sent: [], bounced: [], opted_out: [] };
+  const FIJI_SLOT_END_HOUR = { morning: 14, afternoon: 24 };
 
   async function editionRow(env, editionId) {
     return env.DB.prepare('SELECT edition_id, fiji_date, slot, status FROM marau_deal_editions WHERE edition_id = ?').bind(editionId).first();
   }
 
+  /** The instant an edition stops being sendable: the end of its slot in FIJI time (morning 14:00, afternoon midnight). */
+  function editionEndsAt(ed) {
+    const end = FIJI_SLOT_END_HOUR[ed.slot];
+    if (end === 24) {
+      const d = new Date(`${ed.fiji_date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1);
+      return normalizePickupDatetime(`${d.toISOString().slice(0, 10)}T00:00`);
+    }
+    return normalizePickupDatetime(`${ed.fiji_date}T${String(end).padStart(2, '0')}:00`);
+  }
+  const editionExpired = (ed) => new Date(editionEndsAt(ed)).getTime() <= Date.now();
+
   async function editionAvailability(env, editionId) {
     const now = nowIso();
     const { results } = await env.DB.prepare(
-      `SELECT o.offer_id, o.title, o.status, o.book_by, o.expires_at, o.capacity, s.verification_status,
+      `SELECT o.offer_id, o.title, o.status, o.book_by, o.expires_at, o.capacity, o.price_per_place_cents, s.verification_status,
               (SELECT COALESCE(SUM(r.places), 0) FROM marau_offer_requests r WHERE r.offer_id = o.offer_id AND (r.status IN ('confirmed', 'fulfilled') OR (r.status = 'requested' AND r.hold_expires_at > ?))) AS taken
        FROM marau_edition_offers eo JOIN marau_experience_offers o ON o.offer_id = eo.offer_id JOIN marau_suppliers s ON s.supplier_id = o.supplier_id
        WHERE eo.edition_id = ? ORDER BY eo.position, o.offer_id`
@@ -259,9 +281,10 @@ export function createGuestContact(deps) {
       const left = Math.max(0, o.capacity - o.taken);
       const state = o.status === 'withdrawn' ? 'withdrawn' : (o.status !== 'published' || o.verification_status !== 'verified') ? 'unavailable'
         : o.expires_at <= now ? 'expired' : o.book_by <= now ? 'deadline_passed' : left === 0 ? 'sold_out' : 'open';
-      return { offer_id: o.offer_id, title: o.title, state, places_left: left };
+      return { offer_id: o.offer_id, title: o.title, state, places_left: left, price_fjd: o.price_per_place_cents / 100 };
     });
   }
+  const openBasis = (offers) => offers.filter((o) => o.state === 'open').map((o) => o.offer_id).sort().join(',');
 
   async function recipientPlan(env) {
     const guests = await guestSummaries(env);
@@ -276,23 +299,53 @@ export function createGuestContact(deps) {
     return { eligible, excluded };
   }
 
+  /** The facts that decide whether THIS prepared entry may be copied/sent right now. [] = all hold. */
+  async function sendBlockers(env, ed, offers, row) {
+    const reasons = [];
+    if (editionExpired(ed)) reasons.push('edition_expired');
+    if (!offers.some((o) => o.state === 'open')) reasons.push('no_open_offer');
+    const [g] = await guestSummaries(env, { sessionId: row.guest_session_id });
+    const d = decisionFor(g, 'deal_edition', row.channel, await activeSuppressions(env, row.guest_session_id));
+    if (!d.allowed) for (const r of d.reasons) reasons.push(r);
+    return reasons;
+  }
+
+  /**
+   * Invalidate prepared entries whose facts changed. Idempotent; the FIRST reason sticks until the entry is re-prepared. Runs on every
+   * review view, send list, prepare, check and outcome - so a stale list is never presented as current.
+   */
+  async function invalidateStale(env, ed, offers) {
+    const { results: rows } = await env.DB.prepare(`SELECT * FROM marau_edition_sends WHERE edition_id = ? AND status = 'prepared' AND stale_reason IS NULL`).bind(ed.edition_id).all();
+    const basis = openBasis(offers);
+    for (const row of rows) {
+      let reasons = await sendBlockers(env, ed, offers, row);
+      if (!reasons.length && row.offers_basis !== basis) reasons = ['offer_availability_changed'];
+      if (reasons.length) await env.DB.prepare(`UPDATE marau_edition_sends SET stale_reason = ?, stale_at = ? WHERE id = ? AND status = 'prepared' AND stale_reason IS NULL`).bind(reasons.join(','), nowIso(), row.id).run();
+    }
+  }
+
   const reviewShape = (r) => (r ? { decision: r.decision, reviewed_by: r.reviewed_by, reviewed_at: r.reviewed_at, note: r.note, availability: JSON.parse(r.availability_snapshot) } : null);
-  const sendShape = (r) => ({ session_id: r.guest_session_id, channel: r.channel, status: r.status, prepared_by: r.prepared_by, prepared_at: r.prepared_at, updated_by: r.updated_by, updated_at: r.updated_at, note: r.note });
+  const sendShape = (r) => ({
+    session_id: r.guest_session_id, channel: r.channel, status: r.status, prepared_by: r.prepared_by, prepared_at: r.prepared_at, updated_by: r.updated_by, updated_at: r.updated_at, note: r.note,
+    stale_reason: r.stale_reason || null, stale_at: r.stale_at || null, checked_by: r.checked_by || null, checked_at: r.checked_at || null, message_copied_at: r.message_copied_at || null,
+    sent_eligibility: r.sent_eligibility || null, sent_eligibility_reasons: r.sent_eligibility_reasons ? r.sent_eligibility_reasons.split(',') : [],
+  });
 
   async function reviewView(request, env, editionId) {
     const st = await staffOr401(request, env); if (st.error) return st.error;
     const ed = await editionRow(env, editionId);
     if (!ed) return json({ error: 'edition not found' }, 404);
     const offers = await editionAvailability(env, editionId);
+    await invalidateStale(env, ed, offers);
     const plan = await recipientPlan(env);
-    const { results: sends } = await env.DB.prepare('SELECT guest_session_id, status FROM marau_edition_sends WHERE edition_id = ?').bind(editionId).all();
-    const sendBy = Object.fromEntries(sends.map((x) => [x.guest_session_id, x.status]));
+    const { results: sends } = await env.DB.prepare('SELECT guest_session_id, status, stale_reason FROM marau_edition_sends WHERE edition_id = ?').bind(editionId).all();
+    const sendBy = Object.fromEntries(sends.map((x) => [x.guest_session_id, x]));
     const rev = await env.DB.prepare('SELECT * FROM marau_edition_reviews WHERE edition_id = ?').bind(editionId).first();
     return json({
-      edition: ed, offers, sendable_offers: offers.filter((o) => o.state === 'open').map((o) => o.offer_id),
-      recipients: plan.eligible.map((r) => ({ ...r, send_status: sendBy[r.session_id] || null })),
+      edition: { ...ed, expired: editionExpired(ed), ends_at: editionEndsAt(ed) }, offers, sendable_offers: offers.filter((o) => o.state === 'open').map((o) => o.offer_id),
+      recipients: plan.eligible.map((r) => ({ ...r, send_status: sendBy[r.session_id] ? sendBy[r.session_id].status : null, stale_reason: sendBy[r.session_id] ? sendBy[r.session_id].stale_reason || null : null })),
       excluded_by_reason: plan.excluded, review: reviewShape(rev),
-      level: PILOT_LEVEL, nothing_was_sent: true, demonstration_data: true,
+      level: PILOT_LEVEL, app_cannot_prevent_external_send: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true,
     });
   }
 
@@ -304,7 +357,10 @@ export function createGuestContact(deps) {
     if (!ed) return json({ error: 'edition not found' }, 404);
     if (ed.status !== 'published') return json({ error: 'EDITION_NOT_PUBLISHED', detail: 'only a published edition can be reviewed for a manual send' }, 409);
     const offers = await editionAvailability(env, editionId);
-    if (b.decision === 'approved_for_manual_send' && !offers.some((o) => o.state === 'open')) return json({ error: 'EDITION_HAS_NO_OPEN_OFFERS', offers }, 409);
+    if (b.decision === 'approved_for_manual_send') {
+      if (editionExpired(ed)) return json({ error: 'EDITION_EXPIRED', ends_at: editionEndsAt(ed) }, 409);
+      if (!offers.some((o) => o.state === 'open')) return json({ error: 'EDITION_HAS_NO_OPEN_OFFERS', offers }, 409);
+    }
     await env.DB.prepare(
       `INSERT INTO marau_edition_reviews (edition_id, decision, reviewed_by, reviewed_at, note, availability_snapshot) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(edition_id) DO UPDATE SET decision = excluded.decision, reviewed_by = excluded.reviewed_by, reviewed_at = excluded.reviewed_at, note = excluded.note, availability_snapshot = excluded.availability_snapshot`
@@ -318,16 +374,51 @@ export function createGuestContact(deps) {
     const ed = await editionRow(env, editionId);
     if (!ed) return json({ error: 'edition not found' }, 404);
     if (ed.status !== 'published') return json({ error: 'EDITION_NOT_PUBLISHED' }, 409);
+    if (editionExpired(ed)) return json({ error: 'EDITION_EXPIRED', ends_at: editionEndsAt(ed) }, 409);
     const rev = await env.DB.prepare('SELECT decision FROM marau_edition_reviews WHERE edition_id = ?').bind(editionId).first();
     if (!rev || rev.decision !== 'approved_for_manual_send') return json({ error: 'EDITION_NOT_REVIEWED', detail: 'a staff review approving this edition for a manual send is required first' }, 409);
-    if (!(await editionAvailability(env, editionId)).some((o) => o.state === 'open')) return json({ error: 'EDITION_HAS_NO_OPEN_OFFERS' }, 409);
+    const offers = await editionAvailability(env, editionId);
+    if (!offers.some((o) => o.state === 'open')) return json({ error: 'EDITION_HAS_NO_OPEN_OFFERS' }, 409);
+    await invalidateStale(env, ed, offers);
+    const basis = openBasis(offers);
     const plan = await recipientPlan(env);
-    let prepared = 0; let already = 0;
+    let prepared = 0; let already = 0; let refreshed = 0;
     for (const r of plan.eligible) {
-      const res = await env.DB.prepare('INSERT OR IGNORE INTO marau_edition_sends (edition_id, guest_session_id, channel, status, prepared_by, prepared_at) VALUES (?, ?, ?, \'prepared\', ?, ?)').bind(editionId, r.session_id, r.channel, st.operator, nowIso()).run();
-      if (res.meta.changes === 1) prepared += 1; else already += 1;
+      const res = await env.DB.prepare('INSERT OR IGNORE INTO marau_edition_sends (edition_id, guest_session_id, channel, status, prepared_by, prepared_at, offers_basis) VALUES (?, ?, ?, \'prepared\', ?, ?, ?)').bind(editionId, r.session_id, r.channel, st.operator, nowIso(), basis).run();
+      if (res.meta.changes === 1) { prepared += 1; continue; }
+      // an entry that was invalidated is REFRESHED against today's facts (channel and offers); a still-valid one is left alone
+      const up = await env.DB.prepare(`UPDATE marau_edition_sends SET channel = ?, offers_basis = ?, stale_reason = NULL, stale_at = NULL, prepared_by = ?, prepared_at = ?, checked_at = NULL, checked_by = NULL, message_copied_at = NULL
+                                       WHERE edition_id = ? AND guest_session_id = ? AND status = 'prepared' AND stale_reason IS NOT NULL`).bind(r.channel, basis, st.operator, nowIso(), editionId, r.session_id).run();
+      if (up.meta.changes === 1) refreshed += 1; else already += 1;
     }
-    return json({ ok: true, prepared, already_prepared: already, level: PILOT_LEVEL, nothing_was_sent: true, demonstration_data: true });
+    return json({ ok: true, prepared, already_prepared: already, refreshed, level: PILOT_LEVEL, nothing_was_sent: true, demonstration_data: true });
+  }
+
+  function composeMessageText(ed, offers) {
+    const lines = offers.filter((o) => o.state === 'open').map((o) => `- ${o.title}: FJ$${Number(o.price_fjd).toFixed(2)} per place (${o.places_left} left)`);
+    return `Marau deals (${ed.slot}, ${ed.fiji_date}):\n${lines.join('\n')}\nReply here to request a place - a person will confirm with you. Reply STOP and we will not send deals again.`;
+  }
+
+  /** Immediately before staff prepare/copy a message: recheck everything, hand out the text only if all of it holds. */
+  async function preSendCheck(request, env, editionId, sessionId) {
+    const st = await staffOr401(request, env); if (st.error) return st.error;
+    const ed = await editionRow(env, editionId);
+    if (!ed) return json({ error: 'edition not found' }, 404);
+    const row = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE edition_id = ? AND guest_session_id = ?').bind(editionId, sessionId).first();
+    if (!row) return json({ error: 'no prepared send for this guest and edition' }, 404);
+    if (row.status !== 'prepared') return json({ error: 'INVALID_STATE', status: row.status, detail: 'only a prepared entry can be checked for copying' }, 409);
+    const offers = await editionAvailability(env, editionId);
+    const reasons = await sendBlockers(env, ed, offers, row);
+    if (reasons.length) {
+      await env.DB.prepare(`UPDATE marau_edition_sends SET stale_reason = COALESCE(stale_reason, ?), stale_at = COALESCE(stale_at, ?) WHERE id = ?`).bind(reasons.join(','), nowIso(), row.id).run();
+      return json({ error: 'NOT_ELIGIBLE_TO_SEND', eligible: false, reasons, detail: 'the facts no longer allow this message; no text is provided', app_cannot_prevent_external_send: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true }, 409);
+    }
+    await invalidateStale(env, ed, offers);
+    const fresh = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE id = ?').bind(row.id).first();
+    if (fresh.stale_reason) return json({ error: 'PREPARED_ENTRY_STALE', stale_reason: fresh.stale_reason, detail: 'a fact changed since this list was prepared; prepare the list again', nothing_was_sent: true }, 409);
+    const now = nowIso();
+    await env.DB.prepare('UPDATE marau_edition_sends SET checked_at = ?, checked_by = ?, message_copied_at = ? WHERE id = ?').bind(now, st.operator, now, row.id).run();
+    return json({ ok: true, eligible: true, channel: row.channel, checked_at: now, checked_by: st.operator, message_text: composeMessageText(ed, offers), level: PILOT_LEVEL, app_cannot_prevent_external_send: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true });
   }
 
   async function recordOutcome(request, env, editionId, sessionId) {
@@ -336,26 +427,29 @@ export function createGuestContact(deps) {
     const to = String(b.status || '');
     if (!['sent_manually', 'not_sent', 'replied', 'bounced', 'opted_out'].includes(to)) return json({ error: 'status must be sent_manually, not_sent, replied, bounced or opted_out' }, 400);
     const note = b.note ? String(b.note).slice(0, 300) : null;
+    const ed = await editionRow(env, editionId);
+    if (!ed) return json({ error: 'edition not found' }, 404);
     const row = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE edition_id = ? AND guest_session_id = ?').bind(editionId, sessionId).first();
     if (!row) return json({ error: 'no prepared send for this guest and edition' }, 404);
-    if (row.status === to) return json({ ok: true, repeated: true, send: sendShape(row), nothing_was_sent: true, demonstration_data: true });
+    if (row.status === to) return json({ ok: true, repeated: true, send: sendShape(row), sent_contrary_to_eligibility: row.sent_eligibility === 'contrary_to_eligibility', nothing_was_sent: true, demonstration_data: true });
     if (!SEND_TRANSITIONS[row.status].includes(to)) return json({ error: 'INVALID_TRANSITION', from: row.status, to }, 409);
+    // HONEST RECORDING: a person who says they sent it sent it. The facts at THIS moment are evaluated and stored with the record; a send
+    // made when they no longer held is recorded as such ('contrary_to_eligibility' + reasons), never refused and never hidden.
+    let eligibility = null; let reasons = [];
     if (to === 'sent_manually') {
-      // Re-checked at the moment a person says they sent it: the edition must STILL have an open offer, and the guest must STILL be
-      // reachable on that channel under their CURRENT consent and suppressions.
-      if (!(await editionAvailability(env, editionId)).some((o) => o.state === 'open')) return json({ error: 'EDITION_HAS_NO_OPEN_OFFERS', detail: 'the deal has ended; record not_sent instead' }, 409);
-      const [g] = await guestSummaries(env, { sessionId });
-      const d = decisionFor(g, 'deal_edition', row.channel, await activeSuppressions(env, sessionId));
-      if (!d.allowed) return json({ error: 'RECIPIENT_NO_LONGER_ELIGIBLE', reasons: d.reasons }, 409);
+      reasons = await sendBlockers(env, ed, await editionAvailability(env, editionId), row);
+      eligibility = reasons.length ? 'contrary_to_eligibility' : 'eligible';
     }
     const now = nowIso();
-    const res = await env.DB.prepare('UPDATE marau_edition_sends SET status = ?, updated_by = ?, updated_at = ?, note = COALESCE(?, note) WHERE id = ? AND status = ?').bind(to, st.operator, now, note, row.id, row.status).run();
+    const res = await env.DB.prepare('UPDATE marau_edition_sends SET status = ?, updated_by = ?, updated_at = ?, note = COALESCE(?, note), sent_eligibility = COALESCE(?, sent_eligibility), sent_eligibility_reasons = COALESCE(?, sent_eligibility_reasons) WHERE id = ? AND status = ?')
+      .bind(to, st.operator, now, note, eligibility, reasons.length ? reasons.join(',') : null, row.id, row.status).run();
     const cur = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE id = ?').bind(row.id).first();
     if (res.meta.changes !== 1) {
-      if (cur.status === to) return json({ ok: true, repeated: true, send: sendShape(cur), nothing_was_sent: true, demonstration_data: true });
+      if (cur.status === to) return json({ ok: true, repeated: true, send: sendShape(cur), sent_contrary_to_eligibility: cur.sent_eligibility === 'contrary_to_eligibility', nothing_was_sent: true, demonstration_data: true });
       return json({ error: 'INVALID_TRANSITION', from: cur.status, to }, 409);
     }
-    await env.DB.prepare('INSERT INTO marau_edition_send_events (send_id, from_status, to_status, actor, note, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(row.id, row.status, to, st.operator, note, now).run();
+    await env.DB.prepare('INSERT INTO marau_edition_send_events (send_id, from_status, to_status, actor, note, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(row.id, row.status, to, st.operator, [note, eligibility === 'contrary_to_eligibility' ? `CONTRARY TO ELIGIBILITY: ${reasons.join(',')}` : null].filter(Boolean).join(' | ') || null, now).run();
     if (to === 'bounced') {
       await env.DB.prepare('INSERT INTO marau_suppressions (guest_session_id, channel, kind, reason, recorded_by, created_at) VALUES (?, ?, \'delivery_failure\', ?, ?, ?)').bind(sessionId, row.channel, note || 'bounced after a manual edition send', st.operator, now).run();
     }
@@ -363,16 +457,26 @@ export function createGuestContact(deps) {
       await setConsent(env, sessionId, 'withheld', { source: 'edition_reply', actor: st.operator });
       await env.DB.prepare('INSERT INTO marau_suppressions (guest_session_id, channel, kind, reason, recorded_by, created_at) VALUES (?, ?, \'marketing_opt_out\', ?, ?, ?)').bind(sessionId, row.channel, note || 'opted out in reply to a manual edition send', st.operator, now).run();
     }
-    return json({ ok: true, send: sendShape(cur), nothing_was_sent: true, demonstration_data: true });
+    return json({
+      ok: true, send: sendShape(cur), sent_contrary_to_eligibility: eligibility === 'contrary_to_eligibility',
+      ...(eligibility === 'contrary_to_eligibility' ? { warning: 'recorded as sent CONTRARY TO ELIGIBILITY - the facts did not allow this send when it was recorded', reasons } : {}),
+      note: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true,
+    });
   }
 
   async function listSends(request, env, editionId) {
     const st = await staffOr401(request, env); if (st.error) return st.error;
-    if (!(await editionRow(env, editionId))) return json({ error: 'edition not found' }, 404);
+    const ed = await editionRow(env, editionId);
+    if (!ed) return json({ error: 'edition not found' }, 404);
+    await invalidateStale(env, ed, await editionAvailability(env, editionId));
     const { results } = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE edition_id = ? ORDER BY id').bind(editionId).all();
-    const summary = { prepared: 0, sent_manually: 0, not_sent: 0, replied: 0, bounced: 0, opted_out: 0 };
-    for (const r of results) summary[r.status] += 1;
-    return json({ sends: results.map(sendShape), summary, level: PILOT_LEVEL, nothing_was_sent: true, demonstration_data: true });
+    const summary = { prepared: 0, sent_manually: 0, not_sent: 0, replied: 0, bounced: 0, opted_out: 0, stale: 0, sent_contrary_to_eligibility: 0 };
+    for (const r of results) {
+      summary[r.status] += 1;
+      if (r.status === 'prepared' && r.stale_reason) summary.stale += 1;
+      if (r.sent_eligibility === 'contrary_to_eligibility') summary.sent_contrary_to_eligibility += 1;
+    }
+    return json({ sends: results.map(sendShape), summary, level: PILOT_LEVEL, app_cannot_prevent_external_send: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true });
   }
 
   async function route(request, env, url) {
@@ -391,6 +495,7 @@ export function createGuestContact(deps) {
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends$/); if (m === 'GET' && x) return listSends(request, env, decodeURIComponent(x[1]));
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/prepare$/); if (m === 'POST' && x) return prepareSends(request, env, decodeURIComponent(x[1]));
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/(gs_[^/]+)\/outcome$/); if (m === 'POST' && x) return recordOutcome(request, env, decodeURIComponent(x[1]), x[2]);
+    x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/(gs_[^/]+)\/check$/); if (m === 'POST' && x) return preSendCheck(request, env, decodeURIComponent(x[1]), x[2]);
     return null;
   }
 

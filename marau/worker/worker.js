@@ -495,7 +495,7 @@ async function handleCreateBooking(request, env) {
  */
 // What a guest may see of a booking row: never the operator-side figures (settlement / commission), the source provenance, the
 // allocation rule or the sync notes.
-const GUEST_HIDDEN_BOOKING_FIELDS = ['source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'source_kind', 'source_origin', 'source_authenticated', 'leg_value_rule_id', 'leg_note', 'parent_booking_id'];
+const GUEST_HIDDEN_BOOKING_FIELDS = ['status_verified_by', 'status_verified_at', 'status_verification_evidence', 'source_settlement_fjd_cents', 'source_commission_base_fjd_cents', 'source_kind', 'source_origin', 'source_authenticated', 'leg_value_rule_id', 'leg_note', 'parent_booking_id'];
 function guestBookingView(b) {
   const out = { ...b };
   for (const k of GUEST_HIDDEN_BOOKING_FIELDS) delete out[k];
@@ -2659,7 +2659,7 @@ export default {
           const r = await guestContact.route(request, env, url);
           if (r) return r;
         }
-        if (pathname.startsWith('/preview/admin/rewards')) {
+        if (pathname.startsWith('/preview/admin/rewards') || /^\/preview\/admin\/bookings\/\d+\/verify-status$/.test(pathname)) {
           const r = await referrals.route(request, env, url);
           if (r) return r;
         }

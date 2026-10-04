@@ -241,7 +241,9 @@ test('SOURCE CANCELLATION cancels both legs; ARRIVAL COMPLETED keeps the upcomin
   await sync(env, r, source, { type: 'completed', status: 'completed' });
   let rows = await legs(env, r);
   assert.equal(legOf(rows, 'arrival').source_status, 'completed');
-  assert.equal(legOf(rows, 'return').status, 'confirmed', 'the return is still upcoming');
+  // SUPERSEDED in the readiness round: the return stays visible but is NOT inferred as confirmed - it is pending with an explicit uncertainty
+  assert.equal(legOf(rows, 'return').status, 'pending');
+  assert.equal(legOf(rows, 'return').status_uncertainty, 'source_completed_while_return_upcoming');
   assert.match(legOf(rows, 'return').leg_note, /completed_while_return_upcoming/);
   // the arrival row is terminal-locked, but a later return edit still reaches the return leg
   source.set({ ...r, status: 'completed', return_time: '16:00' });
@@ -410,6 +412,9 @@ test('ACCEPTANCE (arrival already completed): the return is still eligible and t
   source.set({ ...r, status: 'completed' });
   await sync(env, r, source, { type: 'completed', status: 'completed' });
   const credit = await earnCredit(ctx);
+  assert.equal((await apply(env, credit, ret.id)).data.error, 'LEG_STATUS_UNVERIFIED', 'completed-while-upcoming is uncertain: no redemption until staff verify');
+  const vv = await call(env, `/preview/admin/bookings/${ret.id}/verify-status`, { method: 'POST', headers: staffH(env), body: { verdict: 'return_upcoming', evidence: 'confirmed by phone that the return is still booked' } });
+  assert.equal(vv.status, 200, JSON.stringify(vv.data));
   const ok = await apply(env, credit, ret.id);
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
   assert.deepEqual([ok.data.fare.booking_total_fjd, ok.data.fare.amount_due_fjd], [170, 160]);

@@ -340,12 +340,13 @@ export function createReferrals(deps) {
   // booking ('departure', relationship to any arrival unproven). Round trips held in one booking, 'other' and 'unclassified' never.
   const ADJUSTMENT_SOURCE = `
     FROM (
-      SELECT c.credit_id AS credit_id, c.amount_cents AS amount, c.funding_source AS funding, b.id AS booking_id, b.leg_type AS leg, b.leg_key AS leg_key,
+      SELECT c.credit_id AS credit_id, c.amount_cents AS amount, c.funding_source AS funding, b.id AS booking_id, b.leg_type AS leg, b.leg_key AS leg_key, b.source_total_cents AS total0,
              CASE WHEN b.leg_key IS NULL THEN CAST(ROUND(b.quoted_amount * 100) AS INTEGER) ELSE b.leg_value_cents END AS orig,
              COALESCE((SELECT SUM(a.credit_cents) FROM marau_booking_adjustments a WHERE a.booking_id = b.id AND a.status IN ${LIVE_ADJ}), 0) AS used
       FROM marau_reward_credits c
       JOIN marau_test_bookings b ON b.id = ? AND b.guest_session_id = c.beneficiary_session_id AND (b.leg_type = 'return' OR (b.leg_type = 'departure' AND ? = 1))
                                 AND (b.leg_key IS NULL OR (b.leg_key = 'return' AND b.leg_value_status = 'allocated' AND b.leg_value_cents > 0))
+                                AND b.status_uncertainty IS NULL
                                 AND b.status IN ('pending', 'confirmed', 'confirmed_unallocated') AND b.pickup_datetime > ?
       WHERE c.credit_id = ?`;
   const BASIS = `CASE WHEN x.leg_key IS NOT NULL THEN 'source_round_trip_return_leg' WHEN x.leg = 'return' THEN 'declared_return_leg' ELSE 'staff_confirmed_departure' END`;
@@ -371,8 +372,8 @@ export function createReferrals(deps) {
     try {
       batch = await env.DB.batch([
         env.DB.prepare(
-          `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at, relationship_basis)
-           SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(x.amount, x.orig - x.used), x.orig - x.used - MIN(x.amount, x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?, ${BASIS}
+          `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at, relationship_basis, booking_total_at_apply_cents)
+           SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(x.amount, x.orig - x.used), x.orig - x.used - MIN(x.amount, x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?, ${BASIS}, x.total0
            ${ADJUSTMENT_SOURCE} AND c.status = 'earned'
              AND (SELECT mode FROM marau_reward_policy WHERE id = 1) != 'off'
              AND ${PURCHASE_LIVE('c.qualifying_request_id')}) x
@@ -406,8 +407,9 @@ export function createReferrals(deps) {
     if (credit.status !== 'earned') return json({ error: 'CREDIT_NOT_APPLICABLE', status: credit.status, detail: credit.status === 'pending' ? 'the purchase is not yet fulfilled and paid' : credit.status === 'reversed' ? 'the qualifying purchase was cancelled, refunded or is no longer eligible' : undefined }, 409);
     const policy = await readPolicy(env);
     if (policy.mode === 'off') return json({ error: 'REWARDS_OFF', detail: 'rewards are switched off: credits are frozen, not lost, and resume when rewards are switched back on' }, 409);
-    const booking = await env.DB.prepare('SELECT id, leg_type, leg_key, leg_value_status, source_currency, status, pickup_datetime FROM marau_test_bookings WHERE id = ? AND guest_session_id = ?').bind(bookingId, credit.beneficiary_session_id).first();
+    const booking = await env.DB.prepare('SELECT id, leg_type, leg_key, leg_value_status, source_currency, status, status_uncertainty, pickup_datetime FROM marau_test_bookings WHERE id = ? AND guest_session_id = ?').bind(bookingId, credit.beneficiary_session_id).first();
     const live = booking && ['pending', 'confirmed', 'confirmed_unallocated'].includes(booking.status) && booking.pickup_datetime > nowIso();
+    if (live && booking.status_uncertainty) return json({ error: 'LEG_STATUS_UNVERIFIED', status_uncertainty: booking.status_uncertainty, detail: 'the source marks this booking completed while this return is still upcoming, so its operational status is uncertain; a named staff member must record evidence (POST /preview/admin/bookings/:id/verify-status) before a credit can apply. Nothing was changed.' }, 409);
     if (live && booking.leg_key === 'return' && booking.leg_value_status !== 'allocated') {
       const nonFjd = booking.source_currency && String(booking.source_currency).toUpperCase() !== 'FJD';
       return json({ error: 'RETURN_VALUE_UNRESOLVED', reason: nonFjd ? 'source_currency_not_fjd' : 'no_approved_allocation_rule',
@@ -425,8 +427,8 @@ export function createReferrals(deps) {
     if (live) return false;
     try {
       const res = await env.DB.prepare(
-        `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at, relationship_basis)
-         SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(COALESCE(?, x.amount), x.orig - x.used), x.orig - x.used - MIN(COALESCE(?, x.amount), x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?, ${BASIS}
+        `INSERT INTO marau_booking_adjustments (adjustment_id, booking_id, credit_id, kind, original_quote_cents, credit_cents, amount_due_cents, operator_payout_cents, operator_payout_unchanged, funded_by, status, created_by, created_at, relationship_basis, booking_total_at_apply_cents)
+         SELECT ?, x.booking_id, x.credit_id, 'referral_credit', x.orig, MIN(COALESCE(?, x.amount), x.orig - x.used), x.orig - x.used - MIN(COALESCE(?, x.amount), x.orig - x.used), NULL, 1, x.funding, 'applied', ?, ?, ${BASIS}, x.total0
          ${ADJUSTMENT_SOURCE} AND c.status = 'applied') x
          WHERE x.orig - x.used > 0`
       ).bind(idFor('adj'), credit.applied_cents, credit.applied_cents, credit.applied_by || 'unknown', nowIso(), credit.applied_booking_id, 1, nowIso(), credit.credit_id).run();
@@ -480,8 +482,11 @@ export function createReferrals(deps) {
       const rule = await env.DB.prepare('SELECT kind, value FROM marau_return_allocation_rules WHERE rule_id = ?').bind(ret.leg_value_rule_id).first();
       returnValue = { status: 'allocated', value_fjd: fjd(ret.leg_value_cents), rule_basis: rule ? (rule.kind === 'percent_of_total' ? `percent_of_total ${rule.value / 100}%` : `fixed_return_fjd ${fjd(rule.value)}`) : 'rule' };
     }
+    const totalAtCredit = live.map((a) => a.booking_total_at_apply_cents).find((v) => v != null);
+    const quoteChanged = totalAtCredit != null && totalAtCredit !== total;
     return {
       scope: 'round_trip_booking', leg: b.leg_key,
+      ...(quoteChanged ? { quote_changed_since_credit: true, booking_total_at_credit_fjd: fjd(totalAtCredit) } : {}),
       original_fare_fjd: fjd(total), booking_total_fjd: fjd(total),
       referral_credit_fjd: fjd(credit), amount_due_fjd: fjd(total - credit),
       return_value: returnValue,
@@ -566,6 +571,33 @@ export function createReferrals(deps) {
     const c = String(code || '').toUpperCase();
     const ok = isWellFormedCode(c) && Boolean(await env.DB.prepare('SELECT 1 AS ok FROM marau_referral_codes WHERE code = ?').bind(c).first());
     return json({ valid: ok }, ok ? 200 : 404); // deliberately nothing else: no referrer, no counts
+  }
+
+  // ----------------------------------------------------- staff verification of an uncertain leg status
+
+  async function verifyLegStatus(request, env, bookingId) {
+    const staff = await requireStaffIdentity(request, env);
+    if (!staff) return json({ error: 'unauthorized - a valid staff identity token (x-marau-staff-token) is required' }, 401);
+    let b; try { b = await request.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
+    const errors = [];
+    if (!['return_upcoming', 'return_not_going_ahead'].includes(b.verdict)) errors.push("verdict must be 'return_upcoming' or 'return_not_going_ahead'");
+    const evidence = typeof b.evidence === 'string' ? b.evidence.trim() : '';
+    if (evidence.length < 10) errors.push('evidence is required: say what was checked, with whom and when (at least 10 characters)');
+    if (errors.length) return json({ error: 'validation failed', details: errors }, 400);
+    const leg = await env.DB.prepare('SELECT id, leg_key, status, status_uncertainty, source_status, pickup_datetime FROM marau_test_bookings WHERE id = ?').bind(bookingId).first();
+    if (!leg) return json({ error: 'booking not found' }, 404);
+    if (!leg.status_uncertainty) return json({ error: 'NOTHING_TO_VERIFY', detail: 'this leg carries no status uncertainty' }, 409);
+    const now = nowIso();
+    const basis = `${leg.source_status}|${leg.pickup_datetime}`;
+    const newStatus = b.verdict === 'return_upcoming' ? 'confirmed' : 'cancelled';
+    // The source is NEVER written or read here: this records a Marau-side fact with its evidence, attributed to the named actor.
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO marau_leg_status_verifications (booking_id, verdict, evidence, actor, basis, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(bookingId, b.verdict, evidence.slice(0, 500), staff.operatorName, basis, now),
+      env.DB.prepare(`UPDATE marau_test_bookings SET status = ?, status_uncertainty = NULL, status_verified_by = ?, status_verified_at = ?, status_verification_evidence = ?, leg_note = ?, updated_at = ? WHERE id = ? AND status_uncertainty IS NOT NULL`)
+        .bind(newStatus, staff.operatorName, now, evidence.slice(0, 500), b.verdict === 'return_upcoming' ? 'verified_by_staff_upcoming' : 'verified_by_staff_not_going_ahead', now, bookingId),
+    ]);
+    await reconcileApplications(env);
+    return json({ ok: true, source_unchanged: true, leg: { id: bookingId, status: newStatus, status_uncertainty: null, verified_by: staff.operatorName, verified_at: now, evidence: evidence.slice(0, 500) }, demonstration_data: true });
   }
 
   // ------------------------------------------------------- return-value allocation rules
@@ -673,7 +705,7 @@ export function createReferrals(deps) {
     const out = [];
     for (const c of results) {
       const { results: returns } = c.status === 'earned'
-        ? await env.DB.prepare(`SELECT id, client_booking_ref, pickup_datetime, quoted_amount, leg_type, leg_key, leg_value_status, leg_value_cents, source_total_cents, source_settlement_fjd_cents FROM marau_test_bookings WHERE guest_session_id = ? AND leg_type IN ('return', 'departure') AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ? ORDER BY pickup_datetime ASC`).bind(c.beneficiary_session_id, nowIso()).all()
+        ? await env.DB.prepare(`SELECT id, client_booking_ref, pickup_datetime, quoted_amount, leg_type, leg_key, leg_value_status, leg_value_cents, source_total_cents, source_settlement_fjd_cents, status_uncertainty FROM marau_test_bookings WHERE guest_session_id = ? AND leg_type IN ('return', 'departure') AND status IN ('pending', 'confirmed', 'confirmed_unallocated') AND pickup_datetime > ? ORDER BY pickup_datetime ASC`).bind(c.beneficiary_session_id, nowIso()).all()
         : { results: [] };
       const { results: noteRows } = await env.DB.prepare(`SELECT source_booking_ref, return_leg_state FROM marau_test_bookings WHERE guest_session_id = ? AND leg_key = 'arrival' AND return_leg_state IN ('missing_return_details', 'unsupported_direction')`).bind(c.beneficiary_session_id).all();
       const notes = noteRows.map((x) => ({ code: x.return_leg_state === 'missing_return_details' ? 'RETURN_DETAILS_MISSING' : 'RETURN_SHAPE_UNSUPPORTED', source_booking_ref: x.source_booking_ref }));
@@ -681,7 +713,7 @@ export function createReferrals(deps) {
         credit_id: c.credit_id, status: c.status, amount_fjd: fjd(c.amount_cents), funding_source: c.funding_source, needs_manual_adjustment: c.needs_manual_adjustment === 1,
         applied_booking_id: c.applied_booking_id, applied_by: c.applied_by, reversal_reason: c.reversal_reason,
         eligible_return_transfers: returns.map((r) => (r.leg_key
-          ? { booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, leg_type: r.leg_type, leg_key: r.leg_key, needs_staff_confirmation: false,
+          ? { booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, leg_type: r.leg_type, leg_key: r.leg_key, needs_staff_confirmation: false, status_uncertainty: r.status_uncertainty || null, needs_status_verification: Boolean(r.status_uncertainty),
               return_value_status: r.leg_value_status === 'allocated' ? 'allocated' : 'RETURN_VALUE_UNRESOLVED', original_fare_fjd: r.leg_value_status === 'allocated' ? fjd(r.leg_value_cents) : null,
               source_total_fjd: fjd(r.source_total_cents), source_settlement_fjd: fjd(r.source_settlement_fjd_cents) }
           : { booking_id: r.id, reference: r.client_booking_ref, pickup_datetime: r.pickup_datetime, original_fare_fjd: r.quoted_amount, leg_type: r.leg_type, needs_staff_confirmation: r.leg_type === 'departure' })),
@@ -726,6 +758,7 @@ export function createReferrals(deps) {
     if (m === 'POST' && p === '/preview/admin/rewards/policy') return setPolicy(request, env);
     if (m === 'GET' && p === '/preview/admin/rewards/credits') return listCredits(request, env);
     x = p.match(/^\/preview\/admin\/rewards\/credits\/(cr_[^/]+)\/apply$/); if (m === 'POST' && x) return applyCredit(request, env, x[1]);
+    x = p.match(/^\/preview\/admin\/bookings\/(\d+)\/verify-status$/); if (m === 'POST' && x) return verifyLegStatus(request, env, Number(x[1]));
     if (m === 'POST' && p === '/preview/admin/rewards/allocation-rules') return proposeRule(request, env);
     if (m === 'GET' && p === '/preview/admin/rewards/allocation-rules') return listRules(request, env);
     x = p.match(/^\/preview\/admin\/rewards\/allocation-rules\/(rule_[^/]+)\/(approve|retire)$/); if (m === 'POST' && x) return decideRule(request, env, x[1], x[2]);
