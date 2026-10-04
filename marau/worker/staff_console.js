@@ -117,6 +117,70 @@ export function createStaffConsole(deps) {
 
   // ------------------------------------------------------------------- loading
 
+  // ---------------------------------------------------------------- deals pilot (pure renderer + loader)
+  // A HUMAN reviews a published edition, sends by hand OUTSIDE Marau, and records what happened. Nothing here sends anything.
+  function pilotHtml(editionId, rv, sends) {
+    var e = esc(editionId);
+    var offers = rv.offers.map(function (o) {
+      return '<span class="pill ' + (o.state === 'open' ? '' : 'bad') + '">' + esc(o.title) + ': ' + esc(o.state) + (o.state === 'open' ? ' (' + esc(o.places_left) + ' left)' : '') + '</span> ';
+    }).join('');
+    var reviewLine = rv.review
+      ? '<p class="small">Reviewed by <b>' + esc(rv.review.reviewed_by) + '</b>: ' + esc(rv.review.decision) + (rv.review.note ? ' - ' + esc(rv.review.note) : '') + '</p>'
+      : '<p class="small muted">Not reviewed yet.</p>';
+    var statusBy = {};
+    sends.sends.forEach(function (s) { statusBy[s.session_id] = s; });
+    var rows = rv.recipients.map(function (r) {
+      var s = statusBy[r.session_id];
+      var status = s ? s.status : null;
+      var buttons = '';
+      function btn(next, label) { return '<button class="btn btn-light" data-pilot-outcome="' + e + '|' + esc(r.session_id) + '|' + next + '">' + label + '</button> '; }
+      if (status === 'prepared') buttons = btn('sent_manually', 'I sent it') + btn('not_sent', 'Not sent');
+      else if (status === 'sent_manually') buttons = btn('replied', 'Replied') + btn('bounced', 'Bounced') + btn('opted_out', 'Opted out');
+      else if (status === 'replied') buttons = btn('opted_out', 'Opted out');
+      return '<p class="small" style="border-top:1px solid var(--line);padding-top:6px"><b>' + esc(r.channel) + '</b> - ' + esc(r.contact.phone) + ' / ' + esc(r.contact.email) +
+        ' - <span class="pill">' + esc(status || 'not prepared') + '</span>' + (s && s.updated_by ? ' <span class="muted">by ' + esc(s.updated_by) + '</span>' : '') + '<br>' + buttons + '</p>';
+    }).join('') || '<p class="muted small">No consent-eligible recipients.</p>';
+    var excluded = Object.keys(rv.excluded_by_reason).map(function (k) { return esc(k.split('_').join(' ')) + ': ' + esc(rv.excluded_by_reason[k]); }).join(', ');
+    return '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px"><p><b>' + e + '</b></p><p class="small">' + offers + '</p>' + reviewLine +
+      '<p><button class="btn btn-light" data-pilot-review="' + e + '|approved_for_manual_send">Approve for manual send</button> <button class="btn btn-light" data-pilot-review="' + e + '|needs_changes">Needs changes</button> ' +
+      '<button class="btn btn-primary" data-pilot-prepare="' + e + '">Prepare recipient list</button></p>' + rows +
+      (excluded ? '<p class="small muted">Not eligible - ' + excluded + '</p>' : '') +
+      '<p class="small muted">Nothing is sent from here. Send by hand, then record what happened.</p></div>';
+  }
+
+  function loadPilot(editions) {
+    var published = editions.filter(function (x) { return x.status === 'published'; });
+    var target = el('rPilot');
+    if (!published.length) { target.innerHTML = '<p class="muted small">Publish an edition to review it here.</p>'; return Promise.resolve(); }
+    return Promise.all(published.map(function (x) {
+      var id = encodeURIComponent(x.edition_id);
+      return Promise.all([call('GET', '/preview/admin/editions/' + id + '/review'), call('GET', '/preview/admin/editions/' + id + '/sends')]).then(function (p) {
+        return p[0].ok && p[1].ok ? pilotHtml(x.edition_id, p[0].data, p[1].data) : '<p class="small">' + esc(x.edition_id) + ': could not load</p>';
+      });
+    })).then(function (parts) { target.innerHTML = parts.join(''); wirePilot(); });
+  }
+
+  function wirePilot() {
+    function each(sel, fn) { var nodes = doc.querySelectorAll(sel); for (var i = 0; i < nodes.length; i += 1) fn(nodes[i]); }
+    each('[data-pilot-review]', function (b) {
+      b.onclick = function () {
+        var parts = b.getAttribute('data-pilot-review').split('|');
+        var note = prompt('Note for the record (optional)?') || undefined;
+        act('POST', '/preview/admin/editions/' + encodeURIComponent(parts[0]) + '/review', { decision: parts[1], note: note }, 'Review recorded.');
+      };
+    });
+    each('[data-pilot-prepare]', function (b) {
+      b.onclick = function () { act('POST', '/preview/admin/editions/' + encodeURIComponent(b.getAttribute('data-pilot-prepare')) + '/sends/prepare', {}, 'Recipient list prepared. Nothing was sent.'); };
+    });
+    each('[data-pilot-outcome]', function (b) {
+      b.onclick = function () {
+        var parts = b.getAttribute('data-pilot-outcome').split('|');
+        var note = prompt('Note for the record (optional)?') || undefined;
+        act('POST', '/preview/admin/editions/' + encodeURIComponent(parts[0]) + '/sends/' + parts[1] + '/outcome', { status: parts[2], note: note }, 'Recorded: ' + parts[2].split('_').join(' ') + '.');
+      };
+    });
+  }
+
   function refresh() {
     return Promise.all([
       call('GET', '/preview/admin/offers/report'), call('GET', '/preview/admin/guests?attention=1'), call('GET', '/preview/admin/suppliers'),
@@ -138,6 +202,7 @@ export function createStaffConsole(deps) {
         return '<p class="small"><b>' + esc(e.edition_id) + '</b> <span class="pill ' + (e.status === 'published' ? '' : 'warn') + '">' + esc(e.status) + '</span> - ' + e.offers.map(function (o) { return esc(o.title); }).join(', ') + (e.status === 'draft' ? ' <button class="btn btn-light" data-publish-edition="' + esc(e.edition_id) + '" type="button">Publish</button>' : '') + '</p>';
       }).join('') || '<p class="muted small">No editions prepared.</p>' : '';
       wire();
+      return r[7].ok ? loadPilot(r[7].data.editions) : undefined;
     });
   }
 
@@ -217,5 +282,5 @@ export function createStaffConsole(deps) {
     if (a && s) signIn(a, s);
   }
 
-  return { init: init, esc: esc, reportHtml: reportHtml, guestsHtml: guestsHtml, offersHtml: offersHtml, requestsHtml: requestsHtml, creditsHtml: creditsHtml, policyHtml: policyHtml, call: call, failMessage: failMessage, signIn: signIn };
+  return { init: init, esc: esc, reportHtml: reportHtml, guestsHtml: guestsHtml, offersHtml: offersHtml, requestsHtml: requestsHtml, creditsHtml: creditsHtml, policyHtml: policyHtml, pilotHtml: pilotHtml, call: call, failMessage: failMessage, signIn: signIn };
 }

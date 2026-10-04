@@ -1078,6 +1078,12 @@ ${SHARED_STYLE}
     </div>
 
     <div class="panel">
+      <h2>Deals pilot - manual send</h2>
+      <p class="small muted">A person reviews a published edition, sends by hand outside Marau, and records the outcome here. Nothing is sent, scheduled or delivered by this page.</p>
+      <div id="rPilot"></div>
+    </div>
+
+    <div class="panel">
       <h2>Reward policy</h2>
       <details><summary>Change the preview policy</summary>
         <form id="policyForm">

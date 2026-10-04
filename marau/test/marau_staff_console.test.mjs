@@ -123,3 +123,26 @@ test('staff listing endpoints: suppliers and editions need the staff identity an
   const eds = (await call(env, '/preview/admin/editions', { headers: staffH(env) })).data.editions;
   assert.deepEqual(eds.map((e) => [e.edition_id, e.status, e.offers.map((o) => o.title)]), [['2031-02-02:afternoon', 'draft', ['Edition offer']]]);
 });
+
+test('deals pilot panel: escapes everything, offers only the moves that are legal for each recipient\'s status, and says nothing is sent from here', async () => {
+  const { page, console: c } = await servedConsole();
+  assert.match(page.text, /id="rPilot"/);
+  assert.match(page.text, /Nothing is sent, scheduled or delivered by this page/);
+  const evil = '<img src=x onerror=1>';
+  const rv = { offers: [{ offer_id: 'o1', title: evil, state: 'open', places_left: 2 }, { offer_id: 'o2', title: 'Sunset', state: 'sold_out', places_left: 0 }],
+    review: { decision: 'approved_for_manual_send', reviewed_by: 'Ana (ops)', note: 'checked <b>' },
+    recipients: [{ session_id: 'gs_a', channel: 'whatsapp', contact: { phone: '+1', email: 'a@x.test' } }, { session_id: 'gs_b', channel: 'email', contact: { phone: '+2', email: 'b@x.test' } }, { session_id: 'gs_c', channel: 'email', contact: { phone: '+3', email: 'c@x.test' } }, { session_id: 'gs_d', channel: 'whatsapp', contact: { phone: '+4', email: 'd@x.test' } }],
+    excluded_by_reason: { no_marketing_consent: 3 } };
+  const sends = { sends: [{ session_id: 'gs_a', status: 'prepared' }, { session_id: 'gs_b', status: 'sent_manually', updated_by: 'Bala (ops)' }, { session_id: 'gs_c', status: 'replied' }] };
+  const html = c.pilotHtml('2031-03-03:morning', rv, sends);
+  assert.equal(html.includes('<img src=x'), false); assert.equal(html.includes('checked <b>'), false);
+  assert.match(html, /Sunset: sold_out/);
+  assert.match(html, /data-pilot-outcome="2031-03-03:morning\|gs_a\|sent_manually"[\s\S]*data-pilot-outcome="2031-03-03:morning\|gs_a\|not_sent"/);
+  assert.equal(/gs_a\|replied/.test(html), false, 'a prepared send cannot be marked replied');
+  assert.match(html, /gs_b\|replied[\s\S]*gs_b\|bounced[\s\S]*gs_b\|opted_out/);
+  assert.match(html, /gs_c\|opted_out/); assert.equal(/gs_c\|sent_manually/.test(html), false);
+  assert.match(html, /not prepared/);
+  assert.match(html, /Nothing is sent from here/);
+  assert.match(html, /no marketing consent: 3/);
+  assert.match(html, /data-pilot-prepare=/);
+});
