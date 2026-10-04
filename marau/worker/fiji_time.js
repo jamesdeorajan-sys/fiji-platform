@@ -92,7 +92,8 @@ export function formatFijiDateTime(iso) {
   var d = new Date(iso);
   var day = new Intl.DateTimeFormat('en-US', { timeZone: 'Pacific/Fiji', weekday: 'long', month: 'short', day: 'numeric' }).format(d);
   var time = new Intl.DateTimeFormat('en-US', { timeZone: 'Pacific/Fiji', hour: 'numeric', minute: '2-digit' }).format(d);
-  return { day: day, time: time };
+  var dayFull = new Intl.DateTimeFormat('en-US', { timeZone: 'Pacific/Fiji', weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }).format(d);
+  return { day: day, dayFull: dayFull, time: time };
 }
 
 /**

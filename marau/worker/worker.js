@@ -174,8 +174,31 @@ function validateBookingInput(body) {
   if (!(Number.isFinite(Number(body.quoted_amount)) && Number(body.quoted_amount) >= 0)) {
     errors.push('quoted_amount must be a non-negative number');
   }
-  if (body.leg_type !== undefined && body.leg_type !== null && !['arrival', 'return', 'other'].includes(body.leg_type)) {
-    errors.push("leg_type must be 'arrival', 'return', 'other' or omitted");
+  if (body.leg_type !== undefined && body.leg_type !== null && !['arrival', 'return', 'other', 'round_trip'].includes(body.leg_type)) {
+    errors.push("leg_type must be 'arrival', 'return', 'round_trip', 'other' or omitted");
+  }
+  // DIRECTION GUARD (phone feedback): a journey that contradicts the chosen leg is refused with a plain explanation, never silently saved
+  // under the wrong label. A journey with no airport end is not guessed at.
+  const airportEnd = (z) => typeof z === 'string' && /airport/i.test(z);
+  const askedReturn = body.leg_type === 'return';
+  const askedArrival = body.leg_type === 'arrival' || body.leg_type === 'round_trip';
+  if (askedReturn && airportEnd(body.pickup_zone) && !airportEnd(body.destination_zone)) {
+    errors.push(`A return to the airport starts at the hotel and ends at the airport, but this journey starts at the airport (${body.pickup_zone}). That is an arrival: choose Arrival transfer, or enter the hotel as the pickup and the airport as the destination.`);
+  }
+  if (askedArrival && airportEnd(body.destination_zone) && !airportEnd(body.pickup_zone)) {
+    errors.push(`An arrival transfer starts at the airport, but this journey ends at the airport (${body.destination_zone}). That is a return to the airport: choose Return to airport, or enter the airport as the pickup.`);
+  }
+  if (body.leg_type === 'round_trip') {
+    if (!body.return_pickup_datetime) errors.push('Return pickup date & time is required for a round trip (it is never copied from the arrival)');
+    else if (Number.isNaN(new Date(body.return_pickup_datetime).getTime())) errors.push('Return pickup date & time is not a valid date');
+    else if (body.pickup_datetime && !Number.isNaN(new Date(body.pickup_datetime).getTime()) && new Date(normalizePickupDatetime(body.return_pickup_datetime)) <= new Date(normalizePickupDatetime(body.pickup_datetime))) {
+      errors.push('The return pickup must be after the arrival pickup');
+    }
+    if (!body.return_pickup_zone) errors.push('Return pickup location is required for a round trip (the hotel or place the driver collects the guest from)');
+    else if (airportEnd(body.return_pickup_zone)) errors.push(`A return to the airport must start away from the airport, but the return pickup location is "${body.return_pickup_zone}".`);
+    if (!(body.return_quoted_amount !== undefined && body.return_quoted_amount !== null && body.return_quoted_amount !== '' && Number.isFinite(Number(body.return_quoted_amount)) && Number(body.return_quoted_amount) >= 0)) {
+      errors.push('Return fare (return_quoted_amount) is required for a round trip and must be a non-negative number');
+    }
   }
   if (body.referral_code !== undefined && body.referral_code !== null && typeof body.referral_code !== 'string') {
     errors.push('referral_code must be a string when supplied');
@@ -366,9 +389,22 @@ async function handleCreateBooking(request, env) {
       attemptSecret,
       nowIso(),
       nowIso(),
-      body.leg_type || null
+      body.leg_type === 'round_trip' ? 'arrival' : (body.leg_type || null)
     )
     .run();
+
+  if (insertResult.meta.changes === 1 && body.leg_type === 'round_trip') {
+    // The return leg is its OWN row: its own pickup date/time, pickup location and amount, destination = where the guest arrived from.
+    await env.DB
+      .prepare(
+        `INSERT OR IGNORE INTO marau_test_bookings
+          (client_booking_ref, guest_session_id, guest_email, guest_phone, pickup_zone, destination_zone, vehicle_type, pickup_datetime, quoted_amount, status, test_data, created_at, updated_at, leg_type, parent_booking_id, pickup_basis)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 1, ?, ?, 'return', (SELECT id FROM marau_test_bookings WHERE client_booking_ref = ?), 'recorded'`
+      )
+      .bind(`${clientBookingRef}-RETURN`, session.session_id, body.guest_email, body.guest_phone, body.return_pickup_zone, body.pickup_zone, body.vehicle_type,
+        normalizePickupDatetime(body.return_pickup_datetime), Number(body.return_quoted_amount), nowIso(), nowIso(), clientBookingRef)
+      .run();
+  }
 
   if (insertResult.meta.changes === 1) {
     // A referral code attributes this brand-new guest to the referrer (first touch only; self-referral and

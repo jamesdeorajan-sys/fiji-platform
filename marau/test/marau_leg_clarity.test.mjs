@@ -156,7 +156,7 @@ test('every server-supplied string on the leg cards is escaped', () => {
 });
 
 test('the Trip view renders through the leg cards (the served page uses them)', () => {
-  assert.match(GUEST_APP_HTML, /offersClient\.legCardHtml\(/);
+  assert.match(GUEST_APP_HTML, /offersClient\.journeyHtml\(/); // journeyHtml renders every leg through legCardHtml
   assert.match(GUEST_APP_HTML, /offersClient\.legChipLabel\(/);
   assert.equal(GUEST_APP_HTML.includes('`'), false);
 });

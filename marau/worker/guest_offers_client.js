@@ -25,6 +25,8 @@ export function createOffersClient(deps) {
   var toast = deps.toast;
   var renderMockWhatsApp = deps.renderMockWhatsApp;
   var formatFijiCurrency = deps.formatFijiCurrency;
+  var formatFijiDateTime = deps.formatFijiDateTime;
+  var humanizeZoneLabel = deps.humanizeZoneLabel;
   var els = deps.els;
   var storage = deps.storage; // sessionStorage-like: getItem/setItem
   var share = deps.share; // optional navigator.share wrapper
@@ -253,5 +255,64 @@ export function createOffersClient(deps) {
     }, function () { /* offline: leave the card as it is */ });
   }
 
-  return { esc: esc, offerCardHtml: offerCardHtml, requestRowHtml: requestRowHtml, fareHtml: fareHtml, referralHtml: referralHtml, contactHtml: contactHtml, editionsHtml: editionsHtml, requestRefFor: requestRefFor, loadOffers: loadOffers, renderMyRequests: renderMyRequests, loadReferral: loadReferral, loadContact: loadContact };
+  // ---- Trip legs: each leg shows ITS OWN recorded values. Nothing is borrowed from another leg and nothing is inferred
+  // (a hotel pickup time is never derived from a flight time; an inferred pickup location is shown as awaiting).
+  var AWAITING = 'Awaiting pickup details';
+  var LEG_STATUS = { pending: 'Awaiting human confirmation', confirmed: 'Confirmed', confirmed_unallocated: 'Confirmed - vehicle pending assignment', declined: 'Declined', cancelled: 'Cancelled' };
+  function legRole(b) {
+    if (b && b.leg_type === 'return') return 'RETURN TO AIRPORT';
+    if (b && b.leg_type === 'arrival') return 'ARRIVAL';
+    return 'TRANSFER';
+  }
+  function legWhen(b) {
+    if (!b || !b.pickup_datetime) return null;
+    var d = new Date(b.pickup_datetime);
+    if (isNaN(d.getTime())) return null;
+    return formatFijiDateTime(b.pickup_datetime);
+  }
+  function legChipLabel(b) {
+    var w = legWhen(b);
+    return legRole(b) + ' - ' + (w ? w.dayFull : AWAITING);
+  }
+  function legRow(label, value) {
+    var known = value !== null && value !== undefined && String(value) !== '';
+    return '<div class="leg-row"><span class="leg-k">' + esc(label) + '</span><b class="leg-v' + (known ? '' : ' awaiting') + '">' + esc(known ? value : AWAITING) + '</b></div>';
+  }
+  function legCardHtml(b, active) {
+    var isReturn = b && b.leg_type === 'return';
+    var w = legWhen(b);
+    var inferred = b && typeof b.pickup_basis === 'string' && /^inferred/.test(b.pickup_basis);
+    var pickup = b && !inferred && b.pickup_zone ? humanizeZoneLabel(b.pickup_zone) : null;
+    var dest = b && b.destination_zone ? humanizeZoneLabel(b.destination_zone) : null;
+    var status = b && b.status ? (LEG_STATUS[b.status] || b.status) : null;
+    return '<div class="leg-card' + (active ? ' active' : '') + '" data-leg="' + esc(legRole(b)) + '">' +
+      '<p class="leg-role">' + esc(legRole(b)) + '</p>' +
+      legRow(isReturn ? 'Return date' : 'Date', w ? w.dayFull : null) +
+      legRow(isReturn ? 'Hotel pickup time' : 'Pickup time', w ? w.time + ' Fiji time' : null) +
+      legRow('Pickup location', pickup) +
+      legRow('Destination', dest) +
+      legRow('Status', status) +
+      '</div>';
+  }
+  function journeyHtml(bookings, activeId) {
+    var list = (bookings || []).slice().sort(function (x, y) {
+      var a = x.pickup_datetime ? new Date(x.pickup_datetime).getTime() : Infinity;
+      var c = y.pickup_datetime ? new Date(y.pickup_datetime).getTime() : Infinity;
+      return a - c;
+    });
+    var out = list.map(function (b) { return legCardHtml(b, activeId !== undefined && b.id === activeId); });
+    var hasReturn = list.some(function (b) { return b.leg_type === 'return'; });
+    var missing = list.some(function (b) { return b.return_leg_state === 'missing_return_details'; });
+    if (missing && !hasReturn) out.push(legCardHtml({ leg_type: 'return', pickup_datetime: null, pickup_zone: null, destination_zone: null, status: null }));
+    return '<div class="journey">' + out.join('') + '</div>';
+  }
+  function isAirport(z) { return typeof z === 'string' && /airport/i.test(z); }
+  // Direction guard for the synthetic form: explains a contradiction; a journey with no airport end is never guessed at.
+  function legDirectionProblem(leg, pickup, dest) {
+    if (leg === 'return' && isAirport(pickup) && !isAirport(dest)) return 'A return to the airport starts at the hotel and ends at the airport, but this journey starts at the airport (' + pickup + '). Choose Arrival transfer, or enter the hotel as the pickup and the airport as the destination.';
+    if ((leg === 'arrival' || leg === 'round_trip') && isAirport(dest) && !isAirport(pickup)) return 'An arrival transfer starts at the airport, but this journey ends at the airport (' + dest + '). That is a return, which ends at the airport: choose Return to airport, or enter the airport as the pickup.';
+    return null;
+  }
+
+  return { legRole: legRole, legChipLabel: legChipLabel, legCardHtml: legCardHtml, journeyHtml: journeyHtml, legDirectionProblem: legDirectionProblem, esc: esc, offerCardHtml: offerCardHtml, requestRowHtml: requestRowHtml, fareHtml: fareHtml, referralHtml: referralHtml, contactHtml: contactHtml, editionsHtml: editionsHtml, requestRefFor: requestRefFor, loadOffers: loadOffers, renderMyRequests: renderMyRequests, loadReferral: loadReferral, loadContact: loadContact };
 }

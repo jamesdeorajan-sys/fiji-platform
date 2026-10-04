@@ -197,6 +197,13 @@ code{font-size:12px;background:var(--shallows);padding:1px 5px;border-radius:6px
 .install{display:flex;gap:14px;align-items:center;background:var(--shallows);border-radius:18px;padding:14px 16px;margin-bottom:14px}
 .install p{font-size:.9rem}
 .install .btn{white-space:nowrap;margin-top:0}
+.leg-card{border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0;background:var(--surface)}
+.leg-card.active{border-color:var(--lagoon)}
+.leg-role{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--lagoon);margin:0 0 6px}
+.leg-row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:.92rem}
+.leg-k{color:var(--muted,#667)}
+.leg-v{text-align:right}
+.leg-v.awaiting{font-weight:600;opacity:.7;font-style:italic}
 .switcher{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;margin-bottom:10px}
 .switcher button{flex:none;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:.85rem;font-weight:600;color:var(--ink);white-space:nowrap}
 .switcher button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
@@ -245,17 +252,26 @@ ${SHARED_STYLE}
         <label><input id="f-wa" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> This number can receive WhatsApp</label>
         <label><input id="f-consent" type="checkbox" style="width:auto;display:inline;vertical-align:middle;margin-right:6px;min-height:auto"> Send me occasional deals (optional - this is separate from trip messages)</label>
         <label for="f-leg">Trip leg</label>
-        <select id="f-leg"><option value="arrival">Arrival transfer</option><option value="return">Return transfer</option></select>
+        <select id="f-leg"><option value="arrival">Arrival transfer (airport to hotel)</option><option value="return">Return to airport (standalone)</option><option value="round_trip">Round trip (arrival + return)</option></select>
+        <p id="legHint" class="small muted" style="margin:4px 0 0">Arrival: the guest is collected at the airport and taken to the hotel.</p>
         <div class="row">
-          <div><label for="f-pickup">Pickup zone</label><input id="f-pickup" required value="Nadi Airport"></div>
-          <div><label for="f-dest">Destination zone</label><input id="f-dest" required value="Denarau"></div>
+          <div><label for="f-pickup" id="f-pickup-label">Pickup location</label><input id="f-pickup" required value="Nadi Airport"></div>
+          <div><label for="f-dest" id="f-dest-label">Destination</label><input id="f-dest" required value="Denarau"></div>
         </div>
         <div class="row">
           <div><label for="f-vehicle">Vehicle type</label><input id="f-vehicle" required value="Sedan"></div>
           <div><label for="f-amount">Quoted amount</label><input id="f-amount" type="number" min="0" step="0.01" required value="45"></div>
         </div>
-        <label for="f-when">Pickup date &amp; time</label>
+        <label for="f-when" id="f-when-label">Arrival pickup date &amp; time (Fiji time)</label>
         <input id="f-when" type="datetime-local" required>
+        <div id="roundTripFields" style="display:none">
+          <label for="f-return-when" id="f-return-when-label">Return pickup date &amp; time (Fiji time)</label>
+          <input id="f-return-when" type="datetime-local">
+          <label for="f-return-pickup">Return pickup location (the hotel)</label>
+          <input id="f-return-pickup" placeholder="e.g. Sofitel Denarau lobby">
+          <label for="f-return-amount">Return fare</label>
+          <input id="f-return-amount" type="number" min="0" step="0.01">
+        </div>
         <button class="btn btn-primary btn-block" type="submit">Save booking request</button>
       </form>
       <p id="refBanner" class="small" style="display:none;margin-top:8px"><strong>A friend invited you to Marau.</strong> Nothing about who - your booking stays private.</p>
@@ -555,8 +571,7 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       // selectable, not just a "+N more" hint.
       switcher = '<div class="switcher" role="tablist" aria-label="Your bookings">' +
         sorted.map(function (b) {
-          var f = formatFijiDateTime(b.pickup_datetime);
-          var label = f.day + ' · ' + humanizeZoneLabel(b.pickup_zone) + ' → ' + humanizeZoneLabel(b.destination_zone);
+          var label = offersClient.legChipLabel(b);
           return '<button data-booking="' + b.id + '" aria-pressed="' + (b.id === active.id ? 'true' : 'false') + '">' + label + '</button>';
         }).join('') +
         '</div>';
@@ -575,15 +590,10 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       // Mobile-copy finding 1: a short, stable display reference — never
       // the full identifier, and never used for access anywhere.
       '<p class="sub">' + headingLabel + ' · booking ' + shortBookingReference(active.client_booking_ref) + '</p>' +
-      '<p class="when">' + fiji.time + '<span class="small" style="opacity:.75;font-weight:600;margin-left:8px">Fiji time</span></p>' +
-      '<p class="sub">' + fiji.day + '</p>' +
-      '<div class="route">' +
-        '<div class="stop fill"><span class="dot"></span><div><strong>' + humanizeZoneLabel(active.pickup_zone) + '</strong><span>Pickup</span></div></div>' +
-        '<div class="stop"><span class="dot"></span><div><strong>' + humanizeZoneLabel(active.destination_zone) + '</strong><span>Destination</span></div></div>' +
-      '</div>' +
+      offersClient.journeyHtml(sorted, active.id) +
       '<div class="facts">' +
         '<div class="fact">Vehicle<b>' + active.vehicle_type + '</b></div>' +
-        '<div class="fact">Status<b>' + statusLabel + '</b></div>' +
+        '<div class="fact">Selected leg<b>' + offersClient.legRole(active) + '</b></div>' +
       '</div>' +
       uncertainNote +
       '<div class="pickup-actions"><button class="btn btn-onlagoon" id="changeBtn" type="button">Request a change</button></div>' +
@@ -687,6 +697,8 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     toast: toast,
     renderMockWhatsApp: renderMockWhatsApp,
     formatFijiCurrency: formatFijiCurrency,
+    formatFijiDateTime: formatFijiDateTime,
+    humanizeZoneLabel: humanizeZoneLabel,
     els: els,
     storage: sessionStorage,
     showView: showView,
@@ -728,6 +740,26 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     });
   }
 
+  function isAirportName(z) { return /airport/i.test(z || ''); }
+  function applyLegChoice() {
+    var leg = document.getElementById('f-leg').value;
+    var pk = document.getElementById('f-pickup');
+    var ds = document.getElementById('f-dest');
+    var hint = document.getElementById('legHint');
+    var swapped = false;
+    if (leg === 'return' && isAirportName(pk.value) && !isAirportName(ds.value)) { var t1 = pk.value; pk.value = ds.value; ds.value = t1; swapped = true; }
+    if (leg !== 'return' && isAirportName(ds.value) && !isAirportName(pk.value)) { var t2 = pk.value; pk.value = ds.value; ds.value = t2; swapped = true; }
+    var isReturn = leg === 'return';
+    document.getElementById('f-when-label').textContent = isReturn ? 'Return pickup date & time (Fiji time)' : 'Arrival pickup date & time (Fiji time)';
+    document.getElementById('f-pickup-label').textContent = isReturn ? 'Pickup location (the hotel)' : 'Pickup location';
+    document.getElementById('f-dest-label').textContent = isReturn ? 'Destination (the airport)' : 'Destination';
+    document.getElementById('roundTripFields').style.display = leg === 'round_trip' ? 'block' : 'none';
+    ['f-return-when', 'f-return-pickup', 'f-return-amount'].forEach(function (id) { document.getElementById(id).required = leg === 'round_trip'; });
+    hint.textContent = (leg === 'arrival' ? 'Arrival: the guest is collected at the airport and taken to the hotel.'
+      : isReturn ? 'Return to airport: the guest is collected at the hotel and taken to the airport. The date and time below are the HOTEL pickup time, not the flight time.'
+      : 'Round trip: two legs, each with its own date, time, location and fare. Enter the arrival below, then the return.') + (swapped ? ' Pickup and destination were swapped to match - check them.' : '');
+  }
+  document.getElementById('f-leg').addEventListener('change', applyLegChoice);
   els.bookingForm.addEventListener('submit', function (e) {
     e.preventDefault();
     els.startError.textContent = '';
@@ -738,6 +770,9 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
     // resubmit is the same attempt — see worker.js#handleCreateBooking.
     var clientBookingRef = getOrCreateClientBookingRef(sessionStorage, defaultRandomSource);
     var attemptSecret = getOrCreateAttemptSecret(sessionStorage, defaultRandomSource);
+    var legChoice = document.getElementById('f-leg').value;
+    var directionProblem = offersClient.legDirectionProblem(legChoice, document.getElementById('f-pickup').value, document.getElementById('f-dest').value);
+    if (directionProblem) { els.startError.textContent = directionProblem; return; }
     var body = {
       client_booking_ref: clientBookingRef,
       attempt_secret: attemptSecret,
@@ -749,8 +784,13 @@ ${EMBEDDED_CLIENT_IDEMPOTENCY}
       vehicle_type: document.getElementById('f-vehicle').value,
       quoted_amount: Number(document.getElementById('f-amount').value),
       pickup_datetime: document.getElementById('f-when').value,
-      leg_type: document.getElementById('f-leg').value,
+      leg_type: legChoice,
     };
+    if (legChoice === 'round_trip') {
+      body.return_pickup_datetime = document.getElementById('f-return-when').value;
+      body.return_pickup_zone = document.getElementById('f-return-pickup').value;
+      body.return_quoted_amount = document.getElementById('f-return-amount').value === '' ? null : Number(document.getElementById('f-return-amount').value);
+    }
     if (document.getElementById('f-consent').checked) body.marketing_consent = 'granted';
     if (refCode) body.referral_code = refCode;
     var tok = getToken();
