@@ -1,0 +1,243 @@
+✖ COMPLETED + UPCOMING RETURN: the return stays VISIBLE but carries an explicit status uncertainty - it is NOT shown as confirmed, and nothing about fulfilment is inferred (302.416ms)
+✖ COMPLETED + UPCOMING RETURN: no redemption eligibility is inferred - a credit is refused with LEG_STATUS_UNVERIFIED and the target is flagged for verification (106.5964ms)
+✖ STAFF VERIFICATION: a named actor, a timestamp and EVIDENCE are required and recorded; the source is neither called nor changed; then the credit can apply (80.8301ms)
+✖ VERIFICATION IS ABOUT SPECIFIC FACTS: repeated sync keeps it; a change to the return time or the source status puts the uncertainty back until re-verified (105.0962ms)
+✖ VERIFICATION "NOT GOING AHEAD": the leg is cancelled on the Marau side only, an applied credit is released, and a later sync does not revive it (92.2ms)
+✖ A return that is NOT affected (source accepted, or the return is already past) carries no uncertainty (97.6437ms)
+✖ PRE-SEND CHECK: immediately before staff copy a message the app rechecks consent, suppression, offers and edition expiry; it hands out the text only when all hold, and says it cannot stop an external send (66.0571ms)
+✖ PRE-SEND CHECK refuses and invalidates the entry when consent has been withdrawn or the channel suppressed since preparation (68.0483ms)
+✖ STALE LISTS: when offer availability changes the prepared list is invalidated on the next read; re-preparing refreshes it; withdrawing every offer invalidates everything (66.3895ms)
+✖ EDITION EXPIRY: after the slot window the edition is expired - the check refuses, prepare refuses, and the view says so (68.9759ms)
+✖ HONEST OUTCOMES: if consent is withdrawn between preparation and the recorded send, the send is RECORDED as what happened and flagged contrary to eligibility - never refused, never hidden - and distinct from "not sent" (68.6807ms)
+✔ BOTH LEGS SHOW THE SAME BOOKING BALANCE after a credit - to the guest and to staff (77.1346ms)
+✖ SOURCE QUOTE CHANGES AFTER CREDIT: the booking total follows the source, the credit stays one credit, the return value re-allocates, and the change is shown - never hidden (74.7469ms)
+✔ RETURN CANCELLED THEN RESTORED: the credit is released, NOT silently re-applied; staff re-apply gives exactly ONE live adjustment (history kept); a refunded purchase is never revived (96.5462ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 2
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2274.8275
+
+✖ failing tests:
+
+test at test\marau_pilot_readiness.test.mjs:76:1
+✖ COMPLETED + UPCOMING RETURN: the return stays VISIBLE but carries an explicit status uncertainty - it is NOT shown as confirmed, and nothing about fulfilment is inferred (302.416ms)
+  AssertionError [ERR_ASSERTION]: never inferred as confirmed
+  + actual - expected
+  
+  + 'confirmed'
+  - 'pending'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:79:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'confirmed',
+    expected: 'pending',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:91:1
+✖ COMPLETED + UPCOMING RETURN: no redemption eligibility is inferred - a credit is refused with LEG_STATUS_UNVERIFIED and the target is flagged for verification (106.5964ms)
+  AssertionError [ERR_ASSERTION]: {"ok":true,"operator":"Ana (ops)","applied_fjd":10,"unused_fjd":0,"fare":{"scope":"round_trip_booking","leg":"return","original_fare_fjd":170,"booking_total_fjd":170,"referral_credit_fjd":10,"amount_due_fjd":160,"return_value":{"status":"allocated","value_fjd":68,"rule_basis":"percent_of_total 40%"},"operator_payout_unchanged":true,"funded_by":"marau_marketing_budget","adjustment_status":"applied","adjustments":[{"adjustment_id":"adj_e56dde85-ed2b-4a87-ae0a-dba722df9ff5","credit_fjd":10,"status":"applied","leg_booking_id":2}],"quote_history":[{"event":"original_booking_total","fjd":170,"at":"2026-10-04T21:53:36.676Z"},{"event":"referral_credit_applied","credit_fjd":10,"at":"2026-10-04T21:53:36.696Z"}]},"demonstration_data":true}
+  
+  200 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:96:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:102:1
+✖ STAFF VERIFICATION: a named actor, a timestamp and EVIDENCE are required and recorded; the source is neither called nor changed; then the credit can apply (80.8301ms)
+  AssertionError [ERR_ASSERTION]: staff identity required
+  
+  404 !== 401
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:105:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 401,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:125:1
+✖ VERIFICATION IS ABOUT SPECIFIC FACTS: repeated sync keeps it; a change to the return time or the source status puts the uncertainty back until re-verified (105.0962ms)
+  AssertionError [ERR_ASSERTION]: repeated sync does not discard a verification
+  + actual - expected
+  
+    [
+      'confirmed',
+  +   undefined
+  -   null
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:131:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'confirmed', undefined ],
+    expected: [ 'confirmed', null ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:142:1
+✖ VERIFICATION "NOT GOING AHEAD": the leg is cancelled on the Marau side only, an applied credit is released, and a later sync does not revive it (92.2ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:146:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:154:1
+✖ A return that is NOT affected (source accepted, or the return is already past) carries no uncertainty (97.6437ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - null
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:156:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: null,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:183:1
+✖ PRE-SEND CHECK: immediately before staff copy a message the app rechecks consent, suppression, offers and edition expiry; it hands out the text only when all hold, and says it cannot stop an external send (66.0571ms)
+  AssertionError [ERR_ASSERTION]: {"error":"not found"}
+  
+  404 !== 200
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:187:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:199:1
+✖ PRE-SEND CHECK refuses and invalidates the entry when consent has been withdrawn or the channel suppressed since preparation (68.0483ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:204:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:214:1
+✖ STALE LISTS: when offer availability changes the prepared list is invalidated on the next read; re-preparing refreshes it; withdrawing every offer invalidates everything (66.3895ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'offer_availability_changed'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:222:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'offer_availability_changed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:237:1
+✖ EDITION EXPIRY: after the slot window the edition is expired - the check refuses, prepare refuses, and the view says so (68.9759ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  404 !== 409
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:242:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 404,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:249:1
+✖ HONEST OUTCOMES: if consent is withdrawn between preparation and the recorded send, the send is RECORDED as what happened and flagged contrary to eligibility - never refused, never hidden - and distinct from "not sent" (68.6807ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'eligible'
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:254:40)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'eligible',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test\marau_pilot_readiness.test.mjs:294:1
+✖ SOURCE QUOTE CHANGES AFTER CREDIT: the booking total follows the source, the credit stays one credit, the return value re-allocates, and the change is shown - never hidden (74.7469ms)
+  AssertionError [ERR_ASSERTION]: arrival
+  + actual - expected
+  
+  + undefined
+  - true
+  
+      at TestContext.<anonymous> (file:///C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/a8c468c9-8b61-4c40-9acf-bf7f5a2e8175/scratchpad/marau-stage1/marau/test/marau_pilot_readiness.test.mjs:305:12)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
