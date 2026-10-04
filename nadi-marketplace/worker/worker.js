@@ -449,6 +449,12 @@ export default {
       return handleAdminManualAssign(request, env);
     }
 
+    // ── milestone38: confirmation attempt identity readback (no guest data) ──
+    const bookingConfirmationMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/confirmation$/);
+    if (request.method === 'GET' && bookingConfirmationMatch) {
+      return handleAdminBookingConfirmationState(request, env, Number(bookingConfirmationMatch[1]));
+    }
+
     // ── Milestone 31: admin cancel action, admin-bookings.html ──
     const cancelBookingMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/cancel$/);
     if (request.method === 'POST' && cancelBookingMatch) {
@@ -2308,6 +2314,61 @@ async function handleAdminCancelBooking(request, env, bookingId) {
   return json({ ok: true, booking_id: bookingId, status: 'cancelled' }, 200);
 }
 
+// ── Confirmation attempt identity (milestone38; Issue #54 Marau integration) ──────────────────────────────────────
+// Why: a cross-system caller (Marau) can have its HTTP response lost AFTER this Worker already committed the
+// assignment. Without a durable identity for "which attempt won", the caller can only ask "who holds this booking
+// now?" - and driver-id equality proves nothing (two attempts can pick the same driver). attempt_id is chosen by the
+// caller BEFORE it calls, persisted here in the SAME atomic compare-and-swap UPDATE as the assignment, and readable via
+// GET /admin/bookings/:id/confirmation (no guest data). Purely additive: with neither field supplied, nothing changes.
+//
+// What this does NOT provide: per-operator authentication at this Worker. requireAdmin still recognises one shared
+// ADMIN_TOKEN (plus the single-phone magic link). `operator` is therefore recorded as SERVICE-ASSERTED - the
+// authenticated service caller vouches for the individual staff member it authenticated on its own side. The
+// attestation label is stored beside it so no reader mistakes it for a verified per-operator login.
+const CONFIRMATION_OPERATOR_ATTESTATION = 'service-asserted';
+const CONFIRMATION_ATTEMPT_ID_PATTERN = /^[A-Za-z0-9_.:-]{8,128}$/;
+
+function parseConfirmationAttemptIdentity(body) {
+  if (body.attempt_id === undefined || body.attempt_id === null) return null; // legacy caller - unchanged behaviour
+  const attemptId = String(body.attempt_id);
+  if (!CONFIRMATION_ATTEMPT_ID_PATTERN.test(attemptId)) return { error: 'attempt_id must be 8-128 characters of A-Z a-z 0-9 _ . : -' };
+  const operator = (body.operator === undefined || body.operator === null ? '' : String(body.operator)).trim();
+  if (!operator) return { error: 'operator is required when attempt_id is supplied' };
+  if (operator.length > 100) return { error: 'operator must be 100 characters or fewer' };
+  return { attemptId, operator };
+}
+
+// A caller that asked for attempt identity must never be silently served without it (that would void its recovery
+// guarantee), so a missing milestone38 migration is an explicit refusal.
+function confirmationIdentityUnsupportedResponse(err) {
+  if (/no such column|has no column/i.test(String(err && err.message))) {
+    return json({ ok: false, error: 'CONFIRMATION_ATTEMPT_IDENTITY_UNSUPPORTED', detail: 'migration milestone38-confirmation-attempt-identity.sql has not been applied' }, 501);
+  }
+  return null;
+}
+
+async function readConfirmationState(env, bookingId) {
+  return env.DB.prepare(
+    `SELECT status, assigned_driver_id, confirmation_attempt_id, confirmed_operator, confirmed_operator_attestation FROM bookings WHERE id = ?`
+  ).bind(bookingId).first();
+}
+
+// Read-only, admin-gated, NO guest or driver contact data - exactly what a recovery readback needs and nothing else.
+async function handleAdminBookingConfirmationState(request, env, bookingId) {
+  if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
+  let state;
+  try {
+    state = await readConfirmationState(env, bookingId);
+  } catch (err) {
+    const unsupported = confirmationIdentityUnsupportedResponse(err);
+    if (unsupported) return unsupported;
+    throw err;
+  }
+  if (!state) return json({ ok: false, error: 'Booking not found.' }, 404);
+  return json({ ok: true, booking_id: bookingId, ...state }, 200);
+}
+
 async function handleAdminManualAssign(request, env) {
   if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
@@ -2317,6 +2378,12 @@ async function handleAdminManualAssign(request, env) {
 
   const driverId = Number(body.driver_id);
   if (!Number.isInteger(driverId) || driverId <= 0) return json({ ok: false, error: 'driver_id must be a positive integer' }, 400);
+
+  // Issue #54 / Marau integration (milestone38, OPTIONAL and additive): a caller that must be able to recover from a
+  // lost response supplies a durable attempt_id (and the operator it is acting for). Callers that send neither (every
+  // existing caller) hit exactly the code path this function always had. See parseConfirmationAttemptIdentity.
+  const identity = parseConfirmationAttemptIdentity(body);
+  if (identity && identity.error) return json({ ok: false, error: identity.error }, 400);
 
   const driver = await env.DB.prepare(`SELECT id, name, status FROM drivers WHERE id = ?`).bind(driverId).first();
   if (!driver) return json({ ok: false, error: 'No driver found with that driver_id.' }, 404);
@@ -2329,12 +2396,42 @@ async function handleAdminManualAssign(request, env) {
     const bookingId = Number(body.booking_id);
     if (!Number.isInteger(bookingId) || bookingId <= 0) return json({ ok: false, error: 'booking_id must be a positive integer' }, 400);
 
-    const result = await env.DB.prepare(
-      `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted' WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
-    ).bind(driverId, bookingId).run();
+    let result;
+    try {
+      result = identity
+        ? await env.DB.prepare(
+            `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted', confirmation_attempt_id = ?, confirmed_operator = ?, confirmed_operator_attestation = ?
+             WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
+          ).bind(driverId, identity.attemptId, identity.operator, CONFIRMATION_OPERATOR_ATTESTATION, bookingId).run()
+        : await env.DB.prepare(
+            `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted' WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'`
+          ).bind(driverId, bookingId).run();
+    } catch (err) {
+      const unsupported = confirmationIdentityUnsupportedResponse(err);
+      if (unsupported) return unsupported;
+      if (/UNIQUE/i.test(String(err && err.message))) {
+        // The same attempt_id is already bound to a DIFFERENT booking - an attempt identity names exactly one decision.
+        return json({ ok: false, error: 'ATTEMPT_ID_ALREADY_USED_FOR_ANOTHER_BOOKING' }, 409);
+      }
+      throw err;
+    }
 
     const won = result.meta.changes === 1;
     if (!won) {
+      if (identity) {
+        const current = await readConfirmationState(env, bookingId);
+        if (!current) return json({ ok: false, error: 'Booking not found.' }, 404);
+        // Replay of OUR OWN earlier decision (its response was lost): report it, with NO side effects - no second
+        // assignment, no second event, no second guest WhatsApp. A different driver under the same attempt_id is a
+        // caller error, never silently treated as the same decision.
+        if (current.confirmation_attempt_id === identity.attemptId) {
+          if (Number(current.assigned_driver_id) !== driverId) {
+            return json({ ok: false, error: 'ATTEMPT_ID_DRIVER_MISMATCH', current }, 409);
+          }
+          return json({ ok: true, won: false, replayed: true, current }, 200);
+        }
+        return json({ ok: false, won: false, reason: 'Booking already taken or no longer available.', current }, 409);
+      }
       const current = await env.DB.prepare(`SELECT assigned_driver_id, status FROM bookings WHERE id = ?`).bind(bookingId).first();
       if (!current) return json({ ok: false, error: 'Booking not found.' }, 404);
       return json({ ok: false, won: false, reason: 'Booking already taken or no longer available.', current }, 409);
@@ -2343,7 +2440,9 @@ async function handleAdminManualAssign(request, env) {
     const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(bookingId).first();
     await logBookingEvent(env, {
       bookingId, eventType: 'accepted', previousStatus: 'pending', newStatus: 'accepted', actor: 'admin',
-      metadata: { assigned_driver_id: driverId, via: 'manual_assign' },
+      metadata: identity
+        ? { assigned_driver_id: driverId, via: 'manual_assign', attempt_id: identity.attemptId, operator: identity.operator, operator_attestation: CONFIRMATION_OPERATOR_ATTESTATION }
+        : { assigned_driver_id: driverId, via: 'manual_assign' },
     });
     await sendGuestDriverAssignedWhatsApp(env, booking, driver.name);
     return json({ ok: true, won: true, booking }, 200);
