@@ -154,3 +154,16 @@ test('6. the original total is sent with an accepted revision (and only then) so
   assert.ok(src.includes('payload.revised_from_amount = state.fareOverride.original'));
   assert.ok(src.includes('if (state.fareOverride && state.fareOverride.key === fareOverrideKey())'));
 });
+
+test('RACE: a PRICE_MISMATCH that returns after the guest changed the itinerary is discarded - never attached to the new journey, nothing saved, controls restored', async () => {
+  let release; const f = confirmFlow([]);
+  f.sb.fareOverrideKey = () => f.sb.__key;
+  f.sb.__key = 'journey-A';
+  f.sb.submitNadiBooking = () => new Promise((r) => { release = () => r(MISMATCH(300.45, 142)); });
+  const pending = f.sb.confirmBooking();
+  f.sb.__key = 'journey-B';                       // the guest edits the journey while the request is pending
+  release(); await pending;
+  assert.equal(f.sb.state.fareOverride, undefined === f.sb.state.fareOverride ? undefined : null, 'the returned quote is discarded');
+  assert.equal(f.sb.state.confirmBookingInFlight, false); assert.equal(f.button.disabled, false);
+  assert.equal(f.fields.bulaSuccess.style.display, undefined); assert.equal(JSON.stringify(f.log.steps), '[4]'); assert.equal(f.log.reviews, 1);
+});

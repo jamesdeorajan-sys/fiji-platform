@@ -1580,7 +1580,17 @@ async function confirmBooking() {
     const destZone = resolveFixedDestinationZone(destOpt);
     if (destZone && destZone !== 'NEEDS_LOOKUP') {
       saveAttempted = true;
+      // P0 #237 race: the itinerary this request was PRICED for. A mismatch that comes back after the guest changed the journey must never be attached to the new one.
+      const keyAtSubmit = typeof fareOverrideKey === 'function' ? fareOverrideKey() : null;
       saveResult = await submitNadiBooking(ref, destZone);
+      if (saveResult.priceMismatch && keyAtSubmit !== null && keyAtSubmit !== fareOverrideKey()) {
+        state.fareOverride = null;
+        state.confirmBookingInFlight = false;
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = confirmBtnOriginalText; }
+        buildConfirmation();
+        showStep(4);
+        return;
+      }
       if (saveResult.priceMismatch) {
         // P0 #237: the booking system's fare differs from the one shown. Nothing was saved. Show the guest the new fare on the review step and
         // let them accept it (the same Confirm button, now sending that exact amount) or change the trip. The attempt ref is kept: no booking exists.
