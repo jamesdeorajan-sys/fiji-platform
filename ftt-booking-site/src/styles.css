@@ -927,4 +927,5 @@ textarea.field-input{resize:vertical;min-height:80px}
 /* small phones: drop the decorative flower so the WhatsApp handoff button stays above the fold */
 @media(max-width:380px){#bulaSuccess .bula-burst{display:none}}
 /* the sticky "Book your transfer" bar must not cover the WhatsApp handoff button while a result card is showing */
-body:has(#bulaSuccess[style*="display: block"]) #stickyBar,body:has(#bulaFailure[style*="display: block"]) #stickyBar{display:none!important}
+body:has(#bulaSuccess[style*="display: block"]) #stickyBar,body:has(#bulaFailure[style*="display: block"]) #stickyBar,body:has(#negotiateSuccess[style*="display: block"]) #stickyBar{display:none!important}
+@media(max-width:380px){#negotiateSuccess .bula-burst{display:none}#negotiateSuccess .bula-title{font-size:20px;margin-bottom:8px}#negotiateSuccess .bula-lead,#negotiateSuccess .bula-wa-context{font-size:14px;line-height:1.4;margin-bottom:10px}#negotiateSuccess .bula-ref{margin-bottom:10px}}

@@ -2661,7 +2661,7 @@ async function pollNegotiationStatus() {
 
     if (data.request.status === 'accepted') {
       stopNegotiationPolling();
-      showNegotiationSuccess(data.request.reference_fare_fjd, offerAmountForRequest(data));
+      showNegotiationSuccess(data.request.reference_fare_fjd, offerAmountForRequest(data), data.request.booking_id || null);
       return;
     }
     if (data.request.status === 'expired' || data.request.status === 'cancelled' || data.request.status === 'declined') {
@@ -2725,7 +2725,7 @@ async function acceptNegotiationOffer(offerId) {
       return;
     }
     stopNegotiationPolling();
-    showNegotiationSuccess(null, data.booking?.quoted_amount);
+    showNegotiationSuccess(null, data.booking?.quoted_amount, data.booking_id || data.booking?.id || null);
   } catch (err) {
     alert('Network error accepting this offer. Please try again.');
     if (container) container.style.pointerEvents = '';
@@ -2759,12 +2759,46 @@ function cancelNegotiationWait() {
   if (fareTiers) fareTiers.style.display = 'flex';
 }
 
-function showNegotiationSuccess(_referenceFare, agreedAmount) {
+// Prefilled WhatsApp message for an accepted negotiated fare: carries the fare-request (and booking, when the server returned one) reference, the agreed price and the journey
+// details the team needs. Display/link only - it never changes the negotiation, the booking or any notification, and a click is never treated as sent or confirmed.
+function buildNegotiationWhatsAppURL(requestId, bookingId, agreedAmount) {
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const refParts = [requestId ? `Fare request #${requestId}` : null, bookingId ? `Booking #${bookingId}` : null].filter(Boolean).join(' · ') || 'Fare request';
+  const date = val('travelDate');
+  const dateStr = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : 'Not set';
+  const vName = { sedan: 'Private Sedan', minivan: 'Private Minivan', minibus: 'Minibus' }[state.selectedVehicle] || state.selectedVehicle || '—';
+  const lines = [
+    '*ACCEPTED FARE - PLEASE CONFIRM MY TRANSFER*',
+    'Fiji Dash',
+    `Reference: *${refParts}*`,
+    agreedAmount ? `Agreed fare: *${formatPrice(agreedAmount)}*` : null,
+    '',
+    `Name: ${val('firstName')} ${val('lastName')}`.trim(),
+    `WhatsApp: ${val('phone')}`,
+    `Email: ${val('email')}`,
+    `From: ${stripEmoji(state.pickup?.name) || '—'}`,
+    `To: ${stripEmoji(state.destination?.hotel) || '—'}`,
+    `Date: ${dateStr}  Pickup: ${val('travelTime')}`,
+    `Trip: ${state.tripType === 'return' ? 'Return' : 'One-way'}`,
+    `Vehicle: ${vName}  Passengers: ${state.passengers}`,
+    `Flight: ${val('flightNum') || 'Not provided'}`,
+    '',
+    'Please confirm the details and my transfer. Vinaka!',
+  ].filter((l) => l !== null);
+  return `https://wa.me/61478886145?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+function showNegotiationSuccess(_referenceFare, agreedAmount, bookingId) {
   document.getElementById('negotiateWaiting').style.display = 'none';
   const widget = document.getElementById('bookingWidget');
   if (widget) widget.style.display = 'none';
   const amountEl = document.getElementById('negotiateSuccessAmount');
-  if (amountEl) amountEl.textContent = agreedAmount ? `Agreed price: ${formatPrice(agreedAmount)}` : '';
+  if (amountEl) {
+    const ref = [state.negotiationRequestId ? `Fare request #${state.negotiationRequestId}` : null, bookingId ? `Booking #${bookingId}` : null].filter(Boolean).join(' · ');
+    amountEl.textContent = [agreedAmount ? `Accepted fare: ${formatPrice(agreedAmount)}` : null, ref || null].filter(Boolean).join(' · ');
+  }
+  const waBtn = document.getElementById('negotiateSuccessWaBtn');
+  if (waBtn) waBtn.href = buildNegotiationWhatsAppURL(state.negotiationRequestId, bookingId, agreedAmount);
   const success = document.getElementById('negotiateSuccess');
   if (success) success.style.display = 'block';
   document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

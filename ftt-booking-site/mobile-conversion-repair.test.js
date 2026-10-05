@@ -266,3 +266,17 @@ test('booking-core untouched: confirmBooking()\'s idempotency/fingerprint ref ge
   const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, endMarker);
   assert.strictEqual(candidate, base);
 });
+
+test('negotiated-fare result card: correct heading, fare acceptance vs transfer confirmation separated, WhatsApp handoff required, no "you\'re booked" claim; negotiation/booking code untouched', () => {
+  const card = extract(html, 'id="negotiateSuccess"', 'bula-foot');
+  assert.ok(card.includes('<h2 class="bula-title" id="negotiateSuccessTitle">Your fare was accepted — confirm the details on WhatsApp</h2>'));
+  assert.ok(card.includes('Fare acceptance and transfer confirmation are separate: your transfer is confirmed only after our Fiji team confirms the details with you.'));
+  assert.ok(card.includes('Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.'));
+  assert.ok(card.includes('<span>Open WhatsApp — send reservation</span>') && card.includes('Opening WhatsApp alone does not send your request.'));
+  for (const bad of ["you're booked", 'locked in your booking', 'A driver has agreed', 'Message us on WhatsApp →']) assert.ok(!html.includes(bad), bad);
+  const fn = extract(js, 'function showNegotiationSuccess(', '\n// CEO P0 fix (Issue #34): both markWhatsAppTapped()');
+  assert.ok(fn.includes('buildNegotiationWhatsAppURL(state.negotiationRequestId, bookingId, agreedAmount)'));
+  assert.ok(!/fetch\(|state\.negotiation\w+\s*=|NADI_API_BASE/.test(fn), 'display/link only: no network call, no negotiation state change');
+  // behaviour untouched: same endpoints / polling / accept path
+  for (const c of ['/negotiate/${state.negotiationRequestId}/accept-offer', 'startNegotiationPolling();', "data.request.status === 'accepted'", 'stopNegotiationPolling();']) assert.ok(js.includes(c), c);
+});
