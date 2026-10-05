@@ -6,7 +6,7 @@ Status: **plan only.** No commercial policy is implemented by this document, not
 
 From `POLICY-DECISION-TABLE.md`: global policy **A** (catalogue is the fare) or the catalogue-led hybrid **C**; E1 (Momi sedan/minivan); night option N0-N3 and the leg allocation if N2; return rounding R1-R3; Tanoa T1-T4; display rule. A plan built on **A or C** is what follows. **Policy B (Worker formula is the fare) is not catalogue-led** and would need a different plan (the catalogue would be regenerated from the formula).
 
-Per-row sign-off: every catalogue row carries an approval status. Only rows James has signed (or the two approved Momi minibus figures) are `approved`; the rest are `published-unapproved` and are listed in every build report. Nothing is promoted to `approved` by code.
+Per-row sign-off: every catalogue row carries an approval status. Only rows James has signed (or the specifically approved Momi minibus base and daytime scenarios) are `approved`; the rest are `published-unapproved` and are listed in every build report. Nothing is promoted to `approved` by code.
 
 ## 1. The one shared pricing source
 
@@ -19,7 +19,7 @@ A single directory in the repository, `pricing/`, is the only place a fare or a 
 - `pricing/pricing-rules.mjs` - ONE implementation of the arithmetic (base -> trip type -> night -> extras -> discount -> total) with the rounding stated once. Pure functions, no DOM, no network.
 - `pricing/golden.json` - the golden table: for every route x vehicle x trip x {day, night variants} x extras, the expected guest total, generated once from the signed decisions and reviewed by James. Tests compare to it; the code never regenerates it silently.
 
-Why a generated-copy model: the booking pages are static files with no build step and the Worker is a separate deploy. So `scripts/pricing-sync.mjs` generates `pricing-catalogue.generated.js` from `pricing/` and writes it into (a) each site's `src` and (b) the Worker source. **A drift test fails the build if any copy differs from the generated output** (and a second test fails if any file in the repository still contains a hard-coded fare table such as `ROUTES_DATA`, `TIER` constants or a literal "FJ$" figure that is not generated). That is what makes it "one source": nobody can edit a copy.
+Why a generated-copy model: the booking pages are static files with no build step and the Worker is a separate deploy. So `scripts/pricing-sync.mjs` generates `pricing-catalogue.generated.js` from `pricing/` and writes it into (a) each site's `src` and (b) the Worker source. **A drift test fails the build if any copy differs from the generated output** (and a second test fails if any file in the repository still contains a hard-coded fare table such as `ROUTES_DATA`, `TIER` constants or an in-scope active transfer price that is not generated (exclude historical evidence, test fixtures, separately owned tour prices and explanatory examples)). That is what makes it "one source": nobody can edit a copy.
 
 ## 2. What reads it
 
@@ -36,13 +36,13 @@ Why a generated-copy model: the booking pages are static files with no build ste
 | # | Exception | Treatment |
 |---|---|---|
 | X1 | **Momi minibus (approved)** - base 175.92; 157.92 / 297 / 304 | Marked `approved` with the approval date; golden tests pin the three figures; the Worker figures 292.45 / 300.45 are never produced for this route |
-| X2 | **Momi sedan / minivan** | Pending decision E1. Default until decided: **no exception** (they follow the catalogue like every other route); E1a/E1b/E1c then become data, not code |
-| X3 | **Tanoa International** | No catalogue fare until T1-T4 is decided; until then `quote-on-request` (not instant-bookable) or, if T1, the three fares James supplies, `approved` |
+| X2 | **Momi sedan / minivan** | Pending decision E1. No new default is approved. Preserve each production site’s existing behaviour until the selected scope is approved; do not migrate these rows merely because the candidate includes them. E1a/E1b/E1c then become explicit data |
+| X3 | **Tanoa International** | Existing published values remain unapproved evidence. Pending T1-T4: no production change and no automatic removal from booking. Quote-on-request is a proposal requiring approval, not a default. Exclude the row from new enforcement until its handling is approved |
 | X4 | **Paths that are not catalogue-priced**: departures / custom addresses, boats, tours | Unchanged: they keep today's behaviour (client amount saved as sent for custom, boat bundled fare, tour price). Listed so nobody assumes they are verified. Closing that trust gap is separate work |
 | X5 | **Disputed rows not yet signed** (108 route/vehicle/trip cases in the table) | Loaded as `published-unapproved`; flagged in every report; the Worker accepts them in shadow mode only (see 4) until signed |
 | X6 | **Night rule** | A single parameter of `rules`; ships only with the option James chooses (default: nothing new is introduced) |
 
-No other exception is allowed: a new exception must be a new row in this list, approved by James, with a golden test.
+This is an exception-category list, not approval of its individual fares. No other exception is allowed: a new exception must be a new row in this list, approved by James, with a golden test.
 
 ## 4. Phases, gates and rollback (each phase ends in review; none touches live bookings)
 
@@ -71,3 +71,17 @@ Fuel: **no fuel adjustment is part of any phase.** The fuel index stays as it is
 - **A disputed row (e.g. Mercure sedan 19 vs formula 30.15) is wrong in the catalogue.** Containment: it is a signed decision per row before it can be `approved`; nothing silently inherits the formula.
 - **Scope creep into tours / boats / custom addresses.** Containment: exception X4 states they are out of scope.
 - **Work done while production is on HOLD.** Containment: everything in phases 1-4 runs in the isolated harness or preview; production receives nothing before phase 5's approval.
+
+
+## 7. Busy-season release design requirements (proposal only)
+
+- Use integer FJD cents for money and explicit rational multipliers/rounding order. The approved Momi 297 and 304 must remain pinned independently of whichever global rounding option is later chosen. An incompatible global rule requires an approved explicit override or a new commercial decision; do not silently recompute them.
+- Define route identity using pickup, destination, direction and vehicle, not zone alone. Multiple hotels sharing a zone can have different approved catalogue fares. Unknown or ambiguous route identity must have an approved fallback, never an invented mapping.
+- Each quote carries catalogue/rules version, itinerary identity, itemised amounts and a validity policy. Quote expiry duration and treatment of old versions require approval. The Worker validates the quote; a client version label is not proof of validity.
+- Sequential release must be specified and tested: old page/new Worker, new page/old Worker, old open tabs, failed asset loads and rollback. Generated-file parity alone does not protect mixed releases. Preserve explicit re-acceptance for any changed amount; no silent substitution.
+- Same-request retries return the original saved booking and fare after a release or rollback. An edited itinerary is not silently treated as the unchanged request, and it must not create a duplicate after an uncertain save. Test both outcomes before release.
+- Existing saved/agreed bookings, payment evidence and operator payouts are never repriced by catalogue activation. Any later guest-requested amendment requires its own recorded workflow.
+- Shadow checks run on isolated synthetic fixtures only under current authority. Runtime production shadow writes, scheduled tasks and preview connections to production databases are not authorised. Read-only comparisons remain timestamped and exclude personal data.
+- Release requires a healthy read-only booking/notification monitor, named release owner, exact pre-release deployments/settings and a reviewed rollback sequence. If monitoring is unavailable, pause release; do not infer zero failures.
+- Rollback may revert future quoting, but must preserve accepted quotes and saved requests. A setting flip alone is not a proven rollback until cross-version acceptance is tested. Do not restore historical booking data or replay messages.
+- Phase 5 needs a separate concrete approval after independent review. No production resource, route, setting, cache rule, fuel value or booking is changed by this plan.

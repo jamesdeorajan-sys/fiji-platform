@@ -10,13 +10,13 @@
 
 ## 1. Published catalogue versus Worker formula, every disputed route
 
-Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). 210 route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: 108 cases on 28 routes.** 4 of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The other 102 cases agree to within FJ$5 / 5% and need no decision beyond the global policy. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full 210-row table (Momi included) is in `policy_catalogue_vs_worker.csv`.
+Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). 210 route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: 108 cases on 28 routes.** 4 of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The 102 cases outside this non-Momi disputed list include all six Momi cases handled separately in section 1b. The remaining 96 cases do not meet both dispute thresholds; this is not proof of commercial correctness. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full 210-row table (Momi included) is in `policy_catalogue_vs_worker.csv`.
 
-"Charged today" = what is actually saved today: **NAT** (page quotes the catalogue); **FD prod** = FijiDash production (its review step swaps in the Worker figure, so it charges the Worker figure on every priceable route, except when the live lookup fails); **FD cand** = the held candidate (Worker figure, except Momi return = catalogue convention).
+"Recorded amount in the current-code harness" = the amount computed and saved in the isolated harness, not payment evidence: **NAT** (page quotes the catalogue); **FD prod** = FijiDash production (its review step swaps in the Worker figure, so it records the Worker figure on every priceable route, except when the live lookup fails); **FD cand** = the held candidate (Worker figure, except Momi return = catalogue convention).
 
 Decision per row: **A** = catalogue is the fare (Worker/live fare must follow it), **B** = Worker formula is the fare (catalogue and pages must follow it), **C** = another figure (James supplies it). A global choice can be recorded once in the last section.
 
-| Route | Vehicle | Trip | Catalogue base (before discount) | Catalogue total | Worker total | Catalogue - Worker | In band? | NAT charges | FD prod charges | FD cand charges | Decision |
+| Route | Vehicle | Trip | Catalogue base (before discount) | Catalogue total | Worker total | Catalogue - Worker | In band? | NAT records | FD prod records | FD cand records | Decision |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | BA_HOTEL | minivan | one-way | 199 | 179 | 194.05 | -15.05 (-8%) | yes | 179 | 194.05 | 194.05 | A / B / C: ____ |
 | BA_HOTEL | minivan | return | 199 | 333 | 359.69 | -26.69 (-7%) | yes | 333 | 359.69 | 359.69 | A / B / C: ____ |
@@ -153,8 +153,8 @@ The candidate and NAT both save exactly the approved figures (checked by this sc
 Options (nothing is implemented):
 
 - **E1a Approval stays minibus-only.** Momi sedan/minivan return follow the global policy. On FijiDash that means the Worker figures (157.44 / 245.73) unless James chooses otherwise; NAT keeps its catalogue (166 / 252). The candidate would need a one-line scope change (minibus only) - not made here.
-- **E1b Extend the return convention to Momi sedan and minivan returns** (what the candidate does today): 166 / 252, equal to NAT. FijiDash returns rise by 8.56 / 6.27 versus what production charges today.
-- **E1c Extend the catalogue to Momi sedan and minivan one-way as well:** 89 / 134 (NAT today) instead of the Worker figures 85.29 / 132.42 that FijiDash charges today.
+- **E1b Extend the return convention to Momi sedan and minivan returns** (what the candidate does today): 166 / 252, equal to NAT. FijiDash returns rise by 8.56 / 6.27 versus what the production-code harness records.
+- **E1c Extend the catalogue to Momi sedan and minivan one-way as well:** 89 / 134 (NAT today) instead of the Worker figures 85.29 / 132.42 that the FijiDash production-code harness records.
 
 Decision E1: **[ ] E1a  [ ] E1b  [ ] E1c**. (The minibus approval is unaffected by any E1 choice.)
 
@@ -165,7 +165,7 @@ Today (facts, reproduced in `NIGHT.md`): the client and the Worker agree night =
 Options (the figures are computed with each side's existing arithmetic; **no new surcharge rate, no new fare**):
 
 - **N0 No night surcharge anywhere** (what FijiDash saves today). Pages, FAQ and label stop claiming it; NAT's static modifier and the Worker's night step are removed.
-- **N1 Existing Worker rule on the live fare** (x1.2 on the whole transfer when the OUTBOUND pickup is night; return pickup ignored; extras added after; 10% discount after). Changes FijiDash only; Worker unchanged. Selection = review = Worker.
+- **N1 Existing Worker rule on the live fare** (x1.2 on the whole transfer when the OUTBOUND pickup is night; return pickup ignored; extras added after; 10% discount after). This describes the existing Worker formula basis only. Using approved catalogue bases (including Momi return 330 before discount) requires a shared-source change too; applying x1.2 to an already discounted total is incorrect.
 - **N2 Per-leg surcharge** (each leg whose own pickup is 22:00-05:59 is surcharged). Needs new Worker and page code and the return-pickup time on the booking. **Every N2 figure below rests on the allocation assumption stated next.**
 - **N3 Static-table convention everywhere** (the page's modifier: x1.2 and x1.85, rounded UP to the next FJ$5, outbound time only). Needs the Worker to adopt the round-up (otherwise in-band differences continue). This is what NAT shows today.
 
@@ -238,7 +238,7 @@ Cross-checks run before this table was written: the Worker-basis N1 arithmetic e
 | Option | Worker | FijiDash page | NAT page | Advertised text |
 |---|---|---|---|---|
 | N0 | remove the night step (or leave it: the page figure is always in band) | already the behaviour; remove the label "Night surcharge applied" | remove the page modifier (night quotes drop to the day figure) | delete "20% night surcharge" from the FAQ in both sites (the FAQ line in `app.js`) |
-| N1 | none | add x1.2 to the live fare when the outbound pickup is night (selection and review) | unchanged (static modifier already similar but rounds up to FJ$5) | FAQ stays; the label becomes true. Say plainly that only the OUTBOUND pickup time counts |
+| N1 | Existing formula basis: current night step; approved catalogue basis: shared-source work required | Apply night to the selected pre-discount transfer base, then extras and discount once | Must use the same approved base and rounding for cross-site parity | State outbound-only eligibility; do not claim parity while static rounding differs |
 | N2 | new per-leg logic; needs `return_time` in the pricing step; new `pricing_version` | new arithmetic | new arithmetic | FAQ rewritten: surcharge per leg |
 | N3 | adopt FJ$5 round-up for modifier fares (or accept in-band differences) | selection/review use the static figure again (the live fare would no longer be shown) | unchanged | FAQ stays; label true |
 
@@ -248,7 +248,7 @@ Decision: night option **[ ] N0  [ ] N1  [ ] N2  [ ] N3**.  Does a night RETURN 
 
 | Step | Page (published-table path) | Worker (`computeAuthoritativePrice` + `applyLoyaltyDiscount`) |
 |---|---|---|
-| One-way base | the published figure for the route and vehicle (whole dollars), else a distance formula rounded up to FJ$5 | flagfall + rate x distance for the distance band (zone-pair distance table), x the destination zone multiplier (1.37 for Ba and Rakiraki, otherwise 1), rounded to cents. The fuel index (currently multiplier 1) is only RECORDED on the booking; it does not enter the fare, so no option here depends on fuel |
+| One-way base | the published figure for the route and vehicle (including cents, e.g. 175.92), else a distance formula rounded up to FJ$5 | flagfall + rate x distance for the distance band (zone-pair distance table), x the destination zone multiplier (1.37 for Ba and Rakiraki, otherwise 1), rounded to cents. The fuel index (currently multiplier 1) is only RECORDED on the booking; it does not enter the fare, so no option here depends on fuel |
 | Return | x1.85 of the one-way base, then **rounded UP to the next FJ$5** (only when a modifier applies) | x1.85 of the one-way fare, cents, **no round-up** |
 | "Return discount" | none beyond the x1.85 (about 7.5% below two one-ways). The FAQ line "discounted vs two one-ways" describes this | same |
 | Night | x1.2 on the base, applied before the return multiplier, outbound pickup only, then round up to FJ$5 | x1.2 on the whole transfer, outbound pickup only, cents |
@@ -325,3 +325,7 @@ Night and return options add FAQ / label changes as listed in section 2 (N0: del
 - Display rule for pages if B or C: **[ ] whole dollars (rounding rule: ______)  [ ] show cents**
 
 Nothing is released by recording these. Each decision needs its own change, re-test and independent review; production stays on HOLD until then. Fuel adjustments are not part of any option and remain disabled.
+
+## Review boundary (Codex, 2026-10-05)
+
+Tables are synthetic calculations against a dated snapshot, not guest payment records. No payment is collected by this flow. The five requested revisions were already present in decision-table commit `056e4c2`; this review preserves them and tightens terminology and implementation assumptions. No checkbox is selected. Current production behaviour is not changed by this document. The generator remains a calculation aid; the reviewed policy narrative is authoritative and must not be overwritten without reviewing its changes.
