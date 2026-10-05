@@ -51,6 +51,7 @@ import {
   applyTripTypeMultiplier, applyNightSurcharge, applyExtras,
   applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing,
 } from './pricing.mjs';
+import { createEmailFollowupHandlers, followupToken, digitsOnly as followupDigits } from './email_followup.mjs';
 
 const JSON_CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -463,6 +464,18 @@ export default {
     // ── Milestone 31: financial/payout view, admin-financials.html ──
     if (request.method === 'GET' && url.pathname === '/admin/financials') {
       return handleAdminFinancials(request, env, url);
+    }
+
+    // ── Milestone 38: email follow-up requests (backup contact channel) ──
+    if (request.method === 'POST' && url.pathname === '/email-followup') {
+      return emailFollowup().handleCreate(request, env);
+    }
+    if (request.method === 'GET' && url.pathname === '/admin/email-followups') {
+      return emailFollowup().handleAdminList(request, env, url);
+    }
+    const emailFollowupActionMatch = url.pathname.match(/^\/admin\/email-followups\/(\d+)\/(assign|acknowledge|outcome)$/);
+    if (request.method === 'POST' && emailFollowupActionMatch) {
+      return emailFollowup().handleAdminAction(request, env, Number(emailFollowupActionMatch[1]), emailFollowupActionMatch[2]);
     }
 
     // ── Milestone 21: staff escalation queue, admin-escalations.html ──
@@ -3724,6 +3737,12 @@ async function dispatchNewBookingSideEffects(env, ctx, booking) {
   return broadcast;
 }
 
+let emailFollowupHandlers = null;
+function emailFollowup() {
+  if (!emailFollowupHandlers) emailFollowupHandlers = createEmailFollowupHandlers({ json, getSetting, requireAdmin, createEscalation, logBookingEvent, timingSafeEqual });
+  return emailFollowupHandlers;
+}
+
 async function handleGuestBookingCreate(request, env, ctx) {
   if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
 
@@ -3817,7 +3836,9 @@ async function handleGuestBookingCreate(request, env, ctx) {
     // message. Fire-and-forget same as before: never lets a notification
     // outcome affect the (already-decided) response to this replay.
     await dispatchAdminNotifications(env, ctx, result.booking, { replay: true });
-    return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
+    // Milestone 38: the follow-up token is re-issued on a replay ONLY to a caller that also proves the phone number on file (lost-response recovery); the reference alone yields nothing.
+    const replayToken = followupDigits(body.guest_phone) !== '' && followupDigits(body.guest_phone) === followupDigits(result.booking.guest_phone) ? await followupToken(env, result.booking.client_booking_ref || '') : null;
+    return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true, ...(replayToken ? { followup_token: replayToken } : {}) }, 200);
   }
 
   // Issue #59: the driver broadcast is dispatched together with the admin alerts below (see dispatchNewBookingSideEffects).
@@ -3844,7 +3865,8 @@ async function handleGuestBookingCreate(request, env, ctx) {
   // protection is unchanged.
   const broadcast = await dispatchNewBookingSideEffects(env, ctx, b);
 
-  return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
+  const newToken = b.client_booking_ref ? await followupToken(env, b.client_booking_ref) : null;   // Milestone 38: only the creator of the booking receives the follow-up token
+  return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false, ...(newToken ? { followup_token: newToken } : {}) }, 201);
 }
 
 // ═══════════════════════════════════════════════════════════════

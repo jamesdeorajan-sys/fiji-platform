@@ -20,10 +20,13 @@ export function loadWorker(dir) {
 // A copy of a git revision's worker.js + pricing.mjs in a temp dir (optionally with a pricing.mjs text substitution).
 export function materialise({ rev, repoRoot, replacePricing }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-'));
-  for (const f of ['worker.js', 'pricing.mjs']) {
-    let text = rev
-      ? execFileSync('git', ['show', `${rev}:nadi-marketplace/worker/${f}`], { cwd: repoRoot, maxBuffer: 1e8 }).toString('utf8')
-      : fs.readFileSync(path.join(here, '..', f), 'utf8');
+  for (const f of ['worker.js', 'pricing.mjs', 'email_followup.mjs']) {   // email_followup.mjs only exists from Milestone 38 on; older revisions simply do not have it
+    let text;
+    try {
+      text = rev
+        ? execFileSync('git', ['show', `${rev}:nadi-marketplace/worker/${f}`], { cwd: repoRoot, maxBuffer: 1e8, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8')
+        : fs.readFileSync(path.join(here, '..', f), 'utf8');
+    } catch (err) { if (f === 'email_followup.mjs') continue; throw err; }
     if (f === 'pricing.mjs' && replacePricing) { const [a, b] = replacePricing; if (!text.includes(a)) throw new Error('replacePricing target not found: ' + a); text = text.replace(a, b); }
     fs.writeFileSync(path.join(dir, f), text);
   }
