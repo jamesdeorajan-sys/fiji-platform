@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261005-wa-handoff">
+<link rel="stylesheet" href="styles.css?v=20261005-email-followup">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -818,6 +818,20 @@
         </a>
 
         <p class="bula-handoff-note"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>
+        <div class="ef-box" data-ef hidden>
+          <button type="button" class="ef-toggle" aria-expanded="false">No WhatsApp? Request confirmation by email</button>
+          <div class="ef-panel" hidden>
+            <p class="ef-help">Our Fiji team will follow up by email. Check your address below and correct it if needed before you send.</p>
+            <label class="ef-label">Your email address
+              <input class="ef-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254">
+            </label>
+            <button type="button" class="btn-secondary ef-send">Request email confirmation</button>
+            <p class="ef-status" role="status" aria-live="polite" hidden></p>
+            <p class="ef-inbox" hidden></p>
+            <p class="ef-note">This records a request for our team to follow up. It is not a confirmation of your transfer, and no email is sent automatically.</p>
+          </div>
+        </div>
+
         <button id="bulaRetry" type="button" class="btn-secondary" hidden onclick="retryBooking()">Review and retry — keep my details</button>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
@@ -2012,7 +2026,7 @@
   </div>
 </div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261005-wa-handoff"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="email-followup.js?v=20261005-email-followup"></script><script src="app.js?v=20261005-email-followup"></script>
 <script src="chat-widget.js?v=20260908a"></script>
 <!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "40d766fdaddc4cb68ce32a56801f1639"}'></script><!-- Cloudflare Pages Analytics --></body>
 </html>

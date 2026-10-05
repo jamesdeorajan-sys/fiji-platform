@@ -213,8 +213,9 @@ test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line
 });
 
 test('cache-busting versions were bumped for the changed assets', () => {
-  assert.match(html, /app\.js\?v=20261005-wa-handoff/); // bumped for the WhatsApp reservation handoff (on top of the P0 #237 quote-consent repair)
-  assert.match(html, /styles\.css\?v=20261005-wa-handoff/);
+  assert.match(html, /app\.js\?v=20261005-email-followup/); // bumped for the email follow-up fallback (on top of the released WhatsApp handoff)
+  assert.match(html, /styles\.css\?v=20261005-email-followup/);
+  assert.match(html, /email-followup\.js\?v=20261005-email-followup/);
 });
 
 test('scope guard: no fare, pricing, Worker or notification code changed', () => {

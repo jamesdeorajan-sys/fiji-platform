@@ -1394,7 +1394,7 @@ async function submitNadiBooking(ref, destZone) {
       void reportNadiSyncFailure(ref, payload, data);
       return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
-    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent, savedAmount: data.booking ? data.booking.quoted_amount : undefined, savedCurrency: data.booking ? data.booking.quoted_currency : undefined, submittedAmount: quotedAmount };
+    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent, savedAmount: data.booking ? data.booking.quoted_amount : undefined, savedCurrency: data.booking ? data.booking.quoted_currency : undefined, submittedAmount: quotedAmount, followupToken: data.followup_token || null };
   } catch (err) {
     void reportNadiSyncFailure(ref, payload, { error: err.message });
     return { ok: false, error: err.message };
@@ -1573,6 +1573,7 @@ async function confirmBooking() {
   // we'll confirm within 15 minutes" copy, which is only ever true for the
   // former, not the latter.
   let saveAttempted = false;
+  let reconcileDestZone = null;   // email follow-up: the same reservation reference is re-submitted (never a new one) to reconcile an uncertain save
   const destVal = document.getElementById('destination')?.value;
   const destOpt = document.getElementById('destination')?.selectedOptions?.[0];
   const isEligibleForServerSave = pickupVal === 'NAN' && destVal && destVal !== 'CUSTOM_DEST';
@@ -1580,6 +1581,7 @@ async function confirmBooking() {
     const destZone = resolveFixedDestinationZone(destOpt);
     if (destZone && destZone !== 'NEEDS_LOOKUP') {
       saveAttempted = true;
+      reconcileDestZone = destZone;
       // P0 #237 race: the itinerary this request was PRICED for. A mismatch that comes back after the guest changed the journey must never be attached to the new one.
       const keyAtSubmit = typeof fareOverrideKey === 'function' ? fareOverrideKey() : null;
       saveResult = await submitNadiBooking(ref, destZone);
@@ -1655,6 +1657,24 @@ async function confirmBooking() {
   const bulaWaBtn = document.getElementById('bulaWaBtn');
   if (bulaWaBtn) bulaWaBtn.href = waUrl;
 
+  // "No WhatsApp? Request confirmation by email" (email-followup.js): a BACKUP channel that durably records a follow-up request against this reference before it
+  // shows any success. saved -> attaches to the saved booking; uncertain -> reconciles by the SAME reference first; WhatsApp-only -> an enquiry for human review.
+  if (typeof EmailFollowup !== 'undefined') {
+    EmailFollowup.mount(document.getElementById('bulaSuccess'), {
+      site: 'nat', apiBase: NADI_API_BASE, ref, token: saveResult.followupToken || null,
+      mode: saveResult.ok ? 'saved' : (saveAttempted ? 'uncertain' : 'enquiry'),
+      getEmail: () => document.getElementById('email')?.value.trim() || '',
+      getGuest: () => ({ name: `${document.getElementById('firstName')?.value.trim() || ''} ${document.getElementById('lastName')?.value.trim() || ''}`.trim(), phone: document.getElementById('phone')?.value.trim() || '' }),
+      getEnquiry: () => ({
+        from: stripEmoji(state.pickup?.name) || '', to: stripEmoji(state.destination?.hotel) || document.getElementById('customDestAddress')?.value.trim() || '',
+        date: document.getElementById('travelDate')?.value || '', time: document.getElementById('travelTime')?.value || '', trip: state.tripType, vehicle: state.selectedVehicle,
+        passengers: state.passengers, flight: document.getElementById('flightNum')?.value.trim() || '', amount_shown: calculateTotal().final, notes: document.getElementById('notes')?.value.trim() || '',
+      }),
+      reconcile: async () => (reconcileDestZone ? submitNadiBooking(ref, reconcileDestZone) : { ok: false }),
+      onReconciled: (r) => applyReconciledSave(r, ref),
+    });
+  }
+
   // A2: pre-fill the modification link with the booking ref so the customer
   // doesn't have to retype it. Driver coordinator gets a clear request.
   const bulaModifyLink = document.getElementById('bulaModifyLink');
@@ -1680,6 +1700,21 @@ async function confirmBooking() {
 
   // Scroll to the top of the booking section so the success card is centered
   document.getElementById('booking')?.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// The same display/lock state the normal save path sets, applied when an uncertain save is reconciled through the email follow-up (same reference = same booking).
+function applyReconciledSave(saveResult, ref) {
+  try { sessionStorage.removeItem('ftt_booking_attempt'); } catch { /* private mode */ }
+  state.pendingBookingAttempt = null;
+  const lead = document.getElementById('bulaLeadText');
+  if (lead) lead.textContent = 'Your request is saved online, but your transfer is not confirmed yet. Send your reservation details on WhatsApp to finish.';
+  const bulaRef = document.getElementById('bulaRef');
+  if (bulaRef) bulaRef.textContent = `Booking #${saveResult.bookingId} · Ref: ${ref}`;
+  const retry = document.getElementById('bulaRetry');
+  if (retry) retry.hidden = true;
+  state.confirmBookingInFlight = true;
+  const confirmBtn = document.querySelector('.btn-confirm');
+  if (confirmBtn) confirmBtn.disabled = true;
 }
 
 // Reopen the existing form after an unknown save; retain fields and retry ID.
