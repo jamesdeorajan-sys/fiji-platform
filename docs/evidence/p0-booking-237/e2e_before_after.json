@@ -1,0 +1,45 @@
+{
+  "before": {
+    "guest_sees_and_accepts_fjd": 142,
+    "page_submits_fjd": 142,
+    "worker_http_status": 201,
+    "saved_fjd": 300.45,
+    "guest_told_of_change": false,
+    "page_reads_amount_from_response": false,
+    "booking_created": true,
+    "created_event_records_adjustment": false
+  },
+  "after_page_and_worker": {
+    "first_submit": {
+      "page_shown_fjd": 142,
+      "worker_http_status": 409,
+      "saved_anything": false,
+      "mismatch": {
+        "reference": 300.45,
+        "submitted": 142
+      }
+    },
+    "guest_then_sees_fjd": 300.45,
+    "review_marked_as_confirmed_by_booking_system": true,
+    "second_submit": {
+      "page_submits_fjd": 300.45,
+      "worker_http_status": 201,
+      "saved_fjd": 300.45,
+      "booking_created": true
+    },
+    "shown_equals_accepted_equals_saved": true,
+    "alert_amount_fjd": 300.45
+  },
+  "after_old_cached_page": {
+    "worker_http_status": 201,
+    "saved_fjd": 300.45,
+    "adjustment_recorded": {
+      "submitted_amount_fjd": 142,
+      "saved_amount_fjd": 300.45,
+      "reason": "outside_0.8x_1.3x_band",
+      "band_low_fjd": 240.36,
+      "band_high_fjd": 390.585
+    },
+    "residual_risk": "the guest of an old cached page still sees 142 and is saved at 300.45 until the cache key changes (max 4h) - now recorded, not prevented"
+  }
+}

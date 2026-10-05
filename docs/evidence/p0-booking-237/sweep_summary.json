@@ -1,0 +1,182 @@
+{
+ "exact": {
+  "client_no_extras": {
+   "source": "published",
+   "vehiclePrice": 150,
+   "subtotal": 150,
+   "discount": 15,
+   "final": 135
+  },
+  "client_child_seat": {
+   "source": "published",
+   "vehiclePrice": 150,
+   "subtotal": 158,
+   "discount": 16,
+   "final": 142
+  },
+  "server_no_extras": {
+   "distanceKm": 38.623,
+   "oneWay": 175.92,
+   "subtotal": 325.45,
+   "final": 292.45
+  },
+  "server_child_seat": {
+   "distanceKm": 38.623,
+   "oneWay": 175.92,
+   "subtotal": 333.45,
+   "final": 300.45
+  },
+  "server_child_seat_night_return_06": {
+   "distanceKm": 38.623,
+   "oneWay": 175.92,
+   "subtotal": 333.45,
+   "final": 300.45
+  },
+  "boundary_06_00_is_night_client": false,
+  "boundary_05_59_is_night_client": true,
+  "boundary_06_00_is_night_server": false,
+  "band": {
+   "server_discounted": 300.45,
+   "lower_0_8": 240.36,
+   "upper_1_3": 390.59,
+   "guest_142_outside": true
+  },
+  "matches": {
+   "guest_screen_142": true,
+   "stored_and_alert_300_45": true
+  }
+ },
+ "compare": {
+  "momi_combos_hitting_315": [],
+  "momi_minibus_return_day_no_extras": {
+   "v": "minibus",
+   "t": "return",
+   "time": "09:15",
+   "seat": false,
+   "surf": false,
+   "client": 135,
+   "server": 292.45
+  }
+ },
+ "sweep": {
+  "rows_total": 420,
+  "all": {
+   "REPLACED_BY_SERVER": 10,
+   "KEPT_DIFFERS": 369,
+   "MATCH": 29,
+   "NO_SERVER_RULE": 12
+  },
+  "day_no_extras_one_way": {
+   "REPLACED_BY_SERVER": 3,
+   "KEPT_DIFFERS": 90,
+   "MATCH": 9,
+   "NO_SERVER_RULE": 3
+  },
+  "day_no_extras_return": {
+   "KEPT_DIFFERS": 93,
+   "MATCH": 6,
+   "NO_SERVER_RULE": 3,
+   "REPLACED_BY_SERVER": 3
+  },
+  "replaced_destinations_by_trip": {
+   "one-way": [
+    "NADI_DOWNTOWN",
+    "MERCURE_NADI",
+    "MARRIOTT_MOMI"
+   ],
+   "return": [
+    "WAILOALOA_BEACH",
+    "CROWNE_PLAZA_NADI_BAY",
+    "MARRIOTT_MOMI"
+   ]
+  },
+  "replaced_by_vehicle": {
+   "one-way": {
+    "sedan": 2,
+    "minivan": 0,
+    "minibus": 1
+   },
+   "return": {
+    "sedan": 2,
+    "minivan": 0,
+    "minibus": 1
+   }
+  },
+  "client_catalogue_anomaly_minibus_below_minivan": [
+   {
+    "destValue": "MARRIOTT_MOMI",
+    "s": 99,
+    "v": 149,
+    "m": 79
+   }
+  ],
+  "worst_ratios": [
+   {
+    "destValue": "MARRIOTT_MOMI",
+    "zone": "Momi Bay",
+    "vehicle": "minibus",
+    "trip": "one-way",
+    "seat": false,
+    "client": 71,
+    "server": 157.92,
+    "ratio": 0.45,
+    "class": "REPLACED_BY_SERVER"
+   },
+   {
+    "destValue": "MARRIOTT_MOMI",
+    "zone": "Momi Bay",
+    "vehicle": "minibus",
+    "trip": "return",
+    "seat": false,
+    "client": 135,
+    "server": 292.45,
+    "ratio": 0.462,
+    "class": "REPLACED_BY_SERVER"
+   },
+   {
+    "destValue": "NADI_DOWNTOWN",
+    "zone": "Nadi",
+    "vehicle": "sedan",
+    "trip": "one-way",
+    "seat": false,
+    "client": 19,
+    "server": 30.15,
+    "ratio": 0.63,
+    "class": "REPLACED_BY_SERVER"
+   },
+   {
+    "destValue": "MERCURE_NADI",
+    "zone": "Nadi",
+    "vehicle": "sedan",
+    "trip": "one-way",
+    "seat": false,
+    "client": 19,
+    "server": 30.15,
+    "ratio": 0.63,
+    "class": "REPLACED_BY_SERVER"
+   },
+   {
+    "destValue": "WAILOALOA_BEACH",
+    "zone": "Wailoaloa",
+    "vehicle": "sedan",
+    "trip": "return",
+    "seat": false,
+    "client": 67,
+    "server": 50.17,
+    "ratio": 1.335,
+    "class": "REPLACED_BY_SERVER"
+   },
+   {
+    "destValue": "CROWNE_PLAZA_NADI_BAY",
+    "zone": "Wailoaloa",
+    "vehicle": "sedan",
+    "trip": "return",
+    "seat": false,
+    "client": 67,
+    "server": 50.17,
+    "ratio": 1.335,
+    "class": "REPLACED_BY_SERVER"
+   }
+  ]
+ }
+}

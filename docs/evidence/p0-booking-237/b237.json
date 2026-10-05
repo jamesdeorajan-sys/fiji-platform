@@ -1,0 +1,51 @@
+[
+  {
+    "results": [
+      {
+        "id": 237,
+        "client_booking_ref": "FTT-UKAZTE",
+        "pickup_zone": "Nadi Airport",
+        "destination_zone": "Momi Bay",
+        "distance_km": 38.623,
+        "vehicle_type": "minibus",
+        "quoted_currency": "FJD",
+        "quoted_amount": 300.45,
+        "fx_rate_at_booking": 1,
+        "settlement_amount_fjd": 300.45,
+        "fuel_multiplier_applied": 1,
+        "payment_method": "cash",
+        "status": "pending",
+        "commission_rate": null,
+        "commission_base_fjd": null,
+        "created_at": "2026-10-05 01:19:31",
+        "pickup_date": "2026-10-15",
+        "pickup_time": "09:15",
+        "return_date": "2026-10-19",
+        "return_time": "06:00",
+        "return_pickup_location": "Fiji Marriott Resort Momi Bay",
+        "attribution_source": "direct",
+        "first_source": null,
+        "notes_len": 123,
+        "has_idem": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "OC",
+      "served_by_colo": "SYD",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.7445
+      },
+      "duration": 0.7445,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 462848,
+      "rows_read": 229,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

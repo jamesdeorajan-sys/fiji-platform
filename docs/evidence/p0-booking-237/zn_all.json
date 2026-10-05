@@ -1,0 +1,100 @@
+[
+  {
+    "results": [
+      {
+        "name": "Nadi",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Nadi Airport",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Wailoaloa",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Denarau",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Sonaisali",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Vuda Point",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Lautoka",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Momi Bay",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Natadola",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Sigatoka",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Coral Coast",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Pacific Harbour",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Ba",
+        "remote_multiplier": 1.37
+      },
+      {
+        "name": "Rakiraki",
+        "remote_multiplier": 1.37
+      },
+      {
+        "name": "Suva",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Nausori",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Mamanuca Islands",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Yasawa Islands",
+        "remote_multiplier": 1
+      },
+      {
+        "name": "Beqa Lagoon",
+        "remote_multiplier": 1
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "OC",
+      "served_by_colo": "SYD",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1961
+      },
+      "duration": 0.1961,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 462848,
+      "rows_read": 19,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
