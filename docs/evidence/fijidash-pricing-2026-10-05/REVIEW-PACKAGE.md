@@ -45,3 +45,5 @@ Test inputs: `test-fixtures/worker-deployed-7a32a034.mjs` (dry-run bundle of the
 ## Limitations (stated, not hidden)
 
 Arrival direction only in the reconciliation tables; departures/boats/custom/tours are covered by the scope tests, not by fare tables. Surfboard extra not tabulated. Hosted Cloudflare behaviour, real Meta/WhatsApp, and physical devices were not exercised. The Worker rig is an in-memory D1 stand-in (verified against the real Worker code, not the real database). Chromium retries a POST on a destroyed socket, so lost replies are simulated page-side. Nothing here proves production behaviour after a future Worker change: re-run the drift check before any release.
+
+Note: a Windows checkout with core.autocrlf=true is handled (tests normalise line endings); Node 20+ and git are required.

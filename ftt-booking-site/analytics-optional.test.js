@@ -6,8 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const app = fs.readFileSync(path.join(__dirname, 'src', 'app.js'), 'utf8');
-const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+const app = fs.readFileSync(path.join(__dirname, 'src', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 
 function helperSource() {
   const m = app.match(/function trackBookingFunnel\(eventType\) \{[\s\S]*?\n\}\n/);
