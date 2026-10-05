@@ -97,3 +97,12 @@ test('WHATSAPP-ONLY / unsupported route: an ENQUIRY is requested (journey detail
 test('SERVER LOCK: once our team is handling the request the page says the address can no longer be changed here', async () => {
   const sb = sandbox(async () => resp(200, OK({ locked: true }))); const box = makeBox(); sb.EmailFollowup.mount(card(box), ctxFor()); await click(box); assert.match(status(box), /already handling this request.*cannot be changed here/);
 });
+
+test('REGRESSION (found in browser testing): when the page switches cards after a reconcile and the follow-up request then FAILS, the retry still sends the address the guest typed, not the original prefill', async () => {
+  let n = 0; const calls = []; const sb = sandbox(async (u, o) => { calls.push(JSON.parse(o.body)); n++; if (n === 1) throw new Error('network'); return resp(201, OK()); });
+  const failBox = makeBox(); const savedBox = makeBox();
+  const ctx = ctxFor({ token: null, mode: 'uncertain', reconcile: async () => ({ ok: true, bookingId: 9, followupToken: 'a'.repeat(64) }), onReconciled: (r) => { sb.EmailFollowup.mount(card(savedBox), ctxFor({ token: r.followupToken, mode: 'saved' })); } });
+  sb.EmailFollowup.mount(card(failBox), ctx); failBox.parts['.ef-email'].value = 'typed.correction@example.invalid'; await click(failBox);
+  assert.match(status(savedBox), /could not confirm that your request was recorded/); assert.equal(savedBox.parts['.ef-email'].value, 'typed.correction@example.invalid');
+  await click(savedBox); assert.equal(calls.length, 2); assert.equal(calls[1].email, 'typed.correction@example.invalid'); assert.match(status(savedBox), /^Request received/);
+});
