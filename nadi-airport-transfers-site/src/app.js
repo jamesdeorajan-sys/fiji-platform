@@ -1634,7 +1634,7 @@ async function confirmBooking() {
     if (bulaLeadText && bulaLeadText.parentNode && saveResult.savedAmount !== undefined) {
       let fareLine = document.getElementById('bulaFare');
       if (!fareLine) { fareLine = document.createElement('p'); fareLine.id = 'bulaFare'; fareLine.style.fontWeight = '700'; bulaLeadText.parentNode.insertBefore(fareLine, bulaLeadText.nextSibling); }
-      const savedText = `${saveResult.savedCurrency || 'FJD'} ${Number(saveResult.savedAmount).toFixed(2)}`;
+      const savedText = `${saveResult.savedCurrency || 'FJD'} ${fareText(saveResult.savedAmount)}`; // same digits as the admin alerts (49 or 300.45)
       fareLine.textContent = Math.abs(Number(saveResult.savedAmount) - Number(saveResult.submittedAmount)) < 0.005
         ? `Fare saved: ${savedText}`
         : `Fare recorded by our booking system: ${savedText}. This differs from the ${fareText(saveResult.submittedAmount)} you saw; our team will confirm your fare with you.`;
