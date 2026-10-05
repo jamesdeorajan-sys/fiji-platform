@@ -33,6 +33,7 @@ export function materialise({ rev, repoRoot, replacePricing }) {
 export function makeEnv() {
   const inserted = [];
   const escalations = [];
+  const events = [];
   const unmatched = new Set();
   let nextId = 5000;
   const zoneNames = snap.zones.map((z) => z.name);
@@ -71,6 +72,11 @@ export function makeEnv() {
       escalations.push(row);
       return { run: { success: true, meta: { last_row_id: escalations.length, changes: 1 } } };
     }
+    if ((m = s.match(/^INSERT INTO booking_events \(([^)]*)\) VALUES/i))) {
+      const cols = m[1].split(',').map((c) => c.trim()); const row = {}; cols.forEach((c, i) => { row[c] = args[i]; });
+      events.push({ ...row, metadata: row.metadata ? JSON.parse(row.metadata) : null });
+      return { run: { success: true, meta: { last_row_id: events.length, changes: 1 } } };
+    }
     unmatched.add(s.slice(0, 120));
     return { first: null, all: { results: [] }, run: { success: true, meta: { last_row_id: 1, changes: 1 } } };
   }
@@ -80,7 +86,7 @@ export function makeEnv() {
     all: async () => run(sql, args).all ?? { results: [] },
     run: async () => run(sql, args).run ?? { success: true, meta: { last_row_id: 1, changes: 1 } },
   });
-  return { env: { DB: { prepare: (sql) => stmt(sql, []), batch: async (l) => Promise.all(l.map((x) => x.run())) } }, inserted, escalations, unmatched };
+  return { env: { DB: { prepare: (sql) => stmt(sql, []), batch: async (l) => Promise.all(l.map((x) => x.run())) } }, inserted, escalations, events, unmatched };
 }
 
 export async function postBooking(dir, payload) {
@@ -95,7 +101,7 @@ export async function postBooking(dir, payload) {
       body: JSON.stringify(payload),
     }), h.env, { waitUntil() {} });
     const body = await res.json().catch(() => null);
-    return { status: res.status, body, saved: h.inserted[0] || null, escalations: h.escalations };
+    return { status: res.status, body, saved: h.inserted[0] || null, escalations: h.escalations, events: h.events };
   } finally { globalThis.fetch = realFetch; }
 }
 
