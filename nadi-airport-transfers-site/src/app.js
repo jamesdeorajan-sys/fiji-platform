@@ -105,6 +105,12 @@ const DISCOUNT_RATE      = 0.10; // 10% off
 function bookingHasTour() {
   return !!state.selectedTour;
 }
+// #238: a computed total can carry a float artefact (127.96000000000001). Show whole dollars as 142 and cents as 300.45. Display only: no fare, price or stored value changes.
+function fareText(n) {
+  const r = Math.round(Number(n) * 100) / 100;
+  if (!Number.isFinite(r)) return String(n);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
+}
 function calculateTotal(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
   if (!k || !state.prices[k]) return {
@@ -1017,16 +1023,16 @@ function buildConfirmation() {
   if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     totalRows = `
-      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${t.transferSubtotal}</span></div>
-      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${t.tourTotal}</span></div>
-      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
+      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${fareText(t.transferSubtotal)}</span></div>
+      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${fareText(t.tourTotal)}</span></div>
+      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${fareText(t.final)}</span></div>`;
   } else if (t.qualifies) {
     totalRows = `
-      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${t.subtotal}</span></div>
-      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>
-      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
+      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${fareText(t.subtotal)}</span></div>
+      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${fareText(t.discount)}</span></div>
+      <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${fareText(t.final)}</span></div>`;
   } else {
-    totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
+    totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${fareText(t.final)}</span></div>`;
   }
 
   // CEO P0 security fix (2026-09-13) - every value below may be
@@ -1092,22 +1098,22 @@ function buildWhatsAppURL(ref) {
   if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     priceLines = [
-      `Transfer:    FJ$${t.transferSubtotal}`,
-      `Tour (${state.passengers} ${paxLabel}): FJ$${t.tourPerPax}/pp × ${state.passengers} = FJ$${t.tourTotal}`,
+      `Transfer:    FJ$${fareText(t.transferSubtotal)}`,
+      `Tour (${state.passengers} ${paxLabel}): FJ$${t.tourPerPax}/pp × ${state.passengers} = FJ$${fareText(t.tourTotal)}`,
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   } else if (t.qualifies) {
     priceLines = [
-      `Subtotal:    FJ$${t.subtotal}`,
-      `Discount:    -FJ$${t.discount} (10% off, orders FJ$50+)`,
+      `Subtotal:    FJ$${fareText(t.subtotal)}`,
+      `Discount:    -FJ$${fareText(t.discount)} (10% off, orders FJ$50+)`,
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   } else {
     priceLines = [
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   }
 
