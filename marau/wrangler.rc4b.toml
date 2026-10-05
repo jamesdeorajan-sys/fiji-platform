@@ -1,0 +1,39 @@
+# Marau RC4 copy-repair preview (isolated): its own Worker, SAME legs D1 (no migration); RC4 Worker 1ae9a441 is untouched. Admin token supplied with --var.
+# time with --var and is NOT stored here.
+# Marau Stage 1 (PREVIEW ONLY) — isolated Worker config.
+# account_id is the same Vakaviti Cloudflare account (595101df2c...) other
+# previews already deploy to, but every OTHER binding below is new and
+# dedicated to this preview: no production D1, no production secret, no
+# production route.
+name = "marau-stage1-preview-rc4b"
+main = "worker/worker.js"
+compatibility_date = "2026-07-19"
+account_id = "595101df2c562b3c65595420d43f9fe1"
+
+# Isolated test database — created fresh for this preview
+# (2026-09-28, `wrangler d1 create marau-stage1-test-db`), never
+# nadi-marketplace-db (0ec1cd84-...) or vakaviti-kb. Full migration stack
+# applied: smart-return-trigger-fill/migrations 0001-0006 (shared Issue
+# #54 engine schema, unmodified) + marau/migrations 0007-0023 (every
+# Marau-specific migration through round 8's smart_offers.marau_attempt_id),
+# in that filename order — see docs/MARAU_STAGE1_HOSTED_ACCEPTANCE.md for
+# the exact commands and evidence.
+[[d1_databases]]
+binding = "DB"
+database_name = "marau-stage1-legs-db"
+database_id = "80880a7b-7f52-4ce3-b60b-8eb7406648a7"
+
+# Test-only admin bearer token and a synthetic ops WhatsApp "number" (used
+# only as the composed message's `to:` field — the app never actually
+# sends anything; see whatsapp_handoff.js). Neither is a secret in any
+# real sense (this whole binding is an isolated preview with synthetic
+# data only), so both are plain [vars], not `wrangler secret`.
+[vars]
+MARAU_ADMIN_TEST_TOKEN = "REPLACED-AT-DEPLOY-WITH---var"
+MARAU_OPS_WHATSAPP_TEST_NUMBER = "+15556414099"
+
+# No [triggers]/crons in Stage 1 — nothing here runs on a schedule yet
+# (no hold-expiry timer exists; holds/waitlist/expiry are explicitly
+# deferred, see the mission's DEFER list).
+# No routes/custom domain bound — preview is served at the workers.dev
+# subdomain only, per "isolated preview only".
