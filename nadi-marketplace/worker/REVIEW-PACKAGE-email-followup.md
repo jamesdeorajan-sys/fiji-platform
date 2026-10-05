@@ -3,7 +3,7 @@
 **Verdict: READY FOR INDEPENDENT REVIEW** (with the open decisions in section 8). Production is unchanged: no deployment, migration, secret change, booking submission or outbound message was made. Staging/prod baseline verified 2026-10-05T21:04Z: Worker `7a32a034` (0b961a4), NAT Pages `e43dc900` (4c2aec1), FijiDash Pages `6346db54` (27f5650); AGENT_SYNC had no newer entries than `a1b5931`.
 
 ## 1. Branches and commits (see the AGENT_SYNC entry for the final hashes)
-Worker `ceo/email-followup-worker` (base prod `0b961a4`); NAT `ceo/email-followup-nat` (base released `4c2aec1`); FijiDash `ceo/email-followup-fijidash` (base released `27f5650`). The NAT and FijiDash page branches are unchanged in this round (their last reviewed commits `c50fe3a` / `2c3bde4` stand). Changes this round are Worker + staff page + docs only.
+Worker `ceo/email-followup-worker` (base prod `0b961a4`); NAT `ceo/email-followup-nat` (base released `4c2aec1`); FijiDash `ceo/email-followup-fijidash` (base released `27f5650`). The NAT and FijiDash page branches have NO code change in this round: the reviewed code commits `c50fe3a` / `2c3bde4` stand, plus one test-only commit each (NAT `5897656`, FijiDash `335c26a`: an old-Worker 404 is never shown as success). Changes this round are Worker + staff page + docs only.
 
 ## 2. What changed this round (files)
 - `migrations/milestone38-email-followups.sql` (still unapplied): + `designated_owner` column; seeds `email_followup_owner = James` and `email_followup_inbox = tourfijitours@gmail.com`. New `migrations/rollback/milestone38-rollback.sql`.
