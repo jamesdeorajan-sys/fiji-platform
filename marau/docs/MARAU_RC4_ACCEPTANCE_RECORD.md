@@ -48,7 +48,7 @@ A **local private folder on James's own machine**: `C:\Users\James\AppData\Local
 ## 6. Check results (NOT RUN until James performs them)
 | # | Check | Result | Notes |
 |---|---|---|---|
-| H1 | Sign in; panels load; Reward policy mode Off; no credits | NOT RUN | |
+| H1 | Sign in; panels load; Reward policy mode Off; no credits | **PASS (sign-in and panel display only)** | James's screenshots (2026-10-05): Needs attention, Offer requests, Reward credits, Report, Suppliers, Offers, Morning and afternoon editions, Deals pilot, Reward policy OFF. The Report shows 17 earned and 9 applied **synthetic credits**, consistent with the pre-existing shared-DB count (not created by this run). This confirms rendering only - not action correctness or production readiness. Screenshots are kept by James; the sign-in screen was not captured. |
 | H2 | Supplier create + Verify; offer draft + Publish | NOT RUN | |
 | H3 | Edition draft + Publish; Prepare refused before review; B approves; A prepares | NOT RUN | |
 | H4 | Check and copy message: no link/phone/email; app states it cannot stop an external send | NOT RUN | |
@@ -65,3 +65,12 @@ A **local private folder on James's own machine**: `C:\Users\James\AppData\Local
 | C1 | Cleanup: this run's guest links revoked and verified 401 | NOT RUN | after acceptance |
 | C2 | Cleanup: this run's two staff identities deleted and tokens verified 401 | NOT RUN | after acceptance |
 | C3 | Post-run counts re-read; window integrity | NOT RUN | after acceptance |
+
+## 7. Findings during acceptance
+### F1 - "-1/1 left" on a synthetic sunset offer (James's screenshot 112327): NOT a defect - a separator read as a minus sign
+- **What the screenshot actually shows** (read from the image): `Synthetic Reef Tours muufut2r (verified) - owner Ana (roundtrip muufut2r) - 1/1 left - price FJ$120.00, cost FJ$80.00 - 0 open, 0 confirmed`. The staff console joins its fields with ` - ` (a hyphen); `1/1 left` follows the separator, so `- 1/1 left` reads like `-1/1`. The value is **1 of 1**, not negative.
+- **Read-only trace of that exact offer** (`off_eaf50323-a12b-4922-92c9-0cf74c4ee737`, "Synthetic sunset muufut2r"; read with `wrangler d1 execute --command SELECT`): capacity 1, status published, **0 requests** (0 confirmed/fulfilled places), so places left = 1. The same screenshot's `Synthetic snorkel rc4 muug9beq - 19/20 left` equals capacity 20 minus the 1 place from the RC4 O5 hosted run's confirmed request.
+- **Question 1, did a test deliberately create invalid capacity?** No. The journey script creates this offer with capacity 1 (valid; validation requires a whole number 1-500). Across the shared database: **39 offers, 0 overbooked, 0 with capacity below 1, minimum capacity 1.**
+- **Question 2, is the availability display wrong?** The numbers are right. The code also clamps `places_left` at 0 (it can never print a negative number), and that clamp was not used to hide anything: no offer is over capacity. The only issue is **readability**: ` - 1/1 left` is ambiguous next to a hyphen.
+- **Question 3, can the normal workflow overbook?** No. Capacity is checked inside the single INSERT that creates a request; a lapsed hold cannot be confirmed (`HOLD_EXPIRED`). The existing tests prove it on the clean RC4 checkout `7df9958`: *OVERSELLING is impossible under concurrency (capacity 2, five guests at once -> exactly 2 held)* and *a lapsed hold releases its places and cannot be confirmed*; the offers file passes 20/20.
+- **Disposition:** no code defect, no fixture deleted or altered, no clamping change. **Observation O6 (cosmetic, NOT in frozen RC4):** change the staff offers line to an unambiguous form (for example `places left: 1 of 1`) in a later candidate. Not made now: RC4 stays frozen.
