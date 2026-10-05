@@ -14,6 +14,6 @@ test('the review and the WhatsApp text print computed totals through fareText (n
   assert.ok(source.includes('FJ$${fareText(t.final)}'));
 });
 test('scope: calculateTotal itself (the fare maths) is untouched', () => {
-  const body = source.slice(source.indexOf('function calculateTotal(vehicleKey)'), source.indexOf('function calculateTotal(vehicleKey)') + 3500);
+  const body = source.slice(source.indexOf('function calculateTotalFromPublishedPrices(vehicleKey)'), source.indexOf('function calculateTotalFromPublishedPrices(vehicleKey)') + 3500);
   assert.ok(body.includes('const final        = subtotal - discount;'));
 });

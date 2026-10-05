@@ -21,12 +21,14 @@ test('the fare table shows, for every vehicle, the calculator\'s before-discount
   for (const [label, r] of Object.entries(rows)) {
     const tr = table.match(new RegExp(`<tr><td>${label}</td><td>([^<]*)</td><td>([^<]*)</td></tr>`));
     assert.ok(tr, label);
-    assert.equal(tr[1], `${money(r.oneWay.subtotal)} &rarr; ${money(r.oneWay.final)}`, `${label} one-way`);
+    // the minibus one-way is James's approved FINAL fare (2026-10-05): shown once, as final, never as a before -> after discount pair
+    assert.equal(tr[1], r.oneWay.approvedFinalFare ? `${money(r.oneWay.final)} final fare (no further discount)` : `${money(r.oneWay.subtotal)} &rarr; ${money(r.oneWay.final)}`, `${label} one-way`);
     assert.equal(tr[2], `${money(r.ret.subtotal)} &rarr; ${money(r.ret.final)}`, `${label} return`);
   }
 });
-test('Momi minibus is exactly the approved figures: 175.92 -> 157.92 one-way, 330 -> 297 return; and it is no longer below the minivan or sedan', () => {
-  assert.deepEqual([rows.Minibus.oneWay.subtotal, rows.Minibus.oneWay.final, rows.Minibus.ret.subtotal, rows.Minibus.ret.final], [175.92, 157.92, 330, 297]);
+test('Momi minibus is exactly the approved figures: 175.92 FINAL one-way (no further discount), 330 -> 297 return; and it is no longer below the minivan or sedan', () => {
+  assert.deepEqual([rows.Minibus.oneWay.subtotal, rows.Minibus.oneWay.final, rows.Minibus.ret.subtotal, rows.Minibus.ret.final], [175.92, 175.92, 330, 297]);
+  assert.equal(rows.Minibus.oneWay.discount, 0);
   for (const k of ['oneWay', 'ret']) { assert.ok(rows.Minibus[k].final > rows.Minivan[k].final); assert.ok(rows.Minivan[k].final > rows.Sedan[k].final); }
 });
 test('sedan and minivan return figures are reconciled to the calculator (185/166 and 280/252) - their fare rules are untouched', () => {
@@ -48,12 +50,14 @@ test('JSON-LD price range spans every displayed one-way vehicle price (before di
   const oneWayBefore = Object.values(rows).map((r) => r.oneWay.subtotal);
   assert.equal(Number(spec.minPrice), Math.min(...oneWayBefore)); assert.equal(Number(spec.maxPrice), Math.max(...oneWayBefore));
   assert.ok(Number(spec.maxPrice) >= Number(spec.minPrice) && Number(spec.maxPrice) === 175.92);
-  for (const n of [89, 134, 157.92, 99, 149, 175.92]) assert.ok(spec.description.includes(money(n)), money(n));
-  assert.match(spec.description, /before the booking discount/);
+  for (const n of [89, 134, 99, 149, 175.92]) assert.ok(spec.description.includes(money(n)), money(n));
+  assert.ok(!spec.description.includes('157.92'));
+  assert.match(spec.description, /before the booking discount/); assert.match(spec.description, /175\.92 as a final fare/);
 });
 test('the visible short answer and the table note distinguish before and after discount, and say extras are additional', () => {
   assert.match(html, /FJ\$99<\/strong> one-way before the booking discount \(<strong>FJ\$89<\/strong> after the existing 10% discount\) and <strong>FJ\$185<\/strong> return \(<strong>FJ\$166<\/strong> after\)/);
-  assert.match(html, /The first figure is the fare before discount; the second is what the booking tool quotes after the existing 10% discount/);
+  assert.match(html, /the first figure is the fare before discount and the second is what the booking tool quotes after the existing 10% discount/);
+  assert.match(html, /The minibus one-way FJ\$175\.92 is a final fare: the standard discount is already included and no further discount is taken/);
   assert.match(html, /Extras are additional: child seat FJ\$8 and surfboard FJ\$24 per booking, added before the discount/);
 });
 test('SCOPE: only this route page and its test changed; the deployed booking repairs are intact in app.js', () => {

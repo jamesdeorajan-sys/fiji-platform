@@ -136,6 +136,21 @@ function calculateTotal(vehicleKey) {
   }
   return t;
 }
+// James-approved FINAL fare (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime ONE-WAY, no paid extras = FJ$175.92 as the FINAL fare. The standard 10% discount is
+// ALREADY INCLUDED in it, so it is never deducted again, and 175.92 is never described as a pre-discount amount. It is one route / vehicle / journey: night pickups, one-way + extras,
+// returns (the approved 297 / 304 are unchanged), every other vehicle and every other route keep the normal arithmetic. The same id is sent to the booking system, which recognises it
+// only for this exact journey (nothing is inflated to compensate for the discount and discounts are not disabled anywhere else).
+const APPROVED_FINAL_FARE_ID = 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY';
+const APPROVED_FINAL_FARE_FJD = 175.92;
+function approvedFinalFareFor(vehicleKey) {
+  const k = vehicleKey || state.selectedVehicle;
+  if (k !== 'minibus' || state.tripType !== 'one-way' || state.extrasTotal !== 0 || state.selectedTour) return null;
+  if (document.getElementById('pickup')?.value !== 'NAN' || document.getElementById('destination')?.value !== 'MARRIOTT_MOMI') return null;
+  if (isNightPickup() || state.prices[k] !== APPROVED_FINAL_FARE_FJD) return null;   // daytime only (06:00-21:59); the catalogue figure must be the published one
+  return { id: APPROVED_FINAL_FARE_ID, finalFjd: APPROVED_FINAL_FARE_FJD };
+}
+// the routes table lists day one-way fares without extras, so the Momi minibus cell is the approved final fare
+function isApprovedFinalFareCell(destValue, vehicleKey) { return destValue === 'MARRIOTT_MOMI' && vehicleKey === 'minibus'; }
 function calculateTotalFromPublishedPrices(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
   if (!k || !state.prices[k]) return {
@@ -143,6 +158,11 @@ function calculateTotalFromPublishedPrices(vehicleKey) {
     transferSubtotal: 0, subtotal: 0, discount: 0, final: 0,
     qualifies: false, suppressedByTour: false, hasTour: false
   };
+  const approvedFinal = approvedFinalFareFor(k);
+  if (approvedFinal) {   // FINAL fare: no discount row, no second 10%
+    return { vehiclePrice: approvedFinal.finalFjd, extras: 0, tourPerPax: 0, tourTotal: 0, transferSubtotal: approvedFinal.finalFjd, subtotal: approvedFinal.finalFjd, discount: 0, final: approvedFinal.finalFjd,
+      qualifies: false, suppressedByTour: false, hasTour: false, approvedFinalFare: true };
+  }
   const vehiclePrice = state.prices[k];
   const extras       = state.extrasTotal;
   const transferSubtotal = vehiclePrice + extras;
@@ -583,7 +603,7 @@ function buildVehicleCards() {
       ? `<div class="vehicle-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}</div>
          <div class="vehicle-price-sub">10% off applied</div>`
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
-         <div class="vehicle-price-sub">per vehicle</div>`;
+         <div class="vehicle-price-sub">${t.approvedFinalFare ? 'final fare, no further discount' : 'per vehicle'}</div>`;
     return `
       <label class="${cls.join(' ')}" ${labelClick}>
         ${radio}
@@ -624,7 +644,7 @@ function buildVehicleDetailCards() {
     const t = calculateTotal(v.key);
     const priceBlock = t.qualifies
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
-      : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
+      : `<div class="vd-price">${formatPrice(state.prices[v.key])}${t.approvedFinalFare ? '<div class="vd-price-saving">Final fare, no further discount</div>' : ''}</div>`;
     return `
       <label class="${cls.join(' ')}" ${labelClick}>
         ${radio}
@@ -1376,6 +1396,8 @@ async function submitNadiBooking(ref, destZone) {
     // P0 #237: this page shows the guest a fare and asks them to accept it. The booking system must never quietly save a different number: if its
     // own calculation disagrees it refuses (409 PRICE_MISMATCH) and tells us its fare, which the guest then reviews and accepts before anything is saved.
     require_quote_match: true,
+    // James-approved FINAL fare: named only for the exact approved journey (see APPROVED_FINAL_FARE_ID); the booking system recognises it only for that journey.
+    ...(approvedFinalFareFor(state.selectedVehicle) ? { approved_final_fare_id: APPROVED_FINAL_FARE_ID } : {}),
   };
   // P0 #237: when the guest is accepting a revised price, tell the booking system what they were originally shown (recorded, never used for pricing).
   if (state.fareOverride && state.fareOverride.key === fareOverrideKey()) payload.revised_from_amount = state.fareOverride.original;
@@ -1793,7 +1815,8 @@ const ROUTES_DATA = [
 function buildRoutesTable() {
   const tbody = document.getElementById('routesTableBody');
   if (!tbody) return;
-  function priceCell(price) {
+  function priceCell(price, finalFare) {
+    if (finalFare) return `<strong>${formatPrice(price)}</strong> <span class="final-fare-note">final fare</span>`;
     if (price > DISCOUNT_THRESHOLD) {
       const discounted = price - Math.round(price * DISCOUNT_RATE);
       return `<span class="price-old">${formatPrice(price)}</span><strong>${formatPrice(discounted)}</strong>`;
@@ -1807,7 +1830,7 @@ function buildRoutesTable() {
       <td>${r.time}</td>
       <td>${priceCell(r.s)}</td>
       <td>${priceCell(r.v)}</td>
-      <td>${priceCell(r.m)}</td>
+      <td>${priceCell(r.m, isApprovedFinalFareCell(r.destValue, 'minibus'))}</td>
       <td><button class="btn-book" onclick="bookRoute(${i})">Book →</button></td>
     </tr>`).join('');
 }

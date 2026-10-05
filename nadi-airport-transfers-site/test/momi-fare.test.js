@@ -17,8 +17,8 @@ function page({ dest = 'MARRIOTT_MOMI', time = '10:00', trip = 'one-way', seat =
   return JSON.parse(vm.runInContext('JSON.stringify({ t: calculateTotal(), prices: state.prices })', sb));
 }
 
-test('APPROVED FARE: Momi minibus one-way = FJ$175.92 base -> 157.92 after the existing discount', () => {
-  const r = page(); assert.equal(r.prices.minibus, 175.92); assert.equal(r.t.subtotal, 175.92); assert.equal(r.t.discount, 18); assert.equal(r.t.final, 157.92);
+test('APPROVED FINAL FARE (James, 2026-10-05, supersedes the earlier "base before discount" reading): Momi minibus daytime one-way = FJ$175.92 FINAL, no further discount (see momi-final-fare.test.js)', () => {
+  const r = page(); assert.equal(r.prices.minibus, 175.92); assert.equal(r.t.subtotal, 175.92); assert.equal(r.t.discount, 0); assert.equal(r.t.final, 175.92);
 });
 test('APPROVED FARE: return (existing x1.85 and round-up to FJ$5) = 297; return + child seat = 304', () => {
   const ret = page({ trip: 'return' }); assert.equal(ret.prices.minibus, 330); assert.equal(ret.t.discount, 33); assert.equal(ret.t.final, 297);
