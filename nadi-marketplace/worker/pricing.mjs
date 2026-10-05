@@ -81,22 +81,24 @@ export function isNightPickup(pickupTime) {
   return hour >= 22 || hour < 6;
 }
 // ─── Approved final fares (James, 2026-10-05) ────────────────────────────
-// A FINAL fare is the amount the guest is quoted and pays: the standard 10% discount is ALREADY INCLUDED, so it is never deducted again. It is not a pre-discount
-// base: nothing is inflated to compensate, and discounts are not disabled anywhere else. An approved final fare applies to ONE route / vehicle / journey only and is
-// recognised only when the caller names it AND every condition of the approval holds; otherwise the normal formula + discount path runs unchanged.
+// A FINAL fare is the amount the guest is quoted and pays for the TRANSFER: the standard 10% discount is ALREADY INCLUDED, so it is never deducted again, and it is not a pre-discount base:
+// nothing is inflated to compensate and discounts are not disabled anywhere else. It applies to ONE route / vehicle / journey only and is recognised only when the caller names it AND
+// every condition of the approval holds; otherwise the normal formula + discount path runs unchanged. Extras are added at their listed price and NO standard discount applies to the
+// transfer or to its extras (James, 2026-10-05: child seat 183.92, surfboard 199.92, both 207.92).
 export const APPROVED_FINAL_FARES = Object.freeze({
-  // Nadi Airport -> Fiji Marriott Resort Momi Bay, minibus, daytime one-way, no extras: FJ$175.92 FINAL.
-  // NOT covered (not newly approved): night pickups, child seat / surfboard (so one-way + extras), returns (the approved 297 / 304 are unaffected), any other vehicle,
-  // any other Momi Bay hotel, tours, custom addresses.
-  MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY: Object.freeze({ pickupZone: 'Nadi Airport', destinationZone: 'Momi Bay', vehicleType: 'minibus', tripType: 'one-way', finalFjd: 175.92, approvedOn: '2026-10-05' }),
+  // Nadi Airport -> Fiji Marriott Resort Momi Bay, minibus, DAYTIME (06:00-21:59 Fiji time) one-way: transfer FJ$175.92 FINAL; child seat FJ$8 and surfboard FJ$24 added, undiscounted.
+  // NOT covered (on HOLD / not approved): night pickups (22:00-05:59) with or without extras, returns (the approved 297 / 304 are a separate, unchanged approval), any other vehicle, any other Momi Bay
+  // hotel, tours, custom addresses. The proposed night totals (211.10 / 219.10 / 235.10 / 243.10) are NOT implemented.
+  MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY: Object.freeze({ pickupZone: 'Nadi Airport', destinationZone: 'Momi Bay', vehicleType: 'minibus', tripType: 'one-way', transferFjd: 175.92, approvedOn: '2026-10-05' }),
 });
 export function resolveApprovedFinalFare({ approvedFareId, pickupZone, destinationZone, vehicleType, tripType, pickupTime, hasChildSeat, hasSurfboard, hasTour, isCustomAddress }) {
   if (typeof approvedFareId !== 'string' || !Object.prototype.hasOwnProperty.call(APPROVED_FINAL_FARES, approvedFareId)) return null;
   const a = APPROVED_FINAL_FARES[approvedFareId];
   if (pickupZone !== a.pickupZone || destinationZone !== a.destinationZone || vehicleType !== a.vehicleType || tripType !== a.tripType) return null;
-  if (hasChildSeat || hasSurfboard || hasTour || isCustomAddress) return null;
+  if (hasTour || isCustomAddress) return null;
   if (!pickupTime || isNightPickup(pickupTime)) return null;   // daytime only (06:00-21:59); a missing time cannot be verified as day
-  return { id: approvedFareId, finalFjd: a.finalFjd };
+  // total = the final transfer fare + the listed extras; no discount of any kind is applied to either
+  return { id: approvedFareId, transferFjd: a.transferFjd, finalFjd: computeFinalTotal(applyExtras(a.transferFjd, { hasChildSeat: !!hasChildSeat, hasSurfboard: !!hasSurfboard })) };
 }
 export function applyNightSurcharge(fareFjd, pickupTime) {
   return isNightPickup(pickupTime) ? fareFjd * (1 + NIGHT_SURCHARGE) : fareFjd;

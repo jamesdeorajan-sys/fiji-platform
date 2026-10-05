@@ -1,17 +1,20 @@
-# Momi minibus decision table (ONLY the Momi minibus) - HOLD
+# Momi minibus decision table (ONLY the Momi minibus) - UPDATED APPROVAL, night on HOLD
 
-> **HOLD - James's instruction, 2026-10-05: all three releases (Worker, NAT, FijiDash) are on hold; production is unchanged.** This table implements nothing. The only approved amounts are: daytime one-way, no extras **FJ$175.92 final fare (discount already included)**; daytime return **297**; daytime return with a child seat **304**. Every other total in this document is either what a component produces today (not approved) or an arithmetic illustration of an option (not approved, not implemented).
+> **James's updated approval, 2026-10-05 (supersedes the earlier instruction to implement night totals):** Nadi Airport -> Fiji Marriott Resort Momi Bay, minibus, daytime one-way (06:00-21:59 Fiji time): **No extras FJ$175.92 FINAL (standard discount already included); child seat FJ$183.92; surfboard FJ$199.92; both FJ$207.92.** Extras are FJ$8 / FJ$24 and **no further standard discount applies to this transfer or its extras.**
+> **On HOLD (not approved, not implemented):** the proposed night totals 211.10 / 219.10 / 235.10 / 243.10 and any night policy for this fare. The existing night surcharge is not disabled and the daytime approval is not extended to night.
+> **Preserved:** returns (the approved 297 / 304 and every other return cell), other routes / hotels / vehicle classes, the released booking / quote-consent / retry / notification fixes, fuel adjustments OFF, historical bookings.
+> Production is unchanged. Nothing here is deployed.
 
-Source: isolated grid, real page functions and real Worker source, in-memory database, every outbound call blocked (`integration/momi-grid.mjs`; reproduce with the environment variables listed in `integration/journey.test.mjs`). Cells: daytime (10:00) / night (23:00) x one-way / return x {no extras, child seat FJ$8, surfboard FJ$24, both}. Amounts are shown **separately per component**: NAT, FijiDash and the Worker. "quote -> submitted -> saved": what the page shows, what it sends, what the Worker records (FijiDash: selection / review where they differ). "Worker calculated total" is the Worker's own figure (a 409 probe): after discount, with extras and night, but not what is necessarily saved (a submitted amount inside 0.8x-1.3x of it is kept as submitted).
+Source: isolated grid, real page functions and real Worker source, in-memory database, every outbound call blocked (`integration/momi-grid.mjs`). Cells: daytime (10:00) / night (23:00) x one-way / return x {no extras, child seat FJ$8, surfboard FJ$24, both}. Amounts are per component: NAT, FijiDash and the Worker. "quote -> submitted -> saved": what the page shows, sends, and the Worker records (FijiDash: selection / review where they differ). "Worker calculated total" is the Worker's own figure (a 409 probe) - with the approved id the four daytime one-way cells equal the approved totals. The two "PROPOSED" columns are arithmetic on the held options and are NOT approved or implemented (the first column "night none" is shown only as context for the night decision; its daytime cells equal what is now approved).
 
 ## 1. The 16 cells
 
 | Cell | NAT production (quote -> submitted -> saved) | NAT candidate | FijiDash production (selection / review -> submitted -> saved) | FijiDash candidate | Worker production (calculated total) | Worker candidate (no id) | Worker candidate (with approved id) | PROPOSED: extras at list price, night none | PROPOSED: extras at list price, night x1.2 on the transfer |
 |---|---|---|---|---|---|---|---|---|---|
 | day 10:00, one-way, none | 157.92 -> 157.92 -> **157.92** | 175.92 -> 175.92 -> **175.92** | 71 / 157.92 -> 157.92 -> **157.92** | 175.92 -> 175.92 -> **175.92** | 157.92 | 157.92 | 175.92 | 175.92 | 175.92 |
-| day 10:00, one-way, child seat | 165.92 -> 165.92 -> **165.92** | 165.92 -> 165.92 -> **165.92** | 78 / 165.92 -> 165.92 -> **165.92** | 165.92 -> 165.92 -> **165.92** | 165.92 | 165.92 | 165.92 | 183.92 | 183.92 |
-| day 10:00, one-way, surfboard | 179.92 -> 179.92 -> **179.92** | 179.92 -> 179.92 -> **179.92** | 93 / 179.92 -> 179.92 -> **179.92** | 179.92 -> 179.92 -> **179.92** | 179.92 | 179.92 | 179.92 | 199.92 | 199.92 |
-| day 10:00, one-way, both | 186.92 -> 186.92 -> **186.92** | 186.92 -> 186.92 -> **186.92** | 100 / 186.92 -> 186.92 -> **186.92** | 186.92 -> 186.92 -> **186.92** | 186.92 | 186.92 | 186.92 | 207.92 | 207.92 |
+| day 10:00, one-way, child seat | 165.92 -> 165.92 -> **165.92** | 183.92 -> 183.92 -> **183.92** | 78 / 165.92 -> 165.92 -> **165.92** | 183.92 -> 183.92 -> **183.92** | 165.92 | 165.92 | 183.92 | 183.92 | 183.92 |
+| day 10:00, one-way, surfboard | 179.92 -> 179.92 -> **179.92** | 199.92 -> 199.92 -> **199.92** | 93 / 179.92 -> 179.92 -> **179.92** | 199.92 -> 199.92 -> **199.92** | 179.92 | 179.92 | 199.92 | 199.92 | 199.92 |
+| day 10:00, one-way, both | 186.92 -> 186.92 -> **186.92** | 207.92 -> 207.92 -> **207.92** | 100 / 186.92 -> 186.92 -> **186.92** | 207.92 -> 207.92 -> **207.92** | 186.92 | 186.92 | 207.92 | 207.92 | 207.92 |
 | day 10:00, return, none | 297 -> 297 -> **297** | 297 -> 297 -> **297** | 135 / 292.45 -> 292.45 -> **292.45** | 297 -> 297 -> **297** | 292.45 | 292.45 | 292.45 | 297 (unchanged) | 297 (unchanged) |
 | day 10:00, return, child seat | 304 -> 304 -> **304** | 304 -> 304 -> **304** | 142 / 300.45 -> 300.45 -> **300.45** | 304 -> 304 -> **304** | 300.45 | 300.45 | 300.45 | 304 (unchanged) | 304 (unchanged) |
 | day 10:00, return, surfboard | 319 -> 319 -> **319** | 319 -> 319 -> **319** | 157 / 314.45 -> 314.45 -> **314.45** | 319 -> 319 -> **319** | 314.45 | 314.45 | 314.45 | 319 (unchanged) | 319 (unchanged) |
@@ -28,70 +31,37 @@ Source: isolated grid, real page functions and real Worker source, in-memory dat
 ### Inversions found (a total that goes DOWN when it should not)
 
 - **natProd**: none
-- **natCand**: 
-  - NAT candidate (saved): day 10:00 one-way: child seat (165.92) < no extras (175.92)
+- **natCand**: none
 - **fdProd**: none
 - **fdCand**: 
-  - FijiDash candidate (saved): day 10:00 one-way: child seat (165.92) < no extras (175.92)
   - FijiDash candidate (saved): one-way none: night (157.92) < day (175.92)
+  - FijiDash candidate (saved): one-way child seat: night (165.92) < day (183.92)
+  - FijiDash candidate (saved): one-way surfboard: night (179.92) < day (199.92)
+  - FijiDash candidate (saved): one-way both: night (186.92) < day (207.92)
 - **workerProd**: none
 - **workerCand**: none
 - **propA**: none
 - **propB**: none
 
-Reading guide: **production** = released NAT `c5ee3b1`, FijiDash `8c6f920`, Worker `0b961a4`; **candidate** = the three held branches. The approved cell is the first row (candidate: 175.92 on every component; the Worker produces 175.92 only when the page names the approved id). Returns: production FijiDash recorded the Worker's figures (292.45, 300.45, 314.45, 321.45 by day); the candidate keeps the approved 297 / 304 and the existing page convention for the other return cells (NAT already did).
+Reading guide: **production** = released NAT `c5ee3b1`, FijiDash `8c6f920`, Worker `0b961a4`; **candidate** = the three review branches. The four daytime one-way rows now read 175.92 / 183.92 / 199.92 / 207.92 on NAT, FijiDash (selection AND review) and the Worker (with the approved id). Night rows are unchanged from production on NAT and the Worker; FijiDash night one-way selection is 193 etc. but its review/saved amount is the existing 157.92 / 165.92 / 179.92 / 186.92.
 
-## 2. The two inversions (release blockers) and what causes them
+## 2. Status of the two inversions
 
-- **I1 - extras lower the one-way total.** The approved final fare is exempt from the standard discount, but extras still go through the standard rule: (175.92 + 8) less 10% = 165.92, which is below 175.92 (surfboard 179.92, both 186.92). NAT candidate, FijiDash candidate and the Worker all agree. Production had no such inversion (157.92 + extras behaved normally).
-- **I2 - FijiDash night review below daytime.** FijiDash quotes 193 at selection (static page modifier) but its review step swaps in the Worker's reference fare, which has no night component, and then applies the standard discount: 157.92 - below the approved daytime 175.92. NAT quotes 193; the Worker formula says 190.10. Production FijiDash had night = day = 157.92 (no inversion, but also no night surcharge ever applied: release blocker B1 of the pricing review).
+- **I1 - extras lowered the one-way total: RESOLVED by the approval** (transfer 175.92 + FJ$8 / FJ$24, no discount on either). It is now a passing regression on all three components, day and night: `integration/inversions.test.mjs`, NAT `test/momi-final-fare.test.js`, FijiDash `momi-final-fare.test.mjs`, Worker `approved-final-fare.test.mjs`.
+- **I2 - FijiDash night one-way review below the approved daytime totals: UNRESOLVED (night on HOLD).** FijiDash quotes 193 / 201 / 215 / 222 at selection (static page modifier) but its review step swaps in the Worker's reference fare, which has no night component, then applies the standard discount: 157.92 / 165.92 / 179.92 / 186.92, i.e. 18.00-21.00 BELOW the approved daytime totals. This is the existing night behaviour (B1 in the pricing review), not changed here; it stays a visible TODO invariant. NAT night (193 / 201 / 215 / 222) and the Worker night formula (190.10 / 197.10 / 211.10 / 219.10) are above the daytime totals but disagree with each other and with FijiDash.
 
-Regression coverage: `integration/inversions.test.mjs` (cross-component), plus TODO invariants in the NAT and FijiDash suites. The characterisations pass (they record today's behaviour); the invariants "extras never lower the total" and "night is never below day" are visible TODOs that will pass only when the owner decisions below are implemented.
+## 3. Remaining decision (only if night is to be released coherently)
 
-## 3. Recommendation: how the approved final fare stays the transfer component when extras are selected
+With night held, daytime is approved while night follows three different existing rules. A coherent release needs ONE night policy for this fare: **N-A** no night surcharge (night = day: 175.92 / 183.92 / 199.92 / 207.92); **N-B** x1.2 on the transfer component in cents (211.10 / 219.10 / 235.10 / 243.10); **N-C** x1.2 rounded up to FJ$5 (215 / 223 / 239 / 247); or another rule, **and** an instruction for the FijiDash night review step. Until then the existing behaviour (above) continues for night pickups; the approved daytime totals are unaffected.
 
-**Author's recommendation (not an approval):** treat FJ$175.92 as the **transfer component** of a daytime one-way minibus booking to this hotel and add extras on top at their listed price, with **no discount on the transfer component and none on the extras** (option E-A). Reasons: (a) the public copy already says "extras are additional: child seat FJ$8 and surfboard FJ$24 per booking"; (b) totals can never fall when an extra is added; (c) the approved fare is never reduced; (d) the arithmetic is one addition on all three components. Requires an implementation (not done): the Worker's approved-fare rule must return the transfer component and add the extras (so a booking WITH extras is still recognised), and both pages must do the same; `pricing_version` should record it. Alternatives: **E-B** extras keep the standard 10% on their own (whole dollars); **E-C** keep today's behaviour (the inversion remains - not recommended).
+## 4. Scope (verified by whole-grid diffs, `integration/scope-grid.test.mjs`)
 
-Daytime one-way totals by extras (arithmetic only; columns: none / child seat / surfboard / both):
+Runtime files per branch: Worker `pricing.mjs`, `worker.js`; NAT and FijiDash `src/app.js`, `src/index.html` (cache key only), Momi route page. NAT: exactly the four daytime one-way Momi minibus cells change (none / child seat / surfboard / both; no night cell). FijiDash: only Momi minibus cells change; the exclusions to "all other pricing unchanged" are (a) the catalogue change 79 -> 175.92 (all 16 Momi minibus selection figures) and (b) the review figures of the four daytime one-way cells plus the 8 Momi minibus RETURN cells (292.45 etc. -> the approved page convention); FijiDash night review is unchanged. Worker: without the approved id the candidate equals production in every cell; with the id sent on every cell exactly four differ (Momi Bay minibus one-way day: 157.92 -> 175.92, 165.92 -> 183.92, 179.92 -> 199.92, 186.92 -> 207.92). Other Momi Bay hotels, sedan and minivan are unaffected.
 
-| Option | none | child seat | surfboard | both |
-|---|---|---|---|---|
-| today (candidate, I1) | 175.92 | 165.92 | 179.92 | 186.92 |
-| E-A extras at list price, no discount | 175.92 | 183.92 | 199.92 | 207.92 |
-| E-B extras discounted on their own | 175.92 | 182.92 | 197.92 | 204.92 |
+## 5. Public wording
 
-Night is **not approved** and has its own owner decision. If night keeps a surcharge, the coherent way to keep the approved fare as the transfer component is to apply the night multiplier to **the transfer component** and then add extras (no discount on either): option **N-B** (x1.2, cents, the Worker's existing multiplier). **N-C** applies the page convention (x1.2 rounded up to FJ$5). **N-A** applies no night surcharge to this fare (night = day). Night one-way totals (none / child seat / surfboard / both, with E-A extras):
+Momi route pages (NAT and FijiDash): minibus one-way FJ$175.92 final fare with extras FJ$183.92 / 199.92 / 207.92 and no further discount (table, FAQ and JSON-LD agree; tests assert it); the earlier sentence "extras ... added before the discount" is removed for this fare. In the booking tool the "10% off automatically applied" banner now says the Momi Bay Marriott minibus one-way is a final fare with the discount already included, when Momi Bay is selected. **Not changed (flagged):** the static "10% OFF every booking over FJ$50" promo block in NAT `index.html`, the banner default text on other destinations (correct for them), and the "automatic 10% loyalty discount" copy on other route pages - none refer to this fare specifically.
 
-| Night option | none | child seat | surfboard | both |
-|---|---|---|---|---|
-| N-A no night surcharge | 175.92 | 183.92 | 199.92 | 207.92 |
-| N-B x1.2 on the transfer, cents | 211.10 | 219.10 | 235.10 | 243.10 |
-| N-C x1.2, rounded up to FJ$5 | 215 | 223 | 239 | 247 |
+## 6. Mixed versions and old tabs (the exposure is NOT fixed)
 
-N-A and N-B keep night >= day and extras >= no extras (verified by the grid on the PROPOSED columns of section 1); N-C does by arithmetic (215 >= 175.92). Today the components disagree (NAT 193, Worker 190.10, FijiDash review 157.92). The author does not recommend a rate: N-B is the only option that matches both the published "20% night surcharge" wording and the Worker's existing arithmetic; N-A is the only option that keeps FijiDash's current "no night surcharge" behaviour.
-
-**Returns:** the approved **297 / 304** (daytime, no extras / child seat) are preserved in every option and on every component. The other return cells (daytime + surfboard 319, both 326; night 355 / 363 / 377 / 384) are produced today by the existing page convention on NAT and both candidates and have never been approved individually; the table checks that they are coherent (never below one-way, extras and night never lower them) and proposes **no change**.
-
-## 4. Exact owner decisions required (none made; nothing implemented)
-
-1. **Extras on the approved fare:** [ ] E-A extras at list price, no discount / [ ] E-B extras discounted on their own / [ ] other: ______ / [ ] keep today (I1 remains).
-2. **Does the approved final fare apply to a daytime one-way booking WITH extras** (as its transfer component)? [ ] yes / [ ] no (then extras bookings follow the old rule and E-C applies).
-3. **Night one-way for this fare:** [ ] N-A none / [ ] N-B x1.2 on the transfer, cents / [ ] N-C x1.2 rounded up to FJ$5 / [ ] other: ______ / [ ] quote on request.
-4. **Night return, and return + surfboard / both:** [ ] keep the existing page convention (355 / 363 / 377 / 384; 319 / 326) / [ ] other: ______. (297 / 304 are approved and stay.)
-5. **Scope:** [ ] Marriott only (as built) / other Momi Bay hotels, sedan and minivan: not covered and not proposed.
-6. **Old-tab policy:** accept that tabs open before a release keep quoting 157.92 until reload? [ ] accept / [ ] other: ______ (see section 6; not fixed).
-
-## 5. Scope verification (actual diffs and whole-grid results)
-
-Runtime files changed per branch (everything else is tests or documents):
-- Worker `ceo/momi-final-fare-worker` vs `0b961a4`: `pricing.mjs` (+18) and `worker.js` (+13 / -3) only.
-- NAT `ceo/momi-final-fare-nat` vs `c5ee3b1`: `src/app.js`, `src/index.html` (cache key only), `src/transfer/fiji-marriott-resort-momi-bay.html` only.
-- FijiDash `ceo/momi-final-fare-fijidash` vs `8c6f920`: `src/app.js`, `src/index.html` (cache key only), `src/transfer/fiji-marriott-resort-momi-bay.html` only.
-
-Whole-grid results (`integration/scope-grid.test.mjs`, passing): 1,632 NAT cells and 1,680 FijiDash cells per page version (every priceable route x vehicle x trip x {none, seat, surf, both} x {10:00, 23:00}; Tanoa International is unpriceable and excluded; FijiDash also lists Naviti) and 672 Worker cells (14 zones). **NAT: exactly 1 cell changes** (Momi minibus one-way day no extras, 157.92 -> 175.92). **FijiDash: only Momi minibus cells change** - the **exclusions** to "all other pricing unchanged" are: (a) the catalogue change 79 -> 175.92, which moves all 16 Momi minibus selection figures, and (b) the Momi minibus RETURN review figures (8 cells: 292.45 etc. -> the approved 297 / 304 convention) plus the approved one-way review figure (1 cell). Momi sedan, Momi minivan and every other route are identical cell by cell on both sites (selection and review). **Worker: without the approved id the candidate calculates exactly what production does in every one of the 672 cells; with the id sent on every cell, exactly one cell differs** (Momi Bay minibus one-way day no extras, 157.92 -> 175.92). Both pages send the id in exactly one grid cell. Other hotels in the Momi Bay zone are therefore unaffected (the Worker cannot distinguish hotels without the id, which only the Marriott page sends).
-
-## 6. Promotional wording, mixed versions and old tabs (reported; the exposure is NOT fixed)
-
-Wording that conflicts with a final fare for this one fare (not rewritten; only the Momi pages carry the exception): NAT `index.html` banner "10% off automatically applied to bookings over FJ$50" and promo "10% OFF every booking over FJ$50"; the same banner text in both `app.js` and FijiDash `index.html`; the "automatic 10% loyalty discount" copy on 21 FijiDash route pages and 1 NAT route page; and the Momi page sentence "extras ... added before the discount", which is untrue for the final fare if extras are ever priced under E-A / E-B (it also still describes the returns correctly).
-
-Mixed versions (grid and journey tests): **new Worker + old page/tab:** the old page quotes and submits 157.92 and the Worker records 157.92 - nothing is repriced, **the old-tab exposure is NOT fixed** (those bookings are recorded at the superseded figure until the guest reloads; the cache key is bumped and no cache is purged). **New page + old Worker:** 175.92 is submitted without the approved id and kept as shown (inside the 0.8-1.3x band; decision `kept_in_band`); with extras the old Worker would compute the same 165.92. **Both old:** unchanged. A future Worker that adds extras handling would again produce different results for old tabs that keep quoting the old arithmetic: any release of an extras/night rule must repeat this matrix.
+Old pages / tabs (NAT `c5ee3b1`, FijiDash `8c6f920`) with the new Worker keep quoting and submitting 157.92 / 165.92 / 179.92 / 186.92; the Worker records them as shown (matched, no repricing). Shortfall against the approved totals: 18.00 / 18.00 / 20.00 / 21.00 per booking until the guest reloads. New pages with the OLD Worker submit the approved totals; the old Worker keeps them (inside its 0.8x-1.3x band, `kept_in_band`), so deployment order does not lose the new amounts. Verified in `integration/journey.test.mjs` (outbound blocked, no production writes).

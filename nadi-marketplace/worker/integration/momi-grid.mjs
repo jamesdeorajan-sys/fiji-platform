@@ -32,7 +32,7 @@ for (const [tl, time] of TIMES) for (const trip of TRIPS) for (const [el, seat, 
   const o = { trip, time, seat, surf }; const cell = { key: `${tl}, ${trip}, ${el}`, time: tl, trip, extras: el, seat, surf };
   cell.natProd = await run('nat', S.natOld, OLD, o); cell.natCand = await run('nat', S.natNew, NEW_DIR, o);
   cell.fdProd = await run('fd', S.fdOld, OLD, o); cell.fdCand = await run('fd', S.fdNew, NEW_DIR, o);
-  const approvedCell = tl === 'day 10:00' && trip === 'one-way' && el === 'none';
+  const approvedCell = tl === 'day 10:00' && trip === 'one-way';
   cell.workerProd = await workerCalc(OLD, { trip, time, seat, surf, withId: false });
   cell.workerCand = await workerCalc(NEW_DIR, { trip, time, seat, surf, withId: false });
   cell.workerCandWithId = await workerCalc(NEW_DIR, { trip, time, seat, surf, withId: approvedCell || undefined });

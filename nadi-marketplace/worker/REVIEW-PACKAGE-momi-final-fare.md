@@ -1,3 +1,5 @@
+> **SUPERSEDED BY REVIEW-PACKAGE-momi-extras-approval.md (James, 2026-10-05 updated approval: daytime one-way extras 183.92 / 199.92 / 207.92 approved; night remains on HOLD).** Statements below that extras are not approved or that I1 is a blocker are out of date.
+
 # Review package - Momi minibus FINAL fare FJ$175.92 (P0 clarification, 2026-10-05) - CANDIDATE, NOT DEPLOYED
 
 > **HOLD - ALL THREE RELEASES (James, 2026-10-05).** The exact no-extras case works, but adding a child seat makes the journey cheaper (165.92 < 175.92) and the FijiDash night review (157.92) falls below the approved daytime fare. These are **release blockers for this candidate.** Production is unchanged; nothing is to be deployed. Follow-up documents on this branch: `FARE-CONTRACT-momi-final-fare.md` (corrects ambiguous wording below), `MOMI-DECISION-TABLE.md` (16-cell table, options, owner decisions), `PRICING-RULE-ORIGIN-139-0956.md`.

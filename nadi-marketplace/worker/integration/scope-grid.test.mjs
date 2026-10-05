@@ -1,6 +1,7 @@
 // SCOPE VERIFICATION over the WHOLE grid (every route x vehicle x trip type x extras {none, child seat, surfboard, both} x time {10:00, 23:00}), old vs new, per component:
 //   - NAT page (c5ee3b1 -> candidate), FijiDash page (8c6f920 -> candidate): selection (static) and review (live reference-fare swap, FijiDash), and where the page would send the approved id
 //   - Worker (0b961a4 -> candidate): the Worker's own calculated total (409 probe) per zone x vehicle x trip x extras x time, without and with the approved id
+// UPDATED for James's extras approval (2026-10-05): the approved cells are the FOUR daytime one-way Momi minibus cells (none / child seat / surfboard / both) - nowhere else.
 // "All other pricing unchanged" is therefore stated precisely: it EXCLUDES (a) the FijiDash Momi minibus CATALOGUE change (79 -> 175.92, which moves every Momi minibus selection figure) and
 // (b) the FijiDash Momi minibus RETURN review figures (292.45 / 300.45 etc. -> the approved page convention 297 / 304 etc.). Everything else is asserted identical, cell by cell.
 // Environment as journey.test.mjs. Isolated; outbound blocked.
@@ -36,28 +37,31 @@ async function pageGrid(src, site, refFare) {
   }
   return { out, approved };
 }
+const APPROVED_CELLS = ['none', 'seat', 'surf', 'both'].map((e) => `MARRIOTT_MOMI|minibus|one-way|${e}|day`); const APPROVED_TOTAL = { none: 175.92, seat: 183.92, surf: 199.92, both: 207.92 };
 const diff = (a, b, field) => Object.keys(a).filter((k) => a[k][field] !== b[k][field]);
 
-test('PAGES, whole grid: NAT changes exactly ONE cell; FijiDash changes only Momi minibus cells (catalogue + return review); the approved id would be sent for exactly ONE cell on each site', { skip }, async () => {
+test('PAGES, whole grid: NAT changes exactly FOUR cells (daytime one-way Momi minibus, with each extras combination); FijiDash changes only Momi minibus cells (catalogue + return review); the approved id would be sent for exactly those four cells on each site', { skip }, async () => {
   const S = srcs(); const w = await worker(process.env.WORKER_OLD_DIR); const cache = new Map();
   const ref = async (zone, vehicle, trip) => { const k = `${zone}|${vehicle}|${trip}`; if (!cache.has(k)) { const r = await w.get(`/reference-fare?pickup_zone=${encodeURIComponent('Nadi Airport')}&destination_zone=${encodeURIComponent(zone)}&vehicle_type=${vehicle}&trip_type=${trip}`); cache.set(k, r.status === 200 && r.body.ok ? r.body.reference_fare_fjd : null); } return cache.get(k); };
   const natOld = await pageGrid(S.natOld, 'nat', ref), natNew = await pageGrid(S.natNew, 'nat', ref);
   const fdOld = await pageGrid(S.fdOld, 'fd', ref), fdNew = await pageGrid(S.fdNew, 'fd', ref);
   assert.ok(Object.keys(natOld.out).length >= 1500, 'grid size ' + Object.keys(natOld.out).length);
-  assert.deepEqual(diff(natOld.out, natNew.out, 'selection'), ['MARRIOTT_MOMI|minibus|one-way|none|day'], 'NAT: exactly one cell changes (157.92 -> 175.92)');
-  assert.equal(natOld.out['MARRIOTT_MOMI|minibus|one-way|none|day'].selection, 157.92); assert.equal(natNew.out['MARRIOTT_MOMI|minibus|one-way|none|day'].selection, 175.92);
+  assert.deepEqual(diff(natOld.out, natNew.out, 'selection').sort(), APPROVED_CELLS.slice().sort(), 'NAT: exactly the four approved cells change');
+  for (const [e, old] of [['none', 157.92], ['seat', 165.92], ['surf', 179.92], ['both', 186.92]]) { const k = `MARRIOTT_MOMI|minibus|one-way|${e}|day`; assert.equal(natOld.out[k].selection, old); assert.equal(natNew.out[k].selection, APPROVED_TOTAL[e]); }
+  assert.deepEqual(diff(natOld.out, natNew.out, 'selection').filter((k) => k.endsWith('|night')), [], 'NAT: no night cell changes (night is on HOLD)');
   const fdSel = diff(fdOld.out, fdNew.out, 'selection'), fdRev = diff(fdOld.out, fdNew.out, 'review');
   for (const k of [...fdSel, ...fdRev]) assert.ok(k.startsWith('MARRIOTT_MOMI|minibus|'), `FijiDash change outside Momi minibus: ${k}`);
   assert.equal(fdSel.length, 16, 'EXCLUSION (a): the FijiDash Momi minibus catalogue change (79 -> 175.92) moves all 16 Momi minibus selection figures');
-  assert.deepEqual(fdRev.sort(), ['MARRIOTT_MOMI|minibus|one-way|none|day', ...['seat', 'surf', 'both', 'none'].flatMap((e) => ['day', 'night'].map((tm) => `MARRIOTT_MOMI|minibus|return|${e}|${tm}`))].sort(),
-    'EXCLUSION (b): FijiDash review changes only for the approved one-way journey and the 8 Momi minibus RETURN cells (292.45 etc. -> the approved page convention)');
+  assert.deepEqual(fdRev.sort(), [...APPROVED_CELLS, ...['seat', 'surf', 'both', 'none'].flatMap((e) => ['day', 'night'].map((tm) => `MARRIOTT_MOMI|minibus|return|${e}|${tm}`))].sort(),
+    'EXCLUSION (b): FijiDash review changes only for the four approved one-way day cells and the 8 Momi minibus RETURN cells (292.45 etc. -> the approved page convention)');
   // the Momi exception does not extend: sedan, minivan and every other route are identical on both sites
   for (const [a, b] of [[natOld.out, natNew.out], [fdOld.out, fdNew.out]]) for (const k of Object.keys(a)) if (/^MARRIOTT_MOMI\|(sedan|minivan)\|/.test(k) || !k.startsWith('MARRIOTT_MOMI')) { assert.equal(a[k].selection, b[k].selection, k); assert.equal(a[k].review, b[k].review, k); }
-  assert.deepEqual(natNew.approved, ['MARRIOTT_MOMI|minibus|one-way|none|day']); assert.deepEqual(fdNew.approved, ['MARRIOTT_MOMI|minibus|one-way|none|day']);
+  assert.deepEqual(natNew.approved.sort(), APPROVED_CELLS.slice().sort()); assert.deepEqual(fdNew.approved.sort(), APPROVED_CELLS.slice().sort());
+  for (const k of Object.keys(fdNew.out)) if (k.startsWith('MARRIOTT_MOMI|minibus|one-way|') && k.endsWith('|night')) assert.equal(fdNew.out[k].review, fdOld.out[k].review, 'FijiDash night review unchanged (HOLD): ' + k);
   assert.deepEqual(natOld.approved.concat(fdOld.approved), [], 'released pages never send an id');
 });
 
-test('WORKER, whole grid: WITHOUT the id the candidate Worker calculates exactly what production does in EVERY cell; WITH the id on every cell exactly ONE cell differs (the approved journey)', { skip }, async () => {
+test('WORKER, whole grid: WITHOUT the id the candidate Worker calculates exactly what production does in EVERY cell; WITH the id on every cell exactly FOUR cells differ (the approved daytime one-way journey, with each extras combination)', { skip }, async () => {
   const oldW = await worker(process.env.WORKER_OLD_DIR), newW = await worker(NEW_DIR); let n = 0, diffs = [], idDiffs = [];
   for (const [zone, distance] of [['Nadi', 6.844], ['Wailoaloa', 6.902], ['Denarau', 11.776], ['Sonaisali', 22.09], ['Vuda Point', 19.333], ['Lautoka', 25.431], ['Momi Bay', 38.623], ['Natadola', 54.718], ['Sigatoka', 69.36], ['Coral Coast', 96.705], ['Pacific Harbour', 147.587], ['Ba', 60.081], ['Rakiraki', 130.011], ['Suva', 195.691]]) {
     for (const v of VEH) for (const t of TRIPS) for (const [en, seat, surf] of EXTRAS) for (const tm of TIMES) {
@@ -69,5 +73,5 @@ test('WORKER, whole grid: WITHOUT the id the candidate Worker calculates exactly
   }
   assert.ok(n >= 600, 'grid size ' + n);
   assert.deepEqual(diffs, [], 'without the id the candidate Worker is identical to production in every cell');
-  assert.deepEqual(idDiffs, ['Momi Bay|minibus|one-way|none|10:00: 157.92 -> 175.92'], 'with the id sent on EVERY cell, only the approved journey differs (other hotels in Momi Bay, other vehicles, extras, night, returns are not covered)');
+  assert.deepEqual(idDiffs, ['Momi Bay|minibus|one-way|none|10:00: 157.92 -> 175.92', 'Momi Bay|minibus|one-way|seat|10:00: 165.92 -> 183.92', 'Momi Bay|minibus|one-way|surf|10:00: 179.92 -> 199.92', 'Momi Bay|minibus|one-way|both|10:00: 186.92 -> 207.92'], 'with the id sent on EVERY cell, only the four approved daytime one-way cells differ (night, returns, other vehicles, other zones are not covered)');
 });
