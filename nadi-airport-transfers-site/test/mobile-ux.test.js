@@ -213,8 +213,8 @@ test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line
 });
 
 test('cache-busting versions were bumped for the changed assets', () => {
-  assert.match(html, /app\.js\?v=20261005-momi-fare/); // bumped again for the P0 #237 quote-consent repair
-  assert.match(html, /styles\.css\?v=20260921-mobile-ux/);
+  assert.match(html, /app\.js\?v=20261005-wa-handoff/); // bumped for the WhatsApp reservation handoff (on top of the P0 #237 quote-consent repair)
+  assert.match(html, /styles\.css\?v=20261005-wa-handoff/);
 });
 
 test('scope guard: no fare, pricing, Worker or notification code changed', () => {

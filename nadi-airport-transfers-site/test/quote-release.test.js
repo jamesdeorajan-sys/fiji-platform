@@ -126,7 +126,7 @@ test('4b. TIMEOUT after the guest accepted: not shown as saved, the same Confirm
   await f.sb.confirmBooking();                                                           // mismatch -> review
   await f.sb.confirmBooking();                                                           // accepted -> timeout / unknown
   assert.equal(f.fields.bulaSuccess.style.display, 'block'); assert.equal(f.fields.bulaRetry.hidden, false, 'an unknown save offers a retry, not success');
-  assert.equal(f.fields.bulaTitleSaved.style.display, 'none'); assert.match(f.fields.bulaLeadText.innerHTML, /could not confirm/i);
+  assert.match(f.fields.bulaLeadText.textContent, /could not confirm that your request was saved online/i); assert.doesNotMatch(f.fields.bulaLeadText.textContent, /is saved online, but/i);
   assert.equal(f.sb.state.confirmBookingInFlight, false); assert.equal(f.sb.state.fareOverride.amount, 300.45, 'the acceptance is kept for the retry');
   await f.sb.confirmBooking();                                                           // retry
   const [a, b] = f.log.submitted.slice(-2);

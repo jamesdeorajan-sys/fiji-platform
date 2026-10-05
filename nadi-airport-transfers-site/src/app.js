@@ -1621,16 +1621,10 @@ async function confirmBooking() {
     }
   }
 
-  // Personalise the WhatsApp-only request handoff.
-  const firstName = document.getElementById('firstName')?.value.trim().split(/\s+/)[0] || 'friend';
-
-  // Populate the Bula success card
-  const bulaTitleSaved = document.getElementById('bulaTitleSaved');
-  const bulaTitleWhatsappOnly = document.getElementById('bulaTitleWhatsappOnly');
+  // Populate the Bula success card. Heading, button and instruction are static and identical in every state (index.html); only the status line below
+  // reflects what is actually known about the online save. Nothing here (or in the button) marks the request sent or confirmed.
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (saveResult.ok) {
-    if (bulaTitleSaved) bulaTitleSaved.style.display = '';
-    if (bulaTitleWhatsappOnly) bulaTitleWhatsappOnly.style.display = 'none';
     if (bulaLeadText && bulaLeadText.parentNode && saveResult.savedAmount !== undefined) {
       let fareLine = document.getElementById('bulaFare');
       if (!fareLine) { fareLine = document.createElement('p'); fareLine.id = 'bulaFare'; fareLine.style.fontWeight = '700'; bulaLeadText.parentNode.insertBefore(fareLine, bulaLeadText.nextSibling); }
@@ -1640,50 +1634,26 @@ async function confirmBooking() {
         : `Fare recorded by our booking system: ${savedText}. This differs from the ${fareText(saveResult.submittedAmount)} you saw; our team will confirm your fare with you.`;
     }
     if (bulaLeadText) {
-      bulaLeadText.textContent = 'Your request is saved online and is awaiting confirmation. Your transfer is confirmed only when our Fiji team confirms availability and pickup details.';
+      bulaLeadText.textContent = 'Your request is saved online, but your transfer is not confirmed yet. Send your reservation details on WhatsApp to finish.';
     }
   } else if (saveAttempted) {
-    // CEO P0 booking-integrity fix (2026-09-13) - SAVE_FAILED/SAVE_UNKNOWN:
-    // a save was attempted and did not come back confirmed. Truthful
-    // per-state copy per the mission's required truth model - never the
-    // "has landed with our team" claim that's only proven for the
-    // by-design WhatsApp-only case below.
-    if (bulaTitleSaved) bulaTitleSaved.style.display = 'none';
-    if (bulaTitleWhatsappOnly) {
-      bulaTitleWhatsappOnly.style.display = '';
-      bulaTitleWhatsappOnly.textContent = 'We could not confirm your booking was saved';
-    }
+    // SAVE_UNKNOWN: a save was attempted and did not come back confirmed - never claim it was saved, keep the reference so it can be found.
     if (bulaLeadText) {
-      bulaLeadText.innerHTML = 'We could not confirm that your request was saved. Please tap the button below to send it on WhatsApp now, or try submitting again.';
+      bulaLeadText.textContent = `We could not confirm that your request was saved online. Keep your reference (${ref}) and send your reservation details on WhatsApp now, or review and try again.`;
     }
   } else {
-    // No online save was attempted. Do not claim the team has the request.
-    if (bulaTitleSaved) bulaTitleSaved.style.display = 'none';
-    if (bulaTitleWhatsappOnly) bulaTitleWhatsappOnly.style.display = '';
-    if (bulaLeadText) bulaLeadText.textContent = 'This request has not been saved online. Send your full journey details on WhatsApp so our Fiji team can check availability and confirm your transfer.';
+    // WhatsApp-only (no online save attempted): do not claim an online save or that the team has the request.
+    if (bulaLeadText) bulaLeadText.textContent = 'This request has not been saved online. Your reservation details are ready to send on WhatsApp.';
   }
-  const bulaName = document.getElementById('bulaName');
-  if (bulaName) bulaName.textContent = firstName;
   const bulaRef = document.getElementById('bulaRef');
   if (bulaRef) {
     bulaRef.textContent = saveResult.ok
       ? `Booking #${saveResult.bookingId} · Ref: ${ref}`
       : `Booking ref: ${ref}`;
   }
+  // The WhatsApp link carries the prefilled reservation details and the reference; its label is static ("Open WhatsApp — send reservation").
   const bulaWaBtn = document.getElementById('bulaWaBtn');
-  if (bulaWaBtn) {
-    bulaWaBtn.href = waUrl;
-    if (saveResult.ok) {
-      // The SVG icon is static markup in index.html, never JS-generated
-      // here (unlike book.fijidash.com) - only the trailing text node
-      // (the button's last child) is replaced, so the icon is untouched.
-      const lastChild = bulaWaBtn.lastChild;
-      if (lastChild && lastChild.nodeType === Node.TEXT_NODE) {
-        lastChild.textContent = 'Submit request via WhatsApp →';
-      }
-    }
-    // else: leave the existing "Send booking via WhatsApp →" label as-is.
-  }
+  if (bulaWaBtn) bulaWaBtn.href = waUrl;
 
   // A2: pre-fill the modification link with the booking ref so the customer
   // doesn't have to retype it. Driver coordinator gets a clear request.

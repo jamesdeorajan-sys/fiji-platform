@@ -581,6 +581,13 @@ body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
   box-shadow:0 12px 28px rgba(37,211,102,.32);
   margin-bottom:8px}
 .bula-wa-btn:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(37,211,102,.4)}
+/* long handoff label must wrap, never clip, on narrow phones */
+.bula-wa-btn{max-width:100%;box-sizing:border-box;justify-content:center;text-align:center;white-space:normal;line-height:1.25}
+.bula-wa-btn svg{flex:none}
+.bula-handoff{font-size:16px;line-height:1.55;color:#0f172a;margin:0 auto 16px;max-width:540px}
+#bulaRetry[hidden]{display:none}
+#bulaFare{margin:0 auto 14px}
+.bula-handoff-note{font-size:14px;line-height:1.5;color:#334155;margin:8px auto 14px;max-width:540px}
 
 /* A2: free booking modification reassurance under the primary CTA */
 .bula-modify{margin:14px 0 4px;font-size:13px;color:#475569;line-height:1.5}
@@ -802,3 +809,5 @@ body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
   text-align:center;margin-top:32px}
 .tours-cta-row .btn-secondary{
   display:inline-block;font-size:14px;padding:12px 24px}
+/* small phones: drop the decorative flower so the WhatsApp handoff button stays above the fold */
+@media(max-width:380px){#bulaSuccess .bula-burst{display:none}#bulaSuccess .bula-title{font-size:22px;margin-bottom:8px}#bulaSuccess .bula-lead,#bulaSuccess .bula-handoff{font-size:14.5px;line-height:1.45;margin-bottom:10px}#bulaSuccess .bula-ref{margin-bottom:10px}#bulaFare{margin-bottom:10px}}
