@@ -41,7 +41,7 @@ test('REPAIR: with require_quote_match the same submission is NOT repriced - 409
 test('REPAIR: accepting the Worker number succeeds and saves exactly what the guest accepted', async () => {
   const r = await postBooking(DIR, exactPayload(300.45, { require_quote_match: true }));
   assert.equal(r.status, 201); assert.equal(r.saved.quoted_amount, 300.45);
-  assert.equal(r.events[0].metadata && r.events[0].metadata.pricing_adjustment, undefined, 'nothing was adjusted');
+  assert.ok(!(r.events[0].metadata && r.events[0].metadata.pricing_adjustment), 'nothing was adjusted');
 });
 
 test('REPAIR: an in-band difference is unchanged (the guest number is kept) and what is saved equals what was submitted', async () => {
@@ -51,11 +51,13 @@ test('REPAIR: an in-band difference is unchanged (the guest number is kept) and 
 });
 
 test('VALIDATION PRESERVED: with the flag a tampered amount (too low or too high) is refused with the Worker number; it can never be saved as submitted', async () => {
-  for (const amount of [1, 100, 239, 391, 99999]) {
+  for (const amount of [1, 100, 239, 391, 5000]) {
     const r = await postBooking(DIR, exactPayload(amount, { require_quote_match: true }));
     assert.equal(r.status, 409, String(amount)); assert.equal(r.body.reference_fare_fjd, 300.45); assert.equal(r.saved, null);
   }
-  for (const amount of [240.36, 300.45, 390.59]) {
+  const absurd = await postBooking(DIR, exactPayload(99999, { require_quote_match: true }));
+  assert.equal(absurd.saved, null, 'an absurd amount is refused by the existing bounds check');
+  for (const amount of [240.37, 300.45, 390.58]) {
     const r = await postBooking(DIR, exactPayload(amount, { require_quote_match: true }));
     assert.equal(r.status, 201, String(amount)); assert.equal(r.saved.quoted_amount, amount, 'in-band: saved = submitted');
   }
@@ -67,9 +69,9 @@ test('LEGACY clients (no flag: cached old pages, FijiDash) keep the current save
   const adj = r.events[0].metadata && r.events[0].metadata.pricing_adjustment;
   assert.ok(adj, 'the adjustment is retained');
   assert.deepEqual([adj.submitted_amount_fjd, adj.saved_amount_fjd], [142, 300.45]);
-  assert.ok(adj.band_low_fjd < 142 && adj.band_high_fjd > 300.45);
+  assert.deepEqual([adj.band_low_fjd, adj.band_high_fjd], [240.36, 390.585]); assert.ok(142 < adj.band_low_fjd, 'the submitted amount was below the band');
   const ok = await postBooking(DIR, exactPayload(300.45));
-  assert.equal(ok.events[0].metadata && ok.events[0].metadata.pricing_adjustment, undefined);
+  assert.ok(!(ok.events[0].metadata && ok.events[0].metadata.pricing_adjustment));
 });
 
 test('EVERY published route the page can currently misquote outside the band is caught: with the flag the guest is told, never silently repriced', async () => {

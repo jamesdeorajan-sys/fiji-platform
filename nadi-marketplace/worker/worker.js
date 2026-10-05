@@ -2923,6 +2923,10 @@ async function createBookingRecord(env, {
   // negotiation accept-offer) are unaffected.
   pickupDate = null, pickupTime = null, notes = null,
   returnDate = null, returnTime = null, returnPickupLocation = null,
+  // P0 #237 (2026-10-05): when true the caller (a guest page that shows the guest a fare and asks them to accept it) must NEVER have its
+  // amount silently replaced - an out-of-band amount is refused with PRICE_MISMATCH carrying the Worker's own number instead. Default false
+  // keeps every other caller (cached old pages, FijiDash, admin test, negotiation) exactly as before.
+  requireQuoteMatch = false,
   // Milestone 34 (Issue #34 P0 fix) - client_booking_ref is a stable,
   // guest-widget-generated idempotency key sent on every submit attempt for
   // the same booking (including a retry after a network timeout or a
@@ -3059,6 +3063,7 @@ async function createBookingRecord(env, {
   // below), so its presence is already a reliable signal, no new field
   // needed to detect this case.
   let pricingNote = null;
+  let pricingAdjustment = null; // set only when a legacy (non-opt-in) caller's amount is replaced by the Worker number; recorded on the created event
   const isBoatBooking = vehicleType === 'boat';
   if (verificationMode === 'authoritative') {
     if (isBoatBooking) {
@@ -3184,6 +3189,18 @@ async function createBookingRecord(env, {
           // Step 4 closed; it just widens the untouched zone around a
           // real guest's real published price.
           if (quotedAmount < serverFjdDiscounted * 0.8 || quotedAmount > serverFjdDiscounted * 1.3) {
+            if (requireQuoteMatch) {
+              console.warn(`[pricing-mismatch-refused] client sent ${quotedAmount}, Worker reference ${serverFjdDiscounted} for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType}; nothing saved, guest must accept the Worker number`);
+              return {
+                ok: false, status: 409, code: 'PRICE_MISMATCH',
+                errors: [`The fare for this trip is FJ$${serverFjdDiscounted.toFixed(2)}, not the FJ$${quotedAmount.toFixed(2)} shown. Please review the updated fare and confirm it to continue. Nothing has been booked yet.`],
+                quoteMismatch: { submittedAmountFjd: quotedAmount, referenceFareFjd: serverFjdDiscounted },
+              };
+            }
+            pricingAdjustment = {
+              submitted_amount_fjd: quotedAmount, saved_amount_fjd: serverFjdDiscounted, reason: 'outside_0.8x_1.3x_band',
+              band_low_fjd: Math.round(serverFjdDiscounted * 0.8 * 1000) / 1000, band_high_fjd: Math.round(serverFjdDiscounted * 1.3 * 1000) / 1000,
+            };
             console.warn(`[pricing-drift] client sent ${quotedAmount}, outside the plausible published-price range (formula reference ${serverFjdDiscounted}) for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType} - replacing with the server number`);
             quotedAmount = serverFjdDiscounted;
           }
@@ -3281,7 +3298,7 @@ async function createBookingRecord(env, {
 
   await logBookingEvent(env, {
     bookingId, eventType: 'created', previousStatus: null, newStatus: status, actor,
-    metadata: assignedDriverId ? { assigned_driver_id: assignedDriverId } : null,
+    metadata: (assignedDriverId || pricingAdjustment) ? { ...(assignedDriverId ? { assigned_driver_id: assignedDriverId } : {}), ...(pricingAdjustment ? { pricing_adjustment: pricingAdjustment } : {}) } : null,
   });
 
   // pricingNote is never blocking (see the tiered logic above) - surfaced
@@ -3748,8 +3765,12 @@ async function handleGuestBookingCreate(request, env, ctx) {
     hasTour: body.has_tour === true,
     hasChildSeat: body.has_child_seat === true,
     hasSurfboard: body.has_surfboard === true,
+    requireQuoteMatch: body.require_quote_match === true,
     actor: 'guest', // the public guest widget - a real guest's own booking submission
   });
+  if (!result.ok && result.code === 'PRICE_MISMATCH') {
+    return json({ ok: false, code: 'PRICE_MISMATCH', errors: result.errors, reference_fare_fjd: result.quoteMismatch.referenceFareFjd, submitted_amount_fjd: result.quoteMismatch.submittedAmountFjd }, 409);
+  }
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
 
   // Milestone 34 (Issue #34 P0 fix) - an idempotent replay (the guest's
