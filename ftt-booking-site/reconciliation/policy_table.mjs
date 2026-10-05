@@ -29,7 +29,7 @@ for (const route of fdRoutes) for (const v of VEH) for (const trip of ['one-way'
 }
 const priceable = rows.filter((r) => r.worker !== null && r.worker !== undefined);
 const delta = (r) => r.catTotal - r.worker;
-const disputed = priceable.filter((r) => Math.abs(delta(r)) > 5 && Math.abs(delta(r)) / r.worker > 0.05);
+const disputed = priceable.filter((r) => r.route !== 'MARRIOTT_MOMI' && Math.abs(delta(r)) > 5 && Math.abs(delta(r)) / r.worker > 0.05);   // Momi is set out separately in 1b (part approved, part not)
 const outBand = priceable.filter((r) => r.catTotal < 0.8 * r.worker || r.catTotal > 1.3 * r.worker);
 for (const r of priceable) csv.push([r.route, r.vehicle, r.trip, r.catBase, r.catTotal, r.workerPre === null ? '' : cents(r.workerPre), r.worker, cents(delta(r)), (100 * delta(r) / r.worker).toFixed(1), !outBand.includes(r), r.natCharged, r.prodCharged, r.candCharged, '']);
 
@@ -37,11 +37,15 @@ P('# Pricing-policy decision table (for James) - 2026-10-05');
 P('');
 P('**Production remains on HOLD. This is a decision aid, not a release and not a recommendation of any fare.** Every figure below is computed from numbers that already exist (the published catalogue `ROUTES_DATA`, the Worker\'s distance formula, and each side\'s own arithmetic) in the isolated harness (real page code + the real deployed Worker bundle `7a32a034` + the read-only pricing snapshot of 2026-10-05; outbound blocked). No fare was invented, fuel adjustments are NOT enabled (the fuel index is unchanged: multiplier 1, FJ$3.39/L), and no live booking, message or production write was made. Tick boxes (`[ ]`) are for James.');
 P('');
-P('Only two commercial decisions exist today: the Momi minibus base FJ$175.92 (before the 10% discount) and the Momi return convention (157.92 one-way / 297 return / 304 return + child seat). Nothing else in this document is approved. "Catalogue" below means the fares published in the booking tool / route pages (`ROUTES_DATA`) - published, **not** approved as the commercially intended fare. "Worker" means the distance formula in the booking Worker - also not approved.');
+P('## What is approved, and what is not');
+P('');
+P('**Approved by James (2026-10-05), and preserved in every comparison below:** Marriott Momi Bay **MINIBUS** - base FJ$175.92 before the 10% discount; one-way **157.92**; day return **297**; day return with a child seat **304** (the existing Nadi convention). Wherever a Worker-formula figure differs from these (292.45 / 300.45) it is shown for information only and is marked as an alternative that **would change this approval**.');
+P('');
+P('**NOT approved:** anything for Momi sedan or minivan (the held candidate currently extends the return convention to them - see 1b, decision E1), and every other route, night rule, rounding rule and the Tanoa fare. "Catalogue" below means the fares published in the booking tool / route pages (`ROUTES_DATA`) - published, **not** approved as the commercially intended fare. "Worker" means the distance formula in the booking Worker - also not approved.');
 P('');
 P('## 1. Published catalogue versus Worker formula, every disputed route');
 P('');
-P(`Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). ${priceable.length} route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: ${disputed.length} cases on ${new Set(disputed.map((r) => r.route)).size} routes.** ${outBand.length} of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The other ${priceable.length - disputed.length} cases agree to within FJ$5 / 5% and need no decision beyond the global policy. The full ${priceable.length}-row table is in \`policy_catalogue_vs_worker.csv\`.`);
+P(`Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). ${priceable.length} route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: ${disputed.length} cases on ${new Set(disputed.map((r) => r.route)).size} routes.** ${outBand.length} of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The other ${priceable.length - disputed.length} cases agree to within FJ$5 / 5% and need no decision beyond the global policy. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full ${priceable.length}-row table (Momi included) is in \`policy_catalogue_vs_worker.csv\`.`);
 P('');
 P('"Charged today" = what is actually saved today: **NAT** (page quotes the catalogue); **FD prod** = FijiDash production (its review step swaps in the Worker figure, so it charges the Worker figure on every priceable route, except when the live lookup fails); **FD cand** = the held candidate (Worker figure, except Momi return = catalogue convention).');
 P('');
@@ -53,7 +57,43 @@ for (const r of disputed.sort((a, b) => a.route.localeCompare(b.route) || VEH.in
   P(`| ${r.route} | ${r.vehicle} | ${r.trip} | ${f(r.catBase)} | ${f(r.catTotal)} | ${f(r.worker)} | ${delta(r) > 0 ? '+' : ''}${f(cents(delta(r)))} (${(100 * delta(r) / r.worker).toFixed(0)}%) | ${outBand.includes(r) ? '**no (refused)**' : 'yes'} | ${f(r.natCharged)} | ${f(r.prodCharged)} | ${f(r.candCharged)} | A / B / C: ____ |`);
 }
 P('');
-P('Priority routes: **Momi** - decided: minibus base 175.92 and the return convention (157.92 / 297 / 304). NOT decided, and visible in the table: the held candidate applies the same return convention to the Momi **sedan and minivan** returns as well (sedan return catalogue 166 vs Worker 157.44; one-way sedan/minivan still follow the Worker figure 85.29 / 132.42 on FijiDash and the catalogue 89 / 134 on NAT) - James should confirm or reject that extension. **Nadi / Mercure** - sedan one-way catalogue 19 vs Worker 30.15, outside the band. **Wailoaloa / Crowne Plaza** - sedan return catalogue 67 vs Worker 50.17, outside the band. Both Nadi-area sedan one-way rows (Nadi downtown and Mercure) and both sedan returns for Wailoaloa and Crowne Plaza are the four cases the Worker would refuse.');
+P('Priority routes: **Momi** is in 1b. **Nadi / Mercure** - sedan one-way catalogue 19 vs Worker 30.15, outside the band. **Wailoaloa / Crowne Plaza** - sedan return catalogue 67 vs Worker 50.17, outside the band. Nadi downtown and Mercure sedan one-way, and Wailoaloa and Crowne Plaza sedan return, are the four cases the Worker would refuse.');
+P('');
+P('### 1b. Momi Bay: the approved minibus is separate from any sedan / minivan extension');
+P('');
+const momiRoute = fdRoutes.find((r) => r.destValue === 'MARRIOTT_MOMI');
+const mrun = async (variant, src, row, v, trip, seat, optIn) => runCase(env, { variant, src, row, vehicle: v, trip, time: '10:00', seat, optIn });
+const natMomi = natRoutes.find((r) => r.destValue === 'MARRIOTT_MOMI');
+P('**1b-i. Momi MINIBUS - APPROVED (preserved).** Day pickup 10:00. "Approved" is James\'s figure; "Worker formula" is information only and is NOT proposed.');
+P('');
+P('| Case | **Approved** | Worker formula (information) | Worker - approved | Candidate saves | FD production saves today | NAT saves |');
+P('|---|---|---|---|---|---|---|');
+for (const [label, trip, seat, approved] of [['One-way', 'one-way', false, 157.92], ['Return', 'return', false, 297], ['Return + child seat', 'return', true, 304]]) {
+  const c = await mrun('fd-cand', fdSrc, momiRoute, 'minibus', trip, seat, true); const p = await mrun('fd-prod', prodSrc, momiRoute, 'minibus', trip, seat, false); const n = await mrun('nat', natSrc, natMomi, 'minibus', trip, seat, true);
+  if (c.saved !== approved || n.saved !== approved) throw new Error('approved Momi minibus figure not preserved: ' + label + ' ' + c.saved + ' ' + n.saved);
+  P(`| ${label} | **${f(approved)}** | ${f(c.worker)} | ${f(cents(c.worker - approved))} | ${f(c.saved)} | ${f(p.saved)}${p.saved === approved ? '' : ' (the Worker figure: production does not follow the approval)'} | ${f(n.saved)} |`);
+}
+P('');
+P('The candidate and NAT both save exactly the approved figures (checked by this script, which stops otherwise). Adopting the Worker figure for the minibus return would change the approved 297 to 292.45 and 304 to 300.45; that is **not** proposed.');
+P('');
+P('**1b-ii. Momi SEDAN and MINIVAN - NOT approved (extension decision E1).** The approval above was for the minibus figures. The held candidate nevertheless applies the same return convention to the sedan and minivan returns (code scope: Momi, all vehicles, return trips), so those two rows are a change nobody has approved.');
+P('');
+P('| Vehicle | Trip | Catalogue total | Worker total | NAT saves | FD production saves | FD candidate saves today |');
+P('|---|---|---|---|---|---|---|');
+const e1 = {};
+for (const v of ['sedan', 'minivan']) for (const trip of ['one-way', 'return']) {
+  const c = await mrun('fd-cand', fdSrc, momiRoute, v, trip, false, true); const p = await mrun('fd-prod', prodSrc, momiRoute, v, trip, false, false); const n = await mrun('nat', natSrc, natMomi, v, trip, false, true);
+  e1[v + trip.replace('-', '_')] = { cat: n.saved, worker: c.worker, cand: c.saved };
+  P(`| ${v} | ${trip} | ${f(n.selection)} | ${f(c.worker)} | ${f(n.saved)} | ${f(p.saved)} | ${f(c.saved)}${trip === 'return' ? ' (convention extended: UNAPPROVED)' : ' (Worker figure)'} |`);
+}
+P('');
+P('Options (nothing is implemented):');
+P('');
+P(`- **E1a Approval stays minibus-only.** Momi sedan/minivan return follow the global policy. On FijiDash that means the Worker figures (${f(e1.sedanreturn.worker)} / ${f(e1.minivanreturn.worker)}) unless James chooses otherwise; NAT keeps its catalogue (${f(e1.sedanreturn.cat)} / ${f(e1.minivanreturn.cat)}). The candidate would need a one-line scope change (minibus only) - not made here.`);
+P(`- **E1b Extend the return convention to Momi sedan and minivan returns** (what the candidate does today): ${f(e1.sedanreturn.cat)} / ${f(e1.minivanreturn.cat)}, equal to NAT. FijiDash returns rise by ${f(cents(e1.sedanreturn.cat - e1.sedanreturn.worker))} / ${f(cents(e1.minivanreturn.cat - e1.minivanreturn.worker))} versus what production charges today.`);
+P(`- **E1c Extend the catalogue to Momi sedan and minivan one-way as well:** ${f(e1.sedanone_way.cat)} / ${f(e1.minivanone_way.cat)} (NAT today) instead of the Worker figures ${f(e1.sedanone_way.worker)} / ${f(e1.minivanone_way.worker)} that FijiDash charges today.`);
+P('');
+P('Decision E1: **[ ] E1a  [ ] E1b  [ ] E1c**. (The minibus approval is unaffected by any E1 choice.)');
 P('');
 
 // ---------- 2. night options ----------
@@ -85,20 +125,51 @@ P('Options (the figures are computed with each side\'s existing arithmetic; **no
 P('');
 P('- **N0 No night surcharge anywhere** (what FijiDash saves today). Pages, FAQ and label stop claiming it; NAT\'s static modifier and the Worker\'s night step are removed.');
 P('- **N1 Existing Worker rule on the live fare** (x1.2 on the whole transfer when the OUTBOUND pickup is night; return pickup ignored; extras added after; 10% discount after). Changes FijiDash only; Worker unchanged. Selection = review = Worker.');
-P('- **N2 Per-leg surcharge** (each leg whose own pickup is 22:00-05:59 is surcharged; the two legs of a return are each half of the x1.85 return fare). Needs new Worker and page code and the return-pickup time on the booking.');
+P('- **N2 Per-leg surcharge** (each leg whose own pickup is 22:00-05:59 is surcharged). Needs new Worker and page code and the return-pickup time on the booking. **Every N2 figure below rests on the allocation assumption stated next.**');
 P('- **N3 Static-table convention everywhere** (the page\'s modifier: x1.2 and x1.85, rounded UP to the next FJ$5, outbound time only). Needs the Worker to adopt the round-up (otherwise in-band differences continue). This is what NAT shows today.');
+P('');
+P('**Allocation assumption behind every per-leg (N2) figure - AL-1, the only one used in the tables:**');
+P('');
+P('1. A return is two legs of EQUAL price: each leg is exactly half of the return fare as it stands before night, extras and discount. Worker basis: return = 1.85 x one-way, so each leg = 0.925 x the one-way fare, no rounding (cents). Momi minibus approved basis: return = 330 before discount, so each leg = 165.');
+P('2. A leg is a night leg when ITS OWN pickup time is 22:00-05:59 (the same boundaries as today). A night leg is multiplied by 1.2; a day leg by 1. The two legs are then added; nothing is rounded up to FJ$5 on the Worker basis.');
+P('3. Extras (child seat 8 / surfboard 24) are added once, after the legs, and belong to neither leg. The 10% discount is applied once to the final subtotal (whole dollars, above FJ$50). A one-way trip is one leg at its full fare.');
+P('4. **This allocation is an assumption, not a rule that exists anywhere.** Today no system prices legs separately; the Worker prices a return as one fare and the booking records one outbound pickup time and a return time that is not used for pricing. A different split changes every N2 total: see the sensitivity table after the options (AL-2).');
 P('');
 P('Totals (guest-visible, no extras, after the 10% discount where it applies). Base = the published catalogue one-way figure; Worker one-way = the formula figure before discount. N0 uses the Worker formula figure (what FijiDash production saves today); the held candidate shows the catalogue convention instead for Momi return (297), which is the N3 column.');
 P('');
+const A1 = (ret, nOut) => disc(cents((ret ? 330 : 175.92) * (nOut ? 1.2 : 1)));                                            // approved basis, Worker-style multiplier on the approved pre-discount figure
+const A2 = (ret, nOut, nRet) => (ret ? disc(cents(165 * (nOut ? 1.2 : 1) + 165 * (nRet ? 1.2 : 1))) : A1(false, nOut));      // approved basis, AL-1 (each leg 330 / 2 = 165)
 for (const nr of nightRows) {
+  if (nr.dest === 'MARRIOTT_MOMI') {
+    P(`**${nr.dest} ${nr.v} - APPROVED BASIS.** Day figures are James's approved 157.92 one-way and **297** return; every option below keeps the approved day figures and builds the night figures on the approved pre-discount figures (175.92 one-way, 330 return). The right-hand columns show the Worker-formula basis for information: they would **change the approved day return 297 to 292.45** and are not proposed.`);
+    P('');
+    P('| Scenario | N0 none | N1 x1.2 on the approved figure | N2 per-leg (AL-1, 165 per leg) | N3 static convention (NAT today) | *Worker basis N1 (changes 297)* | *Worker basis N2 (changes 297)* |');
+    P('|---|---|---|---|---|---|---|');
+    const SCm = [['One-way, day', false, false, false], ['One-way, night pickup', false, true, false], ['Return: day out / day back', true, false, false], ['Return: NIGHT ARRIVAL (out night, back day)', true, true, false], ['Return: NIGHT RETURN pickup (out day, back night)', true, false, true], ['Return: BOTH night', true, true, true]];
+    nr.sc.forEach((sc, k) => { const [, ret, nOut, nRet] = SCm[k]; P(`| ${sc.label} | ${f(ret ? 297 : 157.92)} | ${f(A1(ret, nOut))} | ${f(A2(ret, nOut, nRet))} | ${f(sc.O3)} | *${f(sc.O1)}* | *${f(sc.O2)}* |`); });
+    if (A1(true, false) !== 297 || A2(true, false, false) !== 297 || nr.sc[2].O3 !== 297) throw new Error('approved day return 297 not preserved in the night table');
+    P('');
+    continue;
+  }
   P(`**${nr.dest} ${nr.v}** - catalogue one-way base ${f(nr.base)}, Worker one-way before discount ${f(cents(nr.F1))}`);
   P('');
-  P('| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg | N3 static convention (NAT today) |');
+  P('| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg (AL-1) | N3 static convention (NAT today) |');
   P('|---|---|---|---|---|');
   for (const s of nr.sc) P(`| ${s.label} | ${f(s.O0)} | ${f(s.O1)} | ${f(s.O2)} | ${f(s.O3)} |`);
   P('');
 }
-P('Cross-checks run before this table was written: the N1 arithmetic equals the real Worker\'s saved amount in all six scenarios for all four cases, and the N3 arithmetic equals the real page\'s quote (the script stops if either differs).');
+// sensitivity of N2 to the allocation assumption (Hilton Denarau sedan, Worker basis)
+{
+  const hn = nightRows.find((x) => x.dest === 'HILTON_DENARAU'); const F = hn.F1;
+  const AL2 = (nOut, nRet) => cents(disc(cents(F * (nOut ? 1.2 : 1) + F * 0.85 * (nRet ? 1.2 : 1))));
+  P('**Sensitivity of N2 to the allocation assumption** (Hilton Denarau sedan, Worker basis, return trips). AL-1 = equal legs (each 0.925 x one-way). AL-2 = outbound leg is the full one-way fare and the return leg is 0.85 x one-way (same 1.85 total). Both are assumptions; neither exists in any system today.');
+  P('');
+  P('| Return scenario | AL-1 equal legs | AL-2 outbound 1.00 / return 0.85 |');
+  P('|---|---|---|');
+  hn.sc.slice(2).forEach((sc, k) => { const [nOut, nRet] = [[false, false], [true, false], [false, true], [true, true]][k]; P(`| ${sc.label} | ${f(sc.O2)} | ${f(AL2(nOut, nRet))} |`); });
+  P('');
+}
+P('Cross-checks run before this table was written: the Worker-basis N1 arithmetic equals the real Worker\'s saved amount in all six scenarios for all four cases, the N3 arithmetic equals the real page\'s quote, and the approved Momi minibus day return is 297 in every option (the script stops if any of these differs). N2 has no real system to check against: it depends only on AL-1 above.');
 P('');
 P('**What each night option requires** (nothing is applied):');
 P('');
@@ -172,20 +243,20 @@ const strip = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&rarr;/g, '->').replace
 const natDir = path.join(root, 'test-fixtures', 'nat-site-c5ee3b1'); const fdDir = path.join(root, 'src');
 const surf = {};
 for (const [site, dir, rts] of [['FijiDash', fdDir, fdRoutes], ['NAT', natDir, natRoutes]]) {
-  const S = (surf[site] = { pages: 0, items: 0, notCat: 0, notWorker: 0, pagesNotCat: new Set(), pagesNotWorker: new Set(), noLink: 0, from: 0, fromNotCat: 0, fromNotWorker: 0 });
+  const S = (surf[site] = { pi: {}, unrec: [], pages: 0, items: 0, notCat: 0, notWorker: 0, pagesNotCat: new Set(), pagesNotWorker: new Set(), noLink: 0, from: 0, fromNotCat: 0, fromNotWorker: 0 });
   for (const file of fs.readdirSync(path.join(dir, 'transfer')).filter((x) => x.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(dir, 'transfer', file), 'utf8'); const dest = (html.match(/[?&]dest=([A-Z0-9_]+)/) || [])[1]; const route = rts.find((r) => r.destValue === dest); S.pages++;
-    if (!route) { S.noLink++; continue; }
+    if (!route) { S.noLink++; S.unrec.push(file); continue; }
     const zone = zoneOf(route.area);
     for (const m of html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
       const cells = [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => strip(c[1]));
       const vk = { Sedan: 'sedan', Minivan: 'minivan', Minibus: 'minibus' }[(cells[0] || '').trim()]; if (!vk || cells.length < 3) continue;
       const base = route[{ sedan: 's', minivan: 'v', minibus: 'm' }[vk]];
       for (const [idx, trip] of [[1, 'one-way'], [2, 'return']]) {
-        const a = amounts(cells[idx]); if (!a.length) continue; S.items++;
+        const a = amounts(cells[idx]); if (!a.length) continue; S.items++; (S.pi[file] ||= { dest, items: 0, notCat: 0 }).items++;
         const cat = trip === 'return' ? ceil5(base * 1.85) : base; const wk = zone ? await env.referenceFare(zone, vk, trip) : null;
         const matchCat = Math.abs(a[0] - cat) < 0.005; const matchWk = wk !== null && Math.abs(a[0] - wk) < 0.005;
-        if (!matchCat) { S.notCat++; S.pagesNotCat.add(file); } if (!matchWk) { S.notWorker++; S.pagesNotWorker.add(file); }
+        if (!matchCat) { S.notCat++; S.pagesNotCat.add(file); S.pi[file].notCat++; } if (!matchWk) { S.notWorker++; S.pagesNotWorker.add(file); }
       }
     }
     const fr = (html.match(/<title>[^<]*From FJ\$([0-9.]+)/) || [])[1];
@@ -206,18 +277,26 @@ P('| FijiDash `app.js` FAQ / marketing strings and index.html JSON-LD | listed i
 P('');
 P('Because pages print whole dollars and the Worker works in cents, "not equal to the Worker" counts almost every figure. Option B below therefore also needs a **display rule** (round for display? show cents?) - a further decision.');
 P('');
+const dispRoutes = new Set(disputed.map((r) => r.route));
+const scopeC = {};
+for (const site of ['FijiDash', 'NAT']) { const S = surf[site]; const entries = Object.entries(S.pi); const pagesDisp = entries.filter(([, p]) => dispRoutes.has(p.dest)).map(([file]) => file); const pagesInacc = entries.filter(([, p]) => p.notCat > 0).map(([file]) => file); const union = new Set([...pagesDisp, ...pagesInacc]); const onlyInacc = pagesInacc.filter((x) => !pagesDisp.includes(x)); scopeC[site] = { disp: pagesDisp.length, inacc: pagesInacc.length, inaccFigures: S.notCat, union: union.size, unionItems: [...union].reduce((acc, file) => acc + S.pi[file].items, 0), onlyInacc: onlyInacc.length, onlyInaccFigures: onlyInacc.reduce((acc, file) => acc + S.pi[file].notCat, 0), unrec: S.unrec.length }; }
+let llmsC = 0; for (const line of llms.split('\n')) { const m = line.match(/^- (.+?) — (\d+)km — from FJ\$([0-9.]+)/); if (!m) continue; const row = fdRoutes.find((r) => r.dest === m[1] || r.dest.includes(m[1]) || m[1].includes(r.dest)); if (!row || dispRoutes.has(row.destValue) || Math.abs(Number(m[3]) - row.s) > 0.005) llmsC++; }
+P('Scope notes: **A** and **C** must include figures that are ALREADY inaccurate against their own catalogue, not only the disputed routes. "Existing inaccurate figure" = a printed table figure that does not equal the site\'s own published catalogue (return by the page convention). "Unreconciled pages" = pages with no booking link or a route the booking tool does not know: they could not be checked and are unverified under every option.');
+P('');
 P('| Policy option | What changes in the booking path | Advertised corrections required |');
 P('|---|---|---|');
-P(`| **A. Catalogue is the fare** | the Worker (or a server fare table) enforces the catalogue; FijiDash selection returns to the static figure (no live fare); disputed routes keep their published fares | pages already match their own catalogue except ${surf.FijiDash.notCat + surf.NAT.notCat} printed figures (${surf.FijiDash.pagesNotCat.size + surf.NAT.pagesNotCat.size} pages) that disagree with it, ${llmsNotCat} llms.txt lines, and the night / return conventions in the FAQ |`);
+P(`| **A. Catalogue is the fare** | the Worker (or a server fare table) enforces the catalogue; FijiDash selection returns to the static figure (no live fare); disputed routes keep their published fares | the existing inaccurate figures only: ${surf.FijiDash.notCat} on ${surf.FijiDash.pagesNotCat.size} FijiDash pages, ${surf.NAT.notCat} on ${surf.NAT.pagesNotCat.size} NAT pages, ${llmsNotCat} llms.txt lines; plus the night / return conventions in the FAQ; plus ${surf.FijiDash.noLink} FijiDash and ${surf.NAT.noLink} NAT pages that cannot be reconciled and must be checked by hand |`);
 P(`| **B. Worker formula is the fare** | the catalogue is rebuilt from the formula; NAT and the pages show it | essentially every printed figure changes: ${surf.FijiDash.notWorker + surf.NAT.notWorker} table figures, ${surf.FijiDash.fromNotWorker + surf.NAT.fromNotWorker} "From" titles, llms.txt, the routes table (${disputed.length} disputed route/vehicle/trip figures differ by more than FJ$5 / 5%), FAQ; plus the display-rule decision |`);
-P(`| **C. Per-route hybrid** (James chooses A, B or C per row in section 1) | each route follows its own choice; a server fare table holds the A/C routes so the Worker can verify them | only the ${new Set(disputed.map((r) => r.route)).size} disputed routes need page/table edits (every printed figure for those routes), plus FAQ |`);
+P(`| **C. Per-route hybrid** (A, B or C chosen per row in section 1) | each route follows its own choice; a server fare table holds the A/C routes so the Worker can verify them | **the UNION of two sets, not just the ${dispRoutes.size} disputed routes:** (a) pages of the disputed routes (FijiDash ${scopeC.FijiDash.disp}, NAT ${scopeC.NAT.disp} pages) AND (b) pages that already print inaccurate figures (FijiDash ${scopeC.FijiDash.inacc}, NAT ${scopeC.NAT.inacc} pages, ${scopeC.FijiDash.inaccFigures + scopeC.NAT.inaccFigures} figures), of which ${scopeC.FijiDash.onlyInacc + scopeC.NAT.onlyInacc} pages (${scopeC.FijiDash.onlyInaccFigures + scopeC.NAT.onlyInaccFigures} figures) sit on routes that are NOT disputed and would be missed by a disputed-only scope. Total: FijiDash ${scopeC.FijiDash.union} pages (${scopeC.FijiDash.unionItems} printed figures), NAT ${scopeC.NAT.union} pages (${scopeC.NAT.unionItems} printed figures), ${llmsC} llms.txt lines, plus Momi sedan/minivan if E1 changes them, plus the FAQ; plus ${scopeC.NAT.unrec} NAT / ${scopeC.FijiDash.unrec} FijiDash unreconciled pages to check by hand |`);
 P('');
 P('Night and return options add FAQ / label changes as listed in section 2 (N0: delete the 20% sentence and the label; N1-N3: keep, with the outbound-pickup rule stated plainly). Return rounding (R1/R2) changes every printed return figure that is derived by the other convention.');
 P('');
 P('## Decisions to record');
 P('');
+P('- Momi minibus (approved, no decision needed): base 175.92; 157.92 / 297 / 304');
+P('- Momi sedan / minivan extension: **[ ] E1a  [ ] E1b  [ ] E1c**');
 P('- Global fare policy: **[ ] A  [ ] B  [ ] C (per row above)**');
-P('- Night: **[ ] N0  [ ] N1  [ ] N2  [ ] N3**; night return pickup counts: **[ ] yes  [ ] no**');
+P('- Night: **[ ] N0  [ ] N1  [ ] N2  [ ] N3**; night return pickup counts: **[ ] yes  [ ] no**; if N2, leg allocation: **[ ] AL-1 equal legs  [ ] AL-2 1.00 / 0.85  [ ] other: ______**');
 P('- Return rounding: **[ ] R1  [ ] R2  [ ] R3**');
 P('- Tanoa International: **[ ] T1 (fares: ______ / ______ / ______)  [ ] T2  [ ] T3  [ ] T4**');
 P('- Display rule for pages if B or C: **[ ] whole dollars (rounding rule: ______)  [ ] show cents**');

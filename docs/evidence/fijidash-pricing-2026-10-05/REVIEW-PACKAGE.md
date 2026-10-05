@@ -51,3 +51,5 @@ Note: a Windows checkout with core.autocrlf=true is handled (tests normalise lin
 ## Pricing-policy decision table
 
 `POLICY-DECISION-TABLE.md` (+ `policy_catalogue_vs_worker.csv`, script `reconciliation/policy_table.mjs`): catalogue vs Worker for every disputed route, night options with day / night-arrival / night-return / both-night totals, exact return / rounding / extras treatment, Tanoa options, and the advertised-price corrections each option requires. A decision aid only: no fare invented, fuel untouched, production on HOLD.
+
+`CATALOGUE-LED-IMPLEMENTATION-PLAN.md`: plan only (one shared pricing source, a short exception list, phased gates, rollback). Nothing implemented.

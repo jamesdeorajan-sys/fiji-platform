@@ -2,11 +2,15 @@
 
 **Production remains on HOLD. This is a decision aid, not a release and not a recommendation of any fare.** Every figure below is computed from numbers that already exist (the published catalogue `ROUTES_DATA`, the Worker's distance formula, and each side's own arithmetic) in the isolated harness (real page code + the real deployed Worker bundle `7a32a034` + the read-only pricing snapshot of 2026-10-05; outbound blocked). No fare was invented, fuel adjustments are NOT enabled (the fuel index is unchanged: multiplier 1, FJ$3.39/L), and no live booking, message or production write was made. Tick boxes (`[ ]`) are for James.
 
-Only two commercial decisions exist today: the Momi minibus base FJ$175.92 (before the 10% discount) and the Momi return convention (157.92 one-way / 297 return / 304 return + child seat). Nothing else in this document is approved. "Catalogue" below means the fares published in the booking tool / route pages (`ROUTES_DATA`) - published, **not** approved as the commercially intended fare. "Worker" means the distance formula in the booking Worker - also not approved.
+## What is approved, and what is not
+
+**Approved by James (2026-10-05), and preserved in every comparison below:** Marriott Momi Bay **MINIBUS** - base FJ$175.92 before the 10% discount; one-way **157.92**; day return **297**; day return with a child seat **304** (the existing Nadi convention). Wherever a Worker-formula figure differs from these (292.45 / 300.45) it is shown for information only and is marked as an alternative that **would change this approval**.
+
+**NOT approved:** anything for Momi sedan or minivan (the held candidate currently extends the return convention to them - see 1b, decision E1), and every other route, night rule, rounding rule and the Tanoa fare. "Catalogue" below means the fares published in the booking tool / route pages (`ROUTES_DATA`) - published, **not** approved as the commercially intended fare. "Worker" means the distance formula in the booking Worker - also not approved.
 
 ## 1. Published catalogue versus Worker formula, every disputed route
 
-Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). 210 route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: 109 cases on 29 routes.** 4 of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The other 101 cases agree to within FJ$5 / 5% and need no decision beyond the global policy. The full 210-row table is in `policy_catalogue_vs_worker.csv`.
+Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). 210 route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: 108 cases on 28 routes.** 4 of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The other 102 cases agree to within FJ$5 / 5% and need no decision beyond the global policy. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full 210-row table (Momi included) is in `policy_catalogue_vs_worker.csv`.
 
 "Charged today" = what is actually saved today: **NAT** (page quotes the catalogue); **FD prod** = FijiDash production (its review step swaps in the Worker figure, so it charges the Worker figure on every priceable route, except when the live lookup fails); **FD cand** = the held candidate (Worker figure, except Momi return = catalogue convention).
 
@@ -69,7 +73,6 @@ Decision per row: **A** = catalogue is the fare (Worker/live fare must follow it
 | LAUTOKA_HOTEL | minivan | return | 119 | 202 | 183.91 | +18.09 (10%) | yes | 202 | 183.91 | 183.91 | A / B / C: ____ |
 | LAUTOKA_HOTEL | minibus | one-way | 149 | 134 | 126.22 | +7.78 (6%) | yes | 134 | 126.22 | 126.22 | A / B / C: ____ |
 | LAUTOKA_HOTEL | minibus | return | 149 | 252 | 233.41 | +18.59 (8%) | yes | 252 | 233.41 | 233.41 | A / B / C: ____ |
-| MARRIOTT_MOMI | sedan | return | 99 | 166 | 157.44 | +8.56 (5%) | yes | 166 | 157.44 | 166 | A / B / C: ____ |
 | MERCURE_NADI | sedan | one-way | 19 | 19 | 30.15 | -11.15 (-37%) | **no (refused)** | refused at 19: guest must accept the Worker fare | 30.15 | 30.15 | A / B / C: ____ |
 | MERCURE_NADI | sedan | return | 19 | 40 | 49.78 | -9.78 (-20%) | yes | 40 | 49.78 | 49.78 | A / B / C: ____ |
 | NADI_DOWNTOWN | sedan | one-way | 19 | 19 | 30.15 | -11.15 (-37%) | **no (refused)** | refused at 19: guest must accept the Worker fare | 30.15 | 30.15 | A / B / C: ____ |
@@ -124,7 +127,36 @@ Decision per row: **A** = catalogue is the fare (Worker/live fare must follow it
 | WAILOALOA_BEACH | minibus | one-way | 89 | 80 | 71.70 | +8.30 (12%) | yes | 80 | 71.70 | 71.70 | A / B / C: ____ |
 | WAILOALOA_BEACH | minibus | return | 89 | 148 | 132.45 | +15.55 (12%) | yes | 148 | 132.45 | 132.45 | A / B / C: ____ |
 
-Priority routes: **Momi** - decided: minibus base 175.92 and the return convention (157.92 / 297 / 304). NOT decided, and visible in the table: the held candidate applies the same return convention to the Momi **sedan and minivan** returns as well (sedan return catalogue 166 vs Worker 157.44; one-way sedan/minivan still follow the Worker figure 85.29 / 132.42 on FijiDash and the catalogue 89 / 134 on NAT) - James should confirm or reject that extension. **Nadi / Mercure** - sedan one-way catalogue 19 vs Worker 30.15, outside the band. **Wailoaloa / Crowne Plaza** - sedan return catalogue 67 vs Worker 50.17, outside the band. Both Nadi-area sedan one-way rows (Nadi downtown and Mercure) and both sedan returns for Wailoaloa and Crowne Plaza are the four cases the Worker would refuse.
+Priority routes: **Momi** is in 1b. **Nadi / Mercure** - sedan one-way catalogue 19 vs Worker 30.15, outside the band. **Wailoaloa / Crowne Plaza** - sedan return catalogue 67 vs Worker 50.17, outside the band. Nadi downtown and Mercure sedan one-way, and Wailoaloa and Crowne Plaza sedan return, are the four cases the Worker would refuse.
+
+### 1b. Momi Bay: the approved minibus is separate from any sedan / minivan extension
+
+**1b-i. Momi MINIBUS - APPROVED (preserved).** Day pickup 10:00. "Approved" is James's figure; "Worker formula" is information only and is NOT proposed.
+
+| Case | **Approved** | Worker formula (information) | Worker - approved | Candidate saves | FD production saves today | NAT saves |
+|---|---|---|---|---|---|---|
+| One-way | **157.92** | 157.92 | 0 | 157.92 | 157.92 | 157.92 |
+| Return | **297** | 292.45 | -4.55 | 297 | 292.45 (the Worker figure: production does not follow the approval) | 297 |
+| Return + child seat | **304** | 300.45 | -3.55 | 304 | 300.45 (the Worker figure: production does not follow the approval) | 304 |
+
+The candidate and NAT both save exactly the approved figures (checked by this script, which stops otherwise). Adopting the Worker figure for the minibus return would change the approved 297 to 292.45 and 304 to 300.45; that is **not** proposed.
+
+**1b-ii. Momi SEDAN and MINIVAN - NOT approved (extension decision E1).** The approval above was for the minibus figures. The held candidate nevertheless applies the same return convention to the sedan and minivan returns (code scope: Momi, all vehicles, return trips), so those two rows are a change nobody has approved.
+
+| Vehicle | Trip | Catalogue total | Worker total | NAT saves | FD production saves | FD candidate saves today |
+|---|---|---|---|---|---|---|
+| sedan | one-way | 89 | 85.29 | 89 | 85.29 | 85.29 (Worker figure) |
+| sedan | return | 166 | 157.44 | 166 | 157.44 | 166 (convention extended: UNAPPROVED) |
+| minivan | one-way | 134 | 132.42 | 134 | 132.42 | 132.42 (Worker figure) |
+| minivan | return | 252 | 245.73 | 252 | 245.73 | 252 (convention extended: UNAPPROVED) |
+
+Options (nothing is implemented):
+
+- **E1a Approval stays minibus-only.** Momi sedan/minivan return follow the global policy. On FijiDash that means the Worker figures (157.44 / 245.73) unless James chooses otherwise; NAT keeps its catalogue (166 / 252). The candidate would need a one-line scope change (minibus only) - not made here.
+- **E1b Extend the return convention to Momi sedan and minivan returns** (what the candidate does today): 166 / 252, equal to NAT. FijiDash returns rise by 8.56 / 6.27 versus what production charges today.
+- **E1c Extend the catalogue to Momi sedan and minivan one-way as well:** 89 / 134 (NAT today) instead of the Worker figures 85.29 / 132.42 that FijiDash charges today.
+
+Decision E1: **[ ] E1a  [ ] E1b  [ ] E1c**. (The minibus approval is unaffected by any E1 choice.)
 
 ## 2. Night surcharge: options, with day / night-arrival / night-return / both-night totals
 
@@ -134,25 +166,32 @@ Options (the figures are computed with each side's existing arithmetic; **no new
 
 - **N0 No night surcharge anywhere** (what FijiDash saves today). Pages, FAQ and label stop claiming it; NAT's static modifier and the Worker's night step are removed.
 - **N1 Existing Worker rule on the live fare** (x1.2 on the whole transfer when the OUTBOUND pickup is night; return pickup ignored; extras added after; 10% discount after). Changes FijiDash only; Worker unchanged. Selection = review = Worker.
-- **N2 Per-leg surcharge** (each leg whose own pickup is 22:00-05:59 is surcharged; the two legs of a return are each half of the x1.85 return fare). Needs new Worker and page code and the return-pickup time on the booking.
+- **N2 Per-leg surcharge** (each leg whose own pickup is 22:00-05:59 is surcharged). Needs new Worker and page code and the return-pickup time on the booking. **Every N2 figure below rests on the allocation assumption stated next.**
 - **N3 Static-table convention everywhere** (the page's modifier: x1.2 and x1.85, rounded UP to the next FJ$5, outbound time only). Needs the Worker to adopt the round-up (otherwise in-band differences continue). This is what NAT shows today.
+
+**Allocation assumption behind every per-leg (N2) figure - AL-1, the only one used in the tables:**
+
+1. A return is two legs of EQUAL price: each leg is exactly half of the return fare as it stands before night, extras and discount. Worker basis: return = 1.85 x one-way, so each leg = 0.925 x the one-way fare, no rounding (cents). Momi minibus approved basis: return = 330 before discount, so each leg = 165.
+2. A leg is a night leg when ITS OWN pickup time is 22:00-05:59 (the same boundaries as today). A night leg is multiplied by 1.2; a day leg by 1. The two legs are then added; nothing is rounded up to FJ$5 on the Worker basis.
+3. Extras (child seat 8 / surfboard 24) are added once, after the legs, and belong to neither leg. The 10% discount is applied once to the final subtotal (whole dollars, above FJ$50). A one-way trip is one leg at its full fare.
+4. **This allocation is an assumption, not a rule that exists anywhere.** Today no system prices legs separately; the Worker prices a return as one fare and the booking records one outbound pickup time and a return time that is not used for pricing. A different split changes every N2 total: see the sensitivity table after the options (AL-2).
 
 Totals (guest-visible, no extras, after the 10% discount where it applies). Base = the published catalogue one-way figure; Worker one-way = the formula figure before discount. N0 uses the Worker formula figure (what FijiDash production saves today); the held candidate shows the catalogue convention instead for Momi return (297), which is the N3 column.
 
-**MARRIOTT_MOMI minibus** - catalogue one-way base 175.92, Worker one-way before discount 175.92
+**MARRIOTT_MOMI minibus - APPROVED BASIS.** Day figures are James's approved 157.92 one-way and **297** return; every option below keeps the approved day figures and builds the night figures on the approved pre-discount figures (175.92 one-way, 330 return). The right-hand columns show the Worker-formula basis for information: they would **change the approved day return 297 to 292.45** and are not proposed.
 
-| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg | N3 static convention (NAT today) |
-|---|---|---|---|---|
-| One-way, day | 157.92 | 157.92 | 157.92 | 157.92 |
-| One-way, night pickup | 157.92 | 190.10 | 190.10 | 193 |
-| Return: day out / day back | 292.45 | 292.45 | 292.45 | 297 |
-| Return: NIGHT ARRIVAL (out night, back day) | 292.45 | 351.54 | 322 | 355 |
-| Return: NIGHT RETURN pickup (out day, back night) | 292.45 | 292.45 | 322 | 297 |
-| Return: BOTH night | 292.45 | 351.54 | 351.54 | 355 |
+| Scenario | N0 none | N1 x1.2 on the approved figure | N2 per-leg (AL-1, 165 per leg) | N3 static convention (NAT today) | *Worker basis N1 (changes 297)* | *Worker basis N2 (changes 297)* |
+|---|---|---|---|---|---|---|
+| One-way, day | 157.92 | 157.92 | 157.92 | 157.92 | *157.92* | *157.92* |
+| One-way, night pickup | 157.92 | 190.10 | 190.10 | 193 | *190.10* | *190.10* |
+| Return: day out / day back | 297 | 297 | 297 | 297 | *292.45* | *292.45* |
+| Return: NIGHT ARRIVAL (out night, back day) | 297 | 356 | 327 | 355 | *351.54* | *322* |
+| Return: NIGHT RETURN pickup (out day, back night) | 297 | 297 | 327 | 297 | *292.45* | *322* |
+| Return: BOTH night | 297 | 356 | 356 | 355 | *351.54* | *351.54* |
 
 **HILTON_DENARAU sedan** - catalogue one-way base 49, Worker one-way before discount 47.87
 
-| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg | N3 static convention (NAT today) |
+| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg (AL-1) | N3 static convention (NAT today) |
 |---|---|---|---|---|
 | One-way, day | 47.87 | 47.87 | 47.87 | 49 |
 | One-way, night pickup | 47.87 | 51.44 | 51.44 | 54 |
@@ -163,7 +202,7 @@ Totals (guest-visible, no extras, after the 10% discount where it applies). Base
 
 **MERCURE_NADI sedan** - catalogue one-way base 19, Worker one-way before discount 30.15
 
-| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg | N3 static convention (NAT today) |
+| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg (AL-1) | N3 static convention (NAT today) |
 |---|---|---|---|---|
 | One-way, day | 30.15 | 30.15 | 30.15 | 19 |
 | One-way, night pickup | 30.15 | 36.18 | 36.18 | 25 |
@@ -174,7 +213,7 @@ Totals (guest-visible, no extras, after the 10% discount where it applies). Base
 
 **GRAND_PACIFIC minivan** - catalogue one-way base 369, Worker one-way before discount 357.92
 
-| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg | N3 static convention (NAT today) |
+| Scenario | N0 none (FD today) | N1 Worker rule on live fare | N2 per-leg (AL-1) | N3 static convention (NAT today) |
 |---|---|---|---|---|
 | One-way, day | 321.92 | 321.92 | 321.92 | 332 |
 | One-way, night pickup | 321.92 | 386.50 | 386.50 | 400 |
@@ -183,7 +222,16 @@ Totals (guest-visible, no extras, after the 10% discount where it applies). Base
 | Return: NIGHT RETURN pickup (out day, back night) | 596.15 | 596.15 | 655.37 | 616 |
 | Return: BOTH night | 596.15 | 715.58 | 715.58 | 738 |
 
-Cross-checks run before this table was written: the N1 arithmetic equals the real Worker's saved amount in all six scenarios for all four cases, and the N3 arithmetic equals the real page's quote (the script stops if either differs).
+**Sensitivity of N2 to the allocation assumption** (Hilton Denarau sedan, Worker basis, return trips). AL-1 = equal legs (each 0.925 x one-way). AL-2 = outbound leg is the full one-way fare and the return leg is 0.85 x one-way (same 1.85 total). Both are assumptions; neither exists in any system today.
+
+| Return scenario | AL-1 equal legs | AL-2 outbound 1.00 / return 0.85 |
+|---|---|---|
+| Return: day out / day back | 79.56 | 79.56 |
+| Return: NIGHT ARRIVAL (out night, back day) | 87.42 | 88.13 |
+| Return: NIGHT RETURN pickup (out day, back night) | 87.42 | 86.70 |
+| Return: BOTH night | 95.27 | 95.27 |
+
+Cross-checks run before this table was written: the Worker-basis N1 arithmetic equals the real Worker's saved amount in all six scenarios for all four cases, the N3 arithmetic equals the real page's quote, and the approved Momi minibus day return is 297 in every option (the script stops if any of these differs). N2 has no real system to check against: it depends only on AL-1 above.
 
 **What each night option requires** (nothing is applied):
 
@@ -256,18 +304,22 @@ Counted from the route pages as they stand (FijiDash `ftt-booking-site/src/trans
 
 Because pages print whole dollars and the Worker works in cents, "not equal to the Worker" counts almost every figure. Option B below therefore also needs a **display rule** (round for display? show cents?) - a further decision.
 
+Scope notes: **A** and **C** must include figures that are ALREADY inaccurate against their own catalogue, not only the disputed routes. "Existing inaccurate figure" = a printed table figure that does not equal the site's own published catalogue (return by the page convention). "Unreconciled pages" = pages with no booking link or a route the booking tool does not know: they could not be checked and are unverified under every option.
+
 | Policy option | What changes in the booking path | Advertised corrections required |
 |---|---|---|
-| **A. Catalogue is the fare** | the Worker (or a server fare table) enforces the catalogue; FijiDash selection returns to the static figure (no live fare); disputed routes keep their published fares | pages already match their own catalogue except 19 printed figures (7 pages) that disagree with it, 2 llms.txt lines, and the night / return conventions in the FAQ |
-| **B. Worker formula is the fare** | the catalogue is rebuilt from the formula; NAT and the pages show it | essentially every printed figure changes: 196 table figures, 21 "From" titles, llms.txt, the routes table (109 disputed route/vehicle/trip figures differ by more than FJ$5 / 5%), FAQ; plus the display-rule decision |
-| **C. Per-route hybrid** (James chooses A, B or C per row in section 1) | each route follows its own choice; a server fare table holds the A/C routes so the Worker can verify them | only the 29 disputed routes need page/table edits (every printed figure for those routes), plus FAQ |
+| **A. Catalogue is the fare** | the Worker (or a server fare table) enforces the catalogue; FijiDash selection returns to the static figure (no live fare); disputed routes keep their published fares | the existing inaccurate figures only: 0 on 0 FijiDash pages, 19 on 7 NAT pages, 2 llms.txt lines; plus the night / return conventions in the FAQ; plus 0 FijiDash and 10 NAT pages that cannot be reconciled and must be checked by hand |
+| **B. Worker formula is the fare** | the catalogue is rebuilt from the formula; NAT and the pages show it | essentially every printed figure changes: 196 table figures, 21 "From" titles, llms.txt, the routes table (108 disputed route/vehicle/trip figures differ by more than FJ$5 / 5%), FAQ; plus the display-rule decision |
+| **C. Per-route hybrid** (A, B or C chosen per row in section 1) | each route follows its own choice; a server fare table holds the A/C routes so the Worker can verify them | **the UNION of two sets, not just the 28 disputed routes:** (a) pages of the disputed routes (FijiDash 15, NAT 8 pages) AND (b) pages that already print inaccurate figures (FijiDash 0, NAT 7 pages, 19 figures), of which 2 pages (6 figures) sit on routes that are NOT disputed and would be missed by a disputed-only scope. Total: FijiDash 15 pages (90 printed figures), NAT 10 pages (60 printed figures), 17 llms.txt lines, plus Momi sedan/minivan if E1 changes them, plus the FAQ; plus 10 NAT / 0 FijiDash unreconciled pages to check by hand |
 
 Night and return options add FAQ / label changes as listed in section 2 (N0: delete the 20% sentence and the label; N1-N3: keep, with the outbound-pickup rule stated plainly). Return rounding (R1/R2) changes every printed return figure that is derived by the other convention.
 
 ## Decisions to record
 
+- Momi minibus (approved, no decision needed): base 175.92; 157.92 / 297 / 304
+- Momi sedan / minivan extension: **[ ] E1a  [ ] E1b  [ ] E1c**
 - Global fare policy: **[ ] A  [ ] B  [ ] C (per row above)**
-- Night: **[ ] N0  [ ] N1  [ ] N2  [ ] N3**; night return pickup counts: **[ ] yes  [ ] no**
+- Night: **[ ] N0  [ ] N1  [ ] N2  [ ] N3**; night return pickup counts: **[ ] yes  [ ] no**; if N2, leg allocation: **[ ] AL-1 equal legs  [ ] AL-2 1.00 / 0.85  [ ] other: ______**
 - Return rounding: **[ ] R1  [ ] R2  [ ] R3**
 - Tanoa International: **[ ] T1 (fares: ______ / ______ / ______)  [ ] T2  [ ] T3  [ ] T4**
 - Display rule for pages if B or C: **[ ] whole dollars (rounding rule: ______)  [ ] show cents**
