@@ -1347,3 +1347,15 @@ Approval (recorded): "Approve the WhatsApp-only production release" - NAT `4c2ae
 **Observed, not changed:** FijiDash's prefilled WhatsApp message header still says "Fiji Tour Transfers" (pre-existing `buildWhatsAppURL`, unchanged and out of scope - separate rebrand item). Active tabs keep the old assets until their next load (no forced refresh); old-tab behaviour is the pre-existing text, not a pricing risk.
 
 **Rollback:** redeploy `8be05ec7` (NAT, project `nadiairporttransfers`, branch main) and/or `8d1dc75d` (FijiDash, project `nadi-guest-widget-preview`, branch preview) - static, instant, no Worker/data effect.
+
+
+## Held Momi candidates REBASED onto the released WhatsApp handoff (still HELD; nothing deployed) (Claude)
+
+So a future pricing deployment cannot restore the old wording: the Momi pages are now rebuilt on top of the released commits. The original review branches are left intact (no force-push); the rebased candidates are NEW branches.
+
+- NAT `ceo/momi-final-fare-nat-on-wa` @ `2a0b4580ceb5665d7487dda50882aedc52ad3528` = released `4c2aec1` + the three Momi commits (final fare, extras approval, TODO removal) + one commit setting the combined cache key `app.js?v=20261005-momi-extras-wa-handoff` (styles key stays `20261005-wa-handoff`). 160/160 tests (145 WhatsApp + 15 Momi).
+- FijiDash `ceo/momi-final-fare-fijidash-on-wa` @ `bc1f3898d69a8af27f6ad54a73c9636c04a501f2` = released `27f5650` + the Momi commits + the same combined key. Tests: 6 + 24 + 17 + 13 pass, 1 visible TODO (I2 night). Includes the negotiated-fare card.
+- Conflict resolution: only the `index.html` cache-key line and the tests that pin cache keys; the WhatsApp side was taken verbatim and the Momi `app.js` changes auto-merged. The Momi stub additions in `submit-timeout-repair.test.js` (approvedFinalFareFor / APPROVED_FINAL_FARE_ID) were re-applied after the first resolution dropped them (caught by 9 failing tests, now green). Integration (journey / inversions / scope-grid vs the pre-release bases) still 9 pass + 1 TODO, 0 fail.
+- Worker `ceo/momi-final-fare-worker` @ `2a37469` is unaffected (no WhatsApp change).
+- Still HELD: pricing is not approved for deployment; night policy and the three owner decisions (night policy, FijiDash night review, old-tab exposure) remain open. Any pricing release must come from these `-on-wa` branches (or a re-rebase onto whatever is then in production) and repeat the production drift check first; the Momi pages deploy over the released WhatsApp files, so verify the result screens again after that deployment.
+- Note: the WhatsApp releases were deployed from the review branches `ceo/whatsapp-handoff-nat` / `-fijidash` (not merged to main). Merging them to main is a separate, not-yet-requested step.
