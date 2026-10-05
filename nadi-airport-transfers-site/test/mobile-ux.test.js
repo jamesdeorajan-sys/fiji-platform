@@ -213,7 +213,7 @@ test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line
 });
 
 test('cache-busting versions were bumped for the changed assets', () => {
-  assert.match(html, /app\.js\?v=20260921-mobile-ux/);
+  assert.match(html, /app\.js\?v=20261005-quote-consent/); // bumped again for the P0 #237 quote-consent repair
   assert.match(html, /styles\.css\?v=20260921-mobile-ux/);
 });
 
