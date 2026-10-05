@@ -1,50 +1,53 @@
-# Review package - email follow-up fallback (release preparation)
+# Review package - email follow-up fallback (supplemental checks included)
 
-**Verdict: READY FOR INDEPENDENT REVIEW** (with the open decisions in section 8). Production is unchanged: no deployment, migration, secret change, booking submission or outbound message was made. Staging/prod baseline verified 2026-10-05T21:04Z: Worker `7a32a034` (0b961a4), NAT Pages `e43dc900` (4c2aec1), FijiDash Pages `6346db54` (27f5650); AGENT_SYNC had no newer entries than `a1b5931`.
+**Verdict: READY FOR INDEPENDENT REVIEW** (open decisions in section 9). Production unchanged: no deployment, migration, secret change, merge or outbound message. Candidates preserved for review: Worker `e99e52c`, NAT `5897656`, FijiDash `335c26a` (+ the supplemental commits listed in AGENT_SYNC; code under review is unchanged, supplemental commits add tests, docs and the staff-page release branch).
 
-## 1. Branches and commits (see the AGENT_SYNC entry for the final hashes)
-Worker `ceo/email-followup-worker` (base prod `0b961a4`); NAT `ceo/email-followup-nat` (base released `4c2aec1`); FijiDash `ceo/email-followup-fijidash` (base released `27f5650`). The NAT and FijiDash page branches have NO code change in this round: the reviewed code commits `c50fe3a` / `2c3bde4` stand, plus one test-only commit each (NAT `5897656`, FijiDash `335c26a`: an old-Worker 404 is never shown as success). Changes this round are Worker + staff page + docs only.
+## 1. Evidence index (GitHub repo `jamesdeorajan-sys/fiji-platform`; replace `<ref>` with the commit in AGENT_SYNC or use the branch)
+| Item | Branch | Path |
+|---|---|---|
+| Runbook | `ceo/email-followup-worker` | `nadi-marketplace/worker/EMAIL-FOLLOWUP-RUNBOOK.md` |
+| This review package | same | `nadi-marketplace/worker/REVIEW-PACKAGE-email-followup.md` |
+| Migration | same | `nadi-marketplace/migrations/milestone38-email-followups.sql` |
+| Destructive SQL (manual only) | same | `nadi-marketplace/manual-only/DESTRUCTIVE-milestone38-drop-email-followups.sql.txt` |
+| Worker code | same | `nadi-marketplace/worker/email_followup.mjs`, `worker.js` |
+| Worker tests (23) | same | `nadi-marketplace/worker/email_followup.test.mjs` |
+| Browser test server (real Worker + SQLite) | same | `nadi-marketplace/worker/integration/ef-browser-server.mjs` |
+| Staff page (as developed) | same | `nadi-marketplace/staging-site/admin-email-followups.html`, `admin-escalations.html` |
+| **Staff page RELEASE branch** | `ceo/email-followup-staff-page` (`719b5da`) | same two files, on top of the production-branch tip `20c0f64` |
+| Page module (identical copies) | `ceo/email-followup-nat` / `ceo/email-followup-fijidash` | `nadi-airport-transfers-site/src/email-followup.js` / `ftt-booking-site/src/email-followup.js` |
+| Page module tests (11, identical) | same | `nadi-airport-transfers-site/test/email-followup.test.js` / `ftt-booking-site/email-followup.test.mjs` |
+| Page wiring | same | `src/app.js`, `src/index.html`, `src/styles.css` of each site |
+URL form: `https://github.com/jamesdeorajan-sys/fiji-platform/blob/<branch-or-commit>/<path>`.
 
-## 2. What changed this round (files)
-- `migrations/milestone38-email-followups.sql` (still unapplied): + `designated_owner` column; seeds `email_followup_owner = James` and `email_followup_inbox = tourfijitours@gmail.com`. New `migrations/rollback/milestone38-rollback.sql`.
-- `worker/email_followup.mjs`: designated vs claimed owner; `POST /admin/email-followups/:id/claim` (claim = assign + acknowledge, 409 if someone else holds it); open list = everything not CLOSED, with `age_minutes` and `claim_state`; staff/escalation text "CLAIMED by X" vs "Owner: James - NOT YET CLAIMED" kept in step on claim/correction; any unexpected failure (e.g. migration missing) answers 503 NOT_RECORDED, never "received".
-- `worker/worker.js` (+6 lines): route regex gains `claim`; resolving an escalation that mirrors an OPEN follow-up is refused (409 EMAIL_FOLLOWUP_OPEN, pointer to the follow-up page; guarded so it also works on the pre-migration schema).
-- `staging-site/admin-email-followups.html` (new, smallest usable staff UI in the existing admin area, same login as the other admin pages) and a one-line link from `admin-escalations.html`.
-- `worker/integration/ef-browser-server.mjs` (test tool: real Worker over in-memory SQLite, outbound blocked, forwards Authorization).
-- `worker/email_followup.test.mjs`: 15 -> 21 tests. Docs: `EMAIL-FOLLOWUP-RUNBOOK.md`, this file.
-Page code, fares, booking payloads, WhatsApp wording, same-reference reconciliation, duplicate protection and the corrected-email-through-retries behaviour are untouched this round (their 10 + 10 module tests and suites re-run green).
+## 2. What is under review (summary)
+Durable email follow-up request, token-protected, idempotent per reference; designated owner (James) vs actual claim; staff queue page; mirrored escalation; honest wording (request received != email sent != transfer confirmed); migration additive; no email is sent automatically; fares, booking payloads and WhatsApp wording unchanged.
 
-## 3. Staff workflow evidence (synthetic data, isolated server, outbound blocked)
-- **Automated** (`STAFF WORKFLOW end to end`): find open -> claim -> reply address / phone / site / reference / journey returned -> guest correction now locked -> outcome "EMAIL_SENT_MANUALLY" (CONTACTED, still open) -> "GUEST_CONFIRMED" (CLOSED, linked escalation resolved) with who/when recorded.
-- **Browser:** the new page against the real Worker + SQLite: 2 requests (one saved booking with a differing reply address, one WhatsApp-only ENQUIRY) shown as "2 open · 2 UNCLAIMED" with designated owner James; Claim -> "CLAIMED BY JAMES / ACKNOWLEDGED"; "I emailed the guest" -> CONTACTED; "Guest confirmed" -> CLOSED; the ENQUIRY stays open and is labelled "not a booking".
-- **What the existing escalations page supports (verified):** it lists the "EMAIL FOLLOW-UP REQUIRED | #id | Ref | Email | kind | Site | Status | Owner | Inbox | Guest | journey ..." line and Resolve only. Claim, contact outcome and closure are NOT possible there, and Resolve would have closed the line while the follow-up stayed open - hence the refusal (409) and the new page.
+## 3. Which browser scenarios were rerun against the FINAL combined candidate (2026-10-06) and which rely on earlier evidence
+**Rerun now** (isolated server, real Worker code of the candidate over in-memory SQLite + all migrations incl. milestone38, outbound blocked, synthetic data, 390 wide), final page branches `5897656`/`335c26a`, final staff release page `719b5da`:
+- NAT: saved + triple click (1 booking, 1 follow-up, 1 escalation, designated owner James, unclaimed, site nat, inbox tourfijitours@gmail.com); uncertain (booking committed + response lost -> reconcile -> failed request -> retry; 1 booking, corrected address kept and flagged); WhatsApp-only enquiry (0 bookings).
+- FijiDash: saved + triple click; uncertain via the failure card (card switch, corrected address carried, 1 booking); unsupported-route enquiry (function-driven).
+- Staff release page: 2 requests shown "2 open · 2 UNCLAIMED"; Claim -> CLAIMED BY JAMES / ACKNOWLEDGED; I emailed the guest -> CONTACTED; Guest confirmed -> CLOSED; the ENQUIRY stays open.
+**Relies on earlier unchanged-code evidence** (page code unchanged since): 320-wide layout checks of the email box (NAT and FijiDash), the screenshot review at 390, the defect fix check (corrected email across the card switch) at 320. **Not re-run:** the FijiDash enquiry via a real custom-address booking (function-driven only, because that path needs geocoding); the negotiated-fare screen (no email option).
+**Automated (final code):** Worker 142 tests / 141 pass / 0 fail / **1 skipped - the env-gated live-preview suite (needs `NADI_API_BASE_TEST` = a deployed API): UNVERIFIED, deliberately not run**; NAT 156 pass; FijiDash 6 + 24 + 17 + 11 pass.
 
-## 4. Failed staff alert (tested)
-`FAILED STAFF ALERT`: provider error, thrown network error, and no alert phone configured each leave the request recorded (201), `alert_status` = FAILED / NOT_ATTEMPTED, still on `GET /admin/email-followups?status=open`, and fully actionable (claim -> outcome). The queue, not WhatsApp, is the source of truth; the staff page also shows a warning on such cards.
+## 4. Staff workflow and failed alert
+Unchanged from the previous package: find -> claim -> reply address / phone / site / reference / journey -> outcome -> closed (automated test + browser above). A failed staff alert (provider error, thrown error, no alert phone) leaves the request recorded, on the open queue, claimable and closable; the page warns; the DB queue is authoritative. The existing escalations page shows the mirrored text but cannot claim/record outcomes and now refuses Resolve for an open follow-up.
 
-## 5. FijiDash negotiated-fare email fallback - UNRESOLVED COVERAGE GAP
-- The "Your fare was accepted" card has no email option. That flow has no client booking reference or follow-up token (the booking is created server-side by accept-offer, not through POST /bookings), so adding the option would need either a Worker change (issue a token + reference at accept-offer) or a weaker bypass. Neither was done: no reference was invented and token protection was not loosened.
-- **Recommendation: does NOT block this release.** (1) Production evidence (read-only, 2026-10-05T21:09Z): `negotiation_requests` total 7, 4 in the last 30 days, **0 accepted**, latest 2026-09-26 - the accepted-fare screen has not been reached in production. (2) The card already carries the WhatsApp handoff and, by design (Milestone 31), negotiation is a human-led conversation on the guest's phone number. (3) Fixing it properly is a separate Worker change with its own review. Revisit if negotiation volume or acceptance appears.
+## 5. FijiDash negotiated-fare result - exception, ACCEPTANCE PENDING James's decision
+**What a guest who cannot use WhatsApp actually has on that screen today:** the card ("Your fare was accepted - confirm the details on WhatsApp") offers only (a) the WhatsApp button, prefilled with the fare-request/booking reference, agreed fare and journey, and (b) "Book another transfer". There is **no email option and no phone/call link** on the card. Outside the card the site has its general contact links; the footer "Email us" is the published address `info@fijidash.com`, whose monitoring is **not established**; tourfijitours@gmail.com is not shown anywhere on that screen.
+**What the system does behind it (Worker `handleNegotiationAcceptOffer`):** creates the booking (status accepted, driver assigned), **sends the guest a driver-assigned message on WhatsApp** (useless to a guest without WhatsApp) and **alerts staff** "Negotiated booking #N agreed" on the admin alert phone. The negotiation request carries the guest's name and **phone only - no email address is collected on this path**, so staff have a phone number but no email for that guest. Whether anyone then phones such a guest is a process question that is **not established or verified**.
+**Why it cannot be fixed without more work:** no client booking reference or follow-up token exists on this path (the booking is created server-side by accept-offer); adding one needs a Worker change (issue a token at accept-offer) plus page work. No reference was invented and token protection was not loosened.
+**Evidence on frequency (read-only, 2026-10-05T21:09Z):** `negotiation_requests` total 7, 4 in the last 30 days, 0 accepted, latest 2026-09-26. Zero historical acceptances shows the screen has not been reached; it does **not** prove the gap is harmless.
+**Options for James (decision pending):** (A) accept the exception for the first release with an explicit interim rule: treat the "Negotiated booking agreed" staff alert as a call-the-guest task by the backup/designated owner, and review after 2 weeks; (B) hold the email release until accept-offer issues a token/reference and the card gets the option; (C) accept the exception and add a small interim line on that card (no new promise) after review. Default recommendation unchanged: not a technical blocker, but its acceptance is James's call.
 
-## 5b. Failed command in the previous run
-The one non-zero exit in the previous run was the AGENT_SYNC-append step (`bash: line 21: /c/Users/James/AppData/Local/Temp/claude: Is a directory`): a stray unquoted path being executed as a command inside a long shell line. It did not stop the chain: afterwards `origin/main` was verified at `a1b5931`, the entry present exactly once, the file tail intact and the work tree clean. No code, test or branch was affected, so it does not affect completion; the root cause of the stray token inside that heredoc line was not isolated (cosmetic tooling issue, no state change).
+## 6. Secret and Worker activation
+See runbook section 4 (exact commands, preconditions, why the secret-put step cannot activate an undeployed version, how secrets are retained by `versions upload`/`deploy`, explicit `versions deploy <id>@100`). Evidence used: wrangler 4.147.0 source (`secret put` issues only the secrets API call and surfaces the "latest version isn't currently deployed" refusal; `uploadWorkerVersion` and `deployWorker` pass `keep_bindings` for `secret_text`/`secret_key`), `wrangler.toml` has no `[vars]`, production state read-only (latest version `7a32a034` is the deployed 100% version). Behaviour of the secrets endpoint creating+deploying a version is documented Cloudflare behaviour and was **not exercised** (no production change). No secret value appears anywhere.
 
-## 6. Secret configuration and missing-secret behaviour
-Instructions in the runbook section 4 (generate-and-pipe, never displayed; verify by NAME only). Tested matrix: dedicated secret -> used; only ADMIN_TOKEN -> derived key; neither -> 503 NOT_CONFIGURED and no token (bookings unchanged); cross-key tokens refused; the module never logs secrets/tokens. Production today has `ADMIN_TOKEN` and no `FOLLOWUP_SECRET` (names listed read-only). Setting it creates a Worker version: part of the release sequence, not done now.
+## 7. Data-preserving rollback and old-code compatibility
+Application rollback is the default and keeps the table, rows and settings; destructive SQL is manual-only, outside `migrations/`, `.sql.txt`, guarded. Tests (real SQLite): the previous production Worker `0b961a4` (materialised from git) runs against the migrated schema with real follow-up rows - bookings and replays work, escalations list/resolve work, no email routes (404), rows and settings are byte-identical afterwards, and the documented read-only SELECT returns the outstanding requests; new Worker without the migration answers 503 NOT_RECORDED and still creates bookings; the destructive file refuses to run as shipped. Known quirk: old code's Resolve closes the mirrored escalation line without touching the follow-up row (the row stays and is found by the SELECT). How James reaches requests after any revert: runbook section 6.
 
-## 7. Migration compatibility and rollback (tested on real SQLite)
-- Applies on top of schema + milestones 34-36 with **no change to existing rows** (bookings / escalations counts identical before and after); pure additions (table, 3 indexes, 2 settings rows).
-- **New Worker + schema without the migration:** bookings are created normally; `/email-followup` answers 503 NOT_RECORDED (never "received"); escalation resolve works (guarded lookup). **Old Worker + migration applied:** the table is simply unused. **New pages + old Worker:** `/email-followup` is 404, the pages show "could not record ... use WhatsApp" (module test).
-- **Rollback:** `migrations/rollback/milestone38-rollback.sql` drops the table and the two settings; after it bookings, booking events and escalations are intact (mirrored escalations remain as ordinary staff-visible escalations) and booking creation still works. Export the table first (read-only SELECT) if real requests exist.
+## 8. Operational response
+Replaced with a proposal distinguishing staffed hours, after-hours and urgent pickups (runbook section 3): promptly inspect alerts and the queue at least hourly in staffed hours; first human email within 1 hour of receipt; pickup within 24 hours = priority handling + immediate staff escalation; backup owner and real coverage hours are blank decisions for James; no 24/7 cover assumed; no guest-facing guarantee.
 
-## 8. Remaining blockers and decisions
-No technical blocker. Decisions / confirmations for James:
-1. Accept the proposed internal follow-up target/escalation (runbook section 3) or change it. No guest-facing promise exists.
-2. Confirm how the staging-site (admin pages) deploys: the `nadi-marketplace-staging` Pages project (driver.fijidash.com) is git-connected, so merging to its production branch may auto-deploy the new admin page; confirm the intended deploy path before release.
-3. Approve setting `FOLLOWUP_SECRET` (new Worker version) as release step 1b.
-4. Accept the negotiated-fare gap as non-blocking (section 5).
-5. The staff alert still depends on the existing alert template/phone; recorded per request, queue is authoritative.
-6. Admin tokens do not identify a person: the claimer's name is self-declared and recorded as typed.
-
-## 9. Test evidence
-Worker `node --test *.test.mjs *.test.js`: 140 tests, 139 pass, 0 fail, 1 env-gated skip (live-preview suite); includes 21 email follow-up tests (validation, saved, 10 concurrent duplicate clicks -> 1 row / 1 escalation / 1 booking, token security, correction + lock, uncertain save, enquiry, invalid email, failure honesty, not-configured, rate limit, staff queue, privacy/Meta-safe alert, inbox/site, ownership designated-vs-claimed, staff workflow, escalation-resolve guard, failed-alert visibility, missing secret, migration compatibility + rollback). NAT and FijiDash page suites and the 10 shared module tests re-run green on the unchanged page branches.
+## 9. Remaining decisions / blockers
+No technical blocker found. For James: (1) staffed hours, backup owner and cover hours (runbook section 3); (2) acceptance option for the negotiated-fare exception (section 5); (3) approve the staff-page release path (fast-forward the production branch to `719b5da`) and the secret step; (4) the staff alert still depends on the existing alert template/phone; (5) claimer name is self-declared.

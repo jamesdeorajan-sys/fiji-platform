@@ -4,7 +4,7 @@
 // Run: node --test nadi-marketplace/worker/email_followup.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -241,14 +241,34 @@ test('MISSING SECRET: with FOLLOWUP_SECRET unset the key is DERIVED from ADMIN_T
   assert.ok(!readFileSync(path.join(__dirname, 'email_followup.mjs'), 'utf8').match(/console\.(log|warn|error)\([^)]*(secret|token)/i), 'the module never logs secrets or tokens');
 });
 
-test('MIGRATION COMPATIBILITY + ROLLBACK: milestone38 applies on the existing chain without touching existing rows; the NEW Worker on a schema WITHOUT it still creates bookings normally and answers /email-followup honestly (503 not-recorded, never "received"); rolling the migration back leaves bookings / events / escalations intact and an OLD-style booking still works', async () => {
+const MANUAL_DESTRUCTIVE = path.join(__dirname, '..', 'manual-only', 'DESTRUCTIVE-milestone38-drop-email-followups.sql.txt');
+test('MIGRATION COMPATIBILITY: milestone38 applies on the existing chain without touching existing rows; the NEW Worker on a schema WITHOUT it still creates bookings normally and answers /email-followup honestly (503 not-recorded, never "received"); resolving escalations works on the pre-migration schema', async () => {
   const noMig = new DatabaseSync(':memory:'); noMig.exec(SCHEMA_SQL); for (const m of MIGRATIONS.slice(0, 3)) noMig.exec(m);
   const oldEnv = { DB: d1(noMig), ADMIN_TOKEN: ADMIN }; const pre = await book(oldEnv, 'FD-COMPAT1'); assert.equal(pre.status, 201); const before = { bookings: count(noMig, 'bookings'), escalations: count(noMig, 'escalations') };
   const noTable = await follow(oldEnv, 'FD-COMPAT1', pre.body.followup_token); assert.equal(noTable.status, 503); assert.equal(noTable.body.code, 'NOT_RECORDED'); assert.ok(!noTable.body.received);
   assert.equal((await call(oldEnv, 'POST', '/admin/escalations/1/resolve', undefined, { auth: ADMIN })).status, 404, 'escalation resolve works on the pre-migration schema (guarded lookup)');
   noMig.exec(MIGRATIONS[3]); assert.deepEqual({ bookings: count(noMig, 'bookings'), escalations: count(noMig, 'escalations') }, before, 'applying the migration changes no existing rows'); assert.equal((await follow(oldEnv, 'FD-COMPAT1', pre.body.followup_token)).status, 201);
-  const after = { bookings: count(noMig, 'bookings') }; noMig.exec(readFileSync(path.join(MIGRATIONS_DIR, 'rollback', 'milestone38-rollback.sql'), 'utf8'));
-  assert.equal(noMig.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'email_followups'`).get().n, 0); assert.equal(noMig.prepare(`SELECT COUNT(*) AS n FROM platform_settings WHERE key LIKE 'email_followup%'`).get().n, 0);
-  assert.equal(count(noMig, 'bookings'), after.bookings, 'bookings survive the rollback'); assert.ok(count(noMig, 'escalations') >= 1, 'the mirrored escalation survives as an ordinary staff-visible escalation');
-  assert.equal((await book(oldEnv, 'FD-COMPAT2')).status, 201, 'booking creation still works after the rollback'); assert.equal((await follow(oldEnv, 'FD-COMPAT2', 'x'.repeat(64))).status === 503 || true, true);
+});
+
+test('DATA-PRESERVING ROLLBACK (the default): the PREVIOUS production Worker (0b961a4, materialised from git) running against the schema WITH milestone38 and real follow-up rows creates and replays bookings, lists/resolves escalations, and never touches the follow-up table, its rows or its settings; the outstanding requests stay readable with the documented read-only SELECT; the old code has no email routes (404)', async () => {
+  const { materialise, loadWorker } = await import('./test-fixtures/worker-harness.mjs'); const repoRoot = path.join(__dirname, '..', '..');
+  const dir = materialise({ rev: '0b961a4', repoRoot }); const oldWorker = (await loadWorker(dir)).default;
+  const { env, db } = fresh(); const b = await book(env, 'FD-ROLL1'); await follow(env, 'FD-ROLL1', b.body.followup_token, 'zed.real@example.invalid', { origin_site: 'nat' }); const snapshot = JSON.stringify(db.prepare('SELECT * FROM email_followups ORDER BY id').all()); const settings = JSON.stringify(db.prepare("SELECT key, value FROM platform_settings WHERE key LIKE 'email_followup%' ORDER BY key").all());
+  const oldCall = async (method, url, body, auth) => { const res = await oldWorker.fetch(new Request('https://worker.test' + url, { method, headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.77', ...(auth ? { Authorization: 'Bearer ' + auth } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), env); return { status: res.status, body: await res.json().catch(() => null) }; };
+  const nb = await oldCall('POST', '/bookings', bookingBody('FD-ROLL2')); assert.equal(nb.status, 201); assert.equal(nb.body.followup_token, undefined, 'old code issues no follow-up token'); const replay = await oldCall('POST', '/bookings', bookingBody('FD-ROLL2')); assert.deepEqual([replay.status, replay.body.idempotent], [200, true]);
+  assert.equal((await oldCall('POST', '/email-followup', { client_ref: 'FD-ROLL1', email: 'a@b.co' })).status, 404, 'the old Worker has no email-followup route'); assert.equal((await oldCall('GET', '/admin/email-followups', undefined, ADMIN)).status, 404);
+  const escList = await oldCall('GET', '/admin/escalations?resolved=0', undefined, ADMIN); assert.equal(escList.status, 200); assert.ok(escList.body.escalations.some((e) => /^EMAIL FOLLOW-UP REQUIRED \| #\d+ \| Ref FD-ROLL1 \| Email zed\.real@example\.invalid/.test(e.context)), 'the mirrored escalation (full text: reference, reply address, journey) is still on the existing escalations page');
+  assert.equal(JSON.stringify(db.prepare('SELECT * FROM email_followups ORDER BY id').all()), snapshot, 'follow-up rows untouched by the old code'); assert.equal(JSON.stringify(db.prepare("SELECT key, value FROM platform_settings WHERE key LIKE 'email_followup%' ORDER BY key").all()), settings, 'settings untouched');
+  // the documented read-only recovery query (runbook) returns the outstanding request
+  const rows = db.prepare("SELECT id, client_ref, requested_email, guest_name, guest_phone, origin_site, journey_summary, status, designated_owner, assigned_to, created_at FROM email_followups WHERE status != 'CLOSED' ORDER BY created_at").all(); assert.equal(rows.length, 1); assert.equal(rows[0].requested_email, 'zed.real@example.invalid');
+  // quirk (documented): the OLD escalations Resolve would close the mirrored line without touching the follow-up row; the row stays and is still found by the query above
+  const escId = db.prepare('SELECT escalation_id FROM email_followups').get().escalation_id; assert.equal((await oldCall('POST', `/admin/escalations/${escId}/resolve`, undefined, ADMIN)).status, 200); assert.equal(db.prepare('SELECT status FROM email_followups').get().status, 'REQUESTED');
+});
+
+test('DESTRUCTIVE SQL is manual-only: it is not in migrations/, has no .sql suffix, refuses to run as shipped (guard line), and only removes the table + two settings once a human removes the guard; bookings and escalations survive', () => {
+  assert.ok(!fs.existsSync(path.join(MIGRATIONS_DIR, 'rollback')), 'no rollback directory under migrations/'); assert.ok(fs.readdirSync(MIGRATIONS_DIR).every((f) => !/rollback|drop/i.test(f)));
+  const raw = readFileSync(MANUAL_DESTRUCTIVE, 'utf8'); assert.ok(MANUAL_DESTRUCTIVE.endsWith('.sql.txt')); assert.match(raw, /DESTRUCTIVE - MANUAL ONLY - NOT PART OF ANY ROLLBACK SEQUENCE/);
+  const { db } = fresh(); db.exec("INSERT INTO email_followups (client_ref, kind, requested_email) VALUES ('X-1', 'enquiry', 'a@b.co')"); assert.throws(() => db.exec(raw), /THIS_GUARD_LINE|syntax/i, 'refuses to run as shipped'); assert.equal(count(db, 'email_followups'), 1);
+  const before = { b: count(db, 'bookings'), e: count(db, 'escalations') }; db.exec(raw.split('\n').filter((l) => !l.startsWith('THIS_GUARD_LINE')).join('\n'));
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'email_followups'").get().n, 0); assert.equal(db.prepare("SELECT COUNT(*) AS n FROM platform_settings WHERE key LIKE 'email_followup%'").get().n, 0); assert.deepEqual({ b: count(db, 'bookings'), e: count(db, 'escalations') }, before);
 });

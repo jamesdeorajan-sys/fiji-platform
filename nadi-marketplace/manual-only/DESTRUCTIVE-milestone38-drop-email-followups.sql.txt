@@ -1,0 +1,12 @@
+-- ###########################################################################################################################################
+-- DESTRUCTIVE - MANUAL ONLY - NOT PART OF ANY ROLLBACK SEQUENCE.
+-- This permanently deletes every email follow-up request and the two email_followup_* settings. The NORMAL rollback is APPLICATION rollback (previous Worker /
+-- Pages / staff page), which keeps the table, its rows and its settings untouched (old code ignores them - verified by test). Use this file only if James explicitly
+-- decides the data is no longer wanted, AFTER exporting it:
+--   wrangler d1 execute nadi-marketplace-db --remote --command "SELECT * FROM email_followups ORDER BY id"      (read-only; save the output)
+-- It is deliberately a .txt file outside migrations/, and its first statement below is an intentional syntax error: it will refuse to run until a human deletes
+-- the guard line AND removes the .txt suffix when copying it.
+-- ###########################################################################################################################################
+THIS_GUARD_LINE_MUST_BE_DELETED_BY_A_HUMAN_BEFORE_THIS_CAN_RUN;
+DROP TABLE IF EXISTS email_followups;
+DELETE FROM platform_settings WHERE key IN ('email_followup_owner', 'email_followup_inbox');
