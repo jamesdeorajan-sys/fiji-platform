@@ -80,6 +80,24 @@ export function isNightPickup(pickupTime) {
   if (!isFinite(hour)) return false;
   return hour >= 22 || hour < 6;
 }
+// ─── Approved final fares (James, 2026-10-05) ────────────────────────────
+// A FINAL fare is the amount the guest is quoted and pays: the standard 10% discount is ALREADY INCLUDED, so it is never deducted again. It is not a pre-discount
+// base: nothing is inflated to compensate, and discounts are not disabled anywhere else. An approved final fare applies to ONE route / vehicle / journey only and is
+// recognised only when the caller names it AND every condition of the approval holds; otherwise the normal formula + discount path runs unchanged.
+export const APPROVED_FINAL_FARES = Object.freeze({
+  // Nadi Airport -> Fiji Marriott Resort Momi Bay, minibus, daytime one-way, no extras: FJ$175.92 FINAL.
+  // NOT covered (not newly approved): night pickups, child seat / surfboard (so one-way + extras), returns (the approved 297 / 304 are unaffected), any other vehicle,
+  // any other Momi Bay hotel, tours, custom addresses.
+  MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY: Object.freeze({ pickupZone: 'Nadi Airport', destinationZone: 'Momi Bay', vehicleType: 'minibus', tripType: 'one-way', finalFjd: 175.92, approvedOn: '2026-10-05' }),
+});
+export function resolveApprovedFinalFare({ approvedFareId, pickupZone, destinationZone, vehicleType, tripType, pickupTime, hasChildSeat, hasSurfboard, hasTour, isCustomAddress }) {
+  if (typeof approvedFareId !== 'string' || !Object.prototype.hasOwnProperty.call(APPROVED_FINAL_FARES, approvedFareId)) return null;
+  const a = APPROVED_FINAL_FARES[approvedFareId];
+  if (pickupZone !== a.pickupZone || destinationZone !== a.destinationZone || vehicleType !== a.vehicleType || tripType !== a.tripType) return null;
+  if (hasChildSeat || hasSurfboard || hasTour || isCustomAddress) return null;
+  if (!pickupTime || isNightPickup(pickupTime)) return null;   // daytime only (06:00-21:59); a missing time cannot be verified as day
+  return { id: approvedFareId, finalFjd: a.finalFjd };
+}
 export function applyNightSurcharge(fareFjd, pickupTime) {
   return isNightPickup(pickupTime) ? fareFjd * (1 + NIGHT_SURCHARGE) : fareFjd;
 }

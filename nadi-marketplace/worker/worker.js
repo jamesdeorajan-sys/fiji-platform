@@ -49,7 +49,7 @@
 import {
   RETURN_MULTIPLIER, NIGHT_SURCHARGE, DISCOUNT_RATE, computeBaseFare, applyZoneMultiplier,
   applyTripTypeMultiplier, applyNightSurcharge, applyExtras,
-  applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing,
+  applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing, resolveApprovedFinalFare,
 } from './pricing.mjs';
 
 const JSON_CORS = {
@@ -2929,6 +2929,9 @@ async function createBookingRecord(env, {
   requireQuoteMatch = false,
   // P0 #237: the total the guest was originally shown, sent only when they ACCEPTED a revised price; recorded, never used for pricing.
   revisedFromAmount = null,
+  // Approved final fare (James, 2026-10-05): the id of an explicitly approved FINAL fare (standard discount already included) the caller is quoting. Recognised only for the
+  // one approved route/vehicle/journey (see APPROVED_FINAL_FARES in pricing.mjs); any other value, or any condition not met, is ignored and the normal path runs.
+  approvedFinalFareId = null,
   // Milestone 34 (Issue #34 P0 fix) - client_booking_ref is a stable,
   // guest-widget-generated idempotency key sent on every submit attempt for
   // the same booking (including a retry after a network timeout or a
@@ -3106,7 +3109,10 @@ async function createBookingRecord(env, {
         // undiscounted serverFjd, matching calculateTotal()'s own rule
         // that a tour booking never qualifies for this discount.
         const serverFjd = authoritative.transferPlusExtrasFjd;
-        const serverFjdDiscounted = applyLoyaltyDiscount(serverFjd, false).finalFjd;
+        // An approved FINAL fare replaces "formula then 10% discount" for its one journey (the discount is already included - never applied twice).
+        const approvedFinal = resolveApprovedFinalFare({ approvedFareId: approvedFinalFareId, pickupZone, destinationZone, vehicleType, tripType, pickupTime, hasChildSeat, hasSurfboard, hasTour, isCustomAddress });
+        const serverFjdDiscounted = approvedFinal ? approvedFinal.finalFjd : applyLoyaltyDiscount(serverFjd, false).finalFjd;
+        if (approvedFinal) pricingVersion = `${pricingVersion}|approved-final-fare:${approvedFinal.id}`;
         calculatedAmount = serverFjdDiscounted;
 
         // Milestone 26 - real gap an independent pre-launch review found:
@@ -3213,7 +3219,7 @@ async function createBookingRecord(env, {
           }
           distanceKm = authoritative.distanceKm; // server-derived distance is still trustworthy independent of which price source is used
           if (pricingAdjustment) pricingDecision = { outcome: 'replaced_legacy', reason: 'outside_0.8x_1.3x_band_replaced_legacy' };
-          else if (Math.abs(submittedAmount - serverFjdDiscounted) < 0.005) pricingDecision = Number.isFinite(revisedFromAmount) ? { outcome: 'accepted_revised', reason: 'guest_accepted_revised_price' } : { outcome: 'matched', reason: 'none' };
+          else if (Math.abs(submittedAmount - serverFjdDiscounted) < 0.005) pricingDecision = Number.isFinite(revisedFromAmount) ? { outcome: 'accepted_revised', reason: 'guest_accepted_revised_price' } : { outcome: 'matched', reason: approvedFinal ? 'approved_final_fare' : 'none' };
           else pricingDecision = { outcome: 'kept_in_band', reason: 'within_0.8x_1.3x_of_calculated' };
         } else if (isCustomAddress && !hasTour) {
           // Real gap found during Step 4 planning: the server can't yet
@@ -3791,6 +3797,7 @@ async function handleGuestBookingCreate(request, env, ctx) {
     hasChildSeat: body.has_child_seat === true,
     hasSurfboard: body.has_surfboard === true,
     requireQuoteMatch: body.require_quote_match === true,
+    approvedFinalFareId: typeof body.approved_final_fare_id === 'string' ? body.approved_final_fare_id.slice(0, 64) : null,
     revisedFromAmount: body.revised_from_amount !== undefined && body.revised_from_amount !== null && isFinite(Number(body.revised_from_amount)) ? Number(body.revised_from_amount) : null,
     actor: 'guest', // the public guest widget - a real guest's own booking submission
   });
