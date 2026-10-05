@@ -81,6 +81,8 @@
         if (!rec || !rec.ok) { setStatus(box, 'error', 'We could not reach our booking system, so nothing has been requested yet. Your details are kept. Please try again, or use WhatsApp.'); return; }
         if (sess.ctx.onReconciled) { try { sess.ctx.onReconciled(rec); } catch (e) { /* display only */ } }
         box = sess.box;   // the page may have switched to its "saved" card, which re-mounted this session
+        var typed = q(box, '.ef-email'); if (typed) typed.value = email;   // carry the guest's (possibly corrected) address onto the new card so a retry never reverts it
+        var panelNow = q(box, '.ef-panel'); if (panelNow) panelNow.hidden = false;
         if (!rec.followupToken) { setStatus(box, 'error', 'Your reservation request is saved, but email follow-up is not available right now. Please use WhatsApp.'); return; }
         sess.token = rec.followupToken; sess.mode = 'saved';
       }
