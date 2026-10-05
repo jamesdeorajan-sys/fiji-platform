@@ -34,7 +34,8 @@ test('Momi minibus is exactly the approved figures: 175.92 FINAL one-way (no fur
 test('sedan and minivan return figures are reconciled to the calculator (185/166 and 280/252) - their fare rules are untouched', () => {
   assert.deepEqual([rows.Sedan.oneWay.subtotal, rows.Sedan.oneWay.final, rows.Sedan.ret.subtotal, rows.Sedan.ret.final], [99, 89, 185, 166]);
   assert.deepEqual([rows.Minivan.oneWay.subtotal, rows.Minivan.oneWay.final, rows.Minivan.ret.subtotal, rows.Minivan.ret.final], [149, 134, 280, 252]);
-  for (const stale of ['FJ$183', 'FJ$276', 'FJ$146', 'FJ$79']) assert.equal(html.includes(stale), false, `no stale figure ${stale}`);
+  for (const stale of ['FJ$276', 'FJ$146', 'FJ$79']) assert.equal(html.includes(stale), false, `no stale figure ${stale}`);
+  assert.equal(/FJ\$183(?!\.92)/.test(html), false, 'no stale FJ$183 (FJ$183.92 is the approved child-seat total)');
 });
 test('the visible FAQ and the FAQPage JSON-LD give the same answer, with every figure from the calculator and extras stated as additional', () => {
   const visible = html.match(/<div class="rp-faq-item"><h3>How much does a Nadi Airport to Fiji Marriott Resort Momi Bay transfer cost\?<\/h3><p>([^<]*)<\/p>/)[1];
@@ -58,7 +59,8 @@ test('the visible short answer and the table note distinguish before and after d
   assert.match(html, /FJ\$99<\/strong> one-way before the booking discount \(<strong>FJ\$89<\/strong> after the existing 10% discount\) and <strong>FJ\$185<\/strong> return \(<strong>FJ\$166<\/strong> after\)/);
   assert.match(html, /the first figure is the fare before discount and the second is what the booking tool quotes after the existing 10% discount/);
   assert.match(html, /The minibus one-way FJ\$175\.92 is a final fare: the standard discount is already included and no further discount is taken/);
-  assert.match(html, /Extras are additional: child seat FJ\$8 and surfboard FJ\$24 per booking, added before the discount/);
+  assert.match(html, /Extras on the minibus one-way are added at their listed price with no further discount \(FJ\$183\.92 with a child seat, FJ\$199\.92 with a surfboard, FJ\$207\.92 with both\)/);
+  assert.match(html, /For the other fares, extras are additional \(child seat FJ\$8, surfboard FJ\$24 per booking\)/);
 });
 test('SCOPE: only this route page and its test changed; the deployed booking repairs are intact in app.js', () => {
   for (const c of ['require_quote_match: true', 'Accept revised price and submit', 'keyAtSubmit !== fareOverrideKey()', 'function fareText(n)', 'm:175.92']) assert.ok(app.join('\n').includes(c), c);
