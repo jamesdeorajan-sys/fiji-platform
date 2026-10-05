@@ -114,20 +114,25 @@ const DISCOUNT_RATE      = 0.10; // 10% off
 function bookingHasTour() {
   return !!state.selectedTour;
 }
-// James-approved FINAL fare (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime ONE-WAY, no paid extras = FJ$175.92 as the FINAL fare. The standard 10% discount is
-// ALREADY INCLUDED in it, so it is never deducted again, and 175.92 is never described as a pre-discount amount. It is one route / vehicle / journey: night pickups, one-way + extras,
-// returns (the approved 297 / 304 are unchanged), every other vehicle and every other route keep the normal arithmetic. The same id is sent to the booking system, which recognises it
-// only for this exact journey (nothing is inflated to compensate for the discount and discounts are not disabled anywhere else).
+// James-approved FINAL fare (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime (06:00-21:59) ONE-WAY: the TRANSFER is FJ$175.92 as the FINAL fare. The standard 10%
+// discount is ALREADY INCLUDED in it, so it is never deducted again, and 175.92 is never described as a pre-discount amount. Extras are added at their listed price (child seat FJ$8, surfboard
+// FJ$24) and NO standard discount applies to the transfer or to its extras: totals 175.92 / 183.92 / 199.92 / 207.92. Night pickups (HOLD - not approved), returns (the approved 297 / 304 are
+// unchanged), tours, other vehicles and other routes keep the normal arithmetic. The same id is sent to the booking system, which recognises it only for this exact journey.
 const APPROVED_FINAL_FARE_ID = 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY';
 const APPROVED_FINAL_FARE_FJD = 175.92;
 function approvedFinalFareFor(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
-  if (k !== 'minibus' || state.tripType !== 'one-way' || state.extrasTotal !== 0 || state.selectedTour) return null;
+  if (k !== 'minibus' || state.tripType !== 'one-way' || ![0, 8, 24, 32].includes(state.extrasTotal) || state.selectedTour) return null;
   if (document.getElementById('pickup')?.value !== 'NAN' || document.getElementById('destination')?.value !== 'MARRIOTT_MOMI') return null;
   if (isNightPickup() || state.prices[k] !== APPROVED_FINAL_FARE_FJD) return null;   // daytime only (06:00-21:59); the catalogue figure must be the published one
-  return { id: APPROVED_FINAL_FARE_ID, finalFjd: APPROVED_FINAL_FARE_FJD };
+  return { id: APPROVED_FINAL_FARE_ID, transferFjd: APPROVED_FINAL_FARE_FJD, extrasFjd: state.extrasTotal, finalFjd: Math.round((APPROVED_FINAL_FARE_FJD + state.extrasTotal) * 100) / 100 };
 }
-// the routes table lists day one-way fares without extras, so the Momi minibus cell is the approved final fare
+// The general "10% off" banner is untrue for the approved final fare (the discount is already inside it), so it says so when that destination is selected.
+function discountBannerText(destValue) {
+  return destValue === 'MARRIOTT_MOMI'
+    ? `10% off automatically applied to bookings over ${formatPrice(DISCOUNT_THRESHOLD)} (not on the Momi Bay Marriott minibus one-way, which is a final fare with the discount already included)`
+    : `10% off automatically applied to bookings over ${formatPrice(DISCOUNT_THRESHOLD)}`;
+}
 // James-approved Momi minibus RETURN figures (existing Nadi convention: one-way x1.85 rounded up to FJ$5, then the standard discount: 297, or 304 with a child seat). The review step must not
 // replace them with the booking system's own return figure (292.45 / 300.45). Minibus return trips to this one destination only.
 function approvedMomiMinibusReturn(vehicleKey) {
@@ -143,7 +148,7 @@ function calculateTotal(vehicleKey) {
   };
   const approvedFinal = approvedFinalFareFor(k);
   if (approvedFinal) {   // FINAL fare: no discount row, no second 10%
-    return { vehiclePrice: approvedFinal.finalFjd, extras: 0, tourPerPax: 0, tourTotal: 0, transferSubtotal: approvedFinal.finalFjd, subtotal: approvedFinal.finalFjd, discount: 0, final: approvedFinal.finalFjd,
+    return { vehiclePrice: approvedFinal.transferFjd, extras: approvedFinal.extrasFjd, tourPerPax: 0, tourTotal: 0, transferSubtotal: approvedFinal.finalFjd, subtotal: approvedFinal.finalFjd, discount: 0, final: approvedFinal.finalFjd,
       qualifies: false, suppressedByTour: false, hasTour: false, approvedFinalFare: true };
   }
   const vehiclePrice = state.prices[k];
@@ -1193,7 +1198,7 @@ function updatePricing() {
       if (txt) txt.textContent = '10% loyalty discount applies to transfer-only bookings — your tour already includes its own listed discount';
       banner.classList.add('discount-banner--tour');
     } else {
-      if (txt) txt.textContent = `10% off automatically applied to bookings over ${formatPrice(DISCOUNT_THRESHOLD)}`;
+      if (txt) txt.textContent = discountBannerText(document.getElementById('destination')?.value);
       banner.classList.remove('discount-banner--tour');
     }
   }
@@ -1316,7 +1321,7 @@ function buildVehicleCards() {
       ? `<div class="vehicle-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}</div>
          <div class="vehicle-price-sub">10% off applied</div>`
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
-         <div class="vehicle-price-sub">${t.approvedFinalFare ? 'final fare, no further discount' : 'per vehicle'}</div>`;
+         <div class="vehicle-price-sub">${t.approvedFinalFare ? 'transfer is a final fare, no further discount' : 'per vehicle'}</div>`;
     return `
       <div class="${cls.join(' ')}" ${onclick}>
         ${badge}
