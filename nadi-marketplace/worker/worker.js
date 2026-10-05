@@ -473,7 +473,7 @@ export default {
     if (request.method === 'GET' && url.pathname === '/admin/email-followups') {
       return emailFollowup().handleAdminList(request, env, url);
     }
-    const emailFollowupActionMatch = url.pathname.match(/^\/admin\/email-followups\/(\d+)\/(assign|acknowledge|outcome)$/);
+    const emailFollowupActionMatch = url.pathname.match(/^\/admin\/email-followups\/(\d+)\/(assign|claim|acknowledge|outcome)$/);
     if (request.method === 'POST' && emailFollowupActionMatch) {
       return emailFollowup().handleAdminAction(request, env, Number(emailFollowupActionMatch[1]), emailFollowupActionMatch[2]);
     }
@@ -1410,6 +1410,10 @@ async function handleAdminResolveEscalation(request, env, escalationId) {
   const escalation = await env.DB.prepare(`SELECT id, resolved FROM escalations WHERE id = ?`).bind(escalationId).first();
   if (!escalation) return json({ ok: false, error: 'Escalation not found.' }, 404);
   if (escalation.resolved) return json({ ok: true, id: escalationId, resolved: true, already: true }, 200);
+  // Milestone 38: an escalation that mirrors an OPEN email follow-up is closed from the follow-up queue (with a recorded contact outcome), never silently from here.
+  let linkedFollowup = null;
+  try { linkedFollowup = await env.DB.prepare(`SELECT id, status FROM email_followups WHERE escalation_id = ?`).bind(escalationId).first(); } catch { /* table not present: pre-migration schema */ }
+  if (linkedFollowup && linkedFollowup.status !== 'CLOSED') return json({ ok: false, code: 'EMAIL_FOLLOWUP_OPEN', error: `This escalation is email follow-up #${linkedFollowup.id}. Record the contact outcome on the Email follow-ups page to close it.` }, 409);
 
   await env.DB.prepare(`UPDATE escalations SET resolved = 1 WHERE id = ?`).bind(escalationId).run();
   return json({ ok: true, id: escalationId, resolved: true }, 200);

@@ -17,6 +17,7 @@
 //   * Once staff have acknowledged the request the guest can no longer change the address through the public endpoint (they must reply to the team).
 // Syntax validation is NOT proof of deliverability: validateEmail() only rejects what cannot possibly be a single mailbox address.
 
+export const DEFAULT_OWNER = 'James';   // initial operational owner (James-confirmed 2026-10-06); the setting email_followup_owner overrides it
 export const DEFAULT_RECEIVING_INBOX = 'tourfijitours@gmail.com';   // James-confirmed central inbox monitored by the human team (receiving inbox ONLY - no sender is configured or authorised)
 const ORIGIN_SITES = Object.freeze({ nat: 'nadiairporttransfers.com', fijidash: 'book.fijidash.com' });
 const REF_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{4,63}$/;
@@ -100,6 +101,7 @@ const publicView = (row, extra = {}) => ({
 
 export function createEmailFollowupHandlers(deps) {
   const { json, getSetting, requireAdmin, createEscalation, logBookingEvent, timingSafeEqual } = deps;
+  const ownerFor = async (env) => { const v = await getSetting(env, 'email_followup_owner', DEFAULT_OWNER); return v === '' ? null : (v || DEFAULT_OWNER); };
   const inboxFor = async (env) => (await getSetting(env, 'email_followup_inbox', DEFAULT_RECEIVING_INBOX)) || DEFAULT_RECEIVING_INBOX;
 
   async function rateLimited(env, ip) {
@@ -110,6 +112,14 @@ export function createEmailFollowupHandlers(deps) {
 
   // POST /email-followup
   async function handleCreate(request, env) {
+    try { return await handleCreateInner(request, env); } catch (err) {
+      // e.g. the Worker is live but milestone38 has not been applied: say so honestly, never "received"
+      console.error('[email-followup] unexpected failure:', err.message);
+      return json({ ok: false, code: 'NOT_RECORDED', errors: ['We could not record your request. Nothing was received - please try again, or use WhatsApp.'] }, 503);
+    }
+  }
+
+  async function handleCreateInner(request, env) {
     if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
     let body; try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
     if (!body || typeof body !== 'object') return json({ ok: false, error: 'Invalid JSON.' }, 400);
@@ -162,8 +172,8 @@ export function createEmailFollowupHandlers(deps) {
     }
     let insertedId;
     try {
-      const ins = await env.DB.prepare(`INSERT INTO email_followups (client_ref, kind, booking_id, guest_name, guest_phone, requested_email, booking_email, email_differs, journey_summary, source_ip, origin_site, receiving_inbox) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(ref, row.kind, row.booking_id, row.guest_name, row.guest_phone, ev.email, row.booking_email, row.email_differs, row.journey_summary, ip, originSite, await inboxFor(env)).run();
+      const ins = await env.DB.prepare(`INSERT INTO email_followups (client_ref, kind, booking_id, guest_name, guest_phone, requested_email, booking_email, email_differs, journey_summary, source_ip, origin_site, receiving_inbox, designated_owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(ref, row.kind, row.booking_id, row.guest_name, row.guest_phone, ev.email, row.booking_email, row.email_differs, row.journey_summary, ip, originSite, await inboxFor(env), await ownerFor(env)).run();
       insertedId = ins.meta.last_row_id;
     } catch (err) {
       // a concurrent double-click inserted it first (UNIQUE client_ref): answer from the winning row, never a second task
@@ -186,17 +196,17 @@ export function createEmailFollowupHandlers(deps) {
 
   function buildContext(r) {
     // the staff alert truncates at ~200 characters, so the essentials come first: required action, reference, email, kind
-    return oneLine(`EMAIL FOLLOW-UP REQUIRED | #${r.id || 'new'} | Ref ${r.client_ref} | Email ${r.requested_email}${r.email_differs ? ' (DIFFERS from booking email - verify first)' : ''}${r.corrected ? ' (corrected by guest)' : ''} | ${r.kind === 'enquiry' ? 'ENQUIRY - no saved booking, human review, not a booking' : `Booking #${r.booking_id}`} | Site ${ORIGIN_SITES[r.origin_site] || 'unknown'} | Status ${r.status || 'REQUESTED'} | Owner ${r.assigned_to || 'UNASSIGNED QUEUE'} | Inbox ${r.receiving_inbox || DEFAULT_RECEIVING_INBOX} | Guest ${r.guest_name || '-'} ${r.guest_phone || ''} | ${r.journey_summary || ''} | No email has been sent`, 1500);
+    return oneLine(`EMAIL FOLLOW-UP REQUIRED | #${r.id || 'new'} | Ref ${r.client_ref} | Email ${r.requested_email}${r.email_differs ? ' (DIFFERS from booking email - verify first)' : ''}${r.corrected ? ' (corrected by guest)' : ''} | ${r.kind === 'enquiry' ? 'ENQUIRY - no saved booking, human review, not a booking' : `Booking #${r.booking_id}`} | Site ${ORIGIN_SITES[r.origin_site] || 'unknown'} | Status ${r.status || 'REQUESTED'} | ${r.assigned_to ? `CLAIMED by ${r.assigned_to}` : `Owner: ${r.designated_owner || 'none designated'} - NOT YET CLAIMED`} | Inbox ${r.receiving_inbox || DEFAULT_RECEIVING_INBOX} | Guest ${r.guest_name || '-'} ${r.guest_phone || ''} | ${r.journey_summary || ''} | No email has been sent`, 1500);
   }
 
   async function handleAdminList(request, env, url) {
     if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
     if (!env.DB) return json({ followups: [] }, 503);
     const status = url.searchParams.get('status');
-    const where = status && status !== 'all' ? (status === 'open' ? `WHERE status IN ('REQUESTED','ACKNOWLEDGED')` : `WHERE status = ?`) : '';
-    const stmt = env.DB.prepare(`SELECT * FROM email_followups ${where} ORDER BY created_at ASC LIMIT 200`);
+    const where = status && status !== 'all' ? (status === 'open' ? `WHERE status != 'CLOSED'` : `WHERE status = ?`) : '';
+    const stmt = env.DB.prepare(`SELECT *, CAST((julianday('now') - julianday(created_at)) * 1440 AS INTEGER) AS age_minutes FROM email_followups ${where} ORDER BY created_at ASC LIMIT 200`);
     const res = status && status !== 'all' && status !== 'open' ? await stmt.bind(String(status).toUpperCase()).all() : await stmt.all();
-    return json({ ok: true, followups: (res.results || []).map((r) => ({ ...r, assigned_to: r.assigned_to || null, queue: r.assigned_to ? 'ASSIGNED' : 'UNASSIGNED' })) }, 200);
+    return json({ ok: true, followups: (res.results || []).map((r) => ({ ...r, assigned_to: r.assigned_to || null, claim_state: r.assigned_to ? 'CLAIMED' : 'UNCLAIMED' })) }, 200);
   }
 
   async function readAdminBody(request) { try { const b = await request.json(); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
@@ -212,7 +222,16 @@ export function createEmailFollowupHandlers(deps) {
       const owner = b.assigned_to === null ? null : label(b.assigned_to);
       if (b.assigned_to !== null && !owner) return json({ ok: false, errors: ['assigned_to must be a name, or null for the unassigned queue.'] }, 400);
       await env.DB.prepare(`UPDATE email_followups SET assigned_to = ?, assigned_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`).bind(owner, id).run();
-      return json({ ok: true, id, assigned_to: owner, queue: owner ? 'ASSIGNED' : 'UNASSIGNED' }, 200);
+      return json({ ok: true, id, assigned_to: owner, claim_state: owner ? 'CLAIMED' : 'UNCLAIMED' }, 200);
+    }
+    if (action === 'claim') {
+      // claiming = taking the follow-up AND acknowledging it in one step (this is also what locks the guest's own address correction)
+      const by = label(b.by); if (!by) return json({ ok: false, errors: ['by (who is claiming) is required.'] }, 400);
+      if (row.assigned_to && row.assigned_to !== by) return json({ ok: false, code: 'ALREADY_CLAIMED', claimed_by: row.assigned_to }, 409);
+      await env.DB.prepare(`UPDATE email_followups SET assigned_to = ?, assigned_at = COALESCE(assigned_at, datetime('now')), status = CASE WHEN status = 'REQUESTED' THEN 'ACKNOWLEDGED' ELSE status END, acknowledged_at = COALESCE(acknowledged_at, datetime('now')), acknowledged_by = COALESCE(acknowledged_by, ?), updated_at = datetime('now') WHERE id = ?`).bind(by, by, id).run();
+      const after = await env.DB.prepare(`SELECT * FROM email_followups WHERE id = ?`).bind(id).first();
+      if (after.escalation_id) await env.DB.prepare(`UPDATE escalations SET context = ? WHERE id = ? AND resolved = 0`).bind(buildContext(after), after.escalation_id).run();   // keep the existing escalations page truthful: CLAIMED by ...
+      return json({ ok: true, id, claim_state: 'CLAIMED', claimed_by: by, status: after.status, reply_email: after.requested_email, guest_name: after.guest_name, guest_phone: after.guest_phone, journey: after.journey_summary, origin_site: after.origin_site, reference: after.client_ref }, 200);
     }
     if (action === 'acknowledge') {
       const by = label(b.by); if (!by) return json({ ok: false, errors: ['by (who is acknowledging) is required.'] }, 400);

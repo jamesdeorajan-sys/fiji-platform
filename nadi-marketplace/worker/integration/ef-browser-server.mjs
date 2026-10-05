@@ -17,7 +17,7 @@ const MIG = ['milestone34-booking-idempotency-and-contact-fields.sql', 'mileston
 const d1 = (db) => ({ prepare(sql) { let a = []; const api = { bind(...x) { a = x; return api; }, async first() { const r = db.prepare(sql).get(...a); return r === undefined ? null : r; }, async all() { return { results: db.prepare(sql).all(...a) }; }, async run() { const i = db.prepare(sql).run(...a); return { meta: { changes: i.changes, last_row_id: i.lastInsertRowid } }; } }; return api; } });
 let db, env, blocked, apiLog, loseNext = false;
 const reset = () => { db = new DatabaseSync(':memory:'); db.exec(SCHEMA); for (const m of MIG) db.exec(m); db.prepare(`UPDATE platform_settings SET value = '+6799999999' WHERE key = 'admin_alert_phone'`).run(); env = { DB: d1(db), ADMIN_TOKEN: 'browser-test-admin', WHATSAPP_TOKEN: 'TEST', WHATSAPP_PHONE_ID: 'TEST' }; blocked = []; apiLog = []; loseNext = false; }; reset();
-const GUARD = `<script>(function(){var API=['https://api.nadiairporttransfers.com','https://api.fijidash.com'];var f=window.fetch.bind(window);window.__blocked=[];
+const GUARD = `<script>(function(){var API=['https://api.nadiairporttransfers.com','https://api.fijidash.com','https://nadi-dispatch-api.helpronline.workers.dev'];var f=window.fetch.bind(window);window.__blocked=[];
 window.fetch=function(u,o){u=String(u&&u.url||u);for(var i=0;i<API.length;i++){if(u.indexOf(API[i])===0){return f('/api'+u.slice(API[i].length),o);}}if(u.indexOf('/')===0||u.indexOf(location.origin)===0){return f(u,o);}window.__blocked.push('fetch '+u);return Promise.reject(new TypeError('blocked by the test harness'));};
 var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){u=String(u);if(u.indexOf(location.origin)!==0&&u.indexOf('/')!==0){window.__blocked.push('xhr '+u);u='/__blocked';}return xo.apply(this,[m,u].concat([].slice.call(arguments,2)));};
 navigator.sendBeacon=function(u){window.__blocked.push('beacon '+u);return true;};window.open=function(u){window.__blocked.push('window.open '+u);return null;};})();</script>`;
@@ -38,7 +38,7 @@ http.createServer(async (req, res) => {
   if (u.pathname.startsWith('/api/')) {
     const text = req.method === 'GET' ? '' : await readBody(req); const p = u.pathname.slice(4) + u.search;
     if (/^\/reference-fare/.test(p)) { apiLog.push({ path: p, outcome: 'reference-fare answered by the stub (not exercised here)' }); return send(res, 404, { ok: false }); }
-    const r = await callWorker(p, req.method, text); let bodyIn = {}; try { bodyIn = JSON.parse(text || '{}'); } catch { /* none */ }
+    const r = await callWorker(p, req.method, text, req.headers.authorization ? { Authorization: req.headers.authorization } : {}); let bodyIn = {}; try { bodyIn = JSON.parse(text || '{}'); } catch { /* none */ }
     apiLog.push({ path: u.pathname, status: r.status, ref: bodyIn.client_booking_ref || bodyIn.client_ref, code: r.body && r.body.code, idempotent: r.body && r.body.idempotent, created: r.body && r.body.created, kind: r.body && r.body.kind, token_returned: !!(r.body && (r.body.followup_token || r.body.token)) });
     if (u.pathname === '/api/bookings' && req.method === 'POST' && loseNext) { loseNext = false; apiLog.push({ note: 'response DROPPED after the Worker committed' }); return req.socket.destroy(); }
     return send(res, r.status, r.body);

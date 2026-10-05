@@ -25,7 +25,8 @@ CREATE TABLE email_followups (
   origin_site TEXT,          -- 'nat' (nadiairporttransfers.com) | 'fijidash' (book.fijidash.com) | 'unknown'
   receiving_inbox TEXT,      -- the monitored human inbox at request time (James-confirmed: tourfijitours@gmail.com); a RECEIVING inbox only, no sender
   status TEXT NOT NULL DEFAULT 'REQUESTED' CHECK (status IN ('REQUESTED', 'ACKNOWLEDGED', 'CONTACTED', 'CLOSED')),
-  assigned_to TEXT,
+  designated_owner TEXT,     -- who is RESPONSIBLE by policy when the request arrives (platform_settings 'email_followup_owner'); NOT proof anyone has picked it up
+  assigned_to TEXT,          -- who has actually CLAIMED it (NULL = unclaimed); claiming also acknowledges
   assigned_at TEXT,
   acknowledged_at TEXT,
   acknowledged_by TEXT,
@@ -44,3 +45,8 @@ CREATE TABLE email_followups (
 CREATE INDEX idx_email_followups_status ON email_followups(status, created_at);
 CREATE INDEX idx_email_followups_booking ON email_followups(booking_id);
 CREATE INDEX idx_email_followups_ip ON email_followups(source_ip, created_at);
+
+-- Initial operational owner (James, recorded 2026-10-06): he monitors tourfijitours@gmail.com and owns email follow-ups during initial testing. This is the DESIGNATED owner;
+-- each request still shows UNCLAIMED until a staff member actually claims it.
+INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('email_followup_owner', 'James');
+INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('email_followup_inbox', 'tourfijitours@gmail.com');

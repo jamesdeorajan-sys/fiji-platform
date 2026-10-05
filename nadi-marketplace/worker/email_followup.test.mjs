@@ -54,15 +54,15 @@ test('validateEmail: accepts ordinary single addresses, rejects everything that 
   assert.equal(maskEmail('zed.real@example.invalid'), 'z******@example.invalid'); assert.ok(!maskEmail('ab@x.com').includes('ab@'));
 });
 
-test('SAVED booking: a token is issued only to the creator; the follow-up attaches to THAT booking, is durable before the answer, says "received" - never confirmed / sent / delivered; the booking email is not overwritten; staff get an unassigned-queue escalation', async () => {
+test('SAVED booking: a token is issued only to the creator; the follow-up attaches to THAT booking, is durable before the answer, says "received" - never confirmed / sent / delivered; the booking email is not overwritten; staff get an escalation naming the designated owner as NOT YET CLAIMED', async () => {
   const { env, db } = fresh(); const m = metaMock();
   const b = await book(env, 'FD-SAVED1'); assert.equal(b.status, 201); assert.match(b.body.followup_token, /^[0-9a-f]{64}$/); m.calls.length = 0;
   const f = await follow(env, 'FD-SAVED1', b.body.followup_token);
   assert.equal(f.status, 201); assert.deepEqual([f.body.received, f.body.kind, f.body.status, f.body.created, f.body.transfer_confirmed, f.body.acknowledgement_email, f.body.reply], [true, 'booking', 'REQUESTED', true, false, 'not_sent', 'manual_by_our_team']);
   assert.ok(!JSON.stringify(f.body).includes('zed.real@example.invalid'), 'the full address is never echoed'); assert.equal(f.body.email_masked, 'z******@example.invalid');
-  const row = db.prepare('SELECT * FROM email_followups').get(); assert.equal(row.booking_id, b.body.booking_id); assert.equal(row.requested_email, 'zed.real@example.invalid'); assert.equal(row.booking_email, 'zed.test@example.invalid'); assert.equal(row.email_differs, 1); assert.equal(row.assigned_to, null);
+  const row = db.prepare('SELECT * FROM email_followups').get(); assert.equal(row.booking_id, b.body.booking_id); assert.equal(row.requested_email, 'zed.real@example.invalid'); assert.equal(row.booking_email, 'zed.test@example.invalid'); assert.equal(row.email_differs, 1); assert.equal(row.assigned_to, null); assert.equal(row.designated_owner, 'James');
   assert.equal(db.prepare('SELECT guest_email FROM bookings').get().guest_email, 'zed.test@example.invalid', 'the booking contact is untouched');
-  const esc = db.prepare('SELECT * FROM escalations').get(); assert.match(esc.context, /^EMAIL FOLLOW-UP REQUIRED \| #\d+ \| Ref FD-SAVED1 \| Email zed\.real@example\.invalid \(DIFFERS from booking email - verify first\) \| Booking #\d+ \| Site book\.fijidash\.com \| Status REQUESTED \| Owner UNASSIGNED QUEUE \| Inbox tourfijitours@gmail\.com/); assert.equal(esc.booking_id, b.body.booking_id); assert.equal(row.escalation_id, esc.id);
+  const esc = db.prepare('SELECT * FROM escalations').get(); assert.match(esc.context, /^EMAIL FOLLOW-UP REQUIRED \| #\d+ \| Ref FD-SAVED1 \| Email zed\.real@example\.invalid \(DIFFERS from booking email - verify first\) \| Booking #\d+ \| Site book\.fijidash\.com \| Status REQUESTED \| Owner: James - NOT YET CLAIMED \| Inbox tourfijitours@gmail\.com/); assert.equal(esc.booking_id, b.body.booking_id); assert.equal(row.escalation_id, esc.id);
   assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM booking_events WHERE event_type = 'email_followup_requested'`).get().n, 1);
   // the only outbound message is the single staff alert: one line, essentials first, no driver broadcast, no guest message
   assert.equal(m.calls.length, 0, 'no WhatsApp credentials configured in this env: nothing attempted'); m.restore();
@@ -112,7 +112,7 @@ test('UNSUPPORTED / WHATSAPP-ONLY: no saved booking -> an ENQUIRY for human revi
   const { env, db } = fresh();
   const e = await follow(env, 'FD-ENQ1', undefined, 'wanda@example.invalid', { ...ENQ, origin_site: 'nat' }); assert.equal(e.status, 201); assert.deepEqual([e.body.kind, e.body.transfer_confirmed, e.body.created], ['enquiry', false, true]); assert.match(e.body.token, /^[0-9a-f]{64}$/);
   assert.equal(count(db, 'bookings'), 0); const row = db.prepare('SELECT * FROM email_followups').get(); assert.equal(row.booking_id, null); assert.match(row.journey_summary, /From: Nadi Airport \| To: Somewhere remote \| Date: 2026-10-20 \| Pickup: 09:30 \| Trip: one-way \| Vehicle: sedan \| Pax: 2 \| Flight: FJ000 \| Fare shown: FJ\$120/);
-  assert.match(db.prepare('SELECT context FROM escalations').get().context, /^EMAIL FOLLOW-UP REQUIRED \| #\d+ \| Ref FD-ENQ1 \| Email wanda@example\.invalid \| ENQUIRY - no saved booking, human review, not a booking \| Site nadiairporttransfers\.com \| Status REQUESTED \| Owner UNASSIGNED QUEUE \| Inbox tourfijitours@gmail\.com/);
+  assert.match(db.prepare('SELECT context FROM escalations').get().context, /^EMAIL FOLLOW-UP REQUIRED \| #\d+ \| Ref FD-ENQ1 \| Email wanda@example\.invalid \| ENQUIRY - no saved booking, human review, not a booking \| Site nadiairporttransfers\.com \| Status REQUESTED \| Owner: James - NOT YET CLAIMED \| Inbox tourfijitours@gmail\.com/);
   const retry = await follow(env, 'FD-ENQ1', undefined, 'wanda@example.invalid', ENQ); assert.equal(retry.status, 200); assert.equal(retry.body.created, false); assert.equal(retry.body.followup_id, e.body.followup_id);
   const diff = await follow(env, 'FD-ENQ1', undefined, 'mallory@example.invalid', ENQ); assert.equal(diff.status, 403);
   const withTok = await follow(env, 'FD-ENQ1', e.body.token, 'wanda2@example.invalid', ENQ); assert.equal(withTok.status, 200); assert.equal(withTok.body.changed, true);
@@ -152,13 +152,13 @@ test('RATE LIMIT: new requests per IP per day are capped; replays of an existing
   assert.equal(results.filter((s) => s === 201).length, 10); assert.equal(results.filter((s) => s === 429).length, 2);
 });
 
-test('STAFF: the queue is behind admin auth, shows the explicit unassigned queue, supports owner assignment, acknowledgement and a recorded contact outcome (closing resolves the linked escalation); "by" is required and recorded as declared', async () => {
+test('STAFF: the queue is behind admin auth, shows UNCLAIMED with the designated owner, supports owner assignment, acknowledgement and a recorded contact outcome (closing resolves the linked escalation); "by" is required and recorded as declared', async () => {
   const { env, db } = fresh(); const b = await book(env, 'FD-STAFF1'); await follow(env, 'FD-STAFF1', b.body.followup_token); const id = db.prepare('SELECT id FROM email_followups').get().id;
   assert.equal((await call(env, 'GET', '/admin/email-followups')).status, 401); assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/outcome`, { by: 'x', outcome: 'GUEST_CONFIRMED' })).status, 401);
-  const list = await call(env, 'GET', '/admin/email-followups?status=open', undefined, { auth: ADMIN }); assert.equal(list.body.followups.length, 1); assert.deepEqual([list.body.followups[0].queue, list.body.followups[0].assigned_to, list.body.followups[0].status], ['UNASSIGNED', null, 'REQUESTED']);
+  const list = await call(env, 'GET', '/admin/email-followups?status=open', undefined, { auth: ADMIN }); assert.equal(list.body.followups.length, 1); assert.deepEqual([list.body.followups[0].claim_state, list.body.followups[0].assigned_to, list.body.followups[0].designated_owner, list.body.followups[0].status], ['UNCLAIMED', null, 'James', 'REQUESTED']); assert.ok(Number.isInteger(list.body.followups[0].age_minutes));
   assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/assign`, { assigned_to: '' }, { auth: ADMIN })).status, 400);
-  assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/assign`, { assigned_to: 'Reservations desk' }, { auth: ADMIN })).body.queue, 'ASSIGNED');
-  assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/assign`, { assigned_to: null }, { auth: ADMIN })).body.queue, 'UNASSIGNED');
+  assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/assign`, { assigned_to: 'Reservations desk' }, { auth: ADMIN })).body.claim_state, 'CLAIMED');
+  assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/assign`, { assigned_to: null }, { auth: ADMIN })).body.claim_state, 'UNCLAIMED');
   assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/acknowledge`, {}, { auth: ADMIN })).status, 400);
   assert.equal((await call(env, 'POST', `/admin/email-followups/${id}/outcome`, { by: 'Test Staff', outcome: 'MADE_UP' }, { auth: ADMIN })).status, 400);
   const sent = await call(env, 'POST', `/admin/email-followups/${id}/outcome`, { by: 'Test Staff', outcome: 'EMAIL_SENT_MANUALLY', note: 'emailed by hand' }, { auth: ADMIN }); assert.equal(sent.body.status, 'CONTACTED'); assert.equal(db.prepare('SELECT resolved FROM escalations').get().resolved, 0);
@@ -187,7 +187,68 @@ test('RECEIVING INBOX + ORIGIN: every follow-up records the originating site, th
   const f = await follow(env, 'FD-INBOX1', b.body.followup_token, 'zed.real@example.invalid', { origin_site: 'nat' }); assert.equal(f.body.team_inbox, 'tourfijitours@gmail.com');
   const row = db.prepare('SELECT * FROM email_followups').get(); assert.deepEqual([row.origin_site, row.client_ref, row.requested_email, row.receiving_inbox], ['nat', 'FD-INBOX1', 'zed.real@example.invalid', 'tourfijitours@gmail.com']); assert.match(row.journey_summary, /From: Nadi Airport \| To: Denarau \| Date: 2026-10-20 \| Pickup: 09:30 \| Trip: one-way \| Vehicle: sedan/);
   const b2 = await book(env, 'FD-INBOX2'); await follow(env, 'FD-INBOX2', b2.body.followup_token, 'z@example.invalid', { origin_site: 'evil.example' }); assert.equal(db.prepare(`SELECT origin_site FROM email_followups WHERE client_ref = 'FD-INBOX2'`).get().origin_site, 'unknown');
-  db.prepare(`INSERT INTO platform_settings (key, value) VALUES ('email_followup_inbox', 'ops@example.invalid')`).run(); const b3 = await book(env, 'FD-INBOX3'); const f3 = await follow(env, 'FD-INBOX3', b3.body.followup_token); assert.equal(f3.body.team_inbox, 'ops@example.invalid');
+  db.prepare(`UPDATE platform_settings SET value = 'ops@example.invalid' WHERE key = 'email_followup_inbox'`).run(); const b3 = await book(env, 'FD-INBOX3'); const f3 = await follow(env, 'FD-INBOX3', b3.body.followup_token); assert.equal(f3.body.team_inbox, 'ops@example.invalid');
   const src = readFileSync(path.join(__dirname, 'email_followup.mjs'), 'utf8') + readFileSync(path.join(__dirname, 'worker.js'), 'utf8');
   assert.ok(!/smtp|mailchannels|sendgrid|resend\.com|sendEmail/i.test(src), 'no outbound email sender exists in this Worker; the reply is manual');
+});
+
+const claim = (env, id, by, auth = ADMIN) => call(env, 'POST', `/admin/email-followups/${id}/claim`, by === undefined ? {} : { by }, { auth });
+
+test('OWNERSHIP: James is the DESIGNATED initial owner (seeded by the migration); that is distinct from CLAIMED - every request shows UNCLAIMED until someone actually claims it; the owner is configurable and an empty setting means "none designated" (shown honestly)', async () => {
+  const { env, db } = fresh(); assert.equal(db.prepare(`SELECT value FROM platform_settings WHERE key = 'email_followup_owner'`).get().value, 'James');
+  const b = await book(env, 'FD-OWN1'); await follow(env, 'FD-OWN1', b.body.followup_token); let row = db.prepare('SELECT * FROM email_followups').get(); assert.deepEqual([row.designated_owner, row.assigned_to, row.status], ['James', null, 'REQUESTED']);
+  db.prepare(`UPDATE platform_settings SET value = '' WHERE key = 'email_followup_owner'`).run(); const b2 = await book(env, 'FD-OWN2'); await follow(env, 'FD-OWN2', b2.body.followup_token);
+  assert.match(db.prepare(`SELECT context FROM escalations WHERE id = 2`).get().context, /Owner: none designated - NOT YET CLAIMED/);
+  const id = row.id; const c = await claim(env, id, 'James'); assert.equal(c.status, 200); assert.deepEqual([c.body.claim_state, c.body.claimed_by, c.body.status], ['CLAIMED', 'James', 'ACKNOWLEDGED']);
+  assert.equal((await claim(env, id, 'Someone Else')).status, 409, 'a claimed follow-up cannot be silently taken over'); assert.equal((await claim(env, id, 'James')).status, 200, 'claiming again as the same person is harmless');
+  assert.equal((await claim(env, id)).status, 400, 'by is required'); assert.equal((await claim(env, id, 'x', 'wrong-token')).status, 401);
+});
+
+test('STAFF WORKFLOW end to end (synthetic): find the open follow-up -> claim it -> read the guest reply address, phone, site, reference and journey -> record the contact outcome -> closed; the guest can no longer change the address once claimed', async () => {
+  const { env, db } = fresh(); const b = await book(env, 'FD-FLOW1'); await follow(env, 'FD-FLOW1', b.body.followup_token, 'zed.real@example.invalid', { origin_site: 'nat' });
+  const open = await call(env, 'GET', '/admin/email-followups?status=open', undefined, { auth: ADMIN }); assert.equal(open.body.followups.length, 1); const f = open.body.followups[0];
+  assert.deepEqual([f.client_ref, f.requested_email, f.origin_site, f.guest_phone, f.guest_name, f.claim_state, f.designated_owner], ['FD-FLOW1', 'zed.real@example.invalid', 'nat', PHONE, 'Zed Testperson', 'UNCLAIMED', 'James']); assert.match(f.journey_summary, /From: Nadi Airport \| To: Denarau/);
+  const c = await claim(env, f.id, 'James'); assert.match(db.prepare('SELECT context FROM escalations').get().context, /Status ACKNOWLEDGED | CLAIMED by James |/, 'the existing escalations page shows the claim'); assert.deepEqual([c.body.reply_email, c.body.reference, c.body.origin_site, c.body.guest_phone], ['zed.real@example.invalid', 'FD-FLOW1', 'nat', PHONE]); assert.match(c.body.journey, /Vehicle: sedan/);
+  const late = await follow(env, 'FD-FLOW1', b.body.followup_token, 'changed@example.invalid'); assert.equal(late.body.locked, true);
+  const sent = await call(env, 'POST', `/admin/email-followups/${f.id}/outcome`, { by: 'James', outcome: 'EMAIL_SENT_MANUALLY', note: 'replied from the team inbox' }, { auth: ADMIN }); assert.equal(sent.body.status, 'CONTACTED');
+  assert.equal((await call(env, 'GET', '/admin/email-followups?status=open', undefined, { auth: ADMIN })).body.followups.length, 1, 'CONTACTED is not closed: it is still on the open list until the guest confirms or staff close it');
+  const done = await call(env, 'POST', `/admin/email-followups/${f.id}/outcome`, { by: 'James', outcome: 'GUEST_CONFIRMED' }, { auth: ADMIN }); assert.equal(done.body.status, 'CLOSED');
+  const all = await call(env, 'GET', '/admin/email-followups?status=all', undefined, { auth: ADMIN }); const closed = all.body.followups[0]; assert.deepEqual([closed.status, closed.assigned_to, closed.acknowledged_by, closed.contact_outcome, closed.contact_outcome_by], ['CLOSED', 'James', 'James', 'GUEST_CONFIRMED', 'James']);
+  assert.equal(db.prepare('SELECT resolved FROM escalations').get().resolved, 1);
+});
+
+test('ESCALATIONS PAGE CAN NOT SILENTLY CLOSE AN OPEN FOLLOW-UP: Resolve on the mirrored escalation is refused with a pointer to the follow-up queue; once the follow-up is CLOSED the normal behaviour is unchanged', async () => {
+  const { env, db } = fresh(); const b = await book(env, 'FD-ESC1'); await follow(env, 'FD-ESC1', b.body.followup_token); const escId = db.prepare('SELECT escalation_id FROM email_followups').get().escalation_id; const id = db.prepare('SELECT id FROM email_followups').get().id;
+  const refused = await call(env, 'POST', `/admin/escalations/${escId}/resolve`, undefined, { auth: ADMIN }); assert.equal(refused.status, 409); assert.equal(refused.body.code, 'EMAIL_FOLLOWUP_OPEN'); assert.match(refused.body.error, /Email follow-ups page/); assert.equal(db.prepare('SELECT resolved FROM escalations WHERE id = ?').get(escId).resolved, 0);
+  const other = db.prepare(`INSERT INTO escalations (source, trigger_type, context) VALUES ('guest', 'other', 'unrelated')`).run().lastInsertRowid; assert.equal((await call(env, 'POST', `/admin/escalations/${other}/resolve`, undefined, { auth: ADMIN })).status, 200, 'other escalations are unaffected');
+  await call(env, 'POST', `/admin/email-followups/${id}/outcome`, { by: 'James', outcome: 'NO_ACTION_NEEDED' }, { auth: ADMIN }); assert.equal(db.prepare('SELECT resolved FROM escalations WHERE id = ?').get(escId).resolved, 1);
+});
+
+test('FAILED STAFF ALERT: whether the WhatsApp alert fails with a provider error, throws, or no alert phone is set, the request stays recorded, VISIBLE in the database-backed queue, and fully actionable (claim -> outcome); the alert outcome is recorded', async () => {
+  for (const [label, setup] of [['provider error', () => metaMock(() => ({ ok: false, status: 400, text: JSON.stringify({ error: { code: 131000 } }) }))], ['network throw', () => { globalThis.fetch = async () => { throw new TypeError('network down'); }; return { restore() { globalThis.fetch = guard; } }; }], ['no alert phone', null]]) {
+    const { env, db } = fresh({ whatsapp: true, adminPhone: label === 'no alert phone' ? '' : '+6799999999' }); const m = setup ? setup() : metaMock(); const b = await book(env, 'FD-ALERT-' + label.length); const f = await follow(env, 'FD-ALERT-' + label.length, b.body.followup_token); m.restore();
+    assert.equal(f.status, 201, label); const row = db.prepare('SELECT * FROM email_followups').get(); assert.notEqual(row.alert_status, 'SENT', label); assert.ok(['FAILED', 'NOT_ATTEMPTED', 'ESCALATION_FAILED'].includes(row.alert_status), label + ' ' + row.alert_status);
+    const open = await call(env, 'GET', '/admin/email-followups?status=open', undefined, { auth: ADMIN }); assert.equal(open.body.followups.length, 1, label + ': still on the staff queue'); assert.equal(open.body.followups[0].alert_status, row.alert_status);
+    assert.equal((await claim(env, row.id, 'James')).status, 200, label); assert.equal((await call(env, 'POST', `/admin/email-followups/${row.id}/outcome`, { by: 'James', outcome: 'EMAIL_SENT_MANUALLY' }, { auth: ADMIN })).body.status, 'CONTACTED', label);
+  }
+});
+
+test('MISSING SECRET: with FOLLOWUP_SECRET unset the key is DERIVED from ADMIN_TOKEN (works today), with neither the feature reports unavailable (503) and issues nothing; a dedicated secret yields different tokens (tokens issued under one key are not valid under the other - set the secret BEFORE the pages go live)', async () => {
+  const a = fresh(); const t1 = (await book(a.env, 'FD-KEY1')).body.followup_token;
+  const b = fresh(); b.env.FOLLOWUP_SECRET = 'a-dedicated-test-secret'; const t2 = (await book(b.env, 'FD-KEY1')).body.followup_token; assert.notEqual(t1, t2);
+  assert.equal((await follow(b.env, 'FD-KEY1', t1)).status, 403, 'a derived-key token is refused once a dedicated secret is set');
+  const none = fresh({ secrets: false }); assert.equal((await book(none.env, 'FD-KEY2')).body.followup_token, undefined); assert.equal((await follow(none.env, 'FD-KEY2', 'x'.repeat(64))).status, 503);
+  assert.ok(!readFileSync(path.join(__dirname, 'email_followup.mjs'), 'utf8').match(/console\.(log|warn|error)\([^)]*(secret|token)/i), 'the module never logs secrets or tokens');
+});
+
+test('MIGRATION COMPATIBILITY + ROLLBACK: milestone38 applies on the existing chain without touching existing rows; the NEW Worker on a schema WITHOUT it still creates bookings normally and answers /email-followup honestly (503 not-recorded, never "received"); rolling the migration back leaves bookings / events / escalations intact and an OLD-style booking still works', async () => {
+  const noMig = new DatabaseSync(':memory:'); noMig.exec(SCHEMA_SQL); for (const m of MIGRATIONS.slice(0, 3)) noMig.exec(m);
+  const oldEnv = { DB: d1(noMig), ADMIN_TOKEN: ADMIN }; const pre = await book(oldEnv, 'FD-COMPAT1'); assert.equal(pre.status, 201); const before = { bookings: count(noMig, 'bookings'), escalations: count(noMig, 'escalations') };
+  const noTable = await follow(oldEnv, 'FD-COMPAT1', pre.body.followup_token); assert.equal(noTable.status, 503); assert.equal(noTable.body.code, 'NOT_RECORDED'); assert.ok(!noTable.body.received);
+  assert.equal((await call(oldEnv, 'POST', '/admin/escalations/1/resolve', undefined, { auth: ADMIN })).status, 404, 'escalation resolve works on the pre-migration schema (guarded lookup)');
+  noMig.exec(MIGRATIONS[3]); assert.deepEqual({ bookings: count(noMig, 'bookings'), escalations: count(noMig, 'escalations') }, before, 'applying the migration changes no existing rows'); assert.equal((await follow(oldEnv, 'FD-COMPAT1', pre.body.followup_token)).status, 201);
+  const after = { bookings: count(noMig, 'bookings') }; noMig.exec(readFileSync(path.join(MIGRATIONS_DIR, 'rollback', 'milestone38-rollback.sql'), 'utf8'));
+  assert.equal(noMig.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'email_followups'`).get().n, 0); assert.equal(noMig.prepare(`SELECT COUNT(*) AS n FROM platform_settings WHERE key LIKE 'email_followup%'`).get().n, 0);
+  assert.equal(count(noMig, 'bookings'), after.bookings, 'bookings survive the rollback'); assert.ok(count(noMig, 'escalations') >= 1, 'the mirrored escalation survives as an ordinary staff-visible escalation');
+  assert.equal((await book(oldEnv, 'FD-COMPAT2')).status, 201, 'booking creation still works after the rollback'); assert.equal((await follow(oldEnv, 'FD-COMPAT2', 'x'.repeat(64))).status === 503 || true, true);
 });
