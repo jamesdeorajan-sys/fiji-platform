@@ -1,11 +1,13 @@
 # Night pricing: release blocker B1 (reproduction only; no commercial rule changed or approved)
 
+> **Terminology (read this first).** *Quoted* = the total a page shows the guest (selection, review). *Submitted* = the amount sent in the booking request. *Saved / recorded* = the amount stored in a booking record; in these documents always an in-memory record in the isolated harness, never a production booking. *Provider-accepted* = a notification (for example WhatsApp) accepted by the provider: none was sent in any run (all outbound was blocked), and a recorded booking is not evidence of provider acceptance. *Paid* = money received: this flow collects no payment (the guest pays the driver directly), so nothing here is, or implies, a payment. Where older wording says "charged" it is read as "quoted and recorded", never "paid"; numbers and results are unchanged.
+
 Actual client code (NAT `c5ee3b1`, FijiDash production `8c6f920`, FijiDash candidate) and the actual deployed Worker (`7a32a034` bundle) run together in the isolated harness (`reconciliation/night.mjs`; assertions in `night-boundaries.test.mjs`). Outbound blocked, no live booking.
 
 ## What was reproduced
 
 1. **Boundaries agree.** The client and the Worker both treat 22:00 and 05:59 as night and 21:59 and 06:00 as day (Hilton sedan: Worker 47.87 at 21:59 and 06:00, 51.44 at 22:00 and 05:59).
-2. **FijiDash (production and candidate) never charge the surcharge on a live-fare route.** At all four times the selection (candidate), review, submitted and SAVED amount is the day fare (47.87). At 22:00 and 05:59 the Worker's own figure is 51.44, which it would only apply if it replaced the page's amount; it does not, because 47.87 is inside its 0.8x-1.3x band. The reference fare the page uses has no night component.
+2. **FijiDash (production code and candidate) never apply the surcharge on a live-fare route.** At all four times the selection (candidate), review, submitted and recorded (saved) amount is the day fare (47.87). At 22:00 and 05:59 the Worker's own figure is 51.44, which it would only apply if it replaced the page's amount; it does not, because 47.87 is inside its 0.8x-1.3x band. The reference fare the page uses has no night component.
 3. **NAT (static table) does include a night modifier** (49 -> 54 at 22:00) and the Worker keeps it, so NAT and FijiDash disagree with each other at night for the same route.
 4. **The return pickup time is ignored by both the client and the Worker.** Only the OUTBOUND time decides night. Outbound 10:00 with a 23:00 or 05:59 return: no surcharge anywhere. Outbound 23:00 with a 10:00 return: the whole return fare is surcharged (Worker 95.27 vs 79.56 by day, Hilton sedan). Outbound 21:59 with a 22:00 return: no surcharge.
 5. **Inconsistency inside the candidate on Momi at night:** one-way minibus 157.92 (live fare, no surcharge) but return 355 (page convention, includes the page night modifier), against 297 by day.

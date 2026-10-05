@@ -1,5 +1,7 @@
 # Decision sheet for James (one page) - 2026-10-05
 
+> **For the four out-of-band route cases use `OWNER-DECISION-SHEET.md`, which makes no recommendation on them.** The recommendation column in this earlier sheet is the author's opinion only, is not an approval, and does not rely on any operator-cost evidence (none exists: UNKNOWN).
+
 Production is on HOLD. Nothing below is implemented, deployed or approved. **Recommendations are the author's and are NOT approvals**; the boxes are for you. No fare is invented: every figure is an existing published or formula figure from `POLICY-DECISION-TABLE.md` (quoted amount = what a page shows the guest; recorded amount = what the booking system stores).
 
 Document status: this sheet is based on branch commit `056e4c2`. Codex's documentation patch 1/2 (`catalogue-policy-docs.patch`, original commit `63ab476`) has since been reviewed and integrated into the plan, the decision table and its generator (patch 2/2 is a whole-file copy of AGENT_SYNC and was deliberately not applied). Where this sheet differs in wording from the integrated documents, the integrated, reviewed wording wins.
