@@ -1,5 +1,7 @@
 # Owner decision sheet - four out-of-band route cases first (2026-10-05)
 
+> **HOLD - PRICING FREEZE (James, 2026-10-05).** Production prices and pricing rules stay unchanged; the held candidate is not to be deployed; no further fare decisions are requested for now. Kept for reference only; see `HOLD.md`.
+
 **Nothing here is decided, recommended or implemented.** Production, bookings, fares and fuel settings are unchanged. This sheet gives no recommendation on the four cases and invents no fare: it shows the two figures that already exist, how each site behaves today, what history exists, and what is **UNKNOWN**. Terms: *quoted* = shown to the guest; *submitted* = sent in the booking request; *recorded* = stored in a booking record; *paid* = money received (this flow collects none; the guest pays the driver). Data basis: current production code and the Worker deployed as `7a32a034`, run in an isolated harness and browser (outbound blocked), pricing snapshot refreshed read-only 2026-10-05; historical rows below are read-only aggregate queries of recorded amounts (no personal data), extracted 2026-10-05T09:55:39Z.
 
 **Approved so far (only this):** Marriott Momi Bay **minibus**, within its recorded scope: base FJ$175.92 before the 10% discount; one-way 157.92; day return 297; day return with a child seat 304. It approves nothing else (no other vehicle, route, return rounding or night rule).

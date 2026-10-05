@@ -1,5 +1,7 @@
 # Catalogue-led pricing: implementation PLAN (not implemented, not a commercial decision)
 
+> **HOLD - PRICING FREEZE (James, 2026-10-05).** Production prices and pricing rules stay unchanged; the held candidate is not to be deployed; no further fare decisions are requested for now. Kept for reference only; see `HOLD.md`.
+
 Status: **plan only.** No commercial policy is implemented by this document, nothing is deployed, no booking, fuel setting, Worker, database or route is touched, and production stays on HOLD. It exists so that, once James decides, the build is short, checkable and reversible. "Catalogue-led" means: the published catalogue is the single source of fares, and every other layer (booking pages, route pages, the Worker's verification, llms.txt, FAQ and JSON-LD) reads it instead of keeping its own copy.
 
 ## 0. Preconditions (decisions this plan cannot make)

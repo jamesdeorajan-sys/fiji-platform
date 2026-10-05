@@ -1,5 +1,7 @@
 # Decision sheet for James (one page) - 2026-10-05
 
+> **HOLD - PRICING FREEZE (James, 2026-10-05).** Production prices and pricing rules stay unchanged; the held candidate is not to be deployed; no further fare decisions are requested for now. Kept for reference only; see `HOLD.md`.
+
 > **For the four out-of-band route cases use `OWNER-DECISION-SHEET.md`, which makes no recommendation on them.** The recommendation column in this earlier sheet is the author's opinion only, is not an approval, and does not rely on any operator-cost evidence (none exists: UNKNOWN).
 
 Production is on HOLD. Nothing below is implemented, deployed or approved. **Recommendations are the author's and are NOT approvals**; the boxes are for you. No fare is invented: every figure is an existing published or formula figure from `POLICY-DECISION-TABLE.md` (quoted amount = what a page shows the guest; recorded amount = what the booking system stores).

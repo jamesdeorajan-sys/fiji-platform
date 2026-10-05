@@ -1,5 +1,7 @@
 # FijiDash pricing candidate: review package for independent review (preview-only, NOT approved for release)
 
+> **HOLD - PRICING FREEZE (James, 2026-10-05).** Production prices and pricing rules stay unchanged; the held candidate is not to be deployed; no further fare decisions are requested for now. Kept for reference only; see `HOLD.md`.
+
 > **Terminology (read this first).** *Quoted* = the total a page shows the guest (selection, review). *Submitted* = the amount sent in the booking request. *Saved / recorded* = the amount stored in a booking record; in these documents always an in-memory record in the isolated harness, never a production booking. *Provider-accepted* = a notification (for example WhatsApp) accepted by the provider: none was sent in any run (all outbound was blocked), and a recorded booking is not evidence of provider acceptance. *Paid* = money received: this flow collects no payment (the guest pays the driver directly), so nothing here is, or implies, a payment. Where older wording says "charged" it is read as "quoted and recorded", never "paid"; numbers and results are unchanged.
 
 Branch `ceo/fijidash-pricing-preview-candidate`, built on FijiDash production `8c6f920`. Everything below is **author-verified** (run by the author in an isolated harness) until independently checked. No deployment is approved. Nothing here touched production data: production access was read-only `SELECT --command` on non-PII pricing tables and the booking-count monitor, plus `wrangler deployments list`.

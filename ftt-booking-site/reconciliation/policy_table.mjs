@@ -35,6 +35,8 @@ for (const r of priceable) csv.push([r.route, r.vehicle, r.trip, r.catBase, r.ca
 
 P('# Pricing-policy decision table (for James) - 2026-10-05');
 P('');
+P('> **HOLD - PRICING FREEZE (James, 2026-10-05).** All production prices and pricing rules stay unchanged; no further fare decisions are requested for now. This document is kept for reference only. See `HOLD.md`.');
+P('');
 P('**Production remains on HOLD. This is a decision aid, not a release and not a recommendation of any fare.** Every figure below is computed from numbers that already exist (the published catalogue `ROUTES_DATA`, the Worker\'s distance formula, and each side\'s own arithmetic) in the isolated harness (real page code + the real deployed Worker bundle `7a32a034` + the read-only pricing snapshot of 2026-10-05; outbound blocked). No fare was invented, fuel adjustments are NOT enabled (the fuel index is unchanged: multiplier 1, FJ$3.39/L), and no live booking, message or production write was made. Tick boxes (`[ ]`) are for James.');
 P('');
 P('## What is approved, and what is not');
