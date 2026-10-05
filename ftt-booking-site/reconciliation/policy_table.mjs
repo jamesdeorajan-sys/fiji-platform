@@ -14,7 +14,7 @@ const disc = (sub) => (sub > 50 ? sub - Math.round(sub * 0.1) : sub);          /
 const ceil5 = (x) => Math.ceil(x / 5) * 5;
 const VEH = ['sedan', 'minivan', 'minibus'];
 const L = []; const P = (s = '') => L.push(s);
-const csv = [['route', 'vehicle', 'trip', 'catalogue_base_before_discount', 'catalogue_total', 'worker_before_discount', 'worker_total', 'delta_total', 'delta_pct_of_worker', 'in_band_0.8_1.3', 'charged_today_NAT', 'charged_today_FD_production', 'charged_today_FD_candidate', 'worker_fare_checks']];
+const csv = [['route', 'vehicle', 'trip', 'catalogue_base_before_discount', 'catalogue_total', 'worker_before_discount', 'worker_total', 'delta_total', 'delta_pct_of_worker', 'in_band_0.8_1.3', 'recorded_in_harness_NAT', 'recorded_in_harness_FD_production', 'recorded_in_harness_FD_candidate', 'worker_fare_checks']];
 
 // ---------- 1. catalogue vs Worker, every route (day 10:00, no extras) ----------
 const rows = [];
@@ -45,7 +45,7 @@ P('**NOT approved:** anything for Momi sedan or minivan (the held candidate curr
 P('');
 P('## 1. Published catalogue versus Worker formula, every disputed route');
 P('');
-P(`Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). ${priceable.length} route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: ${disputed.length} cases on ${new Set(disputed.map((r) => r.route)).size} routes.** ${outBand.length} of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The ${priceable.length - disputed.length} cases outside this list include the separately reviewed Momi cases. The remaining non-Momi cases do not meet both dispute thresholds; this is not proof of commercial correctness. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full ${priceable.length}-row table (Momi included) is in \`policy_catalogue_vs_worker.csv\`.`);
+P(`Basis: day pickup 10:00, no extras, arrival (airport -> destination), totals as the guest sees them (after the existing 10% discount). ${priceable.length} route/vehicle/trip cases are priceable (Tanoa International has no Worker rule, see section 4). **Disputed = the two differ by more than FJ$5 and by more than 5% of the Worker figure: ${disputed.length} cases on ${new Set(disputed.map((r) => r.route)).size} routes.** ${outBand.length} of them are outside the Worker's 0.8x-1.3x acceptance band (the Worker would refuse the catalogue figure under the quote-consent opt-in); the rest differ but sit inside the band (the Worker keeps the shown figure). The ${priceable.length - disputed.length} cases outside this non-Momi disputed list include all ${priceable.filter((r) => r.route === 'MARRIOTT_MOMI').length} Momi cases handled separately in section 1b. The remaining ${priceable.length - disputed.length - priceable.filter((r) => r.route === 'MARRIOTT_MOMI').length} cases do not meet both dispute thresholds; this is not proof of commercial correctness. The Momi rows are excluded here and set out in section 1b, because part of Momi is approved and part is not. The full ${priceable.length}-row table (Momi included) is in \`policy_catalogue_vs_worker.csv\`.`);
 P('');
 P('"Recorded amount in the current-code harness" = the amount computed and saved in the isolated harness, not payment evidence: **NAT** (page quotes the catalogue); **FD prod** = FijiDash production (its review step swaps in the Worker figure, so it records the Worker figure on every priceable route, except when the live lookup fails); **FD cand** = the held candidate (Worker figure, except Momi return = catalogue convention).');
 P('');
@@ -302,8 +302,12 @@ P('- Tanoa International: **[ ] T1 (fares: ______ / ______ / ______)  [ ] T2  [ 
 P('- Display rule for pages if B or C: **[ ] whole dollars (rounding rule: ______)  [ ] show cents**');
 P('');
 P('Nothing is released by recording these. Each decision needs its own change, re-test and independent review; production stays on HOLD until then. Fuel adjustments are not part of any option and remain disabled.');
+P('');
+P('## Review boundary (Codex, 2026-10-05)');
+P('');
+P('Tables are synthetic calculations against a dated snapshot, not guest payment records. No payment is collected by this flow. The five requested revisions were already present in decision-table commit `056e4c2`; this review preserves them and tightens terminology and implementation assumptions. No checkbox is selected. Current production behaviour is not changed by this document. The generator remains a calculation aid; the reviewed policy narrative is authoritative and must not be overwritten without reviewing its changes.');
 
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, 'POLICY-DECISION-TABLE.md'), L.join('\n'));
+fs.writeFileSync(path.join(outDir, 'POLICY-DECISION-TABLE.md'), L.join('\n') + '\n');
 fs.writeFileSync(path.join(outDir, 'policy_catalogue_vs_worker.csv'), csv.map((r) => r.join(',')).join('\n'));
 console.log(L.join('\n').slice(0, 7000)); console.log('\ndisputed', disputed.length, 'routes', new Set(disputed.map((r) => r.route)).size, 'outBand', outBand.length, 'priceable', priceable.length);

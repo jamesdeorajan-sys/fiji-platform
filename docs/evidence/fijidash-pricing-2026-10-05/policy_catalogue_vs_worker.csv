@@ -1,4 +1,4 @@
-route,vehicle,trip,catalogue_base_before_discount,catalogue_total,worker_before_discount,worker_total,delta_total,delta_pct_of_worker,in_band_0.8_1.3,charged_today_NAT,charged_today_FD_production,charged_today_FD_candidate,worker_fare_checks
+route,vehicle,trip,catalogue_base_before_discount,catalogue_total,worker_before_discount,worker_total,delta_total,delta_pct_of_worker,in_band_0.8_1.3,recorded_in_harness_NAT,recorded_in_harness_FD_production,recorded_in_harness_FD_candidate,worker_fare_checks
 NADI_DOWNTOWN,sedan,one-way,19,19,30.15,30.15,-11.15,-37.0,false,refused at 19: guest must accept the Worker fare,30.15,30.15,
 NADI_DOWNTOWN,sedan,return,19,40,55.78,49.78,-9.78,-19.6,true,40,49.78,49.78,
 NADI_DOWNTOWN,minivan,one-way,49,49,51.42,46.42,2.58,5.6,true,49,46.42,46.42,

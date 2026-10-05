@@ -2,7 +2,7 @@
 
 Production is on HOLD. Nothing below is implemented, deployed or approved. **Recommendations are the author's and are NOT approvals**; the boxes are for you. No fare is invented: every figure is an existing published or formula figure from `POLICY-DECISION-TABLE.md` (quoted amount = what a page shows the guest; recorded amount = what the booking system stores).
 
-Document status: this sheet is based on branch commit `056e4c2`. Codex's documentation patch (`catalogue-policy-docs.patch`, local commits `63ab476` / `73be6ac`) was **not available to the author and has not been reviewed or applied**; where this sheet differs in wording from that patch, the patch's reviewed wording should win once it is integrated.
+Document status: this sheet is based on branch commit `056e4c2`. Codex's documentation patch 1/2 (`catalogue-policy-docs.patch`, original commit `63ab476`) has since been reviewed and integrated into the plan, the decision table and its generator (patch 2/2 is a whole-file copy of AGENT_SYNC and was deliberately not applied). Where this sheet differs in wording from the integrated documents, the integrated, reviewed wording wins.
 
 ## Already approved (no decision needed)
 
