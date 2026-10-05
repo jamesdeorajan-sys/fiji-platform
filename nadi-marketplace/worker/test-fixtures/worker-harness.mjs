@@ -30,15 +30,18 @@ export function materialise({ rev, repoRoot, replacePricing }) {
   return dir;
 }
 
-export function makeEnv() {
+export function makeEnv({ settings = {} } = {}) {
   const inserted = [];
+  const writes = [];
   const escalations = [];
+  const events = [];
   const unmatched = new Set();
   let nextId = 5000;
   const zoneNames = snap.zones.map((z) => z.name);
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
   function run(sql, args) {
     const s = norm(sql);
+    if (!/^SELECT/i.test(s)) writes.push(s.slice(0, 120));
     if (/^SELECT name FROM zones$/i.test(s)) return { all: { results: zoneNames.map((name) => ({ name })) } };
     let m;
     if (/^SELECT lat, lng(, remote_multiplier)? FROM zones WHERE name = \?$/i.test(s)) {
@@ -56,7 +59,9 @@ export function makeEnv() {
       return { first: rows[0] ? { base_rate_fjd_per_km: rows[0].base_rate_fjd_per_km, flagfall_fjd: rows[0].flagfall_fjd } : null };
     }
     if (/FROM fuel_index/i.test(s)) return { first: { multiplier: snap.fuel_index_latest[0].multiplier } };
-    if (/^SELECT \* FROM bookings WHERE client_booking_ref = \?$/i.test(s)) return { first: null };
+    if (/^SELECT \* FROM bookings WHERE client_booking_ref = \?$/i.test(s)) return { first: inserted.find((r) => r.client_booking_ref === args[0]) || null };
+    if (/^UPDATE admin_notification_state SET state = 'ATTEMPTING'.*RETURNING attempt_count$/i.test(s)) return { first: { attempt_count: 1 } };
+    if (/^SELECT value FROM platform_settings WHERE key = \?$/i.test(s)) return { first: settings[args[0]] !== undefined ? { value: settings[args[0]] } : null };
     if ((m = s.match(/^INSERT INTO bookings \(([^)]*)\) VALUES/i))) {
       const cols = m[1].split(',').map((c) => c.trim());
       const row = { id: ++nextId };
@@ -71,6 +76,11 @@ export function makeEnv() {
       escalations.push(row);
       return { run: { success: true, meta: { last_row_id: escalations.length, changes: 1 } } };
     }
+    if ((m = s.match(/^INSERT INTO booking_events \(([^)]*)\) VALUES/i))) {
+      const cols = m[1].split(',').map((c) => c.trim()); const row = {}; cols.forEach((c, i) => { row[c] = args[i]; });
+      events.push({ ...row, metadata: row.metadata ? JSON.parse(row.metadata) : null });
+      return { run: { success: true, meta: { last_row_id: events.length, changes: 1 } } };
+    }
     unmatched.add(s.slice(0, 120));
     return { first: null, all: { results: [] }, run: { success: true, meta: { last_row_id: 1, changes: 1 } } };
   }
@@ -80,7 +90,7 @@ export function makeEnv() {
     all: async () => run(sql, args).all ?? { results: [] },
     run: async () => run(sql, args).run ?? { success: true, meta: { last_row_id: 1, changes: 1 } },
   });
-  return { env: { DB: { prepare: (sql) => stmt(sql, []), batch: async (l) => Promise.all(l.map((x) => x.run())) } }, inserted, escalations, unmatched };
+  return { env: { DB: { prepare: (sql) => stmt(sql, []), batch: async (l) => Promise.all(l.map((x) => x.run())) } }, inserted, escalations, events, writes, unmatched };
 }
 
 export async function postBooking(dir, payload) {
@@ -95,7 +105,7 @@ export async function postBooking(dir, payload) {
       body: JSON.stringify(payload),
     }), h.env, { waitUntil() {} });
     const body = await res.json().catch(() => null);
-    return { status: res.status, body, saved: h.inserted[0] || null, escalations: h.escalations };
+    return { status: res.status, body, saved: h.inserted[0] || null, escalations: h.escalations, events: h.events };
   } finally { globalThis.fetch = realFetch; }
 }
 

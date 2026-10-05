@@ -1760,7 +1760,7 @@ async function sendAdminLoginWhatsApp(env, phone, token) {
 
 async function sendBookingBroadcastWhatsApp(env, phone, booking) {
   const jobUrl = `${DRIVER_APP_URL}?token=`; // driver's own stored session token completes this client-side
-  const fare = `${booking.quoted_currency} ${booking.quoted_amount}`;
+  const fare = `${booking.quoted_currency} ${formatMoneyAmount(booking.quoted_amount)}`;
   // vakaviti_booking_broadcast body: {{1}} pickup, {{2}} destination, {{3}} vehicle type, {{4}} fare, {{5}} app link
   return sendWhatsAppTemplate(env, phone, BOOKING_BROADCAST_TEMPLATE, BOOKING_BROADCAST_LANG_CODE, [
     booking.pickup_zone,
@@ -3330,6 +3330,13 @@ async function createBookingRecord(env, {
 // problem. Any of these reaching Meta would risk the exact 132018
 // rejection this function exists to prevent, undetected by the narrower
 // original class.
+// #238: a stored quoted_amount can carry a float artefact (127.96000000000001). Staff-facing text shows whole dollars as 49 and cents as 300.45 - never the artefact. Display only: stored values and fares are untouched.
+function formatMoneyAmount(n) {
+  const r = Math.round(Number(n) * 100) / 100;
+  if (!Number.isFinite(r)) return String(n);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
+}
+
 function sanitiseWhatsAppParamText(text, maxLen) {
   if (!text) return '';
   let s = String(text)
@@ -3355,7 +3362,7 @@ function buildFullBookingAdminSummary(booking) {
     (b.return_date || b.return_time) ? `Return: ${b.return_date || 'date not set'} ${b.return_time || ''}`.trim() : null,
     b.return_pickup_location ? `Return pickup: ${sanitiseWhatsAppParamText(b.return_pickup_location, 60)}` : null,
     b.notes ? `Notes: ${sanitiseWhatsAppParamText(b.notes, 120)}` : null,
-    `Total: ${b.quoted_currency} ${b.quoted_amount}`,
+    `Total: ${b.quoted_currency} ${formatMoneyAmount(b.quoted_amount)}`,
     'Open admin dashboard for full details',
   ].filter(Boolean);
   // Final pass over the assembled line, not just each field - a defence-
@@ -3625,7 +3632,7 @@ async function sweepAdminNotifications(env) {
 async function sendShortAdminAlert(env, booking) {
   try {
     const summary = sanitiseWhatsAppParamText(
-      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${booking.quoted_amount}.`,
+      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${formatMoneyAmount(booking.quoted_amount)}.`,
       1000
     );
     for (const alertPhone of await getAdminAlertPhones(env)) {
