@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiji Dash — Email follow-ups</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root { --ocean: #0d4d6e; --paper: #faf6f0; --ink: #1a1a1a; --line: #d8d0c2; --green: #2e8b57; --red: #c83e3e; --amber: #b8860b; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--paper); color: var(--ink); margin: 0; padding: 24px 16px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 16px; }
+  .nav a { font-size: 13px; color: var(--ocean); margin-right: 14px; }
+  #gate { max-width: 360px; margin: 80px auto; text-align: center; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; margin-bottom: 10px; }
+  #gate button { width: 100%; background: var(--ocean); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #gateMsg { font-size: 13px; margin-top: 10px; display: none; color: var(--red); }
+  .link-btn { background: none !important; color: var(--ocean) !important; font-size: 13px !important; font-weight: 400 !important; text-decoration: underline; margin-top: 8px; }
+  #tokenLoginWrap { margin-top: 14px; text-align: left; }
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar select, .toolbar button { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; background: #fffdf8; }
+  .toolbar button { cursor: pointer; font-weight: 600; }
+  .err-banner { background: #fdeaea; color: #8a1f1f; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; display: none; }
+  .note { background: #eef6fb; border: 1px solid #cfe3ee; color: #1d4a63; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; line-height: 1.5; }
+  .card { background: #fffdf8; border: 1px solid var(--line); border-left: 4px solid var(--amber); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .card.claimed { border-left-color: var(--ocean); }
+  .card.closed { border-left-color: var(--green); opacity: 0.8; }
+  .top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 13px; }
+  .badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: #e6f0f5; color: var(--ocean); margin-right: 6px; }
+  .badge.warn { background: #fdeaea; color: #8a1f1f; } .badge.ok { background: #e3f4ea; color: #1f6b3f; }
+  .grid { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 14px; line-height: 1.45; margin: 8px 0; }
+  .grid dt { color: #777; } .grid dd { margin: 0; word-break: break-word; }
+  .reply { font-weight: 700; }
+  .warnline { color: #8a1f1f; font-size: 13px; margin: 6px 0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .actions button { padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--ocean); color: #fff; }
+  .actions button.secondary { background: #fff; color: var(--ocean); border: 1px solid var(--ocean); }
+  .actions select, .actions input { padding: 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+  .empty { color: #888; text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>Admin login</h1>
+  <p class="sub">Enter your PIN.</p>
+  <input type="password" id="pinInput" placeholder="PIN" inputmode="numeric" autocomplete="off" maxlength="12">
+  <button id="pinLoginBtn">Log in</button>
+  <div id="gateMsg"></div>
+  <button id="showTokenLoginBtn" type="button" class="link-btn">Or log in with an admin token</button>
+  <div id="tokenLoginWrap" style="display:none;">
+    <input type="password" id="tokenInput" placeholder="Admin token" autocomplete="off">
+    <button id="tokenLoginBtn">Enter</button>
+  </div>
+</div>
+
+<div class="wrap" id="main" style="display:none;">
+  <div class="nav"><a href="admin-escalations.html">Escalations</a><a href="admin-bookings.html">Bookings</a><a href="admin-dashboard.html">Dashboard</a></div>
+  <h1>Email follow-ups</h1>
+  <p class="sub" id="subline">Loading…</p>
+  <div class="note"><strong>How this works:</strong> a guest asked for confirmation by email instead of WhatsApp. <strong>Request received is not "email sent" and not "transfer confirmed".</strong>
+    Claim the request, email the guest from the team inbox (tourfijitours@gmail.com) at the reply address shown, then record the outcome. No email is sent automatically.</div>
+  <div class="toolbar">
+    <select id="statusFilter"><option value="open">Open (not closed)</option><option value="all">All</option><option value="CLOSED">Closed</option></select>
+    <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn" type="button">Log out</button>
+  </div>
+  <div class="err-banner" id="errBanner"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const API_URL = 'https://nadi-dispatch-api.helpronline.workers.dev';
+  let ADMIN_TOKEN = sessionStorage.getItem('nadi_admin_token') || '';
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const OUTCOMES = [['EMAIL_SENT_MANUALLY', 'I emailed the guest'], ['GUEST_CONFIRMED', 'Guest confirmed by email (close)'], ['CANNOT_REACH', 'Cannot reach the guest (close)'], ['NO_ACTION_NEEDED', 'No action needed (close)']];
+  const SITE = { nat: 'nadiairporttransfers.com', fijidash: 'book.fijidash.com' };
+  const authed = (extra) => ({ headers: { 'Authorization': 'Bearer ' + ADMIN_TOKEN, 'Content-Type': 'application/json' }, ...extra });
+
+  async function tryLoad() { if (!ADMIN_TOKEN) return false; const ok = await load(); if (ok) { document.getElementById('gate').style.display = 'none'; document.getElementById('main').style.display = 'block'; } return ok; }
+  async function load() {
+    const banner = document.getElementById('errBanner'); banner.style.display = 'none';
+    try {
+      const res = await fetch(API_URL + '/admin/email-followups?status=' + encodeURIComponent(document.getElementById('statusFilter').value), authed());
+      if (!res.ok) { if (document.getElementById('main').style.display !== 'none') { banner.textContent = 'Could not load follow-ups (status ' + res.status + ').'; banner.style.display = 'block'; } return false; }
+      render((await res.json()).followups || []); return true;
+    } catch (e) { if (document.getElementById('main').style.display !== 'none') { banner.textContent = 'Connection error.'; banner.style.display = 'block'; } return false; }
+  }
+  function age(m) { if (m == null) return ''; if (m < 90) return m + ' min'; if (m < 2880) return Math.round(m / 60) + ' h'; return Math.round(m / 1440) + ' days'; }
+  function render(rows) {
+    const open = rows.filter((r) => r.status !== 'CLOSED').length; const unclaimed = rows.filter((r) => r.status !== 'CLOSED' && !r.assigned_to).length;
+    document.getElementById('subline').textContent = rows.length + ' shown · ' + open + ' open · ' + unclaimed + ' UNCLAIMED';
+    const list = document.getElementById('list');
+    if (!rows.length) { list.innerHTML = '<div class="empty">No follow-ups in this view.</div>'; return; }
+    list.innerHTML = rows.map((r) => {
+      const claimed = !!r.assigned_to; const closed = r.status === 'CLOSED';
+      const ownerLine = claimed ? '<span class="badge ok">Claimed by ' + esc(r.assigned_to) + '</span>' : '<span class="badge warn">UNCLAIMED</span> designated owner: ' + esc(r.designated_owner || 'none');
+      const alertWarn = r.alert_status && r.alert_status !== 'SENT' ? '<div class="warnline">The staff WhatsApp alert for this request did not send (' + esc(r.alert_status) + '). This list is the source of truth - nothing is lost.</div>' : '';
+      const diff = r.email_differs ? '<div class="warnline">The reply address DIFFERS from the booking email (' + esc(r.booking_email) + '). Verify with the guest before sending booking details.</div>' : '';
+      return '<div class="card ' + (closed ? 'closed' : claimed ? 'claimed' : '') + '" id="f' + r.id + '">'
+        + '<div class="top"><span><span class="badge">' + esc(r.status) + '</span>' + (r.kind === 'enquiry' ? '<span class="badge warn">ENQUIRY - not a booking</span>' : '<span class="badge ok">Saved booking #' + esc(r.booking_id) + '</span>') + ownerLine + '</span><span>#' + r.id + ' · waiting ' + age(r.age_minutes) + ' · requests ' + esc(r.request_count) + '</span></div>'
+        + '<dl class="grid"><dt>Reference</dt><dd>' + esc(r.client_ref) + '</dd><dt>Website</dt><dd>' + esc(SITE[r.origin_site] || 'unknown') + '</dd>'
+        + '<dt>Reply to</dt><dd class="reply">' + esc(r.requested_email) + '</dd><dt>Guest</dt><dd>' + esc(r.guest_name) + ' · ' + esc(r.guest_phone) + '</dd><dt>Journey</dt><dd>' + esc(r.journey_summary) + '</dd>'
+        + (r.contact_outcome ? '<dt>Outcome</dt><dd>' + esc(r.contact_outcome) + ' by ' + esc(r.contact_outcome_by) + ' at ' + esc(r.contact_outcome_at) + (r.contact_outcome_note ? ' - ' + esc(r.contact_outcome_note) : '') + '</dd>' : '') + '</dl>'
+        + diff + alertWarn
+        + (closed ? '' : '<div class="actions">' + (claimed ? '' : '<button onclick="claim(' + r.id + ')">Claim</button>')
+          + '<select id="o' + r.id + '">' + OUTCOMES.map((o) => '<option value="' + o[0] + '">' + o[1] + '</option>').join('') + '</select><input id="n' + r.id + '" placeholder="Note (optional)" maxlength="200">'
+          + '<button class="secondary" onclick="outcome(' + r.id + ')">Record outcome</button></div>') + '</div>';
+    }).join('');
+  }
+  function who() { const prev = sessionStorage.getItem('nadi_staff_name') || 'James'; const n = (prompt('Your name (recorded against this follow-up):', prev) || '').trim(); if (n) sessionStorage.setItem('nadi_staff_name', n); return n; }
+  async function act(id, action, body) {
+    const res = await fetch(API_URL + '/admin/email-followups/' + id + '/' + action, authed({ method: 'POST', body: JSON.stringify(body) })); const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) { alert(data.error || (data.errors && data.errors[0]) || (data.code === 'ALREADY_CLAIMED' ? 'Already claimed by ' + data.claimed_by + '.' : 'That did not work (status ' + res.status + ').')); return false; }
+    await load(); return true;
+  }
+  async function claim(id) { const by = who(); if (by) await act(id, 'claim', { by }); }
+  async function outcome(id) { const by = who(); if (!by) return; await act(id, 'outcome', { by, outcome: document.getElementById('o' + id).value, note: document.getElementById('n' + id).value }); }
+
+  document.getElementById('pinLoginBtn').addEventListener('click', async () => {
+    const pin = document.getElementById('pinInput').value.trim(); const msg = document.getElementById('gateMsg'); if (!pin) return;
+    try { const res = await fetch(API_URL + '/admin/login-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) }); const d = await res.json();
+      if (d.ok && d.token) { ADMIN_TOKEN = d.token; sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN); document.getElementById('pinInput').value = ''; await tryLoad(); } else { msg.textContent = d.error || 'Something went wrong.'; msg.style.display = 'block'; } }
+    catch { msg.textContent = 'Connection error.'; msg.style.display = 'block'; }
+  });
+  document.getElementById('showTokenLoginBtn').addEventListener('click', () => { document.getElementById('tokenLoginWrap').style.display = 'block'; document.getElementById('showTokenLoginBtn').style.display = 'none'; });
+  document.getElementById('tokenLoginBtn').addEventListener('click', async () => {
+    const t = document.getElementById('tokenInput').value.trim(); if (!t) return; ADMIN_TOKEN = t;
+    if (await tryLoad()) sessionStorage.setItem('nadi_admin_token', ADMIN_TOKEN); else { ADMIN_TOKEN = ''; const m = document.getElementById('gateMsg'); m.textContent = 'Invalid token or connection error.'; m.style.display = 'block'; }
+  });
+  document.getElementById('logoutBtn').addEventListener('click', () => { sessionStorage.removeItem('nadi_admin_token'); ADMIN_TOKEN = ''; document.getElementById('gate').style.display = 'block'; document.getElementById('main').style.display = 'none'; });
+  document.getElementById('statusFilter').addEventListener('change', load); document.getElementById('refreshBtn').addEventListener('click', load);
+  tryLoad();
+</script>
+</body>
+</html>
