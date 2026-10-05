@@ -98,3 +98,29 @@ A **local private folder on James's own machine**: `C:\Users\James\AppData\Local
 
 ### Quiet-window note
 Since seeding, the only writes to the shared database were James's acceptance steps (supplier, offer, edition, review, prepare, one check) and none of the engineer's: the engineer's work was read-only database queries, GET requests, local in-memory tests, and the deployment of a separate Worker (no database write).
+
+## 8. Credential rotation after an accidental exposure (2026-10-05)
+**Event:** the private operator card for run `muuhi10o` (shared admin token, both staff tokens, five guest links) was shown in a screenshot. **Production was not involved**; everything below is the isolated preview. No secret value appears in this record.
+
+**Where the shared admin credential was reused** (tested by presenting the old token to each preview Worker's admin route): the RC3 Worker (`marau-stage1-preview-legs`), the RC4 Worker (`marau-stage1-preview-rc4`) and the repaired RC4b Worker (`marau-stage1-preview-rc4b`) - all three were deployed with the same token. The RC1 preview (`marau-stage1-preview`, Worker `496b4d98`) uses a **different** token: the old token returned 401 there before and after, so it was not exposed and was **not touched**. Other local copies: the engineer's local token file (replaced) and the private operator card (reissued).
+
+**Actions and results (all PASS; the old secrets were never written to any record):**
+| Action | Result |
+|---|---|
+| New shared admin token generated; the three Workers redeployed with it, each from its own clean code | old token **401** on all three, new token **200** on all three; RC1 unchanged |
+| This run's two staff tokens revoked (the two `Acceptance Operator A/B (muuhi10o)` identity rows deleted) | both old tokens **401**; replacement identities with the same operator names created, so earlier attribution still reads correctly |
+| This run's five guest links revoked by **rotating the access token on the same five sessions** (3 staff-fixture guests + phone Link A and Link B) | each old link **401 on RC3, RC4 and RC4b**; each new link **200** on RC4b |
+| Rewards policy | still **off** |
+| Old values | the old admin token file and the old private files were overwritten/removed; nothing was copied elsewhere |
+
+**Worker version changes caused by the rotation (code identical, only the credential variable changed):**
+| Worker | Before | After | Code |
+|---|---|---|---|
+| RC3 `marau-stage1-preview-legs` | `615f1da8-2cc1-4f8d-91ab-ca66e5ba2bbf` | **`2745d26c-6983-4d00-84cf-0be0f0f8d8f5`** | `a7b8d3c` |
+| RC4 `marau-stage1-preview-rc4` | `1ae9a441-3a2d-4000-bc03-1e5627c1ba9b` | **`38ea2277-bfa1-4614-8b31-31c03c8aaff4`** | `7df9958` (worker/migrations byte-identical) |
+| RC4b `marau-stage1-preview-rc4b` | `cacdd22c-7506-4c46-b038-0a596c615bdc` | **`672185b4-5da0-4e8b-b0a5-a05a0175ecc3`** | `2084bc8` |
+Earlier references to the old version ids in this record and in AGENT_SYNC are superseded by this table. The candidate **code** commits are unchanged.
+
+**Preserved:** all synthetic records (bookings, offers, edition, review, prepared sends, verifications) and all acceptance evidence; the sessions keep their ids and history, only their access tokens changed. The older proof-run recipient (F3) was not touched.
+**Delivery of replacements:** only the protected local operator card (updated for RC4b: staff console `https://marau-stage1-preview-rc4b.helpronline.workers.dev/staff`, replacement admin and staff tokens, replacement guest links) and the QR page in the same private folder. Nothing in chat, GitHub, logs or screenshots.
+**Still true:** H4 (message-copy content) is **NOT passed** - it awaits James's recheck on the repaired host; H5-H8 and the phone checks are NOT RUN. The screenshot that exposed the card should be deleted by its owner.
