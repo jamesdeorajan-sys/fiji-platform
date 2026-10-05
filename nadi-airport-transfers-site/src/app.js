@@ -109,7 +109,24 @@ function bookingHasTour() {
 // booking system (state.fareOverride) applies only while these are unchanged; change the trip, vehicle, extras or night/day and it is dropped.
 function fareOverrideKey() {
   const val = (id) => document.getElementById(id)?.value || '';
-  return JSON.stringify([val('pickup'), val('destination'), state.selectedVehicle || '', state.tripType, state.extrasTotal, isNightPickup(), state.selectedTour ? (state.selectedTour.name || 'tour') : '']);
+  const chk = (id) => !!document.getElementById(id)?.checked;
+  const isReturn = state.tripType === 'return';
+  return JSON.stringify([
+    val('pickup'), val('destination'), val('customPickupZone'), val('customDestZone'), val('customPickupAddress'), val('customDestAddress'),
+    state.selectedVehicle || '', state.tripType, val('travelDate'), val('travelTime'),
+    isReturn ? [val('returnDate'), val('returnTime'), val('returnPickupLocation')] : null,
+    chk('extra-seat'), chk('extra-surf'), state.extrasTotal, state.selectedTour ? (state.selectedTour.name || 'tour') : '', state.passengers, state.luggage,
+  ]);
+}
+// An accepted revised fare is dropped the moment ANY of those inputs differs (and its acceptance with it).
+function dropStaleFareOverride() {
+  if (state.fareOverride && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null;
+}
+// Whole dollars show as "142", cents as "300.45" (never a float artefact such as 127.96000000000001).
+function fareText(n) {
+  const r = Math.round(Number(n) * 100) / 100;
+  if (!Number.isFinite(r)) return String(n);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
 }
 function calculateTotal(vehicleKey) {
   const t = calculateTotalFromPublishedPrices(vehicleKey);
@@ -413,6 +430,7 @@ function toggleDestPanel() {
 }
 
 function updatePricing() {
+  if (state.fareOverride && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null; // itinerary changed: the accepted revised fare no longer applies
   const panel   = document.getElementById('pricingPanel');
   const empty   = document.getElementById('emptyState');
   const nextBtn = document.getElementById('nextBtn1');
@@ -847,6 +865,7 @@ function syncVehicleStep() {
 }
 
 function goToStep(n) {
+  if (state.fareOverride && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null; // itinerary changed: the accepted revised fare no longer applies
   if (n === 4) {
     if (!validateBookingContact()) return;
     buildConfirmation();
@@ -1040,7 +1059,7 @@ function buildConfirmation() {
       <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>
       <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
   } else {
-    totalRows = `<div class="confirm-row total"><span class="confirm-label">${t.serverConfirmed ? 'Total price (confirmed by our booking system)' : 'Total price'}</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
+    totalRows = `<div class="confirm-row total"><span class="confirm-label">${t.serverConfirmed ? 'Revised total (confirmed by our booking system)' : 'Total price'}</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
   }
 
   // CEO P0 security fix (2026-09-13) - every value below may be
@@ -1059,8 +1078,19 @@ function buildConfirmation() {
     notice.id = 'fareChangeNotice';
     notice.setAttribute('role', 'alert');
     notice.style.cssText = 'border:2px solid #b45309;background:#fffbeb;color:#1f2937;border-radius:10px;padding:12px;margin-bottom:12px;font-weight:600';
-    notice.textContent = `The fare for this trip is FJ$${state.fareOverride.amount}, not the FJ$${state.fareOverride.shown} shown earlier. Please check the total below and tap Confirm to accept it, or go back to change your trip. Nothing has been booked yet.`;
+    const line = (text, strong) => { const d = document.createElement(strong ? 'strong' : 'div'); d.textContent = text; d.style.display = 'block'; return d; };
+    notice.appendChild(line('The price for this trip has changed. Nothing has been booked yet.', true));
+    notice.appendChild(line(`Original total shown: FJ$${fareText(state.fareOverride.original)}`));
+    notice.appendChild(line(`Revised total: FJ$${fareText(state.fareOverride.amount)}`));
+    notice.appendChild(line(`Tap "Accept revised price and submit" to book at FJ$${fareText(state.fareOverride.amount)}, or go back to change your trip.`));
     card.appendChild(notice);
+  }
+  // the one button says what it will do: submit the revised price only after the guest chooses that explicitly
+  const confirmButton = document.querySelector('.btn-confirm');
+  if (confirmButton) {
+    if (!confirmButton.dataset) confirmButton.dataset = {};
+    if (!confirmButton.dataset.defaultLabel) confirmButton.dataset.defaultLabel = confirmButton.textContent;
+    confirmButton.textContent = t.serverConfirmed ? 'Accept revised price and submit' : confirmButton.dataset.defaultLabel;
   }
   appendConfirmRow(card, 'Passenger', `${fn} ${ln}`);
   appendConfirmRow(card, 'Contact', `${em} · ${ph}`);
@@ -1347,6 +1377,8 @@ async function submitNadiBooking(ref, destZone) {
     // own calculation disagrees it refuses (409 PRICE_MISMATCH) and tells us its fare, which the guest then reviews and accepts before anything is saved.
     require_quote_match: true,
   };
+  // P0 #237: when the guest is accepting a revised price, tell the booking system what they were originally shown (recorded, never used for pricing).
+  if (state.fareOverride && state.fareOverride.key === fareOverrideKey()) payload.revised_from_amount = state.fareOverride.original;
 
   try {
     const { response: res, data } = await bookingRequest(`${NADI_API_BASE}/bookings`, {
@@ -1362,7 +1394,7 @@ async function submitNadiBooking(ref, destZone) {
       void reportNadiSyncFailure(ref, payload, data);
       return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
-    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
+    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent, savedAmount: data.booking ? data.booking.quoted_amount : undefined, savedCurrency: data.booking ? data.booking.quoted_currency : undefined, submittedAmount: quotedAmount };
   } catch (err) {
     void reportNadiSyncFailure(ref, payload, { error: err.message });
     return { ok: false, error: err.message };
@@ -1478,6 +1510,7 @@ async function confirmBooking() {
   // second click/tap during the async save below must be rejected outright,
   // not merely slowed down.
   if (state.confirmBookingInFlight) return;
+  if (state.fareOverride && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null; // itinerary changed: the accepted revised fare no longer applies
   if (!validateBookingContact() || !validateArrivalFlight()) return;
   state.confirmBookingInFlight = true;
   const confirmBtn = document.querySelector('.btn-confirm');
@@ -1551,7 +1584,8 @@ async function confirmBooking() {
       if (saveResult.priceMismatch) {
         // P0 #237: the booking system's fare differs from the one shown. Nothing was saved. Show the guest the new fare on the review step and
         // let them accept it (the same Confirm button, now sending that exact amount) or change the trip. The attempt ref is kept: no booking exists.
-        state.fareOverride = { key: fareOverrideKey(), amount: saveResult.priceMismatch.reference, shown: saveResult.priceMismatch.submitted };
+        const prior = state.fareOverride && state.fareOverride.key === fareOverrideKey() ? state.fareOverride : null;
+        state.fareOverride = { key: fareOverrideKey(), amount: saveResult.priceMismatch.reference, shown: saveResult.priceMismatch.submitted, original: prior ? prior.original : saveResult.priceMismatch.submitted };
         state.confirmBookingInFlight = false;
         if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = confirmBtnOriginalText; }
         buildConfirmation();
@@ -1587,6 +1621,14 @@ async function confirmBooking() {
   if (saveResult.ok) {
     if (bulaTitleSaved) bulaTitleSaved.style.display = '';
     if (bulaTitleWhatsappOnly) bulaTitleWhatsappOnly.style.display = 'none';
+    if (bulaLeadText && bulaLeadText.parentNode && saveResult.savedAmount !== undefined) {
+      let fareLine = document.getElementById('bulaFare');
+      if (!fareLine) { fareLine = document.createElement('p'); fareLine.id = 'bulaFare'; fareLine.style.fontWeight = '700'; bulaLeadText.parentNode.insertBefore(fareLine, bulaLeadText.nextSibling); }
+      const savedText = `${saveResult.savedCurrency || 'FJD'} ${Number(saveResult.savedAmount).toFixed(2)}`;
+      fareLine.textContent = Math.abs(Number(saveResult.savedAmount) - Number(saveResult.submittedAmount)) < 0.005
+        ? `Fare saved: ${savedText}`
+        : `Fare recorded by our booking system: ${savedText}. This differs from the ${fareText(saveResult.submittedAmount)} you saw; our team will confirm your fare with you.`;
+    }
     if (bulaLeadText) {
       bulaLeadText.textContent = 'Your request is saved online and is awaiting confirmation. Your transfer is confirmed only when our Fiji team confirms availability and pickup details.';
     }

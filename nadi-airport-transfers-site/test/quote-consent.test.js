@@ -98,7 +98,7 @@ function confirmSandbox(results) {
 test('MISMATCH on confirm: nothing is claimed saved, the guest is returned to the review with the new fare, the button works again, and the attempt reference is kept', async () => {
   const { sb, log, fields, button } = confirmSandbox([{ ok: false, priceMismatch: { reference: 300.45, submitted: 142 } }, { ok: true, bookingId: 238 }]);
   await sb.confirmBooking();
-  assert.equal(JSON.stringify(sb.state.fareOverride), JSON.stringify({ key: 'key', amount: 300.45, shown: 142 }));
+  assert.equal(JSON.stringify(sb.state.fareOverride), JSON.stringify({ key: 'key', amount: 300.45, shown: 142, original: 142 }));
   assert.equal(log.confirmations, 1, 'the review is rebuilt with the new fare'); assert.equal(JSON.stringify(log.steps), '[4]');
   assert.equal(fields.bulaSuccess.style.display, undefined, 'no success card'); assert.equal(fields.bookingWidget.style.display, undefined, 'the form stays');
   assert.equal(fields.bulaRetry.hidden, true, 'not presented as a failed save either');
@@ -111,9 +111,10 @@ test('MISMATCH on confirm: nothing is claimed saved, the guest is returned to th
   assert.equal(fields.bulaSuccess.style.display, 'block'); assert.equal(sb.state.confirmBookingInFlight, true);
 });
 
-test('the review step tells the guest plainly, with both numbers, and labels the accepted total', () => {
+test('the review step tells the guest plainly, with both totals and an explicit accept action', () => {
   const start = source.indexOf('function buildConfirmation()');
-  assert.ok(source.slice(start, start + 6000).includes('not the FJ$${state.fareOverride.shown} shown earlier'));
-  assert.ok(source.includes('Total price (confirmed by our booking system)'));
-  assert.ok(source.includes("role', 'alert'") || source.includes('setAttribute(\'role\', \'alert\')'));
+  const body = source.slice(start, start + 9000);
+  for (const text of ['Original total shown: FJ$', 'Revised total: FJ$', 'Accept revised price and submit', 'Nothing has been booked yet']) assert.ok(body.includes(text), text);
+  assert.ok(source.includes('Revised total (confirmed by our booking system)'));
+  assert.ok(body.includes("setAttribute('role', 'alert')"));
 });
