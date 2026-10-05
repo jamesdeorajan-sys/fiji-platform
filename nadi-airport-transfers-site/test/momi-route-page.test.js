@@ -53,7 +53,7 @@ test('JSON-LD price range spans every displayed one-way vehicle price (before di
 });
 test('the visible short answer and the table note distinguish before and after discount, and say extras are additional', () => {
   assert.match(html, /FJ\$99<\/strong> one-way before the booking discount \(<strong>FJ\$89<\/strong> after the existing 10% discount\) and <strong>FJ\$185<\/strong> return \(<strong>FJ\$166<\/strong> after\)/);
-  assert.match(html, /The first figure is the fare before discount; the second is what the booking tool charges after the existing 10% discount/);
+  assert.match(html, /The first figure is the fare before discount; the second is what the booking tool quotes after the existing 10% discount/);
   assert.match(html, /Extras are additional: child seat FJ\$8 and surfboard FJ\$24 per booking, added before the discount/);
 });
 test('SCOPE: only this route page and its test changed; the deployed booking repairs are intact in app.js', () => {
