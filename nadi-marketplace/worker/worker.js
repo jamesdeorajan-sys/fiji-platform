@@ -47,7 +47,7 @@
 // with the Node test suite (pricing.test.js / pricing-steps.test.mjs) -
 // this file no longer has its own separate copy of the fare formula.
 import {
-  RETURN_MULTIPLIER, computeBaseFare, applyZoneMultiplier,
+  RETURN_MULTIPLIER, NIGHT_SURCHARGE, DISCOUNT_RATE, computeBaseFare, applyZoneMultiplier,
   applyTripTypeMultiplier, applyNightSurcharge, applyExtras,
   applyLoyaltyDiscount, computeFinalTotal, computeBoatFare, assertSanePricing,
 } from './pricing.mjs';
@@ -2927,6 +2927,8 @@ async function createBookingRecord(env, {
   // amount silently replaced - an out-of-band amount is refused with PRICE_MISMATCH carrying the Worker's own number instead. Default false
   // keeps every other caller (cached old pages, FijiDash, admin test, negotiation) exactly as before.
   requireQuoteMatch = false,
+  // P0 #237: the total the guest was originally shown, sent only when they ACCEPTED a revised price; recorded, never used for pricing.
+  revisedFromAmount = null,
   // Milestone 34 (Issue #34 P0 fix) - client_booking_ref is a stable,
   // guest-widget-generated idempotency key sent on every submit attempt for
   // the same booking (including a retry after a network timeout or a
@@ -3063,6 +3065,8 @@ async function createBookingRecord(env, {
   // below), so its presence is already a reliable signal, no new field
   // needed to detect this case.
   let pricingNote = null;
+  const submittedAmount = quotedAmount; // exactly what the caller sent, before any server decision
+  let calculatedAmount = null; let pricingVersion = null; let pricingDecision = null;
   let pricingAdjustment = null; // set only when a legacy (non-opt-in) caller's amount is replaced by the Worker number; recorded on the created event
   const isBoatBooking = vehicleType === 'boat';
   if (verificationMode === 'authoritative') {
@@ -3088,7 +3092,9 @@ async function createBookingRecord(env, {
         // rather than turning a previously-always-succeeding booking flow
         // into a new way to fail. Logged for visibility either way.
         console.warn(`[pricing-authoritative-unavailable] ${authoritative.error} - ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType}, falling back to client-trusted quoted_amount`);
+        pricingDecision = { outcome: 'client_trusted_authoritative_unavailable', reason: 'server_could_not_compute_a_reference' };
       } else {
+        pricingVersion = authoritative.pricingVersion;
         // Real bug caught by live testing before this shipped: the client's
         // calculateTotal() applies the 10% loyalty discount (subtotal >
         // FJ$50, transfer-only) to what the guest actually sees and agrees
@@ -3101,6 +3107,7 @@ async function createBookingRecord(env, {
         // that a tour booking never qualifies for this discount.
         const serverFjd = authoritative.transferPlusExtrasFjd;
         const serverFjdDiscounted = applyLoyaltyDiscount(serverFjd, false).finalFjd;
+        calculatedAmount = serverFjdDiscounted;
 
         // Milestone 26 - real gap an independent pre-launch review found:
         // this guardrail (the actual Milestone 17 return-collapse fix)
@@ -3205,6 +3212,9 @@ async function createBookingRecord(env, {
             quotedAmount = serverFjdDiscounted;
           }
           distanceKm = authoritative.distanceKm; // server-derived distance is still trustworthy independent of which price source is used
+          if (pricingAdjustment) pricingDecision = { outcome: 'replaced_legacy', reason: 'outside_0.8x_1.3x_band_replaced_legacy' };
+          else if (Math.abs(submittedAmount - serverFjdDiscounted) < 0.005) pricingDecision = Number.isFinite(revisedFromAmount) ? { outcome: 'accepted_revised', reason: 'guest_accepted_revised_price' } : { outcome: 'matched', reason: 'none' };
+          else pricingDecision = { outcome: 'kept_in_band', reason: 'within_0.8x_1.3x_of_calculated' };
         } else if (isCustomAddress && !hasTour) {
           // Real gap found during Step 4 planning: the server can't yet
           // re-derive a custom address's exact geocoded distance (no
@@ -3249,6 +3259,7 @@ async function createBookingRecord(env, {
     }
   }
 
+  if (verificationMode === 'authoritative' && !isBoatBooking && !pricingDecision) pricingDecision = { outcome: 'not_fully_server_verified', reason: hasTour ? 'tour_in_booking' : (isCustomAddress ? 'custom_address' : 'unknown') };
   const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
   const fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
   const settlementAmountFjd = Math.round(quotedAmount * fxRate * 100) / 100;
@@ -3298,8 +3309,14 @@ async function createBookingRecord(env, {
 
   await logBookingEvent(env, {
     bookingId, eventType: 'created', previousStatus: null, newStatus: status, actor,
-    metadata: (assignedDriverId || pricingAdjustment) ? { ...(assignedDriverId ? { assigned_driver_id: assignedDriverId } : {}), ...(pricingAdjustment ? { pricing_adjustment: pricingAdjustment } : {}) } : null,
+    metadata: (assignedDriverId || pricingAdjustment || pricingDecision) ? {
+      ...(assignedDriverId ? { assigned_driver_id: assignedDriverId } : {}), ...(pricingAdjustment ? { pricing_adjustment: pricingAdjustment } : {}),
+      // PII-free record of how the saved amount was decided: what was submitted, what the Worker calculated, what was accepted/saved, why, and which pricing produced it
+      ...(pricingDecision ? { pricing_decision: { ...pricingDecision, submitted_amount_fjd: submittedAmount, calculated_amount_fjd: calculatedAmount, accepted_amount_fjd: quotedAmount, original_shown_amount_fjd: Number.isFinite(revisedFromAmount) ? revisedFromAmount : null, currency: quotedCurrency, pricing_version: pricingVersion } } : {}),
+    } : null,
   });
+  // in-memory only (never stored): lets the staff alerts say that the guest was shown a different number (legacy callers that are not asked to accept a revised price)
+  if (booking && pricingAdjustment) booking.fare_check = { submitted: pricingAdjustment.submitted_amount_fjd, saved: pricingAdjustment.saved_amount_fjd };
 
   // pricingNote is never blocking (see the tiered logic above) - surfaced
   // here so a caller can decide whether to also raise a real ops alert.
@@ -3373,6 +3390,7 @@ function buildFullBookingAdminSummary(booking) {
     b.return_pickup_location ? `Return pickup: ${sanitiseWhatsAppParamText(b.return_pickup_location, 60)}` : null,
     b.notes ? `Notes: ${sanitiseWhatsAppParamText(b.notes, 120)}` : null,
     `Total: ${b.quoted_currency} ${b.quoted_amount}`,
+    b.fare_check ? `FARE CHECK: guest was shown FJD ${Number(b.fare_check.submitted).toFixed(2)}, saved ${Number(b.fare_check.saved).toFixed(2)} - confirm the fare with the guest` : null,
     'Open admin dashboard for full details',
   ].filter(Boolean);
   // Final pass over the assembled line, not just each field - a defence-
@@ -3642,7 +3660,7 @@ async function sweepAdminNotifications(env) {
 async function sendShortAdminAlert(env, booking) {
   try {
     const summary = sanitiseWhatsAppParamText(
-      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${booking.quoted_amount}.`,
+      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${booking.quoted_amount}.${booking.fare_check ? ` FARE CHECK: guest was shown FJD ${Number(booking.fare_check.submitted).toFixed(2)}.` : ''}`,
       1000
     );
     for (const alertPhone of await getAdminAlertPhones(env)) {
@@ -3766,6 +3784,7 @@ async function handleGuestBookingCreate(request, env, ctx) {
     hasChildSeat: body.has_child_seat === true,
     hasSurfboard: body.has_surfboard === true,
     requireQuoteMatch: body.require_quote_match === true,
+    revisedFromAmount: body.revised_from_amount !== undefined && body.revised_from_amount !== null && isFinite(Number(body.revised_from_amount)) ? Number(body.revised_from_amount) : null,
     actor: 'guest', // the public guest widget - a real guest's own booking submission
   });
   if (!result.ok && result.code === 'PRICE_MISMATCH') {
@@ -4941,6 +4960,12 @@ async function findNearestZone(env, lat, lng) {
 // named, independently-unit-tested functions the pricing test suite
 // exercises directly, not a separate inline copy.
 async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
+  const detailed = await computeFareFjdDetailed(env, vehicleType, distanceKm, remoteMultiplier);
+  return detailed ? detailed.fare : null;
+}
+
+// P0 #237: the same calculation as computeFareFjd, also returning the rule that was used so a booking can record WHICH pricing produced its number.
+async function computeFareFjdDetailed(env, vehicleType, distanceKm, remoteMultiplier) {
   const rule = await env.DB.prepare(
     `SELECT base_rate_fjd_per_km, flagfall_fjd FROM pricing_rules
      WHERE vehicle_type = ? AND active = 1 AND distance_min_km <= ? AND (distance_max_km IS NULL OR ? < distance_max_km)
@@ -4949,7 +4974,12 @@ async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
   if (!rule) return null;
   const baseFare = computeBaseFare({ flagfallFjd: rule.flagfall_fjd, baseRateFjdPerKm: rule.base_rate_fjd_per_km, distanceKm });
   const withZoneMultiplier = applyZoneMultiplier(baseFare, remoteMultiplier);
-  return computeFinalTotal(withZoneMultiplier);
+  return { fare: computeFinalTotal(withZoneMultiplier), rule: { flagfall: rule.flagfall_fjd, rate: rule.base_rate_fjd_per_km }, zoneMultiplier: remoteMultiplier === null || remoteMultiplier === undefined ? 1 : remoteMultiplier };
+}
+
+// A short, PII-free string naming exactly the inputs a calculated fare depends on (rule values, zone multiplier, return multiplier, night surcharge, discount rate, acceptance band).
+function pricingVersionString(vehicleType, detail) {
+  return `nat-formula-v1|${vehicleType}|flag${detail.rule.flagfall}|rate${detail.rule.rate}|zm${detail.zoneMultiplier}|ret${RETURN_MULTIPLIER}|night${NIGHT_SURCHARGE}|disc${DISCOUNT_RATE}|band0.8-1.3`;
 }
 
 // MILESTONE 16: real driving distance between two KNOWN zone coordinates
@@ -5088,7 +5118,8 @@ async function computeAuthoritativePrice(env, { pickupZone, destinationZone, veh
   if (distanceKm === null) {
     return { ok: false, error: 'Could not resolve a real distance for authoritative pricing.' };
   }
-  const oneWayFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  const oneWayDetail = await computeFareFjdDetailed(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  const oneWayFareFjd = oneWayDetail ? oneWayDetail.fare : null;
   if (!oneWayFareFjd) {
     return { ok: false, error: 'No pricing rule found for this route and vehicle type.' };
   }
@@ -5101,7 +5132,7 @@ async function computeAuthoritativePrice(env, { pickupZone, destinationZone, veh
   // combined figure - matching calculateTotal()'s existing behavior of
   // discounting transfer+extras+tour together) and the tour-remainder
   // floor check, where discount timing doesn't matter for a >= comparison.
-  return { ok: true, transferPlusExtrasFjd: computeFinalTotal(withExtras), distanceKm };
+  return { ok: true, transferPlusExtrasFjd: computeFinalTotal(withExtras), distanceKm, pricingVersion: pricingVersionString(vehicleType, oneWayDetail) };
 }
 
 // Real Google Routes API call. Field mask requests warnings text
