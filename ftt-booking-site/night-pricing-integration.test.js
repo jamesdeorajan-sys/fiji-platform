@@ -20,8 +20,8 @@ function grabFn(name) {
 }
 const grabConst = (n) => { const m = js.match(new RegExp('const ' + n + '\\s*= [^;]+;')); assert.ok(m, n); return m[0]; };
 const SOURCE = [
-  ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
-  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map(grabFn),
+  ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'PAGE_RETURN_CONVENTION_DESTS', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
+  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'pageReturnConventionApplies', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map(grabFn),
 ].join('\n\n');
 
 const stubEl = () => { const e = { style: {}, value: '', textContent: '', disabled: false, parentNode: null }; e.setAttribute = () => {}; e.appendChild = () => {}; e.insertBefore = () => {}; return e; };

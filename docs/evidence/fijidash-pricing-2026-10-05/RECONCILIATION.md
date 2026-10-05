@@ -3,7 +3,7 @@
 Nothing here is a live booking, message or fare change. Every number below was produced in an isolated harness:
 
 - **Page figures** (advertised / selection / review / submitted) come from the real page code (`app.js` functions run in a sandbox): NAT = released `c5ee3b1`, FijiDash production = `8c6f920`, FijiDash candidate = this branch.
-- **Worker figures** (Worker-calculated / saved) come from the real deployed Worker (a `wrangler deploy --dry-run` bundle of the production script, `test-fixtures/worker-deployed-7a32a034.mjs`) over an in-memory database seeded from a read-only production pricing snapshot dated **2026-09-27** (zones, pricing rules, distances, fuel index - unchanged).
+- **Worker figures** (Worker-calculated / saved) come from the real deployed Worker (a `wrangler deploy --dry-run` bundle of the production script, `test-fixtures/worker-deployed-7a32a034.mjs`) over an in-memory database seeded from a read-only production pricing snapshot **refreshed 2026-10-05 05:08 UTC** with read-only `SELECT --command` queries (19 zones, 15 pricing rules, 15 airport distances, fuel index id 1 = multiplier 1 / FJ$3.39 per litre). The refresh was compared field by field with the 2026-09-27 snapshot: **zero differences**, so no earlier result changed because of pricing data. The live Worker version was re-checked the same time (`7a32a034`, deployed 2026-10-05 03:06 UTC, unchanged).
 - Every outbound call the Worker attempted (WhatsApp alerts, driver broadcast) was recorded and blocked. No network, no production data written.
 - This table **records** what each layer says and classifies the differences. It does **not** approve any fare. The Worker formula is not commercially approved for any route except the Momi minibus base of FJ$175.92 (before the existing discount).
 
@@ -23,10 +23,10 @@ NOT covered here (stated, not hidden): departures (hotel -> airport, priced from
 | NAT live `c5ee3b1` | 2 | 794 | 20 | 0 | 24 (Tanoa International) |
 | FijiDash production `8c6f920`, live lookup works | 420 | 420 (all night rows) | 0 (no opt-in) | 0 | 24 |
 | FijiDash production `8c6f920`, live lookup unavailable | 0 | 812 | 0 (no opt-in) | **28** | 24 |
-| FijiDash candidate, live lookup works | 420 | 420 (all night rows) | 0 | 0 | 24 |
+| FijiDash candidate, live lookup works | 414 | 426 (all 420 night rows, plus the 6 Momi day-return rows that follow the approved page convention) | 0 | 0 | 24 |
 | FijiDash candidate, live lookup unavailable | 2 | 818 | 20 | 0 | 24 |
 
-Selection total differs from review total (the guest sees one number when choosing and another when confirming): **FijiDash production 840 of 840 priceable rows** (790 by more than FJ$1, 392 by more than FJ$20, largest FJ$218.92); **candidate 0**; NAT 0.
+Selection total differs from review total (the guest sees one number when choosing and another when confirming): **FijiDash production 840 of 840 priceable rows differ at all** (790 by more than FJ$1, 696 by more than FJ$5, 392 by more than FJ$20, largest FJ$218.92; in the 210 base cases of day / no extras, 185 differ by more than FJ$1 and 10 by more than 20%); **candidate 0**; NAT 0. The counting definitions, the exact comparison, the treatment of lookup failures and missing prices, and raw calculations are in `AUDIT-selection-vs-review.md`. Note "840" counts combinations (route x vehicle x trip x extras x time), not 840 distinct journeys, and "differ at all" includes differences of cents.
 
 ### 1. Guest-facing discrepancies
 
@@ -37,7 +37,9 @@ Selection total differs from review total (the guest sees one number when choosi
 | G3 | When the live lookup is unavailable, FijiDash production saves a DIFFERENT fare from the one shown without telling the guest (28 rows: Nadi/Mercure sedan, Wailoaloa/Crowne Plaza sedan, Momi minibus). Example: Mercure sedan shown FJ$19, saved FJ$30.15. | recon rows, class SILENT_SUBSTITUTION | **Fixed in candidate**: refused with 409, the guest sees both totals and must press "Accept revised price and submit"; saved = accepted amount |
 | G4 | The guest was never shown the amount actually saved. | the page ignored the Worker response | **Fixed**: the success card reads "Fare saved: FJD x" from the Worker response (or states the difference) |
 | G5 | Float tails (127.96000000000001) were submitted and stored. | night-pricing test (R2) | **Fixed**: whole cents are submitted |
-| G6 | At night the booking tool says "Night surcharge applied" and the FAQ promises a 20% surcharge, but on every eligible route the amount shown, submitted and SAVED excludes it (the reference fare has no night component). 420/420 FijiDash night rows saved below the Worker figure (largest shortfall FJ$178.82). | recon rows, R17 test | **NOT changed**: commercial decision D1 |
+| G6 | At night the booking tool says "Night surcharge applied" and the FAQ promises a 20% surcharge, but on every eligible route the amount shown, submitted and SAVED excludes it (the reference fare has no night component). 414/420 FijiDash night rows saved below the Worker figure (largest shortfall FJ$178.82); the other 6 are Momi return rows, which follow the approved page convention and DO include the page's night modifier, so within the candidate Momi one-way at night is 157.92 but return at night is 355 (297 by day). Boundary and return-time evidence: `NIGHT.md`. **Release blocker B1.** | recon rows, R17 test | **NOT changed**: commercial decision D1 |
+| G8 | A slow review-step fare lookup could overwrite the price of a trip the guest had since changed (Back, then change trip type), because it only checked "is this the latest render", not "is this still the same trip". Present in production too. | async test (red before the fix) | **Fixed in candidate** (answer dropped unless the itinerary key is unchanged) |
+| G9 | A tap on "Confirm" that lands just after the refusal comes back (a double tap) would have counted as accepting a revised price the guest had not read. | browser run: the third tap booked at 30.15 | **Fixed in candidate** (taps inside 1.5 s of the revised total appearing are ignored; the button is also disabled for that time) |
 | G7 | NAT static page vs Worker: 20 rows are refused and routed through the consent flow (already live). FijiDash candidate with the live lookup down: the same 20 rows. | recon rows | consent flow in place; fares unchanged |
 
 ### 2. Formula differences accepted within the current band (0.8x-1.3x of the Worker figure)
@@ -53,7 +55,7 @@ The Worker keeps the page's own figure whenever it is inside the band. These are
 
 - **D1 Night surcharge.** Published as 20% (FAQ, the "Night surcharge applied" label, the Worker formula) but not applied on the live-fare path, so no FijiDash night booking on an eligible route is charged it today. Options: apply it to the live fare (selection = review = Worker) or stop claiming it. Not decided here.
 - **D2 Which fare is right per route.** Where the published table and the Worker formula differ materially (examples: Mercure/Nadi sedan 19 vs 30.15; Crowne Plaza/Wailoaloa sedan return 67 vs 50.17; Crowne Plaza sedan one-way 39 vs 30.36), decide the commercially intended fare. The candidate does not choose: it shows the Worker's current number on FijiDash and asks for consent where the static figure is refused.
-- **D3 Return rounding.** Page: one-way x1.85 then round up to the next FJ$5. Worker: x1.85 without the round-up (part of the return differences, e.g. Momi minibus 297 vs 292.45).
+- **D3 Return rounding.** Page: one-way x1.85 then round up to the next FJ$5. Worker: x1.85 without the round-up (part of the return differences). **Momi only is decided**: James approved the existing Nadi convention (minibus one-way 157.92, return 297, return + child seat 304), and the candidate shows and saves exactly those (the Worker's 292.45 / 300.45 are reported, never substituted). Production FijiDash today charges the Worker figures (292.45 / 300.45) for Momi return because its review step swaps them in. Every other route is undecided.
 - **D4 Tanoa International** price (no rule exists; FJ$15/25/45 is page-only).
 - **D5 Other route pages** (NAT and FijiDash) that still quote table figures: only Momi has been corrected so far.
 - **D6** Whether the routes table and vehicle cards should keep advertising the table "from" fares (e.g. Mercure sedan FJ$19) now that FijiDash selection shows the live fare (FJ$30.15).
@@ -65,11 +67,11 @@ Amounts are the guest-visible totals after the existing 10% discount where it ap
 | Route | Vehicle | Trip | Advertised one-way base | NAT shown (sel=review=submitted) | FD prod selection | FD prod review (=submitted) | FD candidate selection=review | Worker-calculated | Saved: NAT / FD prod / FD cand | NAT class | FD prod class | FD cand class |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | MARRIOTT_MOMI | sedan | one-way | 99 | 89 | 89 | 85.29 | 85.29 | 85.29 | 89 / 85.29 / 85.29 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
-| MARRIOTT_MOMI | sedan | return | 99 | 166 | 166 | 157.44 | 157.44 | 157.44 | 166 / 157.44 / 157.44 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
+| MARRIOTT_MOMI | sedan | return | 99 | 166 | 166 | 157.44 | 166 | 157.44 | 166 / 157.44 / 166 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | IN_BAND_DIFFERENCE |
 | MARRIOTT_MOMI | minivan | one-way | 149 | 134 | 134 | 132.42 | 132.42 | 132.42 | 134 / 132.42 / 132.42 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
-| MARRIOTT_MOMI | minivan | return | 149 | 252 | 252 | 245.73 | 245.73 | 245.73 | 252 / 245.73 / 245.73 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
+| MARRIOTT_MOMI | minivan | return | 149 | 252 | 252 | 245.73 | 252 | 245.73 | 252 / 245.73 / 252 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | IN_BAND_DIFFERENCE |
 | MARRIOTT_MOMI | minibus | one-way | 175.92 | 157.92 | 71 | 157.92 | 157.92 | 157.92 | 157.92 / 157.92 / 157.92 | MATCH | MATCH (sel≠review) | MATCH |
-| MARRIOTT_MOMI | minibus | return | 175.92 | 297 | 135 | 292.45 | 292.45 | 292.45 | 297 / 292.45 / 292.45 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
+| MARRIOTT_MOMI | minibus | return | 175.92 | 297 | 135 | 292.45 | 297 | 292.45 | 297 / 292.45 / 297 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | IN_BAND_DIFFERENCE |
 | MERCURE_NADI | sedan | one-way | 19 | 19 | 19 | 30.15 | 30.15 | 30.15 | - / 30.15 / 30.15 | CONSENT_REQUIRED | MATCH (sel≠review) | MATCH |
 | MERCURE_NADI | sedan | return | 19 | 40 | 40 | 49.78 | 49.78 | 49.78 | 40 / 49.78 / 49.78 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
 | MERCURE_NADI | minivan | one-way | 49 | 49 | 49 | 46.42 | 46.42 | 46.42 | 49 / 46.42 / 46.42 | IN_BAND_DIFFERENCE | MATCH (sel≠review) | MATCH |
@@ -101,11 +103,11 @@ Amounts are the guest-visible totals after the existing 10% discount where it ap
 | Route | Vehicle | Trip | Advertised one-way base | NAT shown (sel=review=submitted) | FD prod selection | FD prod review (=submitted) | FD candidate selection=review | Worker-calculated | Saved: NAT / FD prod / FD cand | NAT class | FD prod class | FD cand class |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | MARRIOTT_MOMI | sedan | one-way | 99 | 115 | 115 | 92.29 | 92.29 | 109.15 | 115 / 92.29 / 92.29 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
-| MARRIOTT_MOMI | sedan | return | 99 | 205 | 205 | 164.44 | 164.44 | 195.32 | 205 / 164.44 / 164.44 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
+| MARRIOTT_MOMI | sedan | return | 99 | 205 | 205 | 164.44 | 205 | 195.32 | 205 / 164.44 / 205 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
 | MARRIOTT_MOMI | minivan | one-way | 149 | 169 | 169 | 139.42 | 139.42 | 166.90 | 169 / 139.42 / 139.42 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
-| MARRIOTT_MOMI | minivan | return | 149 | 309 | 309 | 252.73 | 252.73 | 301.27 | 309 / 252.73 / 252.73 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
+| MARRIOTT_MOMI | minivan | return | 149 | 309 | 309 | 252.73 | 309 | 301.27 | 309 / 252.73 / 309 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
 | MARRIOTT_MOMI | minibus | one-way | 175.92 | 201 | 93 | 165.92 | 165.92 | 197.10 | 201 / 165.92 / 165.92 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
-| MARRIOTT_MOMI | minibus | return | 175.92 | 363 | 169 | 300.45 | 300.45 | 358.54 | 363 / 300.45 / 300.45 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
+| MARRIOTT_MOMI | minibus | return | 175.92 | 363 | 169 | 300.45 | 363 | 358.54 | 363 / 300.45 / 363 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
 | MERCURE_NADI | sedan | one-way | 19 | 33 | 33 | 38.15 | 38.15 | 44.18 | - / 38.15 / 38.15 | CONSENT_REQUIRED | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
 | MERCURE_NADI | sedan | return | 19 | 48 | 48 | 57.78 | 57.78 | 67.93 | - / 57.78 / 57.78 | CONSENT_REQUIRED | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |
 | MERCURE_NADI | minivan | one-way | 49 | 61 | 61 | 53.42 | 53.42 | 62.70 | 61 / 53.42 / 53.42 | IN_BAND_DIFFERENCE | IN_BAND_DIFFERENCE (sel≠review) | IN_BAND_DIFFERENCE |

@@ -1,7 +1,7 @@
 // FijiDash quote consent (2026-10-05, preview): the guest is shown a total, asks to book it, and the booking system must never quietly save a different one.
 //   - the page code is the REAL candidate app.js (functions sliced and run in a vm sandbox);
 //   - the Worker is the REAL deployed Worker (dry-run bundle of production, test-fixtures/worker-deployed-7a32a034.mjs) over an in-memory database seeded from
-//     a read-only production pricing snapshot (2026-09-27); every outbound call the Worker makes is recorded and BLOCKED. No network, no live booking.
+//     a read-only production pricing snapshot (2026-10-05); every outbound call the Worker makes is recorded and BLOCKED. No network, no live booking.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -23,7 +23,7 @@ function fn(name) {
 }
 const konst = (n) => { const m = src.match(new RegExp('const ' + n + '\\s*= [^;]+;')); assert.ok(m, n); return m[0]; };
 const FUNCS = ['bookingHasTour', 'fareOverrideKey', 'dropStaleFareOverride', 'fareText', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'renderPriceBlock', 'bookingRequest', 'submitMarketplaceBooking', 'reviewRevisedFare', 'showBulaSuccess', 'bulaFirstName', 'hideBookingWidget'];
-const CODE = ['DISCOUNT_THRESHOLD', 'DISCOUNT_RATE'].map(konst).join('\n') + '\n' + FUNCS.map(fn).join('\n');
+const CODE = ['DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'ACCEPT_COOLDOWN_MS'].map(konst).join('\n') + '\n' + FUNCS.map(fn).join('\n');
 
 // a minimal DOM: elements by id, created on demand, enough for the price block, the notice, the buttons and the success card
 function makeDom(fields) {

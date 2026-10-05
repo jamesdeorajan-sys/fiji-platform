@@ -4,7 +4,7 @@
 // applyLoyaltyDiscount and the 0.8x-1.3x acceptance band all execute from the deployed code.
 const path = require('path');
 const { pathToFileURL } = require('url');
-const snap = require('./pricing-snapshot-2026-09-27.json');
+const snap = require('./pricing-snapshot-2026-10-05.json');
 
 let workerPromise;
 function loadWorker() {

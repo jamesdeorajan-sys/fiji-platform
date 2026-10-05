@@ -1052,9 +1052,14 @@ const LIVE_FARE_TTL_MS = 120000;
 const LIVE_FARE_MAX_ATTEMPTS = 3;
 const LIVE_FARE_RETRY_DELAYS_MS = [2000, 5000];
 const LIVE_FARE_CLASSES = ['sedan', 'minivan', 'minibus'];
+// James-approved 2026-10-05: Marriott Momi Bay return trips keep the page's existing return convention (one-way x1.85, rounded up to the next FJ$5; minibus
+// 330 -> 297 after the 10% discount, 304 with a child seat). The booking system's own return figure (292.45 / 300.45) is NOT substituted for them. Only Momi.
+const PAGE_RETURN_CONVENTION_DESTS = { MARRIOTT_MOMI: true };
+function pageReturnConventionApplies(destVal) { return state.tripType === 'return' && !!PAGE_RETURN_CONVENTION_DESTS[destVal]; }
 function liveFareEligible(pickupVal, destVal) {
   if (pickupVal !== 'NAN' || !destVal || destVal === 'CUSTOM_DEST') return false;
   if (BOAT_DESTINATION_IDS[destVal]) return false;
+  if (pageReturnConventionApplies(destVal)) return false;
   if (state.priceSource !== 'published' && state.priceSource !== 'estimate') return false;
   return !!state.destZoneName && state.destZoneName !== 'NEEDS_LOOKUP';
 }
@@ -2074,6 +2079,9 @@ async function confirmBooking() {
   // rejected). Reset in every exit path below EXCEPT after a confirmed
   // success, matching the original "the widget's job is done" rule -
   // reset on failure specifically so "Try again" can resubmit.
+  // A tap that lands within a moment of the revised price appearing is a tap meant for the PREVIOUS button state (a double tap on Confirm whose refusal came back quickly),
+  // not an acceptance of a price the guest has not had time to read. Ignored; the guest taps again to accept.
+  if (state.fareOverride && state.fareOverride.key === fareOverrideKey() && Date.now() - (state.fareOverride.shownAt || 0) < ACCEPT_COOLDOWN_MS) return;
   if (state.confirmBookingInFlight) return;
   state.confirmBookingInFlight = true;
   const confirmBtn = document.querySelector('.btn-confirm');
@@ -2201,6 +2209,7 @@ async function confirmBooking() {
 // The booking system refused the amount the guest was shown (409 PRICE_MISMATCH): NOTHING was saved and no alert or message was sent. Show the guest its
 // fare on the review step and let them accept it (the same Confirm button, now sending exactly that amount) or go back and change the trip. The attempt
 // ref is kept: no booking exists under it.
+const ACCEPT_COOLDOWN_MS = 1500;
 function reviewRevisedFare(mm, keyAtSubmit, confirmBtn, originalText) {
   state.confirmBookingInFlight = false;
   if (confirmBtn) { confirmBtn.disabled = false; if (originalText !== undefined) confirmBtn.textContent = originalText; }
@@ -2208,7 +2217,8 @@ function reviewRevisedFare(mm, keyAtSubmit, confirmBtn, originalText) {
     state.fareOverride = null; // the journey changed while the request was out: that answer is for the old journey, never carry it over
   } else {
     const prior = state.fareOverride && state.fareOverride.key === keyAtSubmit ? state.fareOverride : null;
-    state.fareOverride = { key: keyAtSubmit, amount: mm.reference, shown: mm.submitted, original: prior ? prior.original : mm.submitted };
+    state.fareOverride = { key: keyAtSubmit, amount: mm.reference, shown: mm.submitted, original: prior ? prior.original : mm.submitted, shownAt: Date.now() };
+    if (confirmBtn) { confirmBtn.disabled = true; setTimeout(() => { confirmBtn.disabled = false; }, ACCEPT_COOLDOWN_MS); }   // visible as well as enforced in confirmBooking()
   }
   const failure = document.getElementById('bulaFailure');
   if (failure) failure.style.display = 'none';
@@ -2810,11 +2820,15 @@ function renderFareTiers() {
   // same pattern as the geocoding forAddress guards elsewhere in this file.
   const fetchToken = { pickupZone: elig.pickupZone, destinationZone: elig.destinationZone, vehicleType: elig.vehicleType };
   state.negotiationFareFetchToken = fetchToken;
+  const keyAtFetch = fareOverrideKey();   // the itinerary this lookup was made for
 
   fetchRealReferenceFare(elig.pickupZone, elig.destinationZone, elig.vehicleType, state.tripType).then((realFare) => {
     if (state.negotiationFareFetchToken !== fetchToken) return; // stale - guest moved on
     if (amountInput) amountInput.disabled = false;
     if (submitBtn) submitBtn.disabled = false;
+    // the guest went Back and changed the trip (trip type, vehicle, extras, time, destination...) without re-entering this step: this answer is for the OLD trip and must
+    // never overwrite the price of the new one (re-entering the review step makes a fresh lookup)
+    if (keyAtFetch !== fareOverrideKey()) return;
 
     if (realFare === null) {
       if (state.liveFareStatus !== 'confirmed' && state.liveFareStatus !== 'stale') { state.liveFareStatus = 'unavailable'; renderLiveFareNote(); }
@@ -2828,8 +2842,9 @@ function renderFareTiers() {
     // booking now shows the SAME real number too, and everything
     // downstream (confirmation card, WhatsApp message, the real /bookings
     // submission) uses it - not two different fares sitting side by side.
-    const priceChanged = state.prices[elig.vehicleType] !== realFare;
-    state.prices[elig.vehicleType] = realFare;
+    const keepPageReturn = pageReturnConventionApplies(document.getElementById('destination')?.value);   // approved Momi return convention: do not overwrite the page's figure
+    const priceChanged = !keepPageReturn && state.prices[elig.vehicleType] !== realFare;
+    if (!keepPageReturn) state.prices[elig.vehicleType] = realFare;
     state.liveFareStatus = 'confirmed'; renderLiveFareNote();
     renderPriceBlock();
     if (priceChanged) {

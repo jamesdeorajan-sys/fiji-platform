@@ -25,8 +25,8 @@ const FAST = (src) => src
   .replace(/const LIVE_FARE_RETRY_DELAYS_MS = \[[^\]]*\];/, 'const LIVE_FARE_RETRY_DELAYS_MS = [15, 30];')
   .replace(/const LIVE_FARE_TTL_MS = \d+;/, 'const LIVE_FARE_TTL_MS = 200;');
 const SOURCE = FAST([
-  ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
-  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map((n) => grabFn(js, n)),
+  ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'PAGE_RETURN_CONVENTION_DESTS', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
+  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'pageReturnConventionApplies', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map((n) => grabFn(js, n)),
 ].join('\n\n'));
 
 function makeEl(extra = {}) {
@@ -248,7 +248,11 @@ test('source wiring and scope: hook in updatePricing; fare functions byte-identi
   for (const name of ['computePrices', 'applyModifiers', 'fetchRealReferenceFare', 'bookingRequest', 'reportBookingSyncFailure']) {
     assert.equal(grabFn(js, name), grabFn(base, name), `${name} must be byte-identical to production ${PROD}`);
   }
-  const stripped = grabFn(js, 'renderFareTiers').split('\n').filter((l) => !/renderLiveFareNote\(\)/.test(l)).join('\n');
+  // plus the approved Momi return convention: three lines replace the two unconditional assignments
+  const stripped = grabFn(js, 'renderFareTiers').split('\n').filter((l) => !/renderLiveFareNote\(\)/.test(l)).join('\n')
+    .replace(/  const keyAtFetch = [^\n]*\n/, '')   // stale review-lookup guard (itinerary key captured at fetch time)
+    .replace(/    \/\/ the guest went Back and changed the trip[\s\S]*?    if \(keyAtFetch !== fareOverrideKey\(\)\) return;\n/, '')
+    .replace(/    const keepPageReturn =[^\n]*\n    const priceChanged = !keepPageReturn && state\.prices\[elig\.vehicleType\] !== realFare;\n    if \(!keepPageReturn\) state\.prices\[elig\.vehicleType\] = realFare;\n/, '    const priceChanged = state.prices[elig.vehicleType] !== realFare;\n    state.prices[elig.vehicleType] = realFare;\n');
   assert.equal(stripped, grabFn(base, 'renderFareTiers'), 'renderFareTiers: only the status-note lines may differ');
 });
 

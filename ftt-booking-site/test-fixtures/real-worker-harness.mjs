@@ -1,5 +1,5 @@
 // Runs a Worker source directory (worker.js + pricing.mjs) against an in-memory stand-in for D1 seeded from a read-only
-// snapshot of the real zones, pricing_rules, zone_distance_cache and fuel_index tables (pricing-snapshot-2026-09-27.json).
+// snapshot of the real zones, pricing_rules, zone_distance_cache and fuel_index tables (pricing-snapshot-2026-10-05.json).
 // The pricing path is NOT mocked: computeAuthoritativePrice, the night surcharge, extras, loyalty discount, the
 // return sanity check and the 0.8x-1.3x acceptance band all execute from the code in the directory you pass in.
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const snap = JSON.parse(fs.readFileSync(path.join(here, 'pricing-snapshot-2026-09-27.json'), 'utf8'));
+export const snap = JSON.parse(fs.readFileSync(path.join(here, 'pricing-snapshot-2026-10-05.json'), 'utf8'));
 
 const cache = new Map();
 export function loadWorker(dir) {

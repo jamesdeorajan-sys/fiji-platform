@@ -47,3 +47,8 @@ Harness note: the first attempt to simulate the lost response by destroying the 
 ## Not evidenced here
 
 Physical-phone testing of this FijiDash candidate; a desktop-width screenshot of the success card after a revised-price acceptance (verified in the DOM and unit tests, screenshot taken for the consent notice and the plain "Fare saved" card only); departures, boats, custom addresses and tours (see RECONCILIATION.md coverage).
+
+## F. Added for release review (2026-10-05, later run; real Chromium, isolated server, outbound blocked)
+
+- **Momi minibus return (candidate):** selection FJ$330 -> **297**, review **297** (subtotal 330, discount 33), submitted 297, saved **297**, "Fare saved: FJD 297"; Worker-calculated 292.45 (decision `kept_in_band`). With a child seat: selection 338 -> **304**, review **304**, saved **304**; Worker-calculated 300.45. One-way: 157.92 / 157.92 / 157.92. The Worker's 292.45 / 300.45 were not substituted.
+- **Double taps (candidate, consent path):** taps on Confirm at 0, 0, 40 and ~340 ms produced exactly ONE booking write (the 409), zero bookings, and the button was disabled while the revised total was shown. After the cooldown, a double tap on "Accept revised price and submit" produced exactly one booking at 30.15 (same reference, `revised_from_amount` 19). Before the fix a third tap 40 ms later had accepted the revised price unread.

@@ -1,0 +1,1 @@
+Copy of the released NAT page source (nadi-airport-transfers-site/src: app.js and transfer/*.html) at `c5ee3b1`, vendored so the reconciliation, night and advertised-price scripts are reproducible without the NAT repository. Not edited.

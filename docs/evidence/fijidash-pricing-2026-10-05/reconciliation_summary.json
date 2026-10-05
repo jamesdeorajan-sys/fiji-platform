@@ -23,12 +23,12 @@
  "FD-candidate": {
   "rows": 864,
   "byClass": {
-   "MATCH": 420,
-   "IN_BAND_DIFFERENCE": 420,
+   "MATCH": 414,
+   "IN_BAND_DIFFERENCE": 426,
    "ZONE_NOT_IN_PRICING_DATA": 24
   },
   "selection_review_mismatch": 0,
-  "night_saved_without_surcharge": 420
+  "night_saved_without_surcharge": 414
  },
  "FD-prod(8c6f920) lookup-down": {
   "rows": 864,
