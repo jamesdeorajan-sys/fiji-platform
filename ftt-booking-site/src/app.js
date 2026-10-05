@@ -1998,7 +1998,7 @@ async function confirmBooking() {
   const result = await submitMarketplaceBooking(ref);
 
   if (result.ok) {
-    showBulaSuccess(ref, result.bookingId);
+    showBulaSuccess(ref, result.bookingId, result.followupToken);
     // Deliberately NOT reset - a confirmed booking means this widget's
     // job is done, matching the original double-submit guard's intent.
   } else {
@@ -2023,10 +2023,29 @@ function hideBookingWidget() {
   document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// "No WhatsApp? Request confirmation by email" (email-followup.js): a BACKUP channel that durably records a follow-up request against this reference before it shows
+// any success. saved -> attaches to the saved booking; uncertain -> reconciles by the SAME reference first (submitMarketplaceBooking(ref) returns the existing booking if
+// it was saved); WhatsApp-only -> an enquiry for human review, never a booking. It never changes the booking payload, pricing or retry identity.
+function mountEmailFollowup(card, ref, mode, followupToken) {
+  if (typeof EmailFollowup === 'undefined' || !card) return;
+  EmailFollowup.mount(card, {
+    site: 'fijidash', apiBase: NADI_API_BASE, ref, token: followupToken || null, mode,
+    getEmail: () => document.getElementById('email')?.value.trim() || '',
+    getGuest: () => ({ name: `${document.getElementById('firstName')?.value.trim() || ''} ${document.getElementById('lastName')?.value.trim() || ''}`.trim(), phone: document.getElementById('phone')?.value.trim() || '' }),
+    getEnquiry: () => ({
+      from: stripEmoji(state.pickup?.name) || '', to: stripEmoji(state.destination?.hotel) || document.getElementById('customDestAddress')?.value.trim() || '',
+      date: document.getElementById('travelDate')?.value || '', time: document.getElementById('travelTime')?.value || '', trip: state.tripType, vehicle: state.selectedVehicle,
+      passengers: state.passengers, flight: document.getElementById('flightNum')?.value.trim() || '', amount_shown: calculateTotal().final, notes: document.getElementById('notes')?.value.trim() || '',
+    }),
+    reconcile: async () => submitMarketplaceBooking(ref),
+    onReconciled: (r) => { state.confirmBookingInFlight = true; showBulaSuccess(ref, r.bookingId, r.followupToken); },
+  });
+}
+
 // CEO P0 fix (Issue #34) - the honest success state: only ever called AFTER
 // the server has actually confirmed the booking (result.ok from
 // submitMarketplaceBooking). The saved request is NOT yet a confirmed transfer: the guest finishes by pressing Send in WhatsApp and the Fiji team confirms.
-function showBulaSuccess(ref, bookingId) {
+function showBulaSuccess(ref, bookingId, followupToken) {
   const failureCard = document.getElementById('bulaFailure');
   if (failureCard) failureCard.style.display = 'none';
   hideBookingWidget();
@@ -2056,6 +2075,7 @@ function showBulaSuccess(ref, bookingId) {
 
   const bula = document.getElementById('bulaSuccess');
   if (bula) bula.style.display = 'block';
+  mountEmailFollowup(document.getElementById('bulaSuccess'), ref, 'saved', followupToken);
 }
 
 // Route not eligible for the marketplace sync (see isSupportedRoute above) -
@@ -2077,6 +2097,7 @@ function showBulaUnsupportedRoute(ref) {
 
   const bula = document.getElementById('bulaSuccess');
   if (bula) bula.style.display = 'block';
+  mountEmailFollowup(document.getElementById('bulaSuccess'), ref, 'enquiry', null);
 }
 
 // CEO P0 fix (Issue #34) - the honest failure state: never shown instead of
@@ -2098,6 +2119,7 @@ function showBulaFailure(ref, errorDetail) {
 
   const failure = document.getElementById('bulaFailure');
   if (failure) failure.style.display = 'block';
+  mountEmailFollowup(failure, ref, 'uncertain', null);
 }
 
 // "Try again" on the failure card - reuses the SAME client_booking_ref
@@ -2118,7 +2140,7 @@ async function retryMarketplaceBooking() {
   if (retryBtn) retryBtn.disabled = false;
 
   if (result.ok) {
-    showBulaSuccess(ref, result.bookingId);
+    showBulaSuccess(ref, result.bookingId, result.followupToken);
   } else {
     state.confirmBookingInFlight = false;
     showBulaFailure(ref, result.error);
@@ -2344,7 +2366,7 @@ async function submitMarketplaceBooking(ref) {
       return { ok: false, resultKind: 'unknown', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
     trackBookingFunnel('booking_post_succeeded');
-    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
+    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent, followupToken: data.followup_token || null };
   } catch (err) {
     // P0 incident fix (2026-09-26): fire-and-forget, same reasoning as above.
     void reportBookingSyncFailure(ref, payload, { error: err.message });

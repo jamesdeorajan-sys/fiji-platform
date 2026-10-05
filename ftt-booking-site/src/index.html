@@ -29,7 +29,7 @@
      never re-checking the server. An old app.js would then leave the result card at this file's static default text (which therefore never claims a save),
      even though the real booking succeeds normally server-side (backend is unaffected by frontend cache state).
      MUST bump this value on every future deploy that changes styles.css. -->
-<link rel="stylesheet" href="styles.css?v=20261005-wa-handoff">
+<link rel="stylesheet" href="styles.css?v=20261005-email-followup">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -983,6 +983,19 @@
           <span>Open WhatsApp — send reservation</span>
         </a>
         <p class="bula-wa-reassurance" id="bulaHandoffNote"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>
+        <div class="ef-box" data-ef hidden>
+          <button type="button" class="ef-toggle" aria-expanded="false">No WhatsApp? Request confirmation by email</button>
+          <div class="ef-panel" hidden>
+            <p class="ef-help">Our Fiji team will follow up by email. Check your address below and correct it if needed before you send.</p>
+            <label class="ef-label">Your email address
+              <input class="ef-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254">
+            </label>
+            <button type="button" class="btn-secondary ef-send">Request email confirmation</button>
+            <p class="ef-status" role="status" aria-live="polite" hidden></p>
+            <p class="ef-inbox" hidden></p>
+            <p class="ef-note">This records a request for our team to follow up. It is not a confirmation of your transfer, and no email is sent automatically.</p>
+          </div>
+        </div>
         <div class="bula-ref" id="bulaRef"></div>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
@@ -1061,6 +1074,19 @@
           <button class="btn-secondary" id="bulaRetryBtn" onclick="retryMarketplaceBooking()">Try again — keep my details</button>
         </div>
         <p class="bula-wa-reassurance"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you. Do not make a second booking with different details unless our team asks you to.</p>
+        <div class="ef-box" data-ef hidden>
+          <button type="button" class="ef-toggle" aria-expanded="false">No WhatsApp? Request confirmation by email</button>
+          <div class="ef-panel" hidden>
+            <p class="ef-help">Our Fiji team will follow up by email. Check your address below and correct it if needed before you send.</p>
+            <label class="ef-label">Your email address
+              <input class="ef-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="254">
+            </label>
+            <button type="button" class="btn-secondary ef-send">Request email confirmation</button>
+            <p class="ef-status" role="status" aria-live="polite" hidden></p>
+            <p class="ef-inbox" hidden></p>
+            <p class="ef-note">This records a request for our team to follow up. It is not a confirmation of your transfer, and no email is sent automatically.</p>
+          </div>
+        </div>
         <p class="bula-ref" id="bulaFailureRef"></p>
       </div>
     </div>
@@ -1373,7 +1399,8 @@
      for the full explanation - this exact staleness caused booking #66's
      headline mismatch. -->
 <script src="funnel-events-client.js?v=20260909a-funnel-preview" data-platform="fijidash"></script>
-<script src="app.js?v=20261005-wa-handoff"></script>
+<script src="email-followup.js?v=20261005-email-followup"></script>
+<script src="app.js?v=20261005-email-followup"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

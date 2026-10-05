@@ -929,3 +929,17 @@ textarea.field-input{resize:vertical;min-height:80px}
 /* the sticky "Book your transfer" bar must not cover the WhatsApp handoff button while a result card is showing */
 body:has(#bulaSuccess[style*="display: block"]) #stickyBar,body:has(#bulaFailure[style*="display: block"]) #stickyBar,body:has(#negotiateSuccess[style*="display: block"]) #stickyBar{display:none!important}
 @media(max-width:380px){#negotiateSuccess .bula-burst{display:none}#negotiateSuccess .bula-title{font-size:20px;margin-bottom:8px}#negotiateSuccess .bula-lead,#negotiateSuccess .bula-wa-context{font-size:14px;line-height:1.4;margin-bottom:10px}#negotiateSuccess .bula-ref{margin-bottom:10px}}
+/* email follow-up fallback (email-followup.js) */
+.ef-box{margin:18px auto 6px;max-width:540px;text-align:left}
+.ef-box[hidden],.ef-box [hidden]{display:none!important}
+.ef-toggle{display:block;width:100%;box-sizing:border-box;background:none;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;font:inherit;font-size:15px;font-weight:600;color:#0f172a;text-align:center;cursor:pointer;white-space:normal;line-height:1.3}
+.ef-toggle:hover{background:#f8fafc}
+.ef-panel{margin-top:10px;padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.ef-help,.ef-note,.ef-inbox{font-size:13.5px;line-height:1.5;color:#475569;margin:0 0 10px}
+.ef-label{display:block;font-size:14px;font-weight:600;color:#0f172a;margin-bottom:10px}
+.ef-email{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #94a3b8;border-radius:8px;font:inherit;font-size:16px}
+.ef-send{display:block;width:100%;box-sizing:border-box;margin:0 0 10px;white-space:normal}
+.ef-status{font-size:14px;line-height:1.5;margin:0 0 10px;padding:10px;border-radius:8px;background:#f1f5f9;color:#0f172a}
+.ef-status[data-kind="error"]{background:#fef2f2;color:#7f1d1d}
+.ef-status[data-kind="ok"]{background:#f0fdf4;color:#14532d}
+.ef-inbox a{color:#0066cc;font-weight:600;word-break:break-all}

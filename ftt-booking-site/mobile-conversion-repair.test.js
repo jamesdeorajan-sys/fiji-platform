@@ -91,7 +91,7 @@ test('handoff wording: no "optional" / "faster contact" / old-label / old-headin
 });
 
 test('saved state is truthful: saved online, NOT yet confirmed; the static default never claims a save (stale-cache safe)', () => {
-  const fn = extract(js, 'function showBulaSuccess(ref, bookingId) {', '\n// Route not eligible');
+  const fn = extract(js, 'function showBulaSuccess(ref, bookingId, followupToken) {', '\n// Route not eligible');
   assert.ok(fn.includes("bulaLeadText.textContent = 'Your request is saved online, but your transfer is not confirmed yet. Send your reservation details on WhatsApp to finish.'"));
   assert.ok(!/is confirmed\b|booked|team has been notified/i.test(fn.replace(/\/\/[^\n]*/g, '')));
   const staticLead = extract(html, 'id="bulaLeadText">', '</p>');
