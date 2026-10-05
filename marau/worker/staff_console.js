@@ -12,6 +12,7 @@ export function createStaffConsole(deps) {
   var storage = deps.storage;
   var fetchImpl = deps.fetchImpl;
   var prompt = deps.prompt;
+  var clipboard = deps.clipboard;
   var adminToken = null;
   var staffToken = null;
 
@@ -157,12 +158,13 @@ export function createStaffConsole(deps) {
       var buttons = '';
       function btn(next, label) { return '<button class="btn btn-light" data-pilot-outcome="' + e + '|' + esc(r.session_id) + '|' + next + '">' + label + '</button> '; }
       var stale = s && s.stale_reason ? ' <span class="pill bad">stale: ' + esc(s.stale_reason.split('_').join(' ')) + ' - prepare again</span>' : '';
+      var copiedPill = s && s.status === 'prepared' && s.message_copied_at ? ' <span class="pill">copied (not sent)</span>' : (s && s.status === 'prepared' && s.checked_at ? ' <span class="pill">checked, not copied</span>' : '');
       var contrary = s && s.sent_eligibility === 'contrary_to_eligibility' ? ' <span class="pill bad">sent contrary to eligibility: ' + esc(s.sent_eligibility_reasons.join(', ').split('_').join(' ')) + '</span>' : '';
       if (status === 'prepared') buttons = (s && s.stale_reason ? '' : '<button class="btn btn-primary" data-pilot-check="' + e + '|' + esc(r.session_id) + '">Check and copy message</button> ') + btn('sent_manually', 'I sent it') + btn('not_sent', 'Not sent');
       else if (status === 'sent_manually') buttons = btn('replied', 'Replied') + btn('bounced', 'Bounced') + btn('opted_out', 'Opted out');
       else if (status === 'replied') buttons = btn('opted_out', 'Opted out');
       return '<p class="small" style="border-top:1px solid var(--line);padding-top:6px"><b>' + esc(r.channel) + '</b> - ' + esc(r.contact.phone) + ' / ' + esc(r.contact.email) +
-        ' - <span class="pill">' + esc(status || 'not prepared') + '</span>' + stale + contrary + (s && s.updated_by ? ' <span class="muted">by ' + esc(s.updated_by) + '</span>' : '') + '<br>' + buttons + '</p>';
+        ' - <span class="pill">' + esc(status || 'not prepared') + '</span>' + copiedPill + stale + contrary + (s && s.updated_by ? ' <span class="muted">by ' + esc(s.updated_by) + '</span>' : '') + '<br>' + buttons + '</p>';
     }).join('') || '<p class="muted small">No consent-eligible recipients.</p>';
     var excluded = Object.keys(rv.excluded_by_reason).map(function (k) { return esc(k.split('_').join(' ')) + ': ' + esc(rv.excluded_by_reason[k]); }).join(', ');
     return '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px"><p><b>' + e + '</b></p><p class="small">' + offers + '</p>' + reviewLine +
@@ -184,6 +186,45 @@ export function createStaffConsole(deps) {
     })).then(function (parts) { target.innerHTML = parts.join(''); wirePilot(); });
   }
 
+  // ------------------------------------------------------------- the message box: show first, copy honestly, record "copied" only on success
+  // prepared -> checked (text handed out) -> copied (the clipboard accepted it) -> sent (a human records it, by hand, elsewhere). Copying never records a send.
+  function hideCopyBox() { var p = el('copyPanel'); if (p) p.style.display = 'none'; }
+  function showCopyBox(editionId, sessionId, text) {
+    el('copyTitle').textContent = 'Message for ' + editionId + ' (nothing has been sent)';
+    el('copyText').value = text;
+    el('copyStatus').textContent = '';
+    el('copyPanel').style.display = 'block';
+    el('copyBtn').onclick = function () { copyNow(editionId, sessionId, el('copyText').value); };
+    el('copyClose').onclick = hideCopyBox;
+  }
+  function writeClipboard(text) {
+    if (clipboard && clipboard.writeText) {
+      return clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    try {
+      var box = el('copyText'); box.focus(); box.select();
+      return Promise.resolve(Boolean(doc.execCommand && doc.execCommand('copy')));
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function copyNow(editionId, sessionId, text) {
+    return writeClipboard(text).then(function (ok) {
+      if (!ok) {
+        el('copyStatus').textContent = 'Could not copy automatically (the browser blocked or does not support it). The message is shown above: select it and press Ctrl+C, or use the Copy button. Nothing has been sent.';
+        toast('Could not copy automatically - the message is shown on the page. Nothing has been sent.');
+        return null;
+      }
+      return call('POST', '/preview/admin/editions/' + encodeURIComponent(editionId) + '/sends/' + sessionId + '/copied', {}).then(function (res) {
+        if (res.ok) {
+          el('copyStatus').textContent = 'Copied to your clipboard. Nothing has been sent: send it by hand, then record what you did.';
+          toast('Copied to your clipboard. Nothing has been sent.');
+        } else {
+          el('copyStatus').textContent = 'Copied to your clipboard, but recording the copy failed (' + failMessage(res) + '). Nothing has been sent.';
+          toast('Copied, but recording the copy failed: ' + failMessage(res));
+        }
+      });
+    });
+  }
+
   function wirePilot() {
     function each(sel, fn) { var nodes = doc.querySelectorAll(sel); for (var i = 0; i < nodes.length; i += 1) fn(nodes[i]); }
     each('[data-pilot-review]', function (b) {
@@ -200,8 +241,15 @@ export function createStaffConsole(deps) {
       b.onclick = function () {
         var parts = b.getAttribute('data-pilot-check').split('|');
         call('POST', '/preview/admin/editions/' + encodeURIComponent(parts[0]) + '/sends/' + parts[1] + '/check', {}).then(function (res) {
-          if (res.ok) { prompt('Copy this message (nothing has been sent):', res.data.message_text); toast('Checked just now - all facts hold.'); } else { toast(failMessage(res) + (res.data && res.data.reasons ? ': ' + res.data.reasons.join(', ') : '')); }
-          return refresh();
+          if (!res.ok) { hideCopyBox(); toast(failMessage(res) + (res.data && res.data.reasons ? ': ' + res.data.reasons.join(', ') : '')); return refresh(); }
+          var text = res.data && res.data.message_text;
+          if (typeof text !== 'string' || !text.trim()) {
+            hideCopyBox();
+            toast('The check passed but the server returned no message text, so there is nothing to copy. Nothing was sent. Please report this.');
+            return refresh();
+          }
+          showCopyBox(parts[0], parts[1], text);
+          return copyNow(parts[0], parts[1], text).then(refresh);
         });
       };
     });

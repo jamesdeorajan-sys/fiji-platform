@@ -75,17 +75,14 @@ test('CLIPBOARD UNAVAILABLE (no API, legacy copy fails): same honest result', as
   assert.equal((await sendRow(f)).message_copied_at, null);
 });
 
-test('MANUAL COPY BUTTON works from the box (a fresh user gesture) and records the copy once the clipboard confirms', async () => {
-  const written = [];
-  const { f, k } = await runCheck({ clipboard: { writeText: async () => { throw new Error('denied'); } } });
-  assert.equal((await sendRow(f)).message_copied_at, null);
-  // the user presses the Copy button; this time the browser allows it
-  const k2 = await servedConsoleOn(f.env, { checkNode: fakeCheckNode(f.edId, f.sessionId), clipboard: { writeText: async (t) => { written.push(t); } } });
-  await k2.c.signIn(f.env.MARAU_ADMIN_TEST_TOKEN, 'tok-a'); const n2 = fakeCheckNode(f.edId, f.sessionId);
-  const k3 = await servedConsoleOn(f.env, { checkNode: n2, clipboard: { writeText: async (t) => { written.push(t); } } });
-  await k3.c.signIn(f.env.MARAU_ADMIN_TEST_TOKEN, 'tok-a'); n2.onclick(); await settle();
-  assert.equal(written.length >= 1, true); assert.ok((await sendRow(f)).message_copied_at);
-  assert.equal(typeof k3.nodes.get('copyBtn').onclick, 'function');
+test('MANUAL COPY BUTTON: after an automatic copy was refused, pressing Copy (a fresh user gesture) copies and records it - once the clipboard confirms', async () => {
+  let allow = false; const written = [];
+  const { f, k } = await runCheck({ clipboard: { writeText: async (t) => { if (!allow) throw new Error('denied'); written.push(t); } } });
+  assert.equal((await sendRow(f)).message_copied_at, null); assert.match(status(k), /Could not copy automatically/);
+  allow = true; k.nodes.get('copyBtn').onclick(); await settle();
+  assert.equal(written.length, 1); assert.equal(written[0], box(k).value);
+  assert.match(status(k), /Copied to your clipboard/);
+  const row = await sendRow(f); assert.ok(row.message_copied_at); assert.equal(row.status, 'prepared');
 });
 
 test('MISSING or EMPTY message text from the server: an honest explanation, no empty dialog, no "copied", nothing recorded', async () => {
