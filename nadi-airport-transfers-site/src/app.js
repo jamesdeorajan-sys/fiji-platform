@@ -105,7 +105,21 @@ const DISCOUNT_RATE      = 0.10; // 10% off
 function bookingHasTour() {
   return !!state.selectedTour;
 }
+// P0 booking #237 (2026-10-05): the pricing inputs the booking system prices from. A fare the guest has been SHOWN and has accepted from the
+// booking system (state.fareOverride) applies only while these are unchanged; change the trip, vehicle, extras or night/day and it is dropped.
+function fareOverrideKey() {
+  const val = (id) => document.getElementById(id)?.value || '';
+  return JSON.stringify([val('pickup'), val('destination'), state.selectedVehicle || '', state.tripType, state.extrasTotal, isNightPickup(), state.selectedTour ? (state.selectedTour.name || 'tour') : '']);
+}
 function calculateTotal(vehicleKey) {
+  const t = calculateTotalFromPublishedPrices(vehicleKey);
+  const ov = state.fareOverride;
+  if (ov && !state.selectedTour && (!vehicleKey || vehicleKey === state.selectedVehicle) && ov.key === fareOverrideKey()) {
+    return { ...t, subtotal: ov.amount, discount: 0, final: ov.amount, qualifies: false, suppressedByTour: false, serverConfirmed: true };
+  }
+  return t;
+}
+function calculateTotalFromPublishedPrices(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
   if (!k || !state.prices[k]) return {
     vehiclePrice: 0, extras: 0, tourPerPax: 0, tourTotal: 0,
@@ -1026,7 +1040,7 @@ function buildConfirmation() {
       <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>
       <div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
   } else {
-    totalRows = `<div class="confirm-row total"><span class="confirm-label">Total price</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
+    totalRows = `<div class="confirm-row total"><span class="confirm-label">${t.serverConfirmed ? 'Total price (confirmed by our booking system)' : 'Total price'}</span><span class="confirm-value price">FJ$${t.final}</span></div>`;
   }
 
   // CEO P0 security fix (2026-09-13) - every value below may be
@@ -1040,6 +1054,14 @@ function buildConfirmation() {
   // built via appendConfirmRow()/textContent now instead, so none of
   // them can ever be parsed as markup regardless of what a guest types.
   while (card.firstChild) card.removeChild(card.firstChild);
+  if (t.serverConfirmed && state.fareOverride && state.fareOverride.shown !== undefined) {
+    const notice = document.createElement('div');
+    notice.id = 'fareChangeNotice';
+    notice.setAttribute('role', 'alert');
+    notice.style.cssText = 'border:2px solid #b45309;background:#fffbeb;color:#1f2937;border-radius:10px;padding:12px;margin-bottom:12px;font-weight:600';
+    notice.textContent = `The fare for this trip is FJ$${state.fareOverride.amount}, not the FJ$${state.fareOverride.shown} shown earlier. Please check the total below and tap Confirm to accept it, or go back to change your trip. Nothing has been booked yet.`;
+    card.appendChild(notice);
+  }
   appendConfirmRow(card, 'Passenger', `${fn} ${ln}`);
   appendConfirmRow(card, 'Contact', `${em} · ${ph}`);
   appendConfirmRow(card, 'From', stripEmoji(state.pickup?.name) || '—');
@@ -1321,6 +1343,9 @@ async function submitNadiBooking(ref, destZone) {
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
     has_tour: false,
     is_custom_address: false,
+    // P0 #237: this page shows the guest a fare and asks them to accept it. The booking system must never quietly save a different number: if its
+    // own calculation disagrees it refuses (409 PRICE_MISMATCH) and tells us its fare, which the guest then reviews and accepts before anything is saved.
+    require_quote_match: true,
   };
 
   try {
@@ -1329,6 +1354,10 @@ async function submitNadiBooking(ref, destZone) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (res.status === 409 && data?.code === 'PRICE_MISMATCH' && Number.isFinite(Number(data.reference_fare_fjd))) {
+      // not a sync failure: nothing was saved and no alert was sent. The guest reviews the booking system's fare next.
+      return { ok: false, priceMismatch: { reference: Number(data.reference_fare_fjd), submitted: Number(data.submitted_amount_fjd) } };
+    }
     if (!res.ok || !data?.ok) {
       void reportNadiSyncFailure(ref, payload, data);
       return { ok: false, error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
@@ -1519,6 +1548,16 @@ async function confirmBooking() {
     if (destZone && destZone !== 'NEEDS_LOOKUP') {
       saveAttempted = true;
       saveResult = await submitNadiBooking(ref, destZone);
+      if (saveResult.priceMismatch) {
+        // P0 #237: the booking system's fare differs from the one shown. Nothing was saved. Show the guest the new fare on the review step and
+        // let them accept it (the same Confirm button, now sending that exact amount) or change the trip. The attempt ref is kept: no booking exists.
+        state.fareOverride = { key: fareOverrideKey(), amount: saveResult.priceMismatch.reference, shown: saveResult.priceMismatch.submitted };
+        state.confirmBookingInFlight = false;
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = confirmBtnOriginalText; }
+        buildConfirmation();
+        showStep(4);
+        return;
+      }
       if (saveResult.ok) {
         // CEO P0 booking-integrity fix (2026-09-13, second review) - clear
         // the stored attempt only once the save is AUTHORITATIVELY
