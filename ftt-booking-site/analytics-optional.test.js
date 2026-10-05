@@ -53,6 +53,6 @@ test('analytics defined as a non-function is ignored', () => {
 });
 
 test('app.js cache key was bumped so browsers holding the old bare-call app.js refetch (JS is cached 1h+)', () => {
-  assert.match(html, /app\.js\?v=20261005-wa-handoff/);
+  assert.match(html, /app\.js\?v=20261005-momi-extras-wa-handoff/);
   assert.doesNotMatch(html, /app\.js\?v=20260926-submit-timeout-recovery/);
 });
