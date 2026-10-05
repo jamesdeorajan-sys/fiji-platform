@@ -197,14 +197,18 @@ export function createStaffConsole(deps) {
     el('copyBtn').onclick = function () { copyNow(editionId, sessionId, el('copyText').value); };
     el('copyClose').onclick = hideCopyBox;
   }
-  function writeClipboard(text) {
-    if (clipboard && clipboard.writeText) {
-      return clipboard.writeText(text).then(function () { return true; }, function () { return false; });
-    }
+  function legacyCopy() {
     try {
       var box = el('copyText'); box.focus(); box.select();
-      return Promise.resolve(Boolean(doc.execCommand && doc.execCommand('copy')));
-    } catch (e) { return Promise.resolve(false); }
+      return Boolean(doc.execCommand && doc.execCommand('copy'));
+    } catch (e) { return false; }
+  }
+  // The modern clipboard API first; if it is missing or the browser refuses, the older select-and-copy; if both fail the caller says so.
+  function writeClipboard(text) {
+    if (clipboard && clipboard.writeText) {
+      return clipboard.writeText(text).then(function () { return true; }, function () { return legacyCopy(); });
+    }
+    return Promise.resolve(legacyCopy());
   }
   function copyNow(editionId, sessionId, text) {
     return writeClipboard(text).then(function (ok) {

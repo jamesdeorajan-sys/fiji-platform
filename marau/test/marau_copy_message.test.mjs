@@ -69,6 +69,11 @@ test('CLIPBOARD DENIED: the message stays visible, the page says it could NOT co
   const row = await sendRow(f); assert.equal(row.message_copied_at, null); assert.equal(row.status, 'prepared');
 });
 
+test('CLIPBOARD API REFUSED but legacy select-and-copy works: that counts as copied (the browser really copied it) and is recorded', async () => {
+  const { f, k } = await runCheck({ clipboard: { writeText: async () => { throw new Error('NotAllowedError'); } }, execCommand: () => true });
+  assert.match(status(k), /Copied to your clipboard/); assert.ok((await sendRow(f)).message_copied_at); assert.equal((await sendRow(f)).status, 'prepared');
+});
+
 test('CLIPBOARD UNAVAILABLE (no API, legacy copy fails): same honest result', async () => {
   const { f, k } = await runCheck({ clipboard: undefined, execCommand: () => false });
   assert.match(status(k), /Could not copy automatically/); assert.ok(box(k).value.length > 40);
