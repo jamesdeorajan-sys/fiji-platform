@@ -1,0 +1,26 @@
+window.__sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+window.__set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+window.__vis = () => ['step1','step2','step3','step4','stepSuccess'].filter((id) => document.getElementById(id) && getComputedStyle(document.getElementById(id)).display !== 'none');
+window.__state = async () => (await fetch('/api/state')).json();
+window.__txt = (id) => { const e = document.getElementById(id); return e ? e.innerText.replace(/\s+/g, ' ').trim() : null; };
+window.__trip = async (t) => {
+  const set = window.__set, sleep = window.__sleep;
+  set('pickup', 'NAN'); set('destination', t.dest); set('travelDate', t.date || '2026-10-20'); set('travelTime', t.time || '10:00');
+  const btns = document.querySelectorAll('.trip-btn');
+  if (t.tripType === 'return') { setTripType('return', btns[1]); set('returnDate', '2026-10-27'); set('returnTime', '10:00'); set('returnPickupLocation', 'Hotel lobby'); } else setTripType('one-way', btns[0]);
+  while (state.passengers < (t.pax || 2)) changePax(1); while (state.passengers > (t.pax || 2)) changePax(-1);
+  const seat = document.getElementById('extra-seat'); if (seat.checked !== !!t.seat) seat.click();
+  updatePricing(); await sleep(t.waitLive ?? 1500);
+  const idx = { sedan: 0, minivan: 1, minibus: 2 }[t.vehicle];
+  const cards = [...document.querySelectorAll('#vehicleCards .vehicle-card')];
+  const cardTexts = {}; ['sedan', 'minivan', 'minibus'].forEach((k, i) => { cardTexts[k] = cards[i] ? cards[i].querySelector('.vehicle-price').innerText.replace(/\s+/g, ' ') : null; });
+  cards[idx].click(); await sleep(200);
+  const selectionTotal = calculateTotal().final; const note = [...document.querySelectorAll('[id^=liveFareNote]')].map((n) => n.textContent).filter(Boolean);
+  document.getElementById('nextBtn1').click(); await sleep(250);
+  if (getComputedStyle(document.getElementById('step2')).display !== 'none') [...document.querySelectorAll('#step2 .btn-primary')].pop().click(); await sleep(250);
+  set('firstName', 'Zed'); set('lastName', 'Testperson'); set('email', 'zed.testperson@example.invalid'); set('phone', '+61411222333'); set('flightNum', 'FJ391');
+  [...document.querySelectorAll('#step3 .btn-primary')].pop().click(); await sleep(t.waitReview ?? 1500);
+  return { visible: window.__vis(), selectionCards: cardTexts, selectionTotal, selectionNote: note, reviewTotalText: window.__txt('priceTotalValue'), reviewBreakdown: window.__txt('priceBreakdown'), reviewNote: window.__txt('priceUpdatedNote'), confirmButton: document.querySelector('.btn-confirm').textContent.trim(), blocked: window.__blocked };
+};
+window.__confirm = async () => { document.querySelector('.btn-confirm').click(); await window.__sleep(1200); return { visible: window.__vis(), button: document.querySelector('.btn-confirm').textContent.trim(), notice: window.__txt('fareChangeNotice'), total: window.__txt('priceTotalValue'), fareLine: window.__txt('bulaFare'), lead: window.__txt('bulaLeadText'), failureShown: getComputedStyle(document.getElementById('bulaFailure')).display, api: (await window.__state()).api_log, bookings: (await window.__state()).bookings, decisions: (await window.__state()).pricing_decisions, outbound: (await window.__state()).outbound_calls, blocked: window.__blocked }; };
+'driver ready';

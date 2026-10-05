@@ -264,12 +264,6 @@ test('a stalled escalation call cannot delay the caller: submitMarketplaceBookin
 
 test('index.html cache-busts app.js with the new version (JS is cached for 1h by _headers)', () => {
   const html = require('fs').readFileSync(require('path').join(__dirname, 'src', 'index.html'), 'utf8');
-<<<<<<< HEAD
-  assert.equal((html.match(/app\.js\?v=20260927-analytics-optional/g) || []).length, 1);
-=======
-  // 20260926-submit-timeout-recovery was the production key for the timeout repair; app.js changed again (live-fare display), so the key moved on
-  assert.equal((html.match(/app\.js\?v=20260927c-live-fare-display/g) || []).length, 1);
-  assert.doesNotMatch(html, /app\.js\?v=20260926-submit-timeout-recovery/);
->>>>>>> 3c9462d (fix(fijidash, preview): show the server live fare at vehicle selection where the static fare is outside the server band)
+  assert.equal((html.match(/app\.js\?v=20261005-fijidash-quote-consent/g) || []).length, 1);
   assert.doesNotMatch(html, /app\.js\?v=20260911b-naviti-pricing/);
 });

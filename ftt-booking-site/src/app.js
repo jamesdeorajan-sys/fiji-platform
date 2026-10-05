@@ -114,7 +114,38 @@ const DISCOUNT_RATE      = 0.10; // 10% off
 function bookingHasTour() {
   return !!state.selectedTour;
 }
+// Quote consent (issue #237 pattern, FijiDash 2026-10-05): the fare the guest has been SHOWN and has accepted from the booking system
+// (state.fareOverride) applies only while the pricing inputs below are unchanged; change the trip, vehicle, extras, passengers or day/night and
+// it is dropped, and the acceptance with it.
+function fareOverrideKey() {
+  const val = (id) => document.getElementById(id)?.value || '';
+  const chk = (id) => !!document.getElementById(id)?.checked;
+  const isReturn = state.tripType === 'return';
+  return JSON.stringify([
+    val('pickup'), val('destination'), val('customPickupZone'), val('customDestZone'), val('customPickupAddress'), val('customDestAddress'),
+    state.selectedVehicle || '', state.tripType, val('travelDate'), val('travelTime'),
+    isReturn ? [val('returnDate'), val('returnTime'), val('returnPickupLocation')] : null,
+    chk('extra-seat'), chk('extra-surf'), state.extrasTotal, state.selectedTour ? (state.selectedTour.name || 'tour') : '', state.passengers, state.luggage,
+  ]);
+}
+function dropStaleFareOverride() {
+  if (state.fareOverride && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null;
+}
+// Whole dollars show as "142", cents as "300.45" (never a float artefact such as 127.96000000000001).
+function fareText(n) {
+  const r = Math.round(Number(n) * 100) / 100;
+  if (!Number.isFinite(r)) return String(n);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
+}
 function calculateTotal(vehicleKey) {
+  const t = calculateTotalFromPublishedPrices(vehicleKey);
+  const ov = state.fareOverride;
+  if (ov && !state.selectedTour && (!vehicleKey || vehicleKey === state.selectedVehicle) && ov.key === fareOverrideKey()) {
+    return { ...t, subtotal: ov.amount, discount: 0, final: ov.amount, qualifies: false, suppressedByTour: false, serverConfirmed: true };
+  }
+  return t;
+}
+function calculateTotalFromPublishedPrices(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
   if (!k || !state.prices[k]) return {
     vehiclePrice: 0, extras: 0, tourPerPax: 0, tourTotal: 0,
@@ -1063,7 +1094,7 @@ function renderLiveFareNote() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = ' Try again';
-      btn.style.cssText = 'background:none;border:0;padding:0;font:inherit;text-decoration:underline;cursor:pointer';
+      btn.style.cssText = 'background:none;border:0;padding:0;margin-left:6px;font:inherit;text-decoration:underline;cursor:pointer';
       btn.onclick = retryLiveFares;
       note.appendChild(btn);
     }
@@ -1129,6 +1160,7 @@ function applyOrFetchLiveFares(pickupVal, destVal) {
 }
 
 function updatePricing() {
+  if (state.fareOverride && typeof fareOverrideKey === 'function' && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null; // itinerary changed: the accepted revised fare no longer applies
   const panel   = document.getElementById('pricingPanel');
   const empty   = document.getElementById('emptyState');
   const nextBtn = document.getElementById('nextBtn1');
@@ -1633,6 +1665,7 @@ function showStep(n) {
 }
 
 function goToStep(n) {
+  if (state.fareOverride && typeof fareOverrideKey === 'function' && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null; // itinerary changed: the accepted revised fare no longer applies
   if (n === 4) {
     const fn = document.getElementById('firstName')?.value.trim();
     const ln = document.getElementById('lastName')?.value.trim();
@@ -1793,6 +1826,7 @@ function selectTour(idx) {
 
 // ─── CONFIRMATION ────────────────────────────────────────────────────────────
 function buildConfirmation() {
+  if (state.fareOverride && typeof fareOverrideKey === 'function' && state.fareOverride.key !== fareOverrideKey()) state.fareOverride = null;
   const fn    = document.getElementById('firstName').value.trim();
   const ln    = document.getElementById('lastName').value.trim();
   const em    = document.getElementById('email').value.trim();
@@ -1852,20 +1886,41 @@ function renderPriceBlock() {
   const breakdownEl = document.getElementById('priceBreakdown');
   const totalEl = document.getElementById('priceTotalValue');
   if (!breakdownEl || !totalEl) return;
+  // the one button says what it will do: a revised price is submitted only after the guest chooses that explicitly
+  const confirmButton = document.querySelector('#bookingWidget .btn-confirm') || document.querySelector('.btn-confirm');
+  if (confirmButton && confirmButton.id !== 'bulaRetryBtn') {
+    if (!confirmButton.dataset) confirmButton.dataset = {};
+    if (!confirmButton.dataset.defaultLabel) confirmButton.dataset.defaultLabel = confirmButton.textContent;
+    confirmButton.textContent = t.serverConfirmed ? 'Accept revised price and submit' : confirmButton.dataset.defaultLabel;
+  }
+  let noticeEl = document.getElementById('fareChangeNotice');
+  if (noticeEl) noticeEl.remove();
+  if (t.serverConfirmed && state.fareOverride && state.fareOverride.shown !== undefined) {
+    noticeEl = document.createElement('div');
+    noticeEl.id = 'fareChangeNotice';
+    noticeEl.setAttribute('role', 'alert');
+    noticeEl.style.cssText = 'border:2px solid #b45309;background:#fffbeb;color:#1f2937;border-radius:10px;padding:12px;margin-bottom:12px;font-weight:600';
+    const line = (text, strong) => { const d = document.createElement(strong ? 'strong' : 'div'); d.textContent = text; d.style.display = 'block'; return d; };
+    noticeEl.appendChild(line('The price for this trip has changed. Nothing has been booked yet.', true));
+    noticeEl.appendChild(line(`Original total shown: FJ$${fareText(state.fareOverride.original)}`));
+    noticeEl.appendChild(line(`Revised total: FJ$${fareText(state.fareOverride.amount)}`));
+    noticeEl.appendChild(line(`Tap "Accept revised price and submit" to book at FJ$${fareText(state.fareOverride.amount)}, or go back to change your trip.`));
+    breakdownEl.parentNode.insertBefore(noticeEl, breakdownEl);
+  }
 
   let rows = '';
   if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     rows = `
-      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${t.transferSubtotal}</span></div>
-      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${t.tourTotal}</span></div>`;
+      <div class="confirm-row"><span class="confirm-label">Transfer</span><span class="confirm-value">FJ$${fareText(t.transferSubtotal)}</span></div>
+      <div class="confirm-row"><span class="confirm-label">Tour: ${state.selectedTour.name} (FJ$${t.tourPerPax} × ${state.passengers} ${paxLabel})</span><span class="confirm-value">FJ$${fareText(t.tourTotal)}</span></div>`;
   } else if (t.qualifies) {
     rows = `
-      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${t.subtotal}</span></div>
-      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${t.discount}</span></div>`;
+      <div class="confirm-row"><span class="confirm-label">Subtotal</span><span class="confirm-value">FJ$${fareText(t.subtotal)}</span></div>
+      <div class="confirm-row discount"><span class="confirm-label">★ 10% discount (orders FJ$50+)</span><span class="confirm-value">−FJ$${fareText(t.discount)}</span></div>`;
   }
   breakdownEl.innerHTML = rows;
-  totalEl.textContent = formatPrice(t.final);
+  totalEl.textContent = t.serverConfirmed ? `FJ$${fareText(t.final)}` : formatPrice(t.final);   // the notice above states 'Revised total' in full; the big figure stays one short line on a phone
 }
 
 // ─── WHATSAPP MESSAGE ────────────────────────────────────────────────────────
@@ -1900,22 +1955,22 @@ function buildWhatsAppURL(ref) {
   if (t.hasTour) {
     const paxLabel = state.passengers === 1 ? 'person' : 'people';
     priceLines = [
-      `Transfer:    FJ$${t.transferSubtotal}`,
-      `Tour (${state.passengers} ${paxLabel}): FJ$${t.tourPerPax}/pp × ${state.passengers} = FJ$${t.tourTotal}`,
+      `Transfer:    FJ$${fareText(t.transferSubtotal)}`,
+      `Tour (${state.passengers} ${paxLabel}): FJ$${t.tourPerPax}/pp × ${state.passengers} = FJ$${fareText(t.tourTotal)}`,
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   } else if (t.qualifies) {
     priceLines = [
-      `Subtotal:    FJ$${t.subtotal}`,
-      `Discount:    -FJ$${t.discount} (10% off, orders FJ$50+)`,
+      `Subtotal:    FJ$${fareText(t.subtotal)}`,
+      `Discount:    -FJ$${fareText(t.discount)} (10% off, orders FJ$50+)`,
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   } else {
     priceLines = [
       `=====================================`,
-      `*TOTAL PRICE: FJ$${t.final}*`,
+      `*TOTAL PRICE: FJ$${fareText(t.final)}*`,
     ];
   }
 
@@ -2121,10 +2176,16 @@ async function confirmBooking() {
     return;
   }
 
+  // the itinerary this request was PRICED for: a refusal that comes back after the guest changed the journey must never be attached to the new one
+  const keyAtSubmit = fareOverrideKey();
   const result = await submitMarketplaceBooking(ref);
 
+  if (result.priceMismatch) {
+    reviewRevisedFare(result.priceMismatch, keyAtSubmit, confirmBtn, confirmBtnOriginalText);
+    return;
+  }
   if (result.ok) {
-    showBulaSuccess(ref, result.bookingId);
+    showBulaSuccess(ref, result.bookingId, result);
     // Deliberately NOT reset - a confirmed booking means this widget's
     // job is done, matching the original double-submit guard's intent.
   } else {
@@ -2135,6 +2196,27 @@ async function confirmBooking() {
     state.confirmBookingInFlight = false;
     if (confirmBtn) confirmBtn.disabled = false;
   }
+}
+
+// The booking system refused the amount the guest was shown (409 PRICE_MISMATCH): NOTHING was saved and no alert or message was sent. Show the guest its
+// fare on the review step and let them accept it (the same Confirm button, now sending exactly that amount) or go back and change the trip. The attempt
+// ref is kept: no booking exists under it.
+function reviewRevisedFare(mm, keyAtSubmit, confirmBtn, originalText) {
+  state.confirmBookingInFlight = false;
+  if (confirmBtn) { confirmBtn.disabled = false; if (originalText !== undefined) confirmBtn.textContent = originalText; }
+  if (keyAtSubmit !== fareOverrideKey()) {
+    state.fareOverride = null; // the journey changed while the request was out: that answer is for the old journey, never carry it over
+  } else {
+    const prior = state.fareOverride && state.fareOverride.key === keyAtSubmit ? state.fareOverride : null;
+    state.fareOverride = { key: keyAtSubmit, amount: mm.reference, shown: mm.submitted, original: prior ? prior.original : mm.submitted };
+  }
+  const failure = document.getElementById('bulaFailure');
+  if (failure) failure.style.display = 'none';
+  const widget = document.getElementById('bookingWidget');
+  if (widget) widget.style.display = '';
+  buildConfirmation();
+  showStep(4);
+  document.getElementById('booking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Pulls the guest's first name for the personalised card greeting - shared
@@ -2153,7 +2235,7 @@ function hideBookingWidget() {
 // the server has actually confirmed the booking (result.ok from
 // submitMarketplaceBooking). WhatsApp is now a genuinely optional extra
 // channel, not a requirement the booking's existence depends on.
-function showBulaSuccess(ref, bookingId) {
+function showBulaSuccess(ref, bookingId, saved) {
   const failureCard = document.getElementById('bulaFailure');
   if (failureCard) failureCard.style.display = 'none';
   hideBookingWidget();
@@ -2184,6 +2266,19 @@ function showBulaSuccess(ref, bookingId) {
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
     bulaLeadText.innerHTML = '<strong>Your transfer request is saved.</strong> Our Fiji team checks availability and confirms your pickup details.';
+  }
+  // the amount the booking system actually saved, read from its response (never assumed to equal what was shown)
+  if (bulaLeadText && bulaLeadText.parentNode) {
+    let fareLine = document.getElementById('bulaFare');
+    if (saved && saved.savedAmount !== undefined) {
+      if (!fareLine) { fareLine = document.createElement('p'); fareLine.id = 'bulaFare'; fareLine.style.fontWeight = '700'; bulaLeadText.parentNode.insertBefore(fareLine, bulaLeadText.nextSibling); }
+      const savedText = `${saved.savedCurrency || 'FJD'} ${fareText(saved.savedAmount)}`;
+      fareLine.textContent = Math.abs(Number(saved.savedAmount) - Number(saved.submittedAmount)) < 0.005
+        ? `Fare saved: ${savedText}`
+        : `Fare recorded by our booking system: ${savedText}. This differs from the ${fareText(saved.submittedAmount)} you saw; our team will confirm your fare with you.`;
+    } else if (fareLine) {
+      fareLine.remove();
+    }
   }
 
   // CEO P1 mobile-conversion fix (2026-09-13) - "Confirmation truth /
@@ -2309,11 +2404,16 @@ async function retryMarketplaceBooking() {
   const ref = state.currentBookingRef;
   if (!ref) { state.confirmBookingInFlight = false; if (retryBtn) retryBtn.disabled = false; return; }
 
+  const keyAtSubmit = fareOverrideKey();
   const result = await submitMarketplaceBooking(ref);
   if (retryBtn) retryBtn.disabled = false;
 
+  if (result.priceMismatch) {
+    reviewRevisedFare(result.priceMismatch, keyAtSubmit, document.querySelector('.btn-confirm:not(#bulaRetryBtn)'));
+    return;
+  }
   if (result.ok) {
-    showBulaSuccess(ref, result.bookingId);
+    showBulaSuccess(ref, result.bookingId, result);
   } else {
     state.confirmBookingInFlight = false;
     showBulaFailure(ref, result.error);
@@ -2431,7 +2531,8 @@ async function submitMarketplaceBooking(ref) {
   const isBoatBooking = boatDestId && bq && bq.outcome === 'resolved' && bq.forDestValue === destVal && bq.forAdults === state.passengers;
 
   const t = calculateTotal();
-  const quotedAmount = isBoatBooking ? bq.quoted_fare_fjd : t.final;
+  // whole cents only: the discount arithmetic can leave a float tail (127.96000000000001) that the booking system would otherwise store verbatim
+  const quotedAmount = isBoatBooking ? bq.quoted_fare_fjd : Math.round(t.final * 100) / 100;
   const vehicleType = isBoatBooking ? 'boat' : state.selectedVehicle;
   const commissionBaseFjd = isBoatBooking ? bq.land_leg_fare_fjd : undefined;
 
@@ -2495,6 +2596,9 @@ async function submitMarketplaceBooking(ref) {
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
     has_tour: bookingHasTour(),
     is_custom_address: isCustomAddress,
+    // Quote consent: the guest was shown quotedAmount and is asked to accept it. The booking system must never quietly save a different number: if its
+    // own calculation disagrees materially it refuses (409 PRICE_MISMATCH) and returns its fare, which the guest then reviews and accepts before anything is saved.
+    require_quote_match: true,
     ...(isReturnTransfer ? {
       return_date: document.getElementById('returnDate')?.value || null,
       return_time: document.getElementById('returnTime')?.value || null,
@@ -2508,6 +2612,9 @@ async function submitMarketplaceBooking(ref) {
     ...getAttributionForPayload(),
   };
 
+  // when the guest is accepting a revised price, tell the booking system what they were originally shown (recorded, never used for pricing)
+  if (state.fareOverride && state.fareOverride.key === fareOverrideKey()) payload.revised_from_amount = state.fareOverride.original;
+
   trackBookingFunnel('booking_post_started');
   try {
     // P0 incident fix (2026-09-26): was a bare, unbounded fetch — a stalled response left the guest
@@ -2519,6 +2626,10 @@ async function submitMarketplaceBooking(ref) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (res.status === 409 && data?.code === 'PRICE_MISMATCH' && Number.isFinite(Number(data.reference_fare_fjd))) {
+      // not a sync failure: nothing was saved and no alert was sent. The guest reviews the booking system's fare next.
+      return { ok: false, priceMismatch: { reference: Number(data.reference_fare_fjd), submitted: Number(data.submitted_amount_fjd) } };
+    }
     if (!res.ok || !data?.ok) {
       // CEO P0 fix (Issue #34) - this branch also covers the "network
       // timeout after server commit" case from the test list: if the
@@ -2539,7 +2650,7 @@ async function submitMarketplaceBooking(ref) {
       return { ok: false, resultKind: 'unknown', error: data?.errors?.join('; ') || data?.error || `Server returned ${res.status}` };
     }
     trackBookingFunnel('booking_post_succeeded');
-    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent };
+    return { ok: true, bookingId: data.booking_id, idempotent: !!data.idempotent, savedAmount: data.booking ? data.booking.quoted_amount : undefined, savedCurrency: data.booking ? data.booking.quoted_currency : undefined, submittedAmount: quotedAmount };
   } catch (err) {
     // P0 incident fix (2026-09-26): fire-and-forget, same reasoning as above.
     void reportBookingSyncFailure(ref, payload, { error: err.message });
@@ -3019,7 +3130,7 @@ const ROUTES_DATA = [
   { destValue:"TANOA_LAUTOKA",          dest:"Tanoa Waterfront / Cathay Lautoka",   area:"Lautoka",         km:28,  time:"38 min",      s:89,  v:119, m:149 },
   { destValue:"LAUTOKA_CRUISE",         dest:"Lautoka Cruise Terminal",             area:"Lautoka",         km:30,  time:"40 min",      s:89,  v:119, m:149 },
   // Momi / Natadola
-  { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:79  },
+  { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:175.92  },
   { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:45,  time:"1 hr",        s:99,  v:149, m:179 },
   { destValue:"ROBINSON_CRUSOE",        dest:"Robinson Crusoe Island (Likuri)",     area:"Natadola",        km:50,  time:"58 min",      s:99,  v:149, m:179 },
   // Sigatoka

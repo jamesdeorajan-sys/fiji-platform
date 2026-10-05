@@ -1,0 +1,54 @@
+{
+ "NAT-live(c5ee3b1)": {
+  "rows": 840,
+  "byClass": {
+   "CONSENT_REQUIRED": 20,
+   "IN_BAND_DIFFERENCE": 794,
+   "ZONE_NOT_IN_PRICING_DATA": 24,
+   "MATCH": 2
+  },
+  "selection_review_mismatch": 0,
+  "night_saved_without_surcharge": 163
+ },
+ "FD-prod(8c6f920)": {
+  "rows": 864,
+  "byClass": {
+   "MATCH": 420,
+   "IN_BAND_DIFFERENCE": 420,
+   "ZONE_NOT_IN_PRICING_DATA": 24
+  },
+  "selection_review_mismatch": 840,
+  "night_saved_without_surcharge": 420
+ },
+ "FD-candidate": {
+  "rows": 864,
+  "byClass": {
+   "MATCH": 420,
+   "IN_BAND_DIFFERENCE": 420,
+   "ZONE_NOT_IN_PRICING_DATA": 24
+  },
+  "selection_review_mismatch": 0,
+  "night_saved_without_surcharge": 420
+ },
+ "FD-prod(8c6f920) lookup-down": {
+  "rows": 864,
+  "byClass": {
+   "SILENT_SUBSTITUTION": 28,
+   "IN_BAND_DIFFERENCE": 812,
+   "ZONE_NOT_IN_PRICING_DATA": 24
+  },
+  "selection_review_mismatch": 0,
+  "night_saved_without_surcharge": 163
+ },
+ "FD-candidate lookup-down": {
+  "rows": 864,
+  "byClass": {
+   "CONSENT_REQUIRED": 20,
+   "IN_BAND_DIFFERENCE": 818,
+   "ZONE_NOT_IN_PRICING_DATA": 24,
+   "MATCH": 2
+  },
+  "selection_review_mismatch": 0,
+  "night_saved_without_surcharge": 163
+ }
+}

@@ -1,6 +1,6 @@
 // Local integration test: selection vs review vs the amount the REAL deployed Worker would save.
 // - Client side: the real FijiDash functions (applyOrFetchLiveFares / renderFareTiers / calculateTotal) run in a sandbox.
-// - Server side: the real deployed Worker (test-fixtures/worker-deployed-80de8469.mjs) handles GET /reference-fare and POST /bookings
+// - Server side: the real deployed Worker (test-fixtures/worker-deployed-7a32a034.mjs) handles GET /reference-fare and POST /bookings
 //   against an in-memory D1 seeded from a read-only snapshot of the real zones, pricing rules and distances (test-fixtures/).
 // No network, no live booking. This is a CHARACTERIZATION of current behaviour: it does not decide any fare or fix any rule.
 const test = require('node:test');
@@ -21,7 +21,7 @@ function grabFn(name) {
 const grabConst = (n) => { const m = js.match(new RegExp('const ' + n + '\\s*= [^;]+;')); assert.ok(m, n); return m[0]; };
 const SOURCE = [
   ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
-  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'resolveNegotiationEligibility', 'renderFareTiers'].map(grabFn),
+  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map(grabFn),
 ].join('\n\n');
 
 const stubEl = () => { const e = { style: {}, value: '', textContent: '', disabled: false, parentNode: null }; e.setAttribute = () => {}; e.appendChild = () => {}; e.insertBefore = () => {}; return e; };
@@ -84,7 +84,7 @@ async function grid() {
           const c = await clientAmounts({ zone, vehicle, tripType, extrasTotal: ex.total });
           for (const tm of TIMES) {
             const base = { zone, vehicle, tripType, time: tm.t, seat: ex.seat, surf: ex.surf, km };
-            const sent = await saveThroughWorker(payloadFor({ ...base, amount: c.review }));      // what the client would submit
+            const sent = await saveThroughWorker(payloadFor({ ...base, amount: cents(c.review) }));      // what the client submits (whole cents: submitMarketplaceBooking rounds)
             const probe = await saveThroughWorker(payloadFor({ ...base, amount: 1 }));            // far below the band: the Worker replaces it with its own authoritative amount
             RESULTS.push({ zone, vehicle, tripType, extras: ex.label, time: tm.label, night: tm.night, selection: c.selection, review: c.review, status: sent.status, error: sent.status === 201 ? null : (sent.body && sent.body.errors && sent.body.errors[0]), saved: sent.saved ? sent.saved.quoted_amount : null, authoritative: probe.saved ? probe.saved.quoted_amount : null });
           }
@@ -116,7 +116,7 @@ test('DAYTIME: selection = review = amount the Worker would save = the Worker\'s
   for (const r of day) {
     const id = JSON.stringify([r.zone, r.vehicle, r.tripType, r.extras, r.time]);
     assert.equal(r.selection, r.review, `selection vs review ${id}`);
-    assert.equal(r.saved, r.review, `saved vs review ${id}`);
+    assert.equal(r.saved, cents(r.review), `saved vs review ${id}`);
     assert.equal(cents(r.saved), cents(r.authoritative), `saved vs Worker authoritative (to the cent) ${id}`);
   }
 });
@@ -127,15 +127,15 @@ test('NIGHT (22:00-06:00): selection = review always; the saved amount is EITHER
   for (const r of night) {
     const id = JSON.stringify([r.zone, r.vehicle, r.tripType, r.extras, r.time]);
     assert.equal(r.selection, r.review, `selection vs review ${id}`);
-    assert.ok(r.saved === r.review || r.saved === r.authoritative, `saved ${r.saved} is neither submitted ${r.review} nor authoritative ${r.authoritative} ${id}`);
+    assert.ok(r.saved === cents(r.review) || r.saved === r.authoritative, `saved ${r.saved} is neither submitted ${r.review} nor authoritative ${r.authoritative} ${id}`);
   }
 });
 
 test('CHARACTERIZATION (register R17, not a fix): at night the client amount omits the surcharge; the Worker keeps that lower amount whenever it falls inside its 0.8x-1.3x band', async () => {
   const night = (await grid()).filter((r) => r.night && r.status === 201);
-  const keptWithoutSurcharge = night.filter((r) => r.saved === r.review && r.review < r.authoritative);
-  const replacedBySurcharge = night.filter((r) => r.saved === r.authoritative && r.review !== r.authoritative);
-  const agree = night.filter((r) => r.review === r.authoritative);
+  const keptWithoutSurcharge = night.filter((r) => r.saved === cents(r.review) && cents(r.review) < r.authoritative);
+  const replacedBySurcharge = night.filter((r) => r.saved === r.authoritative && cents(r.review) !== r.authoritative);
+  const agree = night.filter((r) => cents(r.review) === r.authoritative);
   const summary = {
     nightCases: night.length,
     savedWithoutNightSurcharge: keptWithoutSurcharge.length,
@@ -150,8 +150,8 @@ test('CHARACTERIZATION (register R17, not a fix): at night the client amount omi
   // Guard rails on the characterization itself (they fail if the Worker or client changes, forcing a conscious update):
   assert.ok(keptWithoutSurcharge.length > 0, 'the gap exists today');
   assert.equal(keptWithoutSurcharge.length + replacedBySurcharge.length + agree.length, night.length);
-  for (const r of keptWithoutSurcharge) assert.ok(r.review >= 0.8 * r.authoritative && r.review <= 1.3 * r.authoritative, 'kept only inside the band');
-  for (const r of replacedBySurcharge) assert.ok(r.review < 0.8 * r.authoritative || r.review > 1.3 * r.authoritative, 'replaced only outside the band');
+  for (const r of keptWithoutSurcharge) assert.ok(cents(r.review) >= 0.8 * r.authoritative && cents(r.review) <= 1.3 * r.authoritative, 'kept only inside the band');
+  for (const r of replacedBySurcharge) assert.ok(cents(r.review) < 0.8 * r.authoritative || cents(r.review) > 1.3 * r.authoritative, 'replaced only outside the band');
 });
 
 test('night returns and add-ons are covered', async () => {
@@ -162,31 +162,16 @@ test('night returns and add-ons are covered', async () => {
   assert.ok((await grid()).some((r) => !r.night && r.time === 'day 06:00 edge'), '06:00 is daytime');
 });
 
-test('CHARACTERIZATION (register R19, not a fix): the Worker itself rejects some return-trip bookings with add-ons (its return-vs-one-way sanity ratio falls below 1.5), whatever the time of day', async () => {
+test('RESOLVED in the deployed Worker (register R19, 2026-09-27 ratio fix): no return-trip booking with add-ons is rejected any more, at any time of day', async () => {
   const all = await grid();
-  const rejected = all.filter((r) => r.status !== 201);
-  assert.ok(rejected.length > 0, 'the rejection exists today');
-  for (const r of rejected) {
-    assert.equal(r.status, 400);
-    assert.equal(r.tripType, 'return', JSON.stringify(r));
-    assert.notEqual(r.extras, 'none', JSON.stringify(r));
-    assert.match(r.error, /Could not confirm a reliable price/);
-  }
-  // no add-on-free booking, one-way booking or return booking without add-ons is ever rejected
-  assert.equal(all.filter((r) => r.status !== 201 && (r.tripType === 'one-way' || r.extras === 'none')).length, 0);
-  const byExtra = {};
-  for (const r of rejected) byExtra[r.extras] = (byExtra[r.extras] || 0) + 1;
-  console.log('sanity-check rejections by add-on', JSON.stringify(byExtra), 'of', all.length, 'cases');
+  assert.equal(all.filter((r) => r.status !== 201).length, 0, 'every case in the grid is accepted by the deployed Worker');
+  assert.ok(all.some((r) => r.tripType === 'return' && r.extras !== 'none'), 'the grid does cover return trips with add-ons');
 });
 
-test("CHARACTERIZATION (register R2, not a fix): the client submits an unrounded amount and the Worker stores it verbatim, so float tails such as 127.96000000000001 are stored while the Worker computes 127.96", async () => {
+test("FIXED in the candidate (register R2): the client submits whole cents, so the Worker no longer stores float tails such as 127.96000000000001", async () => {
   const ok = (await grid()).filter((r) => r.status === 201);
-  const tails = ok.filter((r) => r.saved !== cents(r.saved));
-  assert.ok(tails.length > 0, 'float tails exist today');
-  for (const r of tails) assert.equal(r.saved, r.review, 'the Worker stored exactly what the client submitted');
-  for (const r of tails.filter((x) => !x.night)) assert.equal(cents(r.saved), cents(r.authoritative), 'by day a tail is only ever float noise, never a different amount');
-  const sample = tails.find((r) => r.zone === 'Coral Coast' && r.vehicle === 'sedan' && r.tripType === 'one-way' && r.extras === 'none' && !r.night);
-  assert.equal(sample.saved, 127.96000000000001);
-  assert.equal(sample.authoritative, 127.96);
-  console.log('float-tail cases', tails.length, 'of', ok.length, 'accepted');
+  const tailsOnScreen = ok.filter((r) => r.review !== cents(r.review));
+  assert.ok(tailsOnScreen.length > 0, 'the raw client arithmetic does still produce float tails');
+  assert.equal(ok.filter((r) => r.saved !== cents(r.saved)).length, 0, 'no stored amount has a float tail');
+  for (const r of tailsOnScreen.filter((x) => !x.night)) assert.equal(r.saved, cents(r.review));
 });

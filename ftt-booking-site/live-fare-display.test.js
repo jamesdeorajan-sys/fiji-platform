@@ -26,7 +26,7 @@ const FAST = (src) => src
   .replace(/const LIVE_FARE_TTL_MS = \d+;/, 'const LIVE_FARE_TTL_MS = 200;');
 const SOURCE = FAST([
   ...['LIVE_FARE_FETCH_TIMEOUT_MS', 'LIVE_FARE_TTL_MS', 'LIVE_FARE_MAX_ATTEMPTS', 'LIVE_FARE_RETRY_DELAYS_MS', 'LIVE_FARE_CLASSES', 'DISCOUNT_THRESHOLD', 'DISCOUNT_RATE', 'NEGOTIATION_FLOOR_RATIO'].map(grabConst),
-  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'resolveNegotiationEligibility', 'renderFareTiers'].map((n) => grabFn(js, n)),
+  ...['liveFareEligible', 'applyLiveFares', 'renderLiveFareNote', 'startLiveFareFetch', 'retryLiveFares', 'applyOrFetchLiveFares', 'calculateTotal', 'calculateTotalFromPublishedPrices', 'fareOverrideKey', 'fareText', 'resolveNegotiationEligibility', 'renderFareTiers'].map((n) => grabFn(js, n)),
 ].join('\n\n'));
 
 function makeEl(extra = {}) {
@@ -243,7 +243,9 @@ test('wording never describes a quoted or stored amount as money charged or coll
 test('source wiring and scope: hook in updatePricing; fare functions byte-identical to production; renderFareTiers differs only by the three inserted status lines', () => {
   assert.match(grabFn(js, 'updatePricing'), /state\.priceSource = priced\.source;[^\n]*\n\s*applyOrFetchLiveFares\(pickupVal, destVal\);/);
   const base = execFileSync('git', ['show', `${PROD}:ftt-booking-site/src/app.js`], { cwd: path.join(__dirname, '..'), maxBuffer: 1e8 }).toString('utf8').replace(/\r\n/g, '\n');
-  for (const name of ['calculateTotal', 'computePrices', 'applyModifiers', 'submitMarketplaceBooking', 'fetchRealReferenceFare', 'bookingRequest', 'reportBookingSyncFailure']) {
+  // the published-price arithmetic is the production calculateTotal, renamed; calculateTotal itself is now the quote-consent wrapper (quote-consent.test.js)
+  assert.equal(grabFn(js, 'calculateTotalFromPublishedPrices').replace('calculateTotalFromPublishedPrices', 'calculateTotal'), grabFn(base, 'calculateTotal'), 'published-price arithmetic must be byte-identical to production');
+  for (const name of ['computePrices', 'applyModifiers', 'fetchRealReferenceFare', 'bookingRequest', 'reportBookingSyncFailure']) {
     assert.equal(grabFn(js, name), grabFn(base, name), `${name} must be byte-identical to production ${PROD}`);
   }
   const stripped = grabFn(js, 'renderFareTiers').split('\n').filter((l) => !/renderLiveFareNote\(\)/.test(l)).join('\n');

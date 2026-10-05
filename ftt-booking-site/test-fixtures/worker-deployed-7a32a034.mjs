@@ -1,5 +1,3 @@
-// Deployed Cloudflare Worker `nadi-dispatch-api`, version 80de8469-0fb6-4784-8b66-c199bd5ef7f2 (deployed 2026-09-06T15:34:52Z), downloaded read-only 2026-09-26.
-// Unmodified apart from removing the multipart download wrapper. Used ONLY by night-pricing-integration.test.js to run the real pricing calculation and acceptance band locally.
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -148,7 +146,7 @@ var worker_default = {
       return handleDriverSubmit(request, env);
     }
     if (request.method === "POST" && url.pathname === "/bookings") {
-      return handleGuestBookingCreate(request, env);
+      return handleGuestBookingCreate(request, env, ctx);
     }
     if (request.method === "POST" && url.pathname === "/negotiate") {
       return handleNegotiationCreate(request, env);
@@ -320,7 +318,7 @@ var worker_default = {
     } else if (controller.cron === "0 12 * * 6") {
       ctx.waitUntil(checkFuelIndexUpdate(env));
     } else if (controller.cron === "*/5 * * * *") {
-      ctx.waitUntil(runHealthCheckAlert(env));
+      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env), sweepDriverBroadcasts(env)]));
     } else if (controller.cron === "0 14 * * *") {
       ctx.waitUntil(runD1Backup(env));
     }
@@ -1032,9 +1030,13 @@ async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyPara
   if (!cleanNumber || cleanNumber.length < 8) {
     return { attempted: false, reason: "Phone number invalid for WhatsApp send." };
   }
+  const limitMs = Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) > 0 ? Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) : HEALTH_ALERT_SEND_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), limitMs);
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
+      signal: controller.signal,
       headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
@@ -1053,8 +1055,14 @@ async function sendWhatsAppTemplate(env, phone, templateName, langCode, bodyPara
     const bodyText = await res.text().catch(() => "");
     return { attempted: true, ok: res.ok, status: res.status, response: bodyText.slice(0, 500) };
   } catch (err) {
+    if (controller.signal.aborted) {
+      console.error("[whatsapp-template] send timed out after", limitMs, "ms");
+      return { attempted: true, ok: false, error: "Send timed out.", timedOut: true };
+    }
     console.error("[whatsapp-template] send failed:", err.message);
     return { attempted: true, ok: false, error: "Send failed." };
+  } finally {
+    clearTimeout(timer);
   }
 }
 __name(sendWhatsAppTemplate, "sendWhatsAppTemplate");
@@ -1162,7 +1170,7 @@ async function sendAdminLoginWhatsApp(env, phone, token) {
 __name(sendAdminLoginWhatsApp, "sendAdminLoginWhatsApp");
 async function sendBookingBroadcastWhatsApp(env, phone, booking) {
   const jobUrl = `${DRIVER_APP_URL}?token=`;
-  const fare = `${booking.quoted_currency} ${booking.quoted_amount}`;
+  const fare = `${booking.quoted_currency} ${formatMoneyAmount(booking.quoted_amount)}`;
   return sendWhatsAppTemplate(env, phone, BOOKING_BROADCAST_TEMPLATE, BOOKING_BROADCAST_LANG_CODE, [
     booking.pickup_zone,
     booking.destination_zone,
@@ -1222,7 +1230,8 @@ async function sendFuelIndexAlertWhatsApp(env, phone, bodyText) {
   }
 }
 __name(sendFuelIndexAlertWhatsApp, "sendFuelIndexAlertWhatsApp");
-async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride) {
+var HEALTH_ALERT_SEND_TIMEOUT_MS = 8e3;
+async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOverride, timeoutMs = HEALTH_ALERT_SEND_TIMEOUT_MS) {
   if (!env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_ID) {
     return { attempted: false, reason: "WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured on this Worker." };
   }
@@ -1230,9 +1239,13 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
   if (!cleanNumber || cleanNumber.length < 8) {
     return { attempted: false, reason: "admin_alert_phone not set or invalid." };
   }
+  const limitMs = Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) > 0 ? Number(env.HEALTH_ALERT_SEND_TIMEOUT_MS) : timeoutMs;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), limitMs);
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${env.WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
+      signal: controller.signal,
       headers: { "Authorization": `Bearer ${env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
@@ -1254,8 +1267,14 @@ async function sendHealthAlertWhatsApp(env, phone, state, timestamp, langCodeOve
     const responseText = await res.text().catch(() => "");
     return { attempted: true, ok: res.ok, status: res.status, response: responseText.slice(0, 500) };
   } catch (err) {
+    if (controller.signal.aborted) {
+      console.error("[health-alert] send timed out after", limitMs, "ms");
+      return { attempted: true, ok: false, error: "Send timed out.", timedOut: true };
+    }
     console.error("[health-alert] send failed:", err.message);
     return { attempted: true, ok: false, error: "Send failed." };
+  } finally {
+    clearTimeout(timer);
   }
 }
 __name(sendHealthAlertWhatsApp, "sendHealthAlertWhatsApp");
@@ -1708,16 +1727,155 @@ async function findMatchingOnlineDrivers(env, pickupZone) {
   return (candidates.results || []).filter((d) => JSON.parse(d.zones || "[]").includes(pickupZone));
 }
 __name(findMatchingOnlineDrivers, "findMatchingOnlineDrivers");
-async function broadcastBookingToDrivers(env, booking) {
-  const matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
-  const results = [];
-  for (const d of matching) {
-    const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
-    results.push({ driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult });
+var DRIVER_BROADCAST_LEASE_SECONDS = 120;
+async function claimDriverBroadcastAttempt(env, bookingId, driverId) {
+  const existing = await env.DB.prepare(`SELECT 1 x FROM driver_broadcast_attempts WHERE booking_id = ? AND driver_id = ?`).bind(bookingId, driverId).first();
+  if (!existing) {
+    const rows = (await env.DB.prepare(
+      `SELECT metadata FROM booking_events WHERE booking_id = ? AND event_type = 'driver_broadcast_sent'`
+    ).bind(bookingId).all()).results || [];
+    let historicallySent = false;
+    for (const row of rows) {
+      try {
+        if (JSON.parse(row.metadata || "{}").driver_id === driverId) {
+          historicallySent = true;
+          break;
+        }
+      } catch {
+      }
+    }
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO driver_broadcast_attempts (booking_id, driver_id, state) VALUES (?, ?, ?)`
+    ).bind(bookingId, driverId, historicallySent ? "SENT" : "NOT_ATTEMPTED").run();
   }
+  const claim = await env.DB.prepare(
+    `UPDATE driver_broadcast_attempts SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
+     WHERE booking_id = ? AND driver_id = ? AND attempt_count < ?
+       AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE') OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))
+     RETURNING attempt_count`
+  ).bind(bookingId, driverId, DRIVER_BROADCAST_MAX_TRIES, `-${DRIVER_BROADCAST_LEASE_SECONDS} seconds`).first();
+  return claim ? { claimed: true, attempt: claim.attempt_count } : { claimed: false };
+}
+__name(claimDriverBroadcastAttempt, "claimDriverBroadcastAttempt");
+async function broadcastBookingToDrivers(env, booking, { onlyDriverIds = null } = {}) {
+  let matching = await findMatchingOnlineDrivers(env, booking.pickup_zone);
+  if (onlyDriverIds) matching = matching.filter((d) => onlyDriverIds.has(d.id));
+  const results = await Promise.all(matching.map(async (d) => {
+    let claim;
+    try {
+      claim = await claimDriverBroadcastAttempt(env, booking.id, d.id);
+    } catch (err) {
+      if (!/no such table/i.test(String(err && err.message))) throw err;
+      console.error("[driver-broadcast] driver_broadcast_attempts missing; using legacy unfenced path:", err.message);
+      claim = { claimed: true, attempt: 1, legacy: true };
+    }
+    if (!claim.claimed) {
+      return { driver_id: d.id, driver_name: d.name, whatsapp: { attempted: false, reason: "already sent or a claim is already in flight" }, skipped: true };
+    }
+    const whatsappResult = await sendBookingBroadcastWhatsApp(env, d.phone, booking);
+    const ok = !!(whatsappResult.attempted && whatsappResult.ok);
+    const c = ok ? null : classifyAlertFailure(whatsappResult);
+    if (ok) {
+      if (!claim.legacy) {
+        await env.DB.prepare(
+          `UPDATE driver_broadcast_attempts SET state = 'SENT', last_outcome = 'SENT', last_error = NULL, updated_at = datetime('now')
+           WHERE booking_id = ? AND driver_id = ? AND state != 'SENT'`
+        ).bind(booking.id, d.id).run();
+      }
+    } else if (!claim.legacy) {
+      await env.DB.prepare(
+        `UPDATE driver_broadcast_attempts SET state = 'FAILED_RETRYABLE', last_outcome = ?, last_error = ?, last_provider_status = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND driver_id = ? AND state = 'ATTEMPTING' AND attempt_count = ?`
+      ).bind(c.outcome, whatsappResult.reason || whatsappResult.error || "Meta rejected the send.", whatsappResult.status ?? null, booking.id, d.id, claim.attempt).run();
+    }
+    await logBookingEvent(env, {
+      bookingId: booking.id,
+      eventType: ok ? "driver_broadcast_sent" : "driver_broadcast_failed",
+      actor: "system",
+      metadata: ok ? { driver_id: d.id, status: whatsappResult.status } : { driver_id: d.id, outcome: c.outcome, possibly_delivered: c.possiblyDelivered, status: whatsappResult.status ?? null, reason: whatsappResult.reason || whatsappResult.error || "Meta rejected the send." }
+    });
+    return { driver_id: d.id, driver_name: d.name, whatsapp: whatsappResult };
+  }));
   return { matched_drivers: matching.length, results };
 }
 __name(broadcastBookingToDrivers, "broadcastBookingToDrivers");
+var DRIVER_BROADCAST_MAX_TRIES = 3;
+var DRIVER_BROADCAST_SWEEP_CANDIDATES = 200;
+var DRIVER_BROADCAST_SWEEP_WORK_BUDGET = 10;
+var DRIVER_BROADCAST_SWEEP_CURSOR_KEY = "driver_broadcast_sweep_cursor_id";
+async function fetchSweepCandidates(env, minAgeExpr, maxIds) {
+  const cursor = Number(await getSetting(env, DRIVER_BROADCAST_SWEEP_CURSOR_KEY, "0")) || 0;
+  const baseWhere = `status = 'pending' AND assigned_driver_id IS NULL AND created_at >= datetime('now', '-60 minutes') AND created_at <= datetime('now', ?)`;
+  const forward = (await env.DB.prepare(`SELECT id FROM bookings WHERE ${baseWhere} AND id > ? ORDER BY id LIMIT ?`).bind(minAgeExpr, cursor, maxIds).all()).results || [];
+  let rows = forward;
+  if (rows.length < maxIds) {
+    const wrapped = (await env.DB.prepare(`SELECT id FROM bookings WHERE ${baseWhere} AND id <= ? ORDER BY id LIMIT ?`).bind(minAgeExpr, cursor, maxIds - rows.length).all()).results || [];
+    rows = rows.concat(wrapped);
+  }
+  return rows;
+}
+__name(fetchSweepCandidates, "fetchSweepCandidates");
+async function advanceSweepCursor(env, rows) {
+  if (rows.length === 0) return;
+  const next = Math.max(...rows.map((r) => r.id));
+  await env.DB.prepare(
+    `INSERT INTO platform_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ).bind(DRIVER_BROADCAST_SWEEP_CURSOR_KEY, String(next)).run();
+}
+__name(advanceSweepCursor, "advanceSweepCursor");
+async function sweepDriverBroadcasts(env) {
+  try {
+    const minAgeExpr = `-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`;
+    const found = { results: await fetchSweepCandidates(env, minAgeExpr, DRIVER_BROADCAST_SWEEP_CANDIDATES) };
+    await advanceSweepCursor(env, found.results);
+    let worked = 0;
+    for (const row of found && found.results || []) {
+      if (worked >= DRIVER_BROADCAST_SWEEP_WORK_BUDGET) break;
+      const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(row.id).first();
+      if (!booking || booking.status !== "pending" || booking.assigned_driver_id) continue;
+      const eligible = await findMatchingOnlineDrivers(env, booking.pickup_zone);
+      if (eligible.length === 0) continue;
+      let missingIds;
+      try {
+        const states = (await env.DB.prepare(
+          `SELECT driver_id, state, attempt_count FROM driver_broadcast_attempts WHERE booking_id = ?`
+        ).bind(row.id).all()).results || [];
+        const byId = new Map(states.map((x) => [x.driver_id, x]));
+        missingIds = eligible.filter((d) => {
+          const st = byId.get(d.id);
+          if (!st) return true;
+          if (st.state === "SENT") return false;
+          return st.attempt_count < DRIVER_BROADCAST_MAX_TRIES;
+        }).map((d) => d.id);
+      } catch (err) {
+        if (!/no such table/i.test(String(err && err.message))) throw err;
+        const events = (await env.DB.prepare(
+          `SELECT event_type, metadata FROM booking_events WHERE booking_id = ? AND event_type IN ('driver_broadcast_sent', 'driver_broadcast_failed')`
+        ).bind(row.id).all()).results || [];
+        const sentIds = /* @__PURE__ */ new Set();
+        const failCounts = /* @__PURE__ */ new Map();
+        for (const e of events) {
+          let did = null;
+          try {
+            did = JSON.parse(e.metadata || "{}").driver_id;
+          } catch {
+          }
+          if (did == null) continue;
+          if (e.event_type === "driver_broadcast_sent") sentIds.add(did);
+          else failCounts.set(did, (failCounts.get(did) || 0) + 1);
+        }
+        missingIds = events.length === 0 ? eligible.map((d) => d.id) : eligible.filter((d) => !sentIds.has(d.id) && (failCounts.get(d.id) || 0) < DRIVER_BROADCAST_MAX_TRIES).map((d) => d.id);
+      }
+      if (missingIds.length === 0) continue;
+      await broadcastBookingToDrivers(env, booking, { onlyDriverIds: new Set(missingIds) });
+      worked++;
+    }
+  } catch (err) {
+    console.error(`[driver-broadcast-sweep] failed: ${err.message}`);
+  }
+}
+__name(sweepDriverBroadcasts, "sweepDriverBroadcasts");
 function normalisedItineraryString(v, maxLen) {
   if (v === void 0 || v === null) return null;
   const s = v.toString().trim().slice(0, maxLen);
@@ -1799,6 +1957,12 @@ async function createBookingRecord(env, {
   returnDate = null,
   returnTime = null,
   returnPickupLocation = null,
+  // P0 #237 (2026-10-05): when true the caller (a guest page that shows the guest a fare and asks them to accept it) must NEVER have its
+  // amount silently replaced - an out-of-band amount is refused with PRICE_MISMATCH carrying the Worker's own number instead. Default false
+  // keeps every other caller (cached old pages, FijiDash, admin test, negotiation) exactly as before.
+  requireQuoteMatch = false,
+  // P0 #237: the total the guest was originally shown, sent only when they ACCEPTED a revised price; recorded, never used for pricing.
+  revisedFromAmount = null,
   // Milestone 34 (Issue #34 P0 fix) - client_booking_ref is a stable,
   // guest-widget-generated idempotency key sent on every submit attempt for
   // the same booking (including a retry after a network timeout or a
@@ -1946,6 +2110,11 @@ async function createBookingRecord(env, {
     };
   }
   let pricingNote = null;
+  const submittedAmount = quotedAmount;
+  let calculatedAmount = null;
+  let pricingVersion = null;
+  let pricingDecision = null;
+  let pricingAdjustment = null;
   const isBoatBooking = vehicleType === "boat";
   if (verificationMode === "authoritative") {
     if (isBoatBooking) {
@@ -1965,9 +2134,12 @@ async function createBookingRecord(env, {
       });
       if (!authoritative.ok) {
         console.warn(`[pricing-authoritative-unavailable] ${authoritative.error} - ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType}, falling back to client-trusted quoted_amount`);
+        pricingDecision = { outcome: "client_trusted_authoritative_unavailable", reason: "server_could_not_compute_a_reference" };
       } else {
+        pricingVersion = authoritative.pricingVersion;
         const serverFjd = authoritative.transferPlusExtrasFjd;
         const serverFjdDiscounted = applyLoyaltyDiscount(serverFjd, false).finalFjd;
+        calculatedAmount = serverFjdDiscounted;
         if (tripType === "return") {
           const oneWayEquivalent = await computeAuthoritativePrice(env, {
             pickupZone,
@@ -1979,16 +2151,19 @@ async function createBookingRecord(env, {
             hasSurfboard
           });
           if (oneWayEquivalent.ok) {
+            const addOnsFjd = applyExtras(0, { hasChildSeat, hasSurfboard });
+            const returnTransferFjd = computeFinalTotal(serverFjd - addOnsFjd);
+            const oneWayTransferFjd = computeFinalTotal(oneWayEquivalent.transferPlusExtrasFjd - addOnsFjd);
             const saneCheck = assertSanePricing({
-              oneWayEquivalentFjd: oneWayEquivalent.transferPlusExtrasFjd,
-              finalTotalFjd: serverFjd,
+              oneWayEquivalentFjd: oneWayTransferFjd,
+              finalTotalFjd: returnTransferFjd,
               tripType
             });
             if (!saneCheck.sane) {
               await createEscalation(env, {
                 source: "guest",
                 triggerType: "needs_manual_confirmation",
-                context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return total FJD ${serverFjd} vs one-way equivalent FJD ${oneWayEquivalent.transferPlusExtrasFjd}. Booking blocked, needs manual confirmation.`,
+                context: `Pricing sanity check failed for a return-trip booking: ${saneCheck.reason}. ${pickupZone} -> ${destinationZone}, ${vehicleType} - computed return transfer FJD ${returnTransferFjd} vs one-way transfer FJD ${oneWayTransferFjd} (add-ons FJD ${addOnsFjd} excluded from both). Booking blocked, needs manual confirmation.`,
                 sourceIp
               });
               return { ok: false, errors: ["Could not confirm a reliable price for this booking automatically. We've alerted our team and will follow up via WhatsApp to confirm your fare."] };
@@ -1997,10 +2172,30 @@ async function createBookingRecord(env, {
         }
         if (!hasTour && !isCustomAddress) {
           if (quotedAmount < serverFjdDiscounted * 0.8 || quotedAmount > serverFjdDiscounted * 1.3) {
+            if (requireQuoteMatch) {
+              console.warn(`[pricing-mismatch-refused] client sent ${quotedAmount}, Worker reference ${serverFjdDiscounted} for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType}; nothing saved, guest must accept the Worker number`);
+              return {
+                ok: false,
+                status: 409,
+                code: "PRICE_MISMATCH",
+                errors: [`The fare for this trip is FJ$${serverFjdDiscounted.toFixed(2)}, not the FJ$${quotedAmount.toFixed(2)} shown. Please review the updated fare and confirm it to continue. Nothing has been booked yet.`],
+                quoteMismatch: { submittedAmountFjd: quotedAmount, referenceFareFjd: serverFjdDiscounted }
+              };
+            }
+            pricingAdjustment = {
+              submitted_amount_fjd: quotedAmount,
+              saved_amount_fjd: serverFjdDiscounted,
+              reason: "outside_0.8x_1.3x_band",
+              band_low_fjd: Math.round(serverFjdDiscounted * 0.8 * 1e3) / 1e3,
+              band_high_fjd: Math.round(serverFjdDiscounted * 1.3 * 1e3) / 1e3
+            };
             console.warn(`[pricing-drift] client sent ${quotedAmount}, outside the plausible published-price range (formula reference ${serverFjdDiscounted}) for ${pickupZone} -> ${destinationZone} ${vehicleType} ${tripType} - replacing with the server number`);
             quotedAmount = serverFjdDiscounted;
           }
           distanceKm = authoritative.distanceKm;
+          if (pricingAdjustment) pricingDecision = { outcome: "replaced_legacy", reason: "outside_0.8x_1.3x_band_replaced_legacy" };
+          else if (Math.abs(submittedAmount - serverFjdDiscounted) < 5e-3) pricingDecision = Number.isFinite(revisedFromAmount) ? { outcome: "accepted_revised", reason: "guest_accepted_revised_price" } : { outcome: "matched", reason: "none" };
+          else pricingDecision = { outcome: "kept_in_band", reason: "within_0.8x_1.3x_of_calculated" };
         } else if (isCustomAddress && !hasTour) {
           if (quotedAmount < serverFjdDiscounted * 0.7 || quotedAmount > serverFjdDiscounted * 3) {
             pricingNote = `custom-address quoted_amount (${quotedAmount}) is outside the plausible range for this route (zone-floor reference ${serverFjdDiscounted})`;
@@ -2024,6 +2219,7 @@ async function createBookingRecord(env, {
       }
     }
   }
+  if (verificationMode === "authoritative" && !isBoatBooking && !pricingDecision) pricingDecision = { outcome: "not_fully_server_verified", reason: hasTour ? "tour_in_booking" : isCustomAddress ? "custom_address" : "unknown" };
   const fuelRow = await env.DB.prepare(`SELECT multiplier FROM fuel_index ORDER BY id DESC LIMIT 1`).first();
   const fuelMultiplierApplied = fuelRow ? fuelRow.multiplier : 1;
   const settlementAmountFjd = Math.round(quotedAmount * fxRate * 100) / 100;
@@ -2097,14 +2293,26 @@ async function createBookingRecord(env, {
     previousStatus: null,
     newStatus: status,
     actor,
-    metadata: assignedDriverId ? { assigned_driver_id: assignedDriverId } : null
+    metadata: assignedDriverId || pricingAdjustment || pricingDecision ? {
+      ...assignedDriverId ? { assigned_driver_id: assignedDriverId } : {},
+      ...pricingAdjustment ? { pricing_adjustment: pricingAdjustment } : {},
+      // PII-free record of how the saved amount was decided: what was submitted, what the Worker calculated, what was accepted/saved, why, and which pricing produced it
+      ...pricingDecision ? { pricing_decision: { ...pricingDecision, submitted_amount_fjd: submittedAmount, calculated_amount_fjd: calculatedAmount, accepted_amount_fjd: quotedAmount, original_shown_amount_fjd: Number.isFinite(revisedFromAmount) ? revisedFromAmount : null, currency: quotedCurrency, pricing_version: pricingVersion } } : {}
+    } : null
   });
+  if (booking && pricingAdjustment) booking.fare_check = { submitted: pricingAdjustment.submitted_amount_fjd, saved: pricingAdjustment.saved_amount_fjd };
   return { ok: true, bookingId, booking, pricingNote, idempotent: false };
 }
 __name(createBookingRecord, "createBookingRecord");
+function formatMoneyAmount(n) {
+  const r = Math.round(Number(n) * 100) / 100;
+  if (!Number.isFinite(r)) return String(n);
+  return Number.isInteger(r) ? String(r) : r.toFixed(2);
+}
+__name(formatMoneyAmount, "formatMoneyAmount");
 function sanitiseWhatsAppParamText(text, maxLen) {
   if (!text) return "";
-  let s = String(text).replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim();
+  let s = String(text).replace(/[\r\n\t\v\f\u0085\u2028\u2029]+/g, " ").replace(/ {2,}/g, " ").trim();
   if (maxLen && s.length > maxLen) s = s.slice(0, Math.max(0, maxLen - 1)).trimEnd() + "\u2026";
   return s;
 }
@@ -2124,7 +2332,8 @@ function buildFullBookingAdminSummary(booking) {
     b.return_date || b.return_time ? `Return: ${b.return_date || "date not set"} ${b.return_time || ""}`.trim() : null,
     b.return_pickup_location ? `Return pickup: ${sanitiseWhatsAppParamText(b.return_pickup_location, 60)}` : null,
     b.notes ? `Notes: ${sanitiseWhatsAppParamText(b.notes, 120)}` : null,
-    `Total: ${b.quoted_currency} ${b.quoted_amount}`,
+    `Total: ${b.quoted_currency} ${formatMoneyAmount(b.quoted_amount)}`,
+    b.fare_check ? `FARE CHECK: guest was shown FJD ${Number(b.fare_check.submitted).toFixed(2)}, saved ${Number(b.fare_check.saved).toFixed(2)} - confirm the fare with the guest` : null,
     "Open admin dashboard for full details"
   ].filter(Boolean);
   return sanitiseWhatsAppParamText(parts.join(" | "), 1e3);
@@ -2140,7 +2349,231 @@ async function recordAdminNotificationOutcome(env, bookingId, outcome, detail) {
   });
 }
 __name(recordAdminNotificationOutcome, "recordAdminNotificationOutcome");
-async function handleGuestBookingCreate(request, env) {
+var ADMIN_NOTIFICATION_LEASE_SECONDS = 120;
+async function claimAdminNotificationAttempt(env, bookingId, clientBookingRef) {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO admin_notification_state (booking_id, client_booking_ref, state)
+     SELECT ?, ?, CASE WHEN EXISTS (SELECT 1 FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_sent')
+                       THEN 'SENT' ELSE 'NOT_ATTEMPTED' END`
+  ).bind(bookingId, clientBookingRef, bookingId).run();
+  const claim = await env.DB.prepare(
+    `UPDATE admin_notification_state
+     SET state = 'ATTEMPTING', attempt_count = attempt_count + 1, updated_at = datetime('now')
+     WHERE booking_id = ?
+       AND (state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
+            OR (state = 'ATTEMPTING' AND updated_at < datetime('now', ?)))
+     RETURNING attempt_count`
+  ).bind(bookingId, `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`).first();
+  if (claim) return { claimed: true, attempt: claim.attempt_count };
+  const current = await env.DB.prepare(`SELECT state FROM admin_notification_state WHERE booking_id = ?`).bind(bookingId).first();
+  return { claimed: false, state: current ? current.state : null };
+}
+__name(claimAdminNotificationAttempt, "claimAdminNotificationAttempt");
+function classifyAlertFailure(sendResult) {
+  if (sendResult.timedOut) return { outcome: "TIMEOUT_UNKNOWN", possiblyDelivered: true };
+  if (sendResult.attempted === false) return { outcome: "NOT_CONFIGURED", possiblyDelivered: false };
+  if (typeof sendResult.status === "number") return { outcome: "PROVIDER_REJECTED", possiblyDelivered: false };
+  return { outcome: "NETWORK_ERROR", possiblyDelivered: true };
+}
+__name(classifyAlertFailure, "classifyAlertFailure");
+async function attemptAdminNotification(env, booking, { replay = false, trigger } = {}) {
+  const attemptTrigger = trigger || (replay ? "replay" : "first");
+  try {
+    let claim;
+    try {
+      claim = await claimAdminNotificationAttempt(env, booking.id, booking.client_booking_ref);
+    } catch (claimErr) {
+      if (!/no such table/i.test(String(claimErr && claimErr.message))) throw claimErr;
+      console.error("[admin-notification] admin_notification_state missing; using legacy direct path:", claimErr.message);
+      if (replay) {
+        await recordAdminNotificationOutcome(env, booking.id, "skipped_idempotent", { reason: "replay of existing client_booking_ref (durable state table not applied)" });
+        return;
+      }
+      const legacySummary = buildFullBookingAdminSummary(booking);
+      const phones = await getAdminAlertPhones(env);
+      if (phones.length === 0) await recordAdminNotificationOutcome(env, booking.id, "failed", { reason: "platform_settings.admin_alert_phone is not set." });
+      for (const phone of phones) {
+        const r = await sendHealthAlertWhatsApp(env, phone, legacySummary, sqliteNow());
+        if (r.attempted && r.ok) {
+          let wamid = null;
+          try {
+            wamid = JSON.parse(r.response || "null")?.messages?.[0]?.id || null;
+          } catch {
+          }
+          await recordAdminNotificationOutcome(env, booking.id, "sent", { status: r.status, wamid, response: r.response });
+        } else {
+          await recordAdminNotificationOutcome(env, booking.id, "failed", { reason: r.reason || r.error || "Meta rejected the send.", status: r.status, response: r.response });
+        }
+      }
+      return;
+    }
+    if (!claim.claimed) {
+      const reason = claim.state === "SENT" ? "already sent - provider-confirmed success on a prior attempt" : claim.state === "ATTEMPTING" ? "an attempt for this booking is already in flight" : "replay of existing client_booking_ref";
+      await recordAdminNotificationOutcome(env, booking.id, "skipped_idempotent", { reason, previous_state: claim.state });
+      return;
+    }
+    const attempt = claim.attempt;
+    const ownership = { attempt, trigger: attemptTrigger };
+    const fullSummary = buildFullBookingAdminSummary(booking);
+    const notifiedPhones = await getAdminAlertPhones(env);
+    let sentDetail = null;
+    let failDetail = null;
+    if (notifiedPhones.length === 0) {
+      failDetail = { reason: "platform_settings.admin_alert_phone is not set.", outcome: "NOT_CONFIGURED", possibly_delivered: false };
+      await recordAdminNotificationOutcome(env, booking.id, "failed", { ...failDetail, ...ownership });
+    }
+    for (const alertPhone of notifiedPhones) {
+      const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
+      if (sendResult.attempted && sendResult.ok) {
+        let wamid = null;
+        try {
+          wamid = JSON.parse(sendResult.response || "null")?.messages?.[0]?.id || null;
+        } catch {
+        }
+        sentDetail = { status: sendResult.status, wamid, response: sendResult.response };
+        await recordAdminNotificationOutcome(env, booking.id, "sent", { ...sentDetail, ...ownership });
+      } else {
+        const c = classifyAlertFailure(sendResult);
+        failDetail = {
+          reason: sendResult.reason || sendResult.error || "Meta rejected the send.",
+          status: sendResult.status,
+          response: sendResult.response,
+          outcome: c.outcome,
+          possibly_delivered: c.possiblyDelivered
+        };
+        await recordAdminNotificationOutcome(env, booking.id, "failed", { ...failDetail, ...ownership });
+      }
+    }
+    if (sentDetail) {
+      const done = await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'SENT', last_outcome = 'SENT', last_error = NULL, last_provider_status = ?, wamid = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND state != 'SENT'`
+      ).bind(sentDetail.status ?? null, sentDetail.wamid ?? null, booking.id).run();
+      if (done.meta.changes === 0) {
+        await recordAdminNotificationOutcome(env, booking.id, "duplicate_delivery", { wamid: sentDetail.wamid, ...ownership, reason: "booking was already SENT: this attempt also delivered an alert" });
+      }
+    } else {
+      const done = await env.DB.prepare(
+        `UPDATE admin_notification_state SET state = 'FAILED_RETRYABLE', last_outcome = ?, last_error = ?, last_provider_status = ?, updated_at = datetime('now')
+         WHERE booking_id = ? AND state = 'ATTEMPTING' AND attempt_count = ?`
+      ).bind(failDetail.outcome, failDetail.reason, failDetail.status ?? null, booking.id, attempt).run();
+      if (done.meta.changes === 0) {
+        await recordAdminNotificationOutcome(env, booking.id, "superseded", { ...ownership, outcome: failDetail.outcome, reason: "a newer attempt or a confirmed delivery owns this booking; this stale failure was not applied" });
+      }
+    }
+  } catch (err) {
+    console.error(`[admin-notification] attempt failed for booking ${booking.id}: ${err.message}`);
+  }
+}
+__name(attemptAdminNotification, "attemptAdminNotification");
+var ADMIN_NOTIFICATION_MAX_ATTEMPTS = 6;
+var ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS = 180;
+var ADMIN_NOTIFICATION_SWEEP_WINDOW_HOURS = 24;
+var ADMIN_NOTIFICATION_SWEEP_BATCH = 10;
+function adminNotificationBackoffSeconds(attemptCount) {
+  return Math.min(300 * 2 ** Math.max(0, attemptCount - 1), 3600);
+}
+__name(adminNotificationBackoffSeconds, "adminNotificationBackoffSeconds");
+async function sweepAdminNotifications(env) {
+  try {
+    const found = await env.DB.prepare(
+      `SELECT b.id, ns.state, ns.attempt_count, ns.last_outcome,
+              CAST(strftime('%s', 'now') - strftime('%s', ns.updated_at) AS INTEGER) AS age_s
+       FROM bookings b LEFT JOIN admin_notification_state ns ON ns.booking_id = b.id
+       WHERE b.created_at >= datetime('now', ?) AND b.created_at <= datetime('now', ?)
+         AND NOT EXISTS (SELECT 1 FROM booking_events e WHERE e.booking_id = b.id AND e.event_type = 'admin_notification_sent')
+         AND NOT EXISTS (SELECT 1 FROM booking_events x WHERE x.booking_id = b.id AND x.event_type = 'admin_notification_exhausted')
+         AND (ns.booking_id IS NULL
+              OR ns.state IN ('NOT_ATTEMPTED', 'FAILED_RETRYABLE')
+              OR (ns.state = 'ATTEMPTING' AND ns.updated_at < datetime('now', ?)))
+       ORDER BY b.id LIMIT ?`
+    ).bind(
+      `-${ADMIN_NOTIFICATION_SWEEP_WINDOW_HOURS} hours`,
+      `-${ADMIN_NOTIFICATION_SWEEP_MIN_AGE_SECONDS} seconds`,
+      `-${ADMIN_NOTIFICATION_LEASE_SECONDS} seconds`,
+      ADMIN_NOTIFICATION_SWEEP_BATCH
+    ).all();
+    for (const row of found && found.results || []) {
+      const attempts = row.attempt_count || 0;
+      if (attempts >= ADMIN_NOTIFICATION_MAX_ATTEMPTS) {
+        const already = await env.DB.prepare(`SELECT 1 x FROM booking_events WHERE booking_id = ? AND event_type = 'admin_notification_exhausted'`).bind(row.id).first();
+        if (!already) {
+          await recordAdminNotificationOutcome(env, row.id, "exhausted", { attempts, last_outcome: row.last_outcome || null, reason: "attempt cap reached without a confirmed delivery; escalated to a human" });
+          await createEscalation(env, {
+            source: "guest",
+            triggerType: "app_issue",
+            bookingId: row.id,
+            context: `Booking #${row.id}: the admin WhatsApp alert could not be delivered after ${attempts} attempts (last outcome: ${row.last_outcome || "unknown"}). Check this booking manually; the guest may be waiting.`
+          });
+        }
+        continue;
+      }
+      if (row.state === "FAILED_RETRYABLE" && (row.age_s ?? 0) < adminNotificationBackoffSeconds(attempts)) continue;
+      const booking = await env.DB.prepare(`SELECT * FROM bookings WHERE id = ?`).bind(row.id).first();
+      if (booking) await attemptAdminNotification(env, booking, { trigger: "sweep" });
+    }
+  } catch (err) {
+    console.error(`[admin-notification-sweep] failed: ${err.message}`);
+  }
+}
+__name(sweepAdminNotifications, "sweepAdminNotifications");
+async function sendShortAdminAlert(env, booking) {
+  try {
+    const summary = sanitiseWhatsAppParamText(
+      `New booking #${booking.id}: ${booking.guest_name}, ${booking.pickup_zone} -> ${booking.destination_zone}, ${booking.vehicle_type}, ${booking.quoted_currency} ${formatMoneyAmount(booking.quoted_amount)}.${booking.fare_check ? ` FARE CHECK: guest was shown FJD ${Number(booking.fare_check.submitted).toFixed(2)}.` : ""}`,
+      1e3
+    );
+    for (const alertPhone of await getAdminAlertPhones(env)) {
+      const r = await sendHealthAlertWhatsApp(env, alertPhone, summary, sqliteNow());
+      const ok = !!(r.attempted && r.ok);
+      await logBookingEvent(env, {
+        bookingId: booking.id,
+        eventType: ok ? "admin_short_alert_sent" : "admin_short_alert_failed",
+        actor: "system",
+        metadata: ok ? { channel: "whatsapp", status: r.status } : { channel: "whatsapp", reason: r.reason || r.error || "Meta rejected the send.", status: r.status, timedOut: !!r.timedOut }
+      });
+    }
+  } catch (err) {
+    console.error(`[admin-short-alert] failed for booking ${booking.id}: ${err.message}`);
+  }
+}
+__name(sendShortAdminAlert, "sendShortAdminAlert");
+async function dispatchAdminNotifications(env, ctx, booking, { replay }) {
+  const jobs = /* @__PURE__ */ __name(() => replay ? [attemptAdminNotification(env, booking, { replay: true })] : [sendShortAdminAlert(env, booking), attemptAdminNotification(env, booking)], "jobs");
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(Promise.allSettled(jobs()));
+    return;
+  }
+  if (replay) {
+    await attemptAdminNotification(env, booking, { replay: true });
+    return;
+  }
+  await sendShortAdminAlert(env, booking);
+  await attemptAdminNotification(env, booking);
+}
+__name(dispatchAdminNotifications, "dispatchAdminNotifications");
+async function dispatchNewBookingSideEffects(env, ctx, booking) {
+  if (ctx && typeof ctx.waitUntil === "function") {
+    let matched = null;
+    try {
+      matched = (await findMatchingOnlineDrivers(env, booking.pickup_zone)).length;
+    } catch (err) {
+      console.error("[broadcast] matched-driver count failed:", err.message);
+    }
+    ctx.waitUntil(Promise.allSettled([
+      broadcastBookingToDrivers(env, booking),
+      sendShortAdminAlert(env, booking),
+      attemptAdminNotification(env, booking)
+    ]));
+    return { matched_drivers: matched, deferred: true };
+  }
+  const broadcast = await broadcastBookingToDrivers(env, booking);
+  await sendShortAdminAlert(env, booking);
+  await attemptAdminNotification(env, booking);
+  return broadcast;
+}
+__name(dispatchNewBookingSideEffects, "dispatchNewBookingSideEffects");
+async function handleGuestBookingCreate(request, env, ctx) {
   if (!env.DB) return json({ ok: false, error: "Database not available." }, 503);
   const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
   const rateLimit = await checkGuestBookingRateLimit(env, clientIp);
@@ -2214,42 +2647,21 @@ async function handleGuestBookingCreate(request, env) {
     hasTour: body.has_tour === true,
     hasChildSeat: body.has_child_seat === true,
     hasSurfboard: body.has_surfboard === true,
+    requireQuoteMatch: body.require_quote_match === true,
+    revisedFromAmount: body.revised_from_amount !== void 0 && body.revised_from_amount !== null && isFinite(Number(body.revised_from_amount)) ? Number(body.revised_from_amount) : null,
     actor: "guest"
     // the public guest widget - a real guest's own booking submission
   });
+  if (!result.ok && result.code === "PRICE_MISMATCH") {
+    return json({ ok: false, code: "PRICE_MISMATCH", errors: result.errors, reference_fare_fjd: result.quoteMismatch.referenceFareFjd, submitted_amount_fjd: result.quoteMismatch.submittedAmountFjd }, 409);
+  }
   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
   if (result.idempotent) {
-    await recordAdminNotificationOutcome(env, result.bookingId, "skipped_idempotent", { reason: "replay of existing client_booking_ref" });
+    await dispatchAdminNotifications(env, ctx, result.booking, { replay: true });
     return json({ ok: true, booking_id: result.bookingId, booking: result.booking, idempotent: true }, 200);
   }
-  const broadcast = await broadcastBookingToDrivers(env, result.booking);
   const b = result.booking;
-  const bookingSummary = `New booking #${b.id}: ${b.guest_name}, ${b.pickup_zone} -> ${b.destination_zone}, ${b.vehicle_type}, ${b.quoted_currency} ${b.quoted_amount}.`;
-  for (const alertPhone of await getAdminAlertPhones(env)) {
-    await sendHealthAlertWhatsApp(env, alertPhone, bookingSummary, sqliteNow());
-  }
-  const fullSummary = buildFullBookingAdminSummary(b);
-  const notifiedPhones = await getAdminAlertPhones(env);
-  if (notifiedPhones.length === 0) {
-    await recordAdminNotificationOutcome(env, b.id, "failed", { reason: "platform_settings.admin_alert_phone is not set." });
-  }
-  for (const alertPhone of notifiedPhones) {
-    const sendResult = await sendHealthAlertWhatsApp(env, alertPhone, fullSummary, sqliteNow());
-    if (sendResult.attempted && sendResult.ok) {
-      let wamid = null;
-      try {
-        wamid = JSON.parse(sendResult.response || "null")?.messages?.[0]?.id || null;
-      } catch {
-      }
-      await recordAdminNotificationOutcome(env, b.id, "sent", { status: sendResult.status, wamid, response: sendResult.response });
-    } else {
-      await recordAdminNotificationOutcome(env, b.id, "failed", {
-        reason: sendResult.reason || sendResult.error || "Meta rejected the send.",
-        status: sendResult.status,
-        response: sendResult.response
-      });
-    }
-  }
+  const broadcast = await dispatchNewBookingSideEffects(env, ctx, b);
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
 }
 __name(handleGuestBookingCreate, "handleGuestBookingCreate");
@@ -3007,6 +3419,11 @@ async function findNearestZone(env, lat, lng) {
 }
 __name(findNearestZone, "findNearestZone");
 async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
+  const detailed = await computeFareFjdDetailed(env, vehicleType, distanceKm, remoteMultiplier);
+  return detailed ? detailed.fare : null;
+}
+__name(computeFareFjd, "computeFareFjd");
+async function computeFareFjdDetailed(env, vehicleType, distanceKm, remoteMultiplier) {
   const rule = await env.DB.prepare(
     `SELECT base_rate_fjd_per_km, flagfall_fjd FROM pricing_rules
      WHERE vehicle_type = ? AND active = 1 AND distance_min_km <= ? AND (distance_max_km IS NULL OR ? < distance_max_km)
@@ -3015,9 +3432,13 @@ async function computeFareFjd(env, vehicleType, distanceKm, remoteMultiplier) {
   if (!rule) return null;
   const baseFare = computeBaseFare({ flagfallFjd: rule.flagfall_fjd, baseRateFjdPerKm: rule.base_rate_fjd_per_km, distanceKm });
   const withZoneMultiplier = applyZoneMultiplier(baseFare, remoteMultiplier);
-  return computeFinalTotal(withZoneMultiplier);
+  return { fare: computeFinalTotal(withZoneMultiplier), rule: { flagfall: rule.flagfall_fjd, rate: rule.base_rate_fjd_per_km }, zoneMultiplier: remoteMultiplier === null || remoteMultiplier === void 0 ? 1 : remoteMultiplier };
 }
-__name(computeFareFjd, "computeFareFjd");
+__name(computeFareFjdDetailed, "computeFareFjdDetailed");
+function pricingVersionString(vehicleType, detail) {
+  return `nat-formula-v1|${vehicleType}|flag${detail.rule.flagfall}|rate${detail.rule.rate}|zm${detail.zoneMultiplier}|ret${RETURN_MULTIPLIER}|night${NIGHT_SURCHARGE}|disc${DISCOUNT_RATE}|band0.8-1.3`;
+}
+__name(pricingVersionString, "pricingVersionString");
 async function computeZoneToZoneDistanceKm(env, lat1, lng1, lat2, lng2) {
   if (!env.GOOGLE_MAPS_API_KEY) return null;
   try {
@@ -3110,14 +3531,15 @@ async function computeAuthoritativePrice(env, { pickupZone, destinationZone, veh
   if (distanceKm === null) {
     return { ok: false, error: "Could not resolve a real distance for authoritative pricing." };
   }
-  const oneWayFareFjd = await computeFareFjd(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  const oneWayDetail = await computeFareFjdDetailed(env, vehicleType, distanceKm, remoteZoneRow.remote_multiplier);
+  const oneWayFareFjd = oneWayDetail ? oneWayDetail.fare : null;
   if (!oneWayFareFjd) {
     return { ok: false, error: "No pricing rule found for this route and vehicle type." };
   }
   const withTripType = applyTripTypeMultiplier(oneWayFareFjd, tripType);
   const withNightSurcharge = applyNightSurcharge(withTripType, pickupTime);
   const withExtras = applyExtras(withNightSurcharge, { hasChildSeat, hasSurfboard });
-  return { ok: true, transferPlusExtrasFjd: computeFinalTotal(withExtras), distanceKm };
+  return { ok: true, transferPlusExtrasFjd: computeFinalTotal(withExtras), distanceKm, pricingVersion: pricingVersionString(vehicleType, oneWayDetail) };
 }
 __name(computeAuthoritativePrice, "computeAuthoritativePrice");
 async function callGoogleRoutesApi(env, airportLat, airportLng, addressText, direction = "from_airport") {

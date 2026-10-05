@@ -1,4 +1,4 @@
-// Runs the REAL deployed Worker (test-fixtures/worker-deployed-80de8469.mjs) against an in-memory stand-in for D1
+// Runs the REAL deployed Worker (test-fixtures/worker-deployed-7a32a034.mjs) against an in-memory stand-in for D1
 // seeded from a read-only snapshot of the real zones, pricing_rules, zone_distance_cache and fuel_index tables.
 // Nothing is mocked in the pricing path: computeAuthoritativePrice, applyNightSurcharge, applyExtras,
 // applyLoyaltyDiscount and the 0.8x-1.3x acceptance band all execute from the deployed code.
@@ -8,7 +8,7 @@ const snap = require('./pricing-snapshot-2026-09-27.json');
 
 let workerPromise;
 function loadWorker() {
-  workerPromise = workerPromise || import(pathToFileURL(path.join(__dirname, 'worker-deployed-80de8469.mjs')).href);
+  workerPromise = workerPromise || import(pathToFileURL(path.join(__dirname, 'worker-deployed-7a32a034.mjs')).href);
   return workerPromise;
 }
 

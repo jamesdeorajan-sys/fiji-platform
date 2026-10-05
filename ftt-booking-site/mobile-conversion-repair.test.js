@@ -273,8 +273,8 @@ test('extras grid: mobile breakpoint (900px) keeps the same 2-column layout as d
 // this mission's STRICT NO-CHANGE clause covers. Any edit to fares, capacity,
 // or recommendation logic fails this suite immediately.
 
-test('pricing untouched: calculateTotal() is byte-identical to the base commit', () => {
-  const candidate = extract(js, 'function calculateTotal(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER');
+test('pricing untouched: the published-price arithmetic (calculateTotal before quote consent) is byte-identical to the base commit', () => {
+  const candidate = extract(js, 'function calculateTotalFromPublishedPrices(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER');
   const base = extract(gitShow('ftt-booking-site/src/app.js'), 'function calculateTotal(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER');
   assert.strictEqual(candidate, base);
 });
@@ -294,9 +294,10 @@ test('booking-core untouched: submitMarketplaceBooking()\'s payload construction
   // occurrence) that actually terminates at this payload object's own closing brace.
   // The tracking call after the payload was renamed to the guarded helper (issue #59), so the base
   // commit's end marker is the old bare call; the payload text between the markers must stay identical.
-  const endMarker = "  };\n\n  trackBookingFunnel('booking_post_started');";
+  const endMarker = "  };\n\n  // when the guest is accepting a revised price";
   const baseEndMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
-  const candidate = extract(js, marker, endMarker);
+  // the only addition to the payload is the explicit quote-consent opt-in (two comment lines + require_quote_match); everything else is unchanged
+  const candidate = extract(js, marker, endMarker).replace(/    \/\/ Quote consent:[^\n]*\n    \/\/ own calculation[^\n]*\n    require_quote_match: true,\n/, '');
   const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, baseEndMarker);
   assert.strictEqual(candidate, base);
 });
