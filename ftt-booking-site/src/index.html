@@ -26,13 +26,10 @@
      Cache-Control on both is "public, max-age=14400, must-revalidate" (4h)
      - a browser that cached the OLD app.js under this exact URL (even from
      before this UX work existed) keeps serving it for up to 4 hours,
-     never re-checking the server. An old app.js has no bulaTitleSupported/
-     bulaTitleUnsupported toggle logic at all, so it never touches those
-     elements - leaving them at THIS file's static default (currently
-     bulaTitleUnsupported visible), even though the real booking succeeds
-     normally server-side (backend is unaffected by frontend cache state).
+     never re-checking the server. An old app.js would then leave the result card at this file's static default text (which therefore never claims a save),
+     even though the real booking succeeds normally server-side (backend is unaffected by frontend cache state).
      MUST bump this value on every future deploy that changes styles.css. -->
-<link rel="stylesheet" href="styles.css?v=20260909a-wa-cta-r4">
+<link rel="stylesheet" href="styles.css?v=20261005-wa-handoff">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -889,7 +886,7 @@
         <div class="payment-info">
           <div class="payment-icon">🔒</div>
           <div class="payment-text">
-            <strong>No payment needed now.</strong> You'll be contacted within 15 minutes to confirm availability and payment options. We accept credit card, bank transfer, and cash on arrival.
+            <strong>No payment needed now.</strong> After you submit, open WhatsApp and press Send; our Fiji team will reply Bula, vinaka and confirm availability and payment options with you. We accept credit card, bank transfer, and cash on arrival.
           </div>
         </div>
 
@@ -971,47 +968,22 @@
           <div class="bula-rays"></div>
         </div>
         <div class="bula-eyebrow">Bula Vinaka!</div>
-        <!-- CEO P1 mobile-conversion fix (2026-09-13) - "Confirmation truth /
-             WhatsApp semantics" correction. The previous copy framed
-             WhatsApp as "one final step" / "complete your pickup
-             confirmation" - a mandatory-sounding action for a booking that
-             is, at this point, ALREADY server-saved (submitMarketplaceBooking
-             returned ok:true before this card ever shows). That contradicted
-             the booking's real state and is exactly the pattern flagged in
-             real mobile screenshots. WhatsApp is now presented as optional/
-             faster contact, never as something required to "confirm" or
-             "complete" the booking, and never claims the message was sent
-             or staff has seen it merely because wa.me opened (that open is
-             fire-and-forget from here - see confirmBooking() in app.js).
-             Same stale-cache discipline as before: this static default text
-             MUST stay in sync with showBulaSuccess()'s JS-set copy in
-             app.js - see that function's own comment.
-             bulaTitleUnsupported/showBulaUnsupportedRoute() are untouched -
-             out of scope, different flow (no server-side booking exists
-             yet there, so WhatsApp genuinely is how the request reaches a
-             human - correctly labelled as NOT saved online). -->
-        <h2 class="bula-title">
-          <span id="bulaTitleSupported" style="display:none">Your request is saved</span>
-          <span id="bulaTitleUnsupported" style="display:none">One more step to send your request</span>
-        </h2>
-
-        <p class="bula-wa-context" id="bulaWaContext">
-          Want faster contact? Message our Fiji team on WhatsApp.
+        <!-- WhatsApp reservation handoff (2026-10-05). Operating process: the guest presses Send in WhatsApp with the reservation details; the Fiji ground team
+             replies "Bula, vinaka", checks the details and confirms. Heading, button and instruction are IDENTICAL in every state and static markup (app.js only sets
+             the status line, the reference and the prefilled link). The status line (bulaLeadText) states only what is actually known: saved online (not yet
+             confirmed) / not saved online (route needs human review). Opening WhatsApp never marks anything sent or confirmed. WhatsApp is not optional here. -->
+        <h2 class="bula-title" id="bulaTitle">Finish your reservation on WhatsApp</h2>
+        <p class="bula-lead" id="bulaLeadText">
+          Your reservation details are ready to send on WhatsApp.
         </p>
+        <p class="bula-wa-context" id="bulaHandoff">Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.</p>
 
         <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn bula-wa-btn-dominant">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-          MESSAGE US ON WHATSAPP
+          <span>Open WhatsApp — send reservation</span>
         </a>
-        <p class="bula-wa-reassurance" id="bulaWaReassurance">Your request is already saved online — WhatsApp is optional, just a faster way to reach us.</p>
-
-        <!-- 5. BOOKING SUMMARY/DETAILS - moved below the CTA (was directly
-             under the headline before this round). Same elements, same
-             JS-set content, just repositioned. -->
+        <p class="bula-wa-reassurance" id="bulaHandoffNote"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>
         <div class="bula-ref" id="bulaRef"></div>
-        <p class="bula-lead" id="bulaLeadText">
-          ✅ <strong>Your transfer request is saved.</strong> Our Fiji team checks availability and confirms your pickup details.
-        </p>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
         <div class="bula-modify">
@@ -1073,35 +1045,22 @@
     <div class="bula-success bula-failure" id="bulaFailure" style="display:none">
       <div class="bula-success-inner">
         <div class="bula-eyebrow">We hit a snag</div>
-        <h2 class="bula-title">We couldn't confirm your booking automatically</h2>
-        <!-- CEO P1 truthful-failure fix (2026-09-13) - this card covers every
-             failure outcome submitMarketplaceBooking() can return, including
-             the genuinely UNKNOWN case (e.g. a network timeout after the
-             server may have already committed the row - see that function's
-             own comment). The previous copy asserted "your details are
-             saved and our team has already been alerted" unconditionally,
-             which is only true for a confirmed server rejection, not an
-             unknown outcome - a real save/no-save ambiguity must never be
-             presented to the guest as a settled fact either way. Retry
-             identity is unchanged: retryMarketplaceBooking() still reuses
-             state.currentBookingRef, so "try again" is safe to say
-             literally - the same client_booking_ref hits the existing
-             idempotency path server-side and can never create a duplicate
-             booking, confirmed or not. -->
-        <p class="bula-lead">
-          We couldn't confirm whether your booking request was saved.
-          Please try again using the same request, or message our Fiji team on WhatsApp for help.
+        <h2 class="bula-title" id="bulaFailureTitle">Finish your reservation on WhatsApp</h2>
+        <!-- UNKNOWN save: we cannot tell whether the request was saved online (e.g. a timeout after the server may have committed it). Never claim a save or a non-save;
+             keep the reference. "Try again" reuses state.currentBookingRef (same client_booking_ref => idempotent, never a second booking). The WhatsApp handoff is the
+             primary action here too; it is never marked sent or confirmed from a click. -->
+        <p class="bula-lead" id="bulaFailureLead">
+          We couldn't confirm whether your request was saved online. Keep your reference below.
         </p>
-        <p class="bula-lead">
-          Do not make a second booking with different details unless our team asks you to.
-        </p>
+        <p class="bula-wa-context">Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.</p>
         <div class="bula-actions">
-          <button class="btn-primary btn-confirm" id="bulaRetryBtn" onclick="retryMarketplaceBooking()">Try again</button>
-          <a id="bulaFailureWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
-            Message us on WhatsApp instead
+          <a id="bulaFailureWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn bula-wa-btn-dominant">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
+            <span>Open WhatsApp — send reservation</span>
           </a>
+          <button class="btn-secondary" id="bulaRetryBtn" onclick="retryMarketplaceBooking()">Try again — keep my details</button>
         </div>
+        <p class="bula-wa-reassurance"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you. Do not make a second booking with different details unless our team asks you to.</p>
         <p class="bula-ref" id="bulaFailureRef"></p>
       </div>
     </div>
@@ -1249,7 +1208,7 @@
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.35 12a19.79 19.79 0 01-3.07-8.67A2 2 0 013.22 1.32h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 9.32a16 16 0 006.29 6.29l1.37-1.37a2 2 0 012.12-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
         </div>
         <h3>Confirm & relax</h3>
-        <p>We contact you within 15 minutes. Your driver tracks your flight and meets you in arrivals with a name board and shell lei.</p>
+        <p>Send your reservation on WhatsApp and our Fiji team confirms your transfer with you. Your driver tracks your flight and meets you in arrivals with a name board and shell lei.</p>
       </div>
       <div class="how-card">
         <div class="how-num">04</div>
@@ -1414,7 +1373,7 @@
      for the full explanation - this exact staleness caused booking #66's
      headline mismatch. -->
 <script src="funnel-events-client.js?v=20260909a-funnel-preview" data-platform="fijidash"></script>
-<script src="app.js?v=20260927-analytics-optional"></script>
+<script src="app.js?v=20261005-wa-handoff"></script>
 <script src="chat-widget.js?v=20260505a"></script>
 </body>
 </html>

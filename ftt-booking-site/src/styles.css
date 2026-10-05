@@ -687,7 +687,11 @@ textarea.field-input{resize:vertical;min-height:80px}
    above-the-fold CTA. Stacks with .bula-wa-btn rather than replacing it. */
 .bula-wa-btn-dominant{
   width:100%;box-sizing:border-box;justify-content:center;
-  text-align:center}
+  text-align:center;white-space:normal;line-height:1.25;max-width:100%}
+.bula-wa-btn svg{flex:none}
+.bula-wa-context strong,.bula-wa-reassurance strong{color:#0f172a}
+.bula-wa-context{font-size:15.5px;color:#0f172a}
+.bula-failure .bula-actions{display:flex;flex-direction:column;gap:10px;align-items:stretch}
 
 /* CEO UX directive (2026-09-07) - small reassurance caption directly under
    the button, same scale/weight as .bula-modify's existing microcopy. */
@@ -920,3 +924,7 @@ textarea.field-input{resize:vertical;min-height:80px}
   text-align:center;margin-top:32px}
 .tours-cta-row .btn-secondary{
   display:inline-block;font-size:14px;padding:12px 24px}
+/* small phones: drop the decorative flower so the WhatsApp handoff button stays above the fold */
+@media(max-width:380px){#bulaSuccess .bula-burst{display:none}}
+/* the sticky "Book your transfer" bar must not cover the WhatsApp handoff button while a result card is showing */
+body:has(#bulaSuccess[style*="display: block"]) #stickyBar,body:has(#bulaFailure[style*="display: block"]) #stickyBar{display:none!important}

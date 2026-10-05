@@ -2025,8 +2025,7 @@ function hideBookingWidget() {
 
 // CEO P0 fix (Issue #34) - the honest success state: only ever called AFTER
 // the server has actually confirmed the booking (result.ok from
-// submitMarketplaceBooking). WhatsApp is now a genuinely optional extra
-// channel, not a requirement the booking's existence depends on.
+// submitMarketplaceBooking). The saved request is NOT yet a confirmed transfer: the guest finishes by pressing Send in WhatsApp and the Fiji team confirms.
 function showBulaSuccess(ref, bookingId) {
   const failureCard = document.getElementById('bulaFailure');
   if (failureCard) failureCard.style.display = 'none';
@@ -2043,53 +2042,15 @@ function showBulaSuccess(ref, bookingId) {
   // in-progress smooth scroll to a new target rather than jumping twice.
   document.getElementById('bulaSuccess')?.scrollIntoView({ block: 'start' });
 
-  // CEO UX revision (2026-09-07) - swap which of the two headline spans is
-  // visible rather than rewriting the h2's innerHTML (see index.html's own
-  // comment on why: bulaName is guest-typed input and must only ever be
-  // written via .textContent). This screen's headline is fixed, uninvolved
-  // text - no personalisation - so no .textContent write is needed for it.
-  const bulaTitleSupported = document.getElementById('bulaTitleSupported');
-  if (bulaTitleSupported) bulaTitleSupported.style.display = '';
-  const bulaTitleUnsupported = document.getElementById('bulaTitleUnsupported');
-  if (bulaTitleUnsupported) bulaTitleUnsupported.style.display = 'none';
-
+  // Heading, button label and the handoff instruction are static markup (index.html), identical in every state; only the status line, reference and prefilled link are set here.
   const bulaRef = document.getElementById('bulaRef');
   if (bulaRef) bulaRef.textContent = bookingId ? `Booking #${bookingId} · Ref: ${ref}` : `Request ref: ${ref}`;
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
-    bulaLeadText.innerHTML = '<strong>Your transfer request is saved.</strong> Our Fiji team checks availability and confirms your pickup details.';
+    bulaLeadText.textContent = 'Your request is saved online, but your transfer is not confirmed yet. Send your reservation details on WhatsApp to finish.';
   }
-
-  // CEO P1 mobile-conversion fix (2026-09-13) - "Confirmation truth /
-  // WhatsApp semantics" correction. Explicitly (re-)set here, not just
-  // left to index.html's static default: showBulaUnsupportedRoute() hides
-  // this same pair of elements (its flow has no server-side booking yet,
-  // so this framing would be false there), so a guest who could somehow
-  // reach both states in one session always gets the version that matches
-  // their actual booking state. Kept byte-identical to index.html's static
-  // default text, same discipline as before (booking #66's stale-cache
-  // root cause). WhatsApp is presented as optional/faster contact, never
-  // as a required step to "confirm" or "complete" a booking that the
-  // server has already saved.
-  const bulaWaContext = document.getElementById('bulaWaContext');
-  if (bulaWaContext) {
-    bulaWaContext.textContent = 'Want faster contact? Message our Fiji team on WhatsApp.';
-    bulaWaContext.style.display = '';
-  }
-
-  const waUrl = buildWhatsAppURL(ref);
   const bulaWaBtn = document.getElementById('bulaWaBtn');
-  if (bulaWaBtn) {
-    bulaWaBtn.href = waUrl;
-    bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'MESSAGE US ON WHATSAPP');
-  }
-
-  const bulaWaReassurance = document.getElementById('bulaWaReassurance');
-  if (bulaWaReassurance) {
-    bulaWaReassurance.textContent = 'Your request is already saved online — WhatsApp is optional, just a faster way to reach us.';
-    bulaWaReassurance.style.display = '';
-  }
+  if (bulaWaBtn) bulaWaBtn.href = buildWhatsAppURL(ref);
 
   setBulaModifyLink(ref);
 
@@ -2103,47 +2064,15 @@ function showBulaSuccess(ref, bookingId) {
 function showBulaUnsupportedRoute(ref) {
   hideBookingWidget();
 
-  // CEO UX revision (2026-09-07, final gate) - defensively reset to the
-  // "unsupported" headline in case a prior call in this session left the
-  // other one showing (same guard pattern as the context/reassurance hide
-  // below). No guest-name interpolation any more - see index.html's own
-  // comment on why that span was removed from this headline.
-  const bulaTitleSupported = document.getElementById('bulaTitleSupported');
-  if (bulaTitleSupported) bulaTitleSupported.style.display = 'none';
-  const bulaTitleUnsupported = document.getElementById('bulaTitleUnsupported');
-  if (bulaTitleUnsupported) bulaTitleUnsupported.style.display = '';
-
   const bulaRef = document.getElementById('bulaRef');
   if (bulaRef) bulaRef.textContent = `Request ref: ${ref}`;
+  // WhatsApp-only (no online booking exists for this route): never claim a save or that the team has the request.
   const bulaLeadText = document.getElementById('bulaLeadText');
   if (bulaLeadText) {
-    // CEO final UX gate (2026-09-07) - no "booking is in"/"booking
-    // received"/"safely saved"/"team has your reservation" wording here,
-    // or any other server-persistence claim: no booking row exists yet
-    // for this flow (see this function's own header comment) - WhatsApp
-    // is genuinely how the request reaches a human, not an optional extra.
-    bulaLeadText.innerHTML = 'This route needs human review. Send your booking request on WhatsApp and our Fiji team will confirm the next steps.';
+    bulaLeadText.textContent = 'This request has not been saved online - this route needs human review. Your reservation details are ready to send on WhatsApp.';
   }
-
-  // CEO UX directive (2026-09-07, revised same day) - the "already saved"
-  // headline/context/reassurance added for showBulaSuccess() are
-  // specifically NOT true here: this flow has no server-side booking yet
-  // (see this function's own header comment - WhatsApp is genuinely the
-  // only path to a human for an unsupported route), so hide both rather
-  // than let index.html's static default text leak a false claim into
-  // this different state.
-  const bulaWaContext = document.getElementById('bulaWaContext');
-  if (bulaWaContext) bulaWaContext.style.display = 'none';
-  const bulaWaReassurance = document.getElementById('bulaWaReassurance');
-  if (bulaWaReassurance) bulaWaReassurance.style.display = 'none';
-
-  const waUrl = buildWhatsAppURL(ref);
   const bulaWaBtn = document.getElementById('bulaWaBtn');
-  if (bulaWaBtn) {
-    bulaWaBtn.href = waUrl;
-    bulaWaBtn.textContent = '';
-    bulaWaBtn.insertAdjacentHTML('beforeend', BULA_WA_ICON_SVG + 'Send booking request on WhatsApp');
-  }
+  if (bulaWaBtn) bulaWaBtn.href = buildWhatsAppURL(ref);
   setBulaModifyLink(ref);
 
   const bula = document.getElementById('bulaSuccess');
@@ -2164,6 +2093,8 @@ function showBulaFailure(ref, errorDetail) {
   if (failWaBtn) failWaBtn.href = waUrl;
   const failRef = document.getElementById('bulaFailureRef');
   if (failRef) failRef.textContent = `Reference: ${ref}`;
+  const failLead = document.getElementById('bulaFailureLead');
+  if (failLead) failLead.textContent = `We couldn't confirm whether your request was saved online. Keep your reference (${ref}).`;
 
   const failure = document.getElementById('bulaFailure');
   if (failure) failure.style.display = 'block';

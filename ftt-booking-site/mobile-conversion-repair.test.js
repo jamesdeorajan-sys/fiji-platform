@@ -69,30 +69,33 @@ test('confirmation truth: price sub-caption no longer claims instant/guaranteed 
   assert.ok(html.includes('Saved online · Fiji team confirms pickup'));
 });
 
-test('confirmation truth: bulaTitleSupported no longer frames WhatsApp as a mandatory final step', () => {
-  const heading = extract(html, 'id="bulaTitleSupported"', '</span>');
-  assert.ok(!/final step/i.test(heading));
-  assert.ok(!/confirm your pickup with our fiji team/i.test(heading));
-  assert.ok(/your request is saved/i.test(heading));
+// WhatsApp reservation handoff (2026-10-05) supersedes the earlier "WhatsApp is optional" framing: the guest finishes by pressing Send in WhatsApp, the Fiji team replies
+// "Bula, vinaka", checks the details and confirms. Heading / button / instruction are static and identical in every state; only the status line, reference and link vary.
+const HANDOFF = 'Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.';
+test('handoff wording: required heading, button label and instruction in the success card, and the same set in the unknown-save card', () => {
+  const card = extract(html, 'id="bulaSuccess"', 'bula-divider');
+  assert.ok(card.includes('<h2 class="bula-title" id="bulaTitle">Finish your reservation on WhatsApp</h2>'));
+  assert.ok(card.includes(HANDOFF)); assert.ok(card.includes('<span>Open WhatsApp — send reservation</span>'));
+  assert.ok(card.includes('Opening WhatsApp alone does not send your request.')); assert.ok(card.includes('Your transfer is confirmed only after our Fiji team confirms it with you.'));
+  const fail = extract(html, 'id="bulaFailure"', '</div>\n    </div>').replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(fail.includes('<h2 class="bula-title" id="bulaFailureTitle">Finish your reservation on WhatsApp</h2>')); assert.ok(fail.includes(HANDOFF)); assert.ok(fail.includes('<span>Open WhatsApp — send reservation</span>'));
+  assert.ok(fail.includes('Opening WhatsApp alone does not send your request.'));
 });
 
-test('confirmation truth: bulaLeadText static default is byte-identical to showBulaSuccess()\'s JS-set value, per the file\'s own stale-cache discipline', () => {
-  // The static HTML default carries a leading "✅ " emoji the JS-set
-  // runtime value doesn't (matching showBulaUnsupportedRoute()'s own
-  // wording, which also has no emoji) — everything after that emoji must
-  // still be the exact same sentence, per the file's own inline comment
-  // requiring the two to "stay in sync".
-  const staticInner = extract(html, 'id="bulaLeadText">', '</p>');
-  const jsInner = extract(js, "bulaLeadText.innerHTML = '", "';");
-  assert.ok(staticInner.includes(jsInner), 'static HTML default must contain the exact same sentence JS sets at runtime');
+test('handoff wording: no "optional" / "faster contact" / old-label / old-heading wording remains anywhere in the guest-facing page or script', () => {
+  for (const bad of ['WhatsApp is optional', 'Want faster contact', 'MESSAGE US ON WHATSAPP', 'Message us on WhatsApp instead', 'Send booking request on WhatsApp', 'One more step to send your request', 'Your request is saved</span>', "We couldn't confirm your booking automatically", 'contacted within 15 minutes', 'We contact you within 15 minutes']) {
+    assert.ok(!html.includes(bad), 'index.html: ' + bad); assert.ok(!js.includes(bad), 'app.js: ' + bad);
+  }
+  assert.ok(!/bulaTitleSupported|bulaTitleUnsupported|bulaWaContext|bulaWaReassurance/.test(js + html), 'the per-state headings and optional-framing elements are gone');
+  assert.ok(html.includes('After you submit, open WhatsApp and press Send; our Fiji team will reply Bula, vinaka and confirm availability and payment options with you.'));
 });
 
-test('confirmation truth: canonical saved-state wording ("saved" / "checks availability" / "confirms your pickup") appears in both the static default and the JS runtime copy', () => {
-  const jsInner = extract(js, "bulaLeadText.innerHTML = '", "';");
-  assert.ok(/your transfer request is saved/i.test(jsInner));
-  assert.ok(/checks availability/i.test(jsInner));
-  assert.ok(/confirms your pickup/i.test(jsInner));
-  assert.ok(html.includes(jsInner));
+test('saved state is truthful: saved online, NOT yet confirmed; the static default never claims a save (stale-cache safe)', () => {
+  const fn = extract(js, 'function showBulaSuccess(ref, bookingId) {', '\n// Route not eligible');
+  assert.ok(fn.includes("bulaLeadText.textContent = 'Your request is saved online, but your transfer is not confirmed yet. Send your reservation details on WhatsApp to finish.'"));
+  assert.ok(!/is confirmed\b|booked|team has been notified/i.test(fn.replace(/\/\/[^\n]*/g, '')));
+  const staticLead = extract(html, 'id="bulaLeadText">', '</p>');
+  assert.ok(!/saved|booked|received/i.test(staticLead), 'static default: ' + staticLead);
 });
 
 test('confirmation truth: no reachable customer-facing copy claims staff has seen the request merely from a saved booking', () => {
@@ -101,74 +104,31 @@ test('confirmation truth: no reachable customer-facing copy claims staff has see
   }
 });
 
-test('WhatsApp semantics: bulaWaContext is optional/faster-contact framed, not a mandatory step, in both index.html and app.js, and the two stay byte-identical', () => {
-  const htmlContext = extract(html, 'id="bulaWaContext">', '</p>').trim();
-  const jsContext = extract(js, "bulaWaContext.textContent = '", "';");
-  assert.ok(htmlContext.includes(jsContext), 'static default must contain the exact JS-set string');
-  assert.ok(/want faster contact/i.test(jsContext));
-  assert.ok(!/tap the green whatsapp button now/i.test(jsContext));
-  assert.ok(!/complete your pickup confirmation/i.test(jsContext));
-});
-
-test('WhatsApp semantics: the WhatsApp button label no longer claims it confirms the pickup', () => {
-  assert.ok(!html.includes('CONTINUE TO WHATSAPP — CONFIRM MY PICKUP'));
-  assert.ok(!js.includes('CONTINUE TO WHATSAPP — CONFIRM MY PICKUP'));
-  assert.ok(html.includes('MESSAGE US ON WHATSAPP'));
-  assert.ok(js.includes("BULA_WA_ICON_SVG + 'MESSAGE US ON WHATSAPP'"));
-});
-
-test('WhatsApp semantics: bulaWaReassurance frames WhatsApp as optional, not as where confirmation happens, and stays in sync between HTML and JS', () => {
-  const htmlReassurance = extract(html, 'id="bulaWaReassurance">', '</p>').trim();
-  const jsReassurance = extract(js, "bulaWaReassurance.textContent = '", "';");
-  assert.ok(htmlReassurance.includes(jsReassurance));
-  assert.ok(/optional/i.test(jsReassurance));
-  assert.ok(!/whatsapp is where our fiji team confirms your pickup/i.test(jsReassurance));
-});
-
-test('WhatsApp open != message sent: the whatsapp_opened click handler only tracks a funnel event, never writes "sent"/"notified" copy', () => {
+test('WhatsApp open != message sent: the whatsapp_opened click handler only tracks a funnel event, never writes "sent"/"notified"/"confirmed" copy, and the button is a plain link', () => {
   const handlerLine = extract(js, "document.addEventListener('click', (e) => {", '});');
   assert.ok(handlerLine.includes("if (e.target.closest('#bulaWaBtn')) trackBookingFunnel('whatsapp_opened');"));
-  assert.ok(!/message sent/i.test(handlerLine));
-  assert.ok(!/team notified/i.test(handlerLine));
+  assert.ok(!/message sent|team notified|confirmed/i.test(handlerLine));
+  assert.ok(!/<a id="bulaWaBtn"[^>]*onclick/i.test(html) && !/<a id="bulaFailureWaBtn"[^>]*onclick/i.test(html));
+  for (const fnName of ['showBulaSuccess', 'showBulaUnsupportedRoute', 'showBulaFailure']) assert.ok(js.includes('function ' + fnName + '('));
 });
 
-test('WhatsApp-only flow (showBulaUnsupportedRoute) remains truthful and untouched: never claims the booking is saved', () => {
+test('WhatsApp-only flow (showBulaUnsupportedRoute) is truthful: never claims an online save; same handoff heading / button / instruction', () => {
   const fn = extract(js, 'function showBulaUnsupportedRoute(ref) {', '\nfunction showBulaFailure');
-  // Check the actual runtime-visible string literal, not the function's
-  // comments — one of its comments explicitly documents banned phrases
-  // ("safely saved", "booking received", etc.) as a warning to future
-  // editors, which would otherwise trip a naive regex scan of the whole
-  // function source (comments included).
-  const leadText = extract(fn, "bulaLeadText.innerHTML = '", "';");
-  assert.ok(/needs human review/i.test(leadText));
-  assert.ok(!/booking received/i.test(leadText));
-  assert.ok(!/safely saved/i.test(leadText));
-
-  assert.ok(fn.includes("bulaWaContext.style.display = 'none'"));
-  assert.ok(fn.includes("bulaWaReassurance.style.display = 'none'"));
+  const leadText = extract(fn, "bulaLeadText.textContent = '", "';");
+  assert.ok(/has not been saved online/i.test(leadText) && /needs human review/i.test(leadText));
+  assert.ok(!/booking received|safely saved|is saved online|booked/i.test(leadText));
+  assert.ok(fn.includes('bulaWaBtn.href = buildWhatsAppURL(ref)'));
+  assert.ok(!/textContent\s*=\s*''|insertAdjacentHTML/.test(fn), 'the button label is static; this state never rewrites it');
 });
 
-test('definitive failure wording (bulaFailure card) is truthful for an unknown-save outcome and never claims success', () => {
-  // CEO P1 truthful-failure fix (2026-09-13): the old copy asserted "your
-  // details are saved and our team has already been alerted" as a blanket
-  // fact for every failure outcome, including the genuinely unknown one
-  // (network timeout after the server may have already committed - see
-  // the unknown-save test below). That's only true for a confirmed server
-  // rejection, never for an unknown outcome, so it's replaced with wording
-  // that doesn't assert either way.
-  // Strip HTML comments first: this card carries an explanatory comment
-  // that names the exact banned phrases being removed (for future
-  // editors), which would otherwise trip a naive substring/regex scan of
-  // the raw markup. Only rendered (customer-visible) text should be
-  // checked against these assertions.
-  const cardRaw = extract(html, 'id="bulaFailure"', '</div>\n    </div>');
-  const card = cardRaw.replace(/<!--[\s\S]*?-->/g, '');
-  assert.ok(/we couldn.t confirm your booking automatically/i.test(card));
-  assert.ok(/couldn.t confirm whether your booking request was saved/i.test(card), 'must not claim a settled save/no-save outcome');
-  assert.ok(!/details are saved/i.test(card), 'must not claim the booking is saved when the outcome is unknown');
-  assert.ok(!/team has already been alerted/i.test(card), 'must not claim the team has been alerted when the outcome is unknown');
-  assert.ok(!/booking confirmed/i.test(card));
-  assert.ok(/do not make a second booking with different details/i.test(card), 'must warn against a second, different-details booking while save state is unknown');
+test('unknown-save state (bulaFailure card) is truthful: cannot tell whether it was saved, reference kept, same-reference retry, never claims success', () => {
+  const card = extract(html, 'id="bulaFailure"', '</div>\n    </div>').replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(/couldn.t confirm whether your request was saved online/i.test(card), 'must not claim a settled save/no-save outcome');
+  assert.ok(!/details are saved|team has already been alerted|booking confirmed|you.re booked|is saved online, but/i.test(card));
+  assert.ok(/do not make a second booking with different details/i.test(card));
+  assert.ok(card.includes('id="bulaRetryBtn"') && card.includes('retryMarketplaceBooking()'));
+  const fn = extract(js, 'function showBulaFailure(ref, errorDetail) {', '\n// "Try again" on the failure card');
+  assert.ok(fn.includes('Keep your reference (${ref})') && fn.includes('failWaBtn.href = waUrl'));
 });
 
 test('unknown-save retry identity: retryMarketplaceBooking() reuses the same client_booking_ref, never mints a new one', () => {
