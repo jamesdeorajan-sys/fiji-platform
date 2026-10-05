@@ -1,7 +1,7 @@
-// FijiDash (production source 8c6f920) - James's clarified commercial decision (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime ONE-WAY, no extras: FJ$175.92 is the
-// FINAL fare, the standard 10% discount already included (no further 10%; 157.92 is not the intended fare). That exact journey only. FijiDash production still carried the superseded catalogue figure
-// (minibus 79) and its review step swaps in the booking system's pre-discount reference fare (175.92) and then applied the discount again. Not newly approved: night, one-way + extras, other
-// vehicles/routes. The approved return figures (297 / 304) are preserved (FijiDash production recorded 292.45 / 300.45 for them because the review swap replaced the page figure).
+// FijiDash (production source 8c6f920) - James's approvals (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime (06:00-21:59) ONE-WAY: the transfer is FJ$175.92 FINAL (the
+// standard 10% discount already included); extras at FJ$8 / FJ$24 with NO further discount: totals 175.92 / 183.92 / 199.92 / 207.92. NIGHT is on HOLD (not approved, not implemented). FijiDash
+// production still carried the superseded catalogue figure (minibus 79) and its review step swaps in the booking system's pre-discount reference fare and then applied the discount again.
+// The approved return figures (297 / 304) are preserved (FijiDash production recorded 292.45 / 300.45 for them because the review swap replaced the page figure).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -38,15 +38,37 @@ test('FijiDash production catalogue still had the superseded Momi minibus figure
   const momi = base.find((r) => r[0] === 'MARRIOTT_MOMI'); assert.deepEqual(momi, ['MARRIOTT_MOMI', 99, 149, 175.92]);
 });
 
-test('APPROVED FINAL FARE at selection: the exact journey totals FJ$175.92 with NO discount (subtotal 175.92, discount 0, final 175.92)', () => {
-  const t = total({}); assert.deepEqual([t.subtotal, t.discount, t.final, t.qualifies, t.approvedFinalFare], [175.92, 0, 175.92, false, true]);
+const APPROVED = [[{}, 175.92, 0], [{ seat: true }, 183.92, 8], [{ surf: true }, 199.92, 24], [{ seat: true, surf: true }, 207.92, 32]];
+test('APPROVED FINAL FARE + EXTRAS at selection: 175.92 / 183.92 / 199.92 / 207.92 with NO discount (subtotal = final, discount 0, extras 0 / 8 / 24 / 32, transfer component 175.92)', () => {
+  for (const [o, want, extras] of APPROVED) { const t = total(o); assert.deepEqual([t.vehiclePrice, t.extras, t.subtotal, t.discount, t.final, t.qualifies, t.approvedFinalFare], [175.92, extras, want, 0, want, false, true], JSON.stringify(o)); }
   assert.equal(total({ vehicle: 'sedan' }, 'minibus').final, 175.92, 'the minibus vehicle card while another vehicle is selected');
   assert.deepEqual([total({}, 'sedan').final, total({}, 'minivan').final], [89, 134]);
 });
-
-test('REFERENCE FARE -> REVIEW: the booking system\'s pre-discount reference fare (175.92) is NOT discounted a second time at review; the total stays 175.92 and nothing says the price changed', async () => {
-  const t = await review({ fetchFare: () => 175.92 });
-  assert.deepEqual([t.subtotal, t.discount, t.final], [175.92, 0, 175.92]); assert.notEqual(t.final, 157.92);
+test('REFERENCE FARE -> REVIEW: the booking system\'s pre-discount reference fare (175.92) is NOT discounted a second time at review; with and without extras the totals stay 175.92 / 183.92 / 199.92 / 207.92 and nothing says the price changed', async () => {
+  for (const [o, want] of APPROVED) { const t = await review({ ...o, fetchFare: () => 175.92 }); assert.deepEqual([t.discount, t.final], [0, want], JSON.stringify(o)); }
+});
+test('INVARIANT I1 (passing regression): adding extras can never LOWER the fare - none <= child seat <= surfboard <= both at selection AND at review, in the day; steps exactly 8 / 24 / 32', async () => {
+  for (const time of ['10:00', '21:59', '06:00']) {
+    const sel = [{}, { seat: true }, { surf: true }, { seat: true, surf: true }].map((o) => total({ ...o, time }).final);
+    const rev = []; for (const o of [{}, { seat: true }, { surf: true }, { seat: true, surf: true }]) rev.push((await review({ ...o, time, fetchFare: () => 175.92 })).final);
+    for (const [n, c, sf, b] of [sel, rev]) assert.ok(n <= c && c <= b && n <= sf && sf <= b, time);
+    assert.deepEqual(rev.map((x) => Math.round((x - rev[0]) * 100) / 100), [0, 8, 24, 32]);
+  }
+});
+test('BOUNDARIES: 21:59 and 06:00 are day (approved totals at selection and at review, with and without extras); 22:00 and 05:59 are night (HELD, existing behaviour: selection 193 / 201 / 215 / 222; review 157.92 / 165.92 / 179.92 / 186.92)', async () => {
+  for (const time of ['21:59', '06:00']) for (const [o, want] of APPROVED) { assert.equal(total({ ...o, time }).final, want, time); assert.equal((await review({ ...o, time, fetchFare: () => 175.92 })).final, want, time + ' review'); }
+  for (const time of ['22:00', '05:59']) {
+    assert.deepEqual([{}, { seat: true }, { surf: true }, { seat: true, surf: true }].map((o) => total({ ...o, time }).final), [193, 201, 215, 222], time + ' selection');
+    assert.deepEqual(await Promise.all([{}, { seat: true }, { surf: true }, { seat: true, surf: true }].map(async (o) => (await review({ ...o, time, fetchFare: () => 175.92 })).final)), [157.92, 165.92, 179.92, 186.92], time + ' review');
+    assert.equal(total({ time }).approvedFinalFare, undefined);
+  }
+});
+test('ITINERARY EDITS: one-way <-> return, extras, vehicle and tour changes re-derive the fare; the approved fare never carries into another journey', () => {
+  const sb = ctx({ seat: true }); const run = (e) => JSON.parse(vm.runInContext(e + "; state.prices = computePrices('NAN', 'MARRIOTT_MOMI', 40); JSON.stringify(calculateTotal())", sb));
+  assert.equal(run('0').final, 183.92); assert.equal(run("state.tripType = 'return'").final, 304); assert.equal(run("state.tripType = 'one-way'").final, 183.92);
+  assert.equal(run('state.extrasTotal = 32').final, 207.92); assert.equal(run('state.extrasTotal = 0').final, 175.92); assert.equal(run('state.extrasTotal = 5').approvedFinalFare, undefined);
+  assert.equal(run("state.extrasTotal = 8; state.selectedVehicle = 'minivan'").approvedFinalFare, undefined);
+  assert.equal(run("state.selectedVehicle = 'minibus'; state.selectedTour = { name: 'X', price: 100 }").approvedFinalFare, undefined);
 });
 
 test('APPROVED RETURN FIGURES PRESERVED at review: day return 297, return + child seat 304 - the booking system\'s own return figures (292.45 / 300.45) are NOT swapped in over them', async () => {
@@ -55,23 +77,22 @@ test('APPROVED RETURN FIGURES PRESERVED at review: day return 297, return + chil
   assert.equal(total({ trip: 'return' }).final, 297); assert.equal(total({ trip: 'return', seat: true }).final, 304);
 });
 
-test('OTHER PRICING UNCHANGED: every other route, vehicle, trip type, extras and time keeps the existing arithmetic (round(10%) above FJ$50, return x1.85 rounded up to FJ$5, night x1.2); the only changed cell is the approved journey (and the Momi catalogue row)', () => {
-  const sbR = {}; vm.createContext(sbR); vm.runInContext(ROUTES + ';this.R = ROUTES_DATA', sbR); let n = 0;
-  for (const r of sbR.R) for (const v of ['sedan', 'minivan', 'minibus']) for (const trip of ['one-way', 'return']) for (const seat of [false, true]) for (const time of ['10:00', '23:00']) {
+test('OTHER PRICING UNCHANGED: every other route, vehicle, trip type, extras and time keeps the existing arithmetic (round(10%) above FJ$50, return x1.85 rounded up to FJ$5, night x1.2); the only changed cells are the approved day one-way minibus cells (extras 0 / 8 / 24 / 32) and the Momi catalogue row', () => {
+  const sbR = {}; vm.createContext(sbR); vm.runInContext(ROUTES + ';this.R = ROUTES_DATA', sbR); let n = 0, ap = 0;
+  for (const r of sbR.R) for (const v of ['sedan', 'minivan', 'minibus']) for (const trip of ['one-way', 'return']) for (const [seat, surf] of [[false, false], [true, false], [false, true], [true, true]]) for (const time of ['10:00', '23:00']) {
     const base = r[{ sedan: 's', minivan: 'v', minibus: 'm' }[v]]; const night = time === '23:00'; const ret = trip === 'return';
-    const price = night || ret ? Math.ceil(base * (night ? 1.2 : 1) * (ret ? 1.85 : 1) / 5) * 5 : base; const sub = price + (seat ? 8 : 0); const expected = sub > 50 ? sub - Math.round(sub * 0.1) : sub;
-    const approved = r.destValue === 'MARRIOTT_MOMI' && v === 'minibus' && trip === 'one-way' && !seat && !night;
-    assert.equal(total({ dest: r.destValue, vehicle: v, trip, seat, time }).final, approved ? 175.92 : expected, `${r.destValue} ${v} ${trip} seat=${seat} ${time}`); n++;
+    const price = night || ret ? Math.ceil(base * (night ? 1.2 : 1) * (ret ? 1.85 : 1) / 5) * 5 : base; const sub = price + (seat ? 8 : 0) + (surf ? 24 : 0); const expected = sub > 50 ? sub - Math.round(sub * 0.1) : sub;
+    const approved = r.destValue === 'MARRIOTT_MOMI' && v === 'minibus' && trip === 'one-way' && !night;
+    const got = total({ dest: r.destValue, vehicle: v, trip, seat, surf, time }).final;
+    if (approved) { ap++; assert.equal(got, Math.round((175.92 + (seat ? 8 : 0) + (surf ? 24 : 0)) * 100) / 100); } else assert.equal(got, expected, r.destValue + ' ' + v + ' ' + trip + ' seat=' + seat + ' surf=' + surf + ' ' + time); n++;
   }
-  assert.ok(n > 800);
+  assert.equal(ap, 4); assert.ok(n > 1600);
 });
 
-test('NOT NEWLY APPROVED - characterised and REPORTED, not extended: one-way + child seat (165.92) and one-way night (the live-fare review drops the night modifier) are LOWER than the approved 175.92', async () => {
-  assert.deepEqual([total({ seat: true }).subtotal, total({ seat: true }).discount, total({ seat: true }).final], [183.92, 18, 165.92]);
-  assert.equal(total({ time: '23:00' }).final, 193, 'selection (static) keeps the page night modifier');
-  const night = await review({ time: '23:00', fetchFare: () => 175.92 });
-  assert.equal(night.final, 157.92, 'REVIEW at night: the live-fare swap removes the modifier and the normal discount applies -> 157.92, below the approved daytime 175.92 (existing night behaviour, B1 in the pricing review)');
-  assert.equal(total({ time: '21:59' }).final, 175.92); assert.equal(total({ time: '06:00' }).final, 175.92);
+test('HELD / UNRESOLVED (night): FijiDash selection quotes night 193 / 201 / 215 / 222, but the review step swaps in the booking system\'s reference fare (no night modifier) and the NORMAL discount applies -> 157.92 / 165.92 / 179.92 / 186.92, BELOW the approved daytime totals. Existing behaviour, NOT approved, NOT changed here; stays visible as a TODO', async () => {
+  assert.equal(total({ time: '23:00' }).final, 193);
+  assert.equal((await review({ time: '23:00', fetchFare: () => 175.92 })).final, 157.92);
+  assert.equal((await review({ time: '23:00', seat: true, fetchFare: () => 175.92 })).final, 165.92);
 });
 
 test('no leak: the approval does not apply to other routes, a tour, or the departure direction', () => {
@@ -90,45 +111,44 @@ test('the routes table, the mobile route rows and the vehicle cards show 175.92 
   vm.createContext(mob); vm.runInContext(fn('isApprovedFinalFareCell') + '\n' + fn('renderMobileVehicleRow') + `; var out = renderMobileVehicleRow({ origIdx: 0, destValue: 'MARRIOTT_MOMI', s: 99, v: 149, m: 175.92 }, { key: 'minibus', name: 'Minibus', icon: 'x' }); var other = renderMobileVehicleRow({ origIdx: 1, destValue: 'HILTON_DENARAU', s: 49, v: 69, m: 99 }, { key: 'minibus', name: 'Minibus', icon: 'x' });`, mob);
   assert.ok(!/price-old/.test(mob.out) && /FJ\$175\.92/.test(mob.out) && !/157\.92/.test(mob.out)); assert.match(mob.other, /price-old[^>]*>FJ\$99[\s\S]*FJ\$89/);
   const cards = src.slice(src.indexOf('function buildVehicleCards'), src.indexOf('function buildVehicleCards') + 4000);
-  assert.match(cards, /t\.approvedFinalFare \? 'final fare, no further discount' : 'per vehicle'/);
+  assert.match(cards, /t\.approvedFinalFare \? 'transfer is a final fare, no further discount' : 'per vehicle'/);
 });
 
 // ---- the booking request (stubbed network): the id is sent ONLY for the exact journey, with exactly 175.92; nothing else about the payload changes
 function submitCtx(o = {}) {
   const sent = []; const vals = { firstName: 'Zed', lastName: 'Test', phone: '+61411222333', email: 'zed.test@example.invalid', flightNum: 'FJ1', notes: '', travelDate: '2026-10-20', travelTime: o.time || '10:00', pickup: 'NAN', destination: 'MARRIOTT_MOMI', returnDate: '2026-10-27', returnTime: '10:00', returnPickupLocation: 'Hotel' };
   const sb = { Math, Number, parseInt, JSON, String, Date, isFinite, Promise, setTimeout, clearTimeout, AbortController, Error, console, BOAT_DESTINATION_IDS: {}, NADI_API_BASE: 'https://api.test',
-    state: { tripType: o.trip || 'one-way', prices: {}, extrasTotal: o.seat ? 8 : 0, passengers: 2, luggage: 2, selectedVehicle: o.vehicle || 'minibus', selectedTour: null, distanceKm: 38.6, boatQuoteResult: null, priceSource: 'published' },
-    document: { getElementById: (id) => (id in vals ? el({ value: vals[id], checked: id === 'extra-seat' ? !!o.seat : false }) : el()) },
+    state: { tripType: o.trip || 'one-way', prices: {}, extrasTotal: (o.seat ? 8 : 0) + (o.surf ? 24 : 0), passengers: 2, luggage: 2, selectedVehicle: o.vehicle || 'minibus', selectedTour: null, distanceKm: 38.6, boatQuoteResult: null, priceSource: 'published' },
+    document: { getElementById: (id) => (id in vals ? el({ value: vals[id], checked: id === 'extra-seat' ? !!o.seat : id === 'extra-surf' ? !!o.surf : false }) : el()) },
     resolveConfirmedPickupZone: () => 'Nadi Airport', resolveConfirmedDestinationZone: () => 'Momi Bay', resolveDurableNotes: (x) => x || null, getAttributionForPayload: () => ({}), trackBookingFunnel() {}, reportBookingSyncFailure: async () => {},
     fetch: async (u, init) => { sent.push(JSON.parse(init.body)); return { ok: true, status: 201, json: async () => ({ ok: true, booking_id: 9, booking: { quoted_amount: sent.at(-1).quoted_amount, quoted_currency: 'FJD' } }) }; } };
   vm.createContext(sb);
   vm.runInContext([PRICING, fn('bookingHasTour'), fn('bookingRequest'), fn('submitMarketplaceBooking')].join('\n') + `; state.prices = computePrices('NAN', 'MARRIOTT_MOMI', 40);`, sb);
   return { sb, sent };
 }
-test('the booking request names the approved final fare only for the exact journey (and sends 175.92); a return sends 297; the 15s timeout, honest unknown wording and same-reference retry stay', async () => {
-  const a = submitCtx(); const r = await a.sb.submitMarketplaceBooking('FD-T1'); assert.equal(r.ok, true);
-  assert.equal(a.sent[0].quoted_amount, 175.92); assert.equal(a.sent[0].approved_final_fare_id, 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY'); assert.equal(a.sent[0].client_booking_ref, 'FD-T1');
-  for (const o of [{ trip: 'return' }, { seat: true }, { time: '23:00' }, { vehicle: 'minivan' }]) { const b = submitCtx(o); await b.sb.submitMarketplaceBooking('FD-T2'); assert.equal(b.sent[0].approved_final_fare_id, undefined, JSON.stringify(o)); }
+test('the booking request names the approved final fare only for the exact journey (and sends 175.92 / 183.92 / 199.92 / 207.92); a return sends 297; the 15s timeout, honest unknown wording and same-reference retry stay', async () => {
+  for (const [o, want] of [[{}, 175.92], [{ seat: true }, 183.92], [{ surf: true }, 199.92], [{ seat: true, surf: true }, 207.92]]) {
+    const a = submitCtx(o); const r = await a.sb.submitMarketplaceBooking('FD-T1'); assert.equal(r.ok, true);
+    assert.equal(a.sent[0].quoted_amount, want, JSON.stringify(o)); assert.equal(a.sent[0].approved_final_fare_id, 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY'); assert.equal(a.sent[0].client_booking_ref, 'FD-T1');
+  }
+  for (const o of [{ trip: 'return' }, { time: '23:00' }, { time: '22:00', seat: true }, { time: '05:59' }, { vehicle: 'minivan' }]) { const b = submitCtx(o); await b.sb.submitMarketplaceBooking('FD-T2'); assert.equal(b.sent[0].approved_final_fare_id, undefined, JSON.stringify(o)); }
   const ret = submitCtx({ trip: 'return' }); await ret.sb.submitMarketplaceBooking('FD-T3'); assert.equal(ret.sent[0].quoted_amount, 297);
+  const retSeat = submitCtx({ trip: 'return', seat: true }); await retSeat.sb.submitMarketplaceBooking('FD-T4'); assert.equal(retSeat.sent[0].quoted_amount, 304);
   assert.match(src, /async function bookingRequest\(url, options, timeoutMs = 15000\)/); assert.match(src, /resultKind: 'unknown'/); assert.match(src, /function trackBookingFunnel\(eventType\)/);
 });
 
 test('FijiDash Momi route page: minibus one-way FJ$175.92 as a FINAL fare (never pre-discount, no further 10%), return FJ$330 before discount, no stale FJ$79 / FJ$150 / 157.92', () => {
   assert.ok(!/157\.92|FJ\$79 minibus|FJ\$150 minibus|<strong>FJ\$79<\/strong>|<td>FJ\$150<\/td>/.test(html));
-  assert.match(html, /<td><strong>FJ\$175\.92<\/strong> <span[^>]*>final fare[^<]*<\/span><\/td>\s*<td>FJ\$330<\/td>/);
+  assert.match(html, /<td><strong>FJ\$175\.92<\/strong> <span[^>]*>final fare, no further discount[^<]*<\/span><\/td>\s*<td>FJ\$330<\/td>/);
   const ld = [...html.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
   const faq = ld.find((o) => o['@type'] === 'FAQPage').mainEntity[0].acceptedAnswer.text;
   assert.match(faq, /FJ\$175\.92 as a final fare/); assert.match(faq, /no further discount/i); assert.match(faq, /FJ\$330 minibus/);
+  for (const t of ['FJ$183.92', 'FJ$199.92', 'FJ$207.92']) { assert.ok(faq.includes(t), t); assert.ok(html.includes(t), t); }
+  assert.ok(!/165\.92|179\.92|186\.92/.test(html));
   for (const sentence of faq.split(/\.\s/).filter((x) => x.includes('175.92'))) assert.ok(!/before( the)?( booking)? discount/i.test(sentence), sentence);
 });
 
-// RELEASE BLOCKERS (price inversions found by the Momi minibus grid). Visible TODOs until James decides the extras and night rules for the approved final fare (MOMI-DECISION-TABLE.md in the Worker
-// branch); the characterisations above (165.92; night review 157.92) are the passing record of today's behaviour.
-const PENDING = 'RELEASE BLOCKER - owner decision pending (extras / night rules for the approved Momi minibus final fare)';
-test('INVARIANT I1: extras never lower the approved daytime one-way total (selection and review)', { todo: PENDING }, async () => {
-  const base = (await review({ fetchFare: () => 175.92 })).final;
-  for (const o of [{ seat: true }, { surf: true }, { seat: true, surf: true }]) assert.ok((await review({ ...o, fetchFare: () => 175.92 })).final >= base, JSON.stringify(o));
-});
-test('INVARIANT I2: the night one-way REVIEW is never below the approved daytime fare', { todo: PENDING }, async () => {
+// NIGHT is on HOLD (James, 2026-10-05): no night policy is approved for this fare. This invariant stays a visible TODO - it passes only when a night policy is approved and implemented.
+test('INVARIANT I2 (UNRESOLVED, night on HOLD): the night one-way REVIEW is never below the approved daytime fare', { todo: 'night policy on HOLD - not approved, not implemented (FijiDash night review 157.92 < approved day 175.92)' }, async () => {
   assert.ok((await review({ time: '23:00', fetchFare: () => 175.92 })).final >= (await review({ fetchFare: () => 175.92 })).final);
 });
