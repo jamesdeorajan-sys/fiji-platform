@@ -39,7 +39,7 @@ test('3. EVERY itinerary change invalidates the revised quote AND its acceptance
   };
   for (const [label, mutate] of Object.entries(changes)) {
     const { sb, fields } = page();
-    assert.equal(total(sb).final, 142, label + ' (baseline: the page quotes 142)');
+    assert.equal(total(sb).final, 304, label + ' (baseline: the page quotes 304 after the approved Momi fare)');
     vm.runInContext('state.fareOverride = { key: fareOverrideKey(), amount: 300.45, shown: 142, original: 142 }', sb);
     assert.equal(total(sb).final, 300.45, label + ' (accepted revised fare applies to the unchanged itinerary)');
     mutate(fields, sb);

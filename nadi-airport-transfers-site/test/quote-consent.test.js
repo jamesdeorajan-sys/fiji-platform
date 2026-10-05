@@ -26,10 +26,10 @@ function pricing({ time = '09:15', trip = 'return', seat = true, vehicle = 'mini
   return sb;
 }
 
-test('REPRODUCTION: the page quotes the exact itinerary FJ$142 (minibus 79 -> return 150, child seat 8, 10% off) from its published table', () => {
+test('the page now quotes the exact #237 itinerary FJ$304 (it quoted 142 before the approved Momi fare) (minibus 79 -> return 150, child seat 8, 10% off) from its published table', () => {
   const sb = pricing();
   const t = vm.runInContext('calculateTotal()', sb);
-  assert.equal(t.vehiclePrice, 150); assert.equal(t.subtotal, 158); assert.equal(t.discount, 16); assert.equal(t.final, 142);
+  assert.equal(t.vehiclePrice, 330); assert.equal(t.subtotal, 338); assert.equal(t.discount, 34); assert.equal(t.final, 304); // after the approved Momi minibus fare (was 150/158/16/142 = booking #237)
   assert.equal(vm.runInContext('state.prices.source', sb), 'published');
   assert.equal(vm.runInContext('isNightPickup()', sb), false);
 });
