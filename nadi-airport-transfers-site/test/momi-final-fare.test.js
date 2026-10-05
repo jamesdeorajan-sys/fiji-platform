@@ -114,3 +114,10 @@ test('Momi route page: the minibus one-way is shown as FJ$175.92 FINAL (not a pr
 test('SCOPE: the released quote-consent, retry, formatting and money-format protections are still in the page', () => {
   for (const c of ['require_quote_match: true', 'Accept revised price and submit', 'keyAtSubmit !== fareOverrideKey()', 'function fareText(n)', 'revised_from_amount']) assert.ok(source.includes(c), c);
 });
+
+// RELEASE BLOCKER (price inversion I1, found by the Momi minibus grid): adding a child seat or surfboard LOWERS the approved one-way total (165.92 < 175.92). Visible TODO until James decides the
+// extras rule for the approved final fare (see MOMI-DECISION-TABLE.md in the Worker branch). The characterisation above (165.92) is the passing record of today's behaviour.
+test('INVARIANT I1: extras never lower the approved daytime one-way total', { todo: 'RELEASE BLOCKER - owner decision pending (extras on the approved final fare)' }, () => {
+  const base = total({}).final;
+  for (const o of [{ seat: true }, { surf: true }, { seat: true, surf: true }]) assert.ok(total(o).final >= base, JSON.stringify(o));
+});
