@@ -271,8 +271,8 @@ test('extras grid: mobile breakpoint (900px) keeps the same 2-column layout as d
 // this mission's STRICT NO-CHANGE clause covers. Any edit to fares, capacity,
 // or recommendation logic fails this suite immediately.
 
-test('pricing untouched: calculateTotal() is byte-identical to the base commit', () => {
-  const candidate = extract(js, 'function calculateTotal(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER');
+test('pricing untouched: calculateTotal() is byte-identical to the base commit, except the approved Momi minibus FINAL-fare branch (James, 2026-10-05; see momi-final-fare.test.mjs)', () => {
+  const candidate = extract(js, 'function calculateTotal(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER').replace(/  const approvedFinal = approvedFinalFareFor\(k\);\n  if \(approvedFinal\) \{[\s\S]*?\n  \}\n/, '');
   const base = extract(gitShow('ftt-booking-site/src/app.js'), 'function calculateTotal(vehicleKey) {', '\n\n// ─── EMOJI STRIPPER');
   assert.strictEqual(candidate, base);
 });
@@ -294,7 +294,8 @@ test('booking-core untouched: submitMarketplaceBooking()\'s payload construction
   // commit's end marker is the old bare call; the payload text between the markers must stay identical.
   const endMarker = "  };\n\n  trackBookingFunnel('booking_post_started');";
   const baseEndMarker = "  };\n\n  trackFunnelEvent?.('booking_post_started');";
-  const candidate = extract(js, marker, endMarker);
+  // the only addition is the approved-final-fare id for the exact approved journey (James, 2026-10-05): one comment line + one spread line
+  const candidate = extract(js, marker, endMarker).replace(/    \/\/ James-approved FINAL fare: named only[^\n]*\n    \.\.\.\(approvedFinalFareFor\(state\.selectedVehicle\)[^\n]*\n/, '');
   const base = extract(gitShow('ftt-booking-site/src/app.js'), marker, baseEndMarker);
   assert.strictEqual(candidate, base);
 });

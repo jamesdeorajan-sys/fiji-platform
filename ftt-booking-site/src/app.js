@@ -114,6 +114,26 @@ const DISCOUNT_RATE      = 0.10; // 10% off
 function bookingHasTour() {
   return !!state.selectedTour;
 }
+// James-approved FINAL fare (2026-10-05): Nadi Airport -> Fiji Marriott Resort Momi Bay, MINIBUS, daytime ONE-WAY, no paid extras = FJ$175.92 as the FINAL fare. The standard 10% discount is
+// ALREADY INCLUDED in it, so it is never deducted again, and 175.92 is never described as a pre-discount amount. It is one route / vehicle / journey: night pickups, one-way + extras,
+// returns (the approved 297 / 304 are unchanged), every other vehicle and every other route keep the normal arithmetic. The same id is sent to the booking system, which recognises it
+// only for this exact journey (nothing is inflated to compensate for the discount and discounts are not disabled anywhere else).
+const APPROVED_FINAL_FARE_ID = 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY';
+const APPROVED_FINAL_FARE_FJD = 175.92;
+function approvedFinalFareFor(vehicleKey) {
+  const k = vehicleKey || state.selectedVehicle;
+  if (k !== 'minibus' || state.tripType !== 'one-way' || state.extrasTotal !== 0 || state.selectedTour) return null;
+  if (document.getElementById('pickup')?.value !== 'NAN' || document.getElementById('destination')?.value !== 'MARRIOTT_MOMI') return null;
+  if (isNightPickup() || state.prices[k] !== APPROVED_FINAL_FARE_FJD) return null;   // daytime only (06:00-21:59); the catalogue figure must be the published one
+  return { id: APPROVED_FINAL_FARE_ID, finalFjd: APPROVED_FINAL_FARE_FJD };
+}
+// the routes table lists day one-way fares without extras, so the Momi minibus cell is the approved final fare
+// James-approved Momi minibus RETURN figures (existing Nadi convention: one-way x1.85 rounded up to FJ$5, then the standard discount: 297, or 304 with a child seat). The review step must not
+// replace them with the booking system's own return figure (292.45 / 300.45). Minibus return trips to this one destination only.
+function approvedMomiMinibusReturn(vehicleKey) {
+  return (vehicleKey || state.selectedVehicle) === 'minibus' && state.tripType === 'return' && document.getElementById('pickup')?.value === 'NAN' && document.getElementById('destination')?.value === 'MARRIOTT_MOMI';
+}
+function isApprovedFinalFareCell(destValue, vehicleKey) { return destValue === 'MARRIOTT_MOMI' && vehicleKey === 'minibus'; }
 function calculateTotal(vehicleKey) {
   const k = vehicleKey || state.selectedVehicle;
   if (!k || !state.prices[k]) return {
@@ -121,6 +141,11 @@ function calculateTotal(vehicleKey) {
     transferSubtotal: 0, subtotal: 0, discount: 0, final: 0,
     qualifies: false, suppressedByTour: false, hasTour: false
   };
+  const approvedFinal = approvedFinalFareFor(k);
+  if (approvedFinal) {   // FINAL fare: no discount row, no second 10%
+    return { vehiclePrice: approvedFinal.finalFjd, extras: 0, tourPerPax: 0, tourTotal: 0, transferSubtotal: approvedFinal.finalFjd, subtotal: approvedFinal.finalFjd, discount: 0, final: approvedFinal.finalFjd,
+      qualifies: false, suppressedByTour: false, hasTour: false, approvedFinalFare: true };
+  }
   const vehiclePrice = state.prices[k];
   const extras       = state.extrasTotal;
   const transferSubtotal = vehiclePrice + extras;
@@ -1291,7 +1316,7 @@ function buildVehicleCards() {
       ? `<div class="vehicle-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}</div>
          <div class="vehicle-price-sub">10% off applied</div>`
       : `<div class="vehicle-price">${formatPrice(state.prices[v.key])}</div>
-         <div class="vehicle-price-sub">per vehicle</div>`;
+         <div class="vehicle-price-sub">${t.approvedFinalFare ? 'final fare, no further discount' : 'per vehicle'}</div>`;
     return `
       <div class="${cls.join(' ')}" ${onclick}>
         ${badge}
@@ -1336,7 +1361,7 @@ function buildVehicleDetailCards() {
     const t = calculateTotal(v.key);
     const priceBlock = t.qualifies
       ? `<div class="vd-price"><span class="price-old">${formatPrice(t.subtotal)}</span> ${formatPrice(t.final)}<div class="vd-price-saving">You save ${formatPrice(t.discount)} (10% off)</div></div>`
-      : `<div class="vd-price">${formatPrice(state.prices[v.key])}</div>`;
+      : `<div class="vd-price">${formatPrice(state.prices[v.key])}${t.approvedFinalFare ? '<div class="vd-price-saving">Final fare, no further discount</div>' : ''}</div>`;
     return `
       <div class="${cls.join(' ')}" ${onclick}>
         ${badge}
@@ -2369,6 +2394,8 @@ async function submitMarketplaceBooking(ref) {
     has_surfboard: !!document.getElementById('extra-surf')?.checked,
     has_tour: bookingHasTour(),
     is_custom_address: isCustomAddress,
+    // James-approved FINAL fare: named only for the exact approved journey; the booking system recognises it only for that journey.
+    ...(approvedFinalFareFor(state.selectedVehicle) ? { approved_final_fare_id: APPROVED_FINAL_FARE_ID } : {}),
     ...(isReturnTransfer ? {
       return_date: document.getElementById('returnDate')?.value || null,
       return_time: document.getElementById('returnTime')?.value || null,
@@ -2589,8 +2616,9 @@ function renderFareTiers() {
     // booking now shows the SAME real number too, and everything
     // downstream (confirmation card, WhatsApp message, the real /bookings
     // submission) uses it - not two different fares sitting side by side.
-    const priceChanged = state.prices[elig.vehicleType] !== realFare;
-    state.prices[elig.vehicleType] = realFare;
+    const keepApprovedReturn = approvedMomiMinibusReturn(elig.vehicleType);   // approved return figures stay; every other case swaps in the live fare exactly as before
+    const priceChanged = !keepApprovedReturn && state.prices[elig.vehicleType] !== realFare;
+    if (!keepApprovedReturn) state.prices[elig.vehicleType] = realFare;
     renderPriceBlock();
     if (priceChanged) {
       const noteEl = document.getElementById('priceUpdatedNote');
@@ -2890,7 +2918,7 @@ const ROUTES_DATA = [
   { destValue:"TANOA_LAUTOKA",          dest:"Tanoa Waterfront / Cathay Lautoka",   area:"Lautoka",         km:28,  time:"38 min",      s:89,  v:119, m:149 },
   { destValue:"LAUTOKA_CRUISE",         dest:"Lautoka Cruise Terminal",             area:"Lautoka",         km:30,  time:"40 min",      s:89,  v:119, m:149 },
   // Momi / Natadola
-  { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:79  },
+  { destValue:"MARRIOTT_MOMI",          dest:"Fiji Marriott Resort Momi Bay",       area:"Momi Bay",        km:42,  time:"52 min",      s:99,  v:149, m:175.92  },
   { destValue:"INTERCONTINENTAL_NATADOLA", dest:"InterContinental Natadola / Yatule", area:"Natadola",      km:45,  time:"1 hr",        s:99,  v:149, m:179 },
   { destValue:"ROBINSON_CRUSOE",        dest:"Robinson Crusoe Island (Likuri)",     area:"Natadola",        km:50,  time:"58 min",      s:99,  v:149, m:179 },
   // Sigatoka
@@ -2928,7 +2956,8 @@ const ROUTES_DATA = [
 function buildRoutesTable() {
   const tbody = document.getElementById('routesTableBody');
   if (!tbody) return;
-  function priceCell(price) {
+  function priceCell(price, finalFare) {
+    if (finalFare) return `<strong>${formatPrice(price)}</strong> <span class="final-fare-note">final fare</span>`;
     if (price > DISCOUNT_THRESHOLD) {
       const discounted = price - Math.round(price * DISCOUNT_RATE);
       return `<span class="price-old">${formatPrice(price)}</span><strong>${formatPrice(discounted)}</strong>`;
@@ -2942,7 +2971,7 @@ function buildRoutesTable() {
       <td>${r.time}</td>
       <td>${priceCell(r.s)}</td>
       <td>${priceCell(r.v)}</td>
-      <td>${priceCell(r.m)}</td>
+      <td>${priceCell(r.m, isApprovedFinalFareCell(r.destValue, 'minibus'))}</td>
       <td><button class="btn-book" onclick="bookRoute(${i})">Book →</button></td>
     </tr>`).join('');
 
@@ -2998,7 +3027,7 @@ function renderMobileVehicleRow(r, v) {
   const selected = mobileRouteVehicle[idx] || 'sedan';
   const isSel = selected === v.key;
   const price = r[MOBILE_VEHICLE_FIELD[v.key]];
-  const showDiscount = price > DISCOUNT_THRESHOLD;
+  const showDiscount = price > DISCOUNT_THRESHOLD && !isApprovedFinalFareCell(r.destValue, v.key);   // the approved Momi minibus fare is FINAL: no struck-through base, no second 10%
   const finalPrice = showDiscount ? price - Math.round(price * DISCOUNT_RATE) : price;
   return `
     <button type="button" class="mobile-vehicle-row${isSel ? ' selected' : ''}" onclick="selectMobileVehicle(${idx},'${v.key}')">

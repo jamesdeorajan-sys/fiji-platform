@@ -53,6 +53,6 @@ test('analytics defined as a non-function is ignored', () => {
 });
 
 test('app.js cache key was bumped so browsers holding the old bare-call app.js refetch (JS is cached 1h+)', () => {
-  assert.match(html, /app\.js\?v=20260927-analytics-optional/);
+  assert.match(html, /app\.js\?v=20261005-momi-final-fare/);
   assert.doesNotMatch(html, /app\.js\?v=20260926-submit-timeout-recovery/);
 });
