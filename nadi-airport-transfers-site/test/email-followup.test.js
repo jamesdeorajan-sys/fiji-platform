@@ -106,3 +106,8 @@ test('REGRESSION (found in browser testing): when the page switches cards after 
   assert.match(status(savedBox), /could not confirm that your request was recorded/); assert.equal(savedBox.parts['.ef-email'].value, 'typed.correction@example.invalid');
   await click(savedBox); assert.equal(calls.length, 2); assert.equal(calls[1].email, 'typed.correction@example.invalid'); assert.match(status(savedBox), /^Request received/);
 });
+
+test('NEW PAGE + OLD WORKER (endpoint not deployed yet): a 404 is reported as "nothing has been received" - never as success', async () => {
+  const sb = sandbox(async () => resp(404, { ok: false })); const box = makeBox(); sb.EmailFollowup.mount(card(box), ctxFor()); await click(box);
+  assert.match(status(box), /could not record your request, so nothing has been received/); assert.doesNotMatch(status(box), /^Request received/);
+});
