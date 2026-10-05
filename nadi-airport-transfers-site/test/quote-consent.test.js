@@ -35,12 +35,12 @@ test('the page now quotes the exact #237 itinerary FJ$304 (it quoted 142 before 
 });
 
 test('an ACCEPTED booking-system fare replaces the displayed total ONLY for the same pricing inputs; changing the trip, vehicle, extras or day/night drops it', () => {
-  const calcSrc = between(/^\/\/ P0 booking #237/, /^function calculateTotalFromPublishedPrices/);
+  const calcSrc = between(/^\/\/ P0 booking #237/, /^\/\/ James-approved FINAL fare/);
   assert.ok(calcSrc.includes('fareOverrideKey'), 'the override exists');
   const sb = pricing();
   vm.runInContext(calcSrc.replace(/function calculateTotal\(vehicleKey\) \{[\s\S]*$/, '') , sb); // fareOverrideKey only
   // re-evaluate the real calculateTotal wrapper on top of the page's own published calculation
-  const wrapper = lines.slice(idx(/^function calculateTotal\(vehicleKey\)/), idx(/^function calculateTotalFromPublishedPrices/)).join('\n');
+  const wrapper = lines.slice(idx(/^function calculateTotal\(vehicleKey\)/), idx(/^\/\/ James-approved FINAL fare/)).join('\n');
   vm.runInContext(wrapper.replace('function calculateTotal(', 'function calculateTotalWithOverride('), sb);
   vm.runInContext('state.fareOverride = { key: fareOverrideKey(), amount: 300.45, shown: 142 };', sb);
   const t = vm.runInContext('calculateTotalWithOverride()', sb);
@@ -58,7 +58,7 @@ function submitSandbox(response) {
   const fields = { firstName: { value: 'Guest' }, lastName: { value: 'Test' }, phone: { value: '+61400000000' }, email: { value: 'g@example.test' }, flightNum: { value: '' }, notes: { value: '' }, travelDate: { value: '2026-10-15' }, travelTime: { value: '09:15' },
     returnDate: { value: '2026-10-19' }, returnTime: { value: '06:00' }, returnPickupLocation: { value: 'Fiji Marriott Resort Momi Bay' }, 'extra-seat': { checked: true }, 'extra-surf': { checked: false } };
   const sb = { document: { getElementById: (id) => fields[id] }, state: { selectedVehicle: 'minibus', tripType: 'return', distanceKm: 40, passengers: 7, luggage: 7, destination: { hotel: 'Fiji Marriott Resort Momi Bay' } },
-    NADI_API_BASE: 'https://api.test', JSON, Number, calculateTotal: () => ({ final: 142 }), buildOperationalNotes: () => 'notes',
+    NADI_API_BASE: 'https://api.test', JSON, Number, approvedFinalFareFor: () => null, APPROVED_FINAL_FARE_ID: 'MOMI_MARRIOTT_MINIBUS_ONE_WAY_DAY', calculateTotal: () => ({ final: 142 }), buildOperationalNotes: () => 'notes',
     bookingRequest: async (url, o) => { calls.push({ url, body: JSON.parse(o.body) }); return response; }, reportNadiSyncFailure: async (...a) => { escalations.push(a); } };
   vm.createContext(sb); vm.runInContext(submitSrc(), sb);
   return { sb, calls, escalations };
