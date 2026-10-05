@@ -121,3 +121,14 @@ test('FijiDash Momi route page: minibus one-way FJ$175.92 as a FINAL fare (never
   assert.match(faq, /FJ\$175\.92 as a final fare/); assert.match(faq, /no further discount/i); assert.match(faq, /FJ\$330 minibus/);
   for (const sentence of faq.split(/\.\s/).filter((x) => x.includes('175.92'))) assert.ok(!/before( the)?( booking)? discount/i.test(sentence), sentence);
 });
+
+// RELEASE BLOCKERS (price inversions found by the Momi minibus grid). Visible TODOs until James decides the extras and night rules for the approved final fare (MOMI-DECISION-TABLE.md in the Worker
+// branch); the characterisations above (165.92; night review 157.92) are the passing record of today's behaviour.
+const PENDING = 'RELEASE BLOCKER - owner decision pending (extras / night rules for the approved Momi minibus final fare)';
+test('INVARIANT I1: extras never lower the approved daytime one-way total (selection and review)', { todo: PENDING }, async () => {
+  const base = (await review({ fetchFare: () => 175.92 })).final;
+  for (const o of [{ seat: true }, { surf: true }, { seat: true, surf: true }]) assert.ok((await review({ ...o, fetchFare: () => 175.92 })).final >= base, JSON.stringify(o));
+});
+test('INVARIANT I2: the night one-way REVIEW is never below the approved daytime fare', { todo: PENDING }, async () => {
+  assert.ok((await review({ time: '23:00', fetchFare: () => 175.92 })).final >= (await review({ fetchFare: () => 175.92 })).final);
+});
