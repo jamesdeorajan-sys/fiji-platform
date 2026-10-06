@@ -36,6 +36,10 @@
   tr:last-child td { border-bottom: none; }
   .route { font-weight: 600; }
   .meta { color: #888; font-size: 12px; margin-top: 2px; }
+  /* Guest notes (typed addresses + special requests): tap/click to read ALL of it - no hover tooltip needed, so it works on a phone. */
+  .notes-detail { margin-top: 4px; max-width: 340px; }
+  .notes-detail summary { color: #0b6a8a; font-size: 12px; cursor: pointer; padding: 4px 0; }
+  .notes-full { min-width: 240px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45; color: #222; background: #f4f8fa; border: 1px solid #d5e3ea; border-radius: 6px; padding: 8px; margin-top: 4px; }
   .price { font-weight: 700; white-space: nowrap; }
   .status-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
   .status-pending { background: #fdf3e0; color: var(--amber); }
@@ -321,7 +325,7 @@
           ${bookings.map(b => `
             <tr id="booking-row-${b.id}">
               <td>#${b.id}</td>
-              <td>${escHtml(b.guest_name)}<div class="meta">${escHtml(b.guest_phone || '—')}</div></td>
+              <td>${escHtml(b.guest_name)}<div class="meta">${escHtml(b.guest_phone || '—')}</div>${b.notes ? `<details class="notes-detail"><summary>📝 Notes / addresses (tap to read all)</summary><div class="notes-full">${escHtml(b.notes)}</div></details>` : ''}</td>
               <td class="route">${escHtml(b.pickup_zone)} → ${escHtml(b.destination_zone)}<div class="meta">${b.distance_km != null ? Number(b.distance_km).toFixed(1) + ' km' : '—'}</div></td>
               <td>${escHtml(b.vehicle_type)}</td>
               <td class="price">${formatMoney(b.quoted_amount, b.quoted_currency)}<div class="meta">${escHtml(b.payment_method || '—')}</div></td>
