@@ -26,4 +26,4 @@
 .price-beat-body .price-beat-note{margin:0;font-size:13px;color:var(--mid)}
 .price-beat-terms{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.5;color:#334155}
 .price-beat-terms li{margin:0 0 4px}
-#travelDate.needs-check{outline:3px solid var(--warning);outline-offset:1px}
+#travelDate.needs-check,#travelTime.needs-check{outline:3px solid var(--warning);outline-offset:1px}

@@ -47,15 +47,22 @@
   function store() {
     try { return typeof sessionStorage !== 'undefined' ? sessionStorage : null; } catch (e) { return null; }
   }
-  function isIsoDate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00').getTime()); }
+  // Dates and times are compared on the FIJI clock (window.NadiFijiTime, loaded just before this file), never the device's: a guest on a Sydney, Auckland or Los Angeles phone gets the same answer
+  // as one in Fiji. The device-clock fallbacks below run only if that file failed to load.
+  function fiji() { return typeof window !== 'undefined' && window.NadiFijiTime ? window.NadiFijiTime : null; }
+  function isIsoDate(v) { var f = fiji(); return f ? f.isDate(v) : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00').getTime())); }
   function isHHMM(v) { return typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v); }
-  // A saved pickup is "passed" when its date is before today, or it is today and the saved time is not in the future (a date with no valid time passes only if the date is before today).
+  function todayIso() {
+    var f = fiji(); if (f) return f.today();
+    var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  // A saved pickup has "passed" when it is earlier than the current Fiji minute (a date with no valid time: when the date is before today in Fiji).
   function pickupPassed(date, time) {
+    var f = fiji(); if (f) return f.hasPassed(date, isHHMM(time) ? time : '');
     if (date < todayIso()) return true;
     if (date === todayIso() && isHHMM(time)) return new Date(date + 'T' + time + ':00').getTime() <= Date.now();
     return false;
   }
-  function todayIso() { var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 
   // ── 1. journey draft ─────────────────────────────────────────────────────
   // Returns the draft object for the current form, or null when there is nothing worth keeping.
@@ -143,13 +150,13 @@
     setField('customPickupAddress', cap(d.customPickupAddress, 200));
     setField('customDestAddress', cap(d.customDestAddress, 200));
     // Saved dates are revalidated against today. A pickup that has passed is NOT restored (the page keeps its own default date) and the guest is told, so an old date can never silently become the booking.
-    restoreNotes = { pickupPassed: '', returnDropped: false };
+    restoreNotes = { pickupPassed: '', pickupTime: '', returnDropped: false };
     var pickupOk = isIsoDate(d.travelDate) && !pickupPassed(d.travelDate, d.travelTime);
     if (pickupOk) {
       setField('travelDate', d.travelDate);
       if (isHHMM(d.travelTime)) setField('travelTime', d.travelTime);
     } else if (isIsoDate(d.travelDate)) {
-      restoreNotes.pickupPassed = d.travelDate;
+      restoreNotes.pickupPassed = d.travelDate; restoreNotes.pickupTime = isHHMM(d.travelTime) ? d.travelTime : '';
     }
     if (d.returnDate) {
       var returnOk = isIsoDate(d.returnDate) && d.returnDate >= todayIso() && (!pickupOk || d.returnDate >= d.travelDate);
@@ -194,7 +201,7 @@
     box.setAttribute('role', 'status');
     var text = document.createElement('span');
     var msg = 'We kept your trip details from earlier. We have recalculated the fare for them.';
-    if (restoreNotes.pickupPassed) msg += ' Your earlier pickup date (' + longDate(restoreNotes.pickupPassed) + ') has passed, so please check the pickup date and time below before you continue.';
+    if (restoreNotes.pickupPassed) msg += ' Your earlier pickup (' + longDate(restoreNotes.pickupPassed) + (restoreNotes.pickupTime ? ' at ' + restoreNotes.pickupTime : '') + ') has passed in Fiji time, so please check the Fiji pickup date and time below before you continue.';
     if (restoreNotes.returnDropped) msg += ' Please choose your return date again.';
     text.textContent = msg + ' ';
     var btn = document.createElement('button');
@@ -206,11 +213,13 @@
     step1.insertBefore(box, step1.firstChild);
     if (restoreNotes.pickupPassed) {
       var dateEl = $('travelDate');
-      if (dateEl && dateEl.classList) {
-        dateEl.classList.add('needs-check');
-        var clear = function () { dateEl.classList.remove('needs-check'); };
-        dateEl.addEventListener('change', clear); dateEl.addEventListener('input', clear);
-      }
+      var timeEl = $('travelTime');
+      [dateEl, timeEl].forEach(function (el) {
+        if (!el || !el.classList) return;
+        el.classList.add('needs-check');
+        var clear = function () { dateEl.classList.remove('needs-check'); if (timeEl && timeEl.classList) timeEl.classList.remove('needs-check'); };
+        el.addEventListener('change', clear); el.addEventListener('input', clear);
+      });
     }
   }
 
@@ -222,11 +231,12 @@
     if (!d) return false;
     var ok = false;
     try { ok = applyDraft(d); } catch (e) { ok = false; }
+    try { if (ok && fiji() && fiji().check) fiji().check(); } catch (e2) { /* the warning is advisory */ }
     if (ok) showDraftNotice(); else clearDraft();
     return ok;
   }
 
-  var restoreNotes = { pickupPassed: '', returnDropped: false };
+  var restoreNotes = { pickupPassed: '', pickupTime: '', returnDropped: false };
   var savingSuppressed = false;      // set by "Start again" so the page-hide that follows the reload cannot write the draft back
   var saveTimer = null;
   var restoring = false;
@@ -359,7 +369,8 @@
     };
   }
   if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
+    // loaded before app.js, so wait until every DOMContentLoaded handler (app.js's own setup, fiji-pickup.js's timer queued first) has run
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(wire, 0); });
     else wire();
   }
 })();

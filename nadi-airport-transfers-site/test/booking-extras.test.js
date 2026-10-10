@@ -10,6 +10,9 @@ import vm from 'node:vm';
 const read = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8').replace(/\r/g, '');
 const html = read('index.html');
 const extrasSrc = read('booking-extras.js');
+const fijiSrc = read('fiji-pickup.js');
+// the real Fiji module in a plain context, for computing expectations on the Fiji clock (never the device's)
+const F = (() => { const c = { Intl, Date, window: {}, isNaN, Math }; vm.createContext(c); vm.runInContext(fijiSrc, c); return c.window.NadiFijiTime; })();
 const sha = (f) => createHash('sha256').update(readFileSync(new URL('../src/' + f, import.meta.url))).digest('hex');
 const card = html.slice(html.indexOf('id="bulaSuccess"'), html.indexOf('<div class="bula-divider">'));
 
@@ -31,7 +34,8 @@ test('SCOPE: the new script makes no network request, uses no persistent storage
 test('SCOPE: index.html changes are additive: the two new files are loaded after the existing ones with new cache keys; the pinned handoff paragraph and button are unchanged', () => {
   assert.equal(html.match(/<link rel="stylesheet" href="booking-extras\.css\?v=20261011-extras">/g).length, 1);
   assert.equal(html.match(/<script src="booking-extras\.js\?v=20261011-extras"><\/script>/g).length, 1);
-  assert.ok(html.indexOf('src="app.js?v=20261005-wa-handoff"') < html.indexOf('src="booking-extras.js'), 'extras loads after app.js');
+  assert.ok(html.indexOf('src="booking-extras.js') < html.indexOf('src="app.js?v=20261005-wa-handoff"'), 'the new scripts sit on their own line before app.js (they wait for DOMContentLoaded), so the app.js line is untouched');
+  assert.ok(html.includes('<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261005-wa-handoff"></script>'), 'the original app.js line is byte-identical');
   assert.ok(card.includes('<p class="bula-handoff" id="bulaHandoff">Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.</p>'));
   assert.ok(card.includes('<span>Open WhatsApp — send reservation</span>'));
   assert.ok(card.includes('<p class="bula-handoff-note"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>'));
@@ -95,7 +99,7 @@ test('PRICE-BEAT block is outside the booking form steps, so it cannot gate or c
 });
 
 // ── 4. DOM double for the real script ────────────────────────────────────────────────────────────────────────────────────
-function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, appState = {}, options = {} } = {}) {
+function makeEnv({ fijiPassed = null, stored = null, search = '', storageMode = 'ok', ids = {}, appState = {}, options = {} } = {}) {
   const calls = [];
   const timers = [];
   const winListeners = {}; const docListeners = {};
@@ -119,12 +123,12 @@ function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, app
   let observer = null;
   const opts = Object.assign({ pickup: ['NAN', 'CUSTOM_PICKUP'], destination: ['HOTEL_A', 'HOTEL_B', 'CUSTOM_DEST'], customPickupZone: ['Z1'], customDestZone: ['Z1'] }, options);
   const ctx = {
-    console, URLSearchParams, JSON, Math, Date, isFinite, parseInt, String, Object, Array, Number,
+    Intl, isNaN, setInterval: () => 1, console, URLSearchParams, JSON, Math, Date, isFinite, parseInt, String, Object, Array, Number,
     setTimeout: (f) => { timers.push(f); return timers.length; }, clearTimeout: () => {},
     sessionStorage: undefined,
     MutationObserver: class { constructor(cb) { observer = cb; } observe() {} },
     document: {
-      readyState: 'complete', visibilityState: 'visible', body: {},
+      readyState: 'complete', visibilityState: 'visible', head: { appendChild() {} }, body: {},
       getElementById: (id) => els[id] || null,
       querySelectorAll: (sel) => (sel === '.trip-btn' ? tripBtns : []),
       createElement: () => ({ style: {}, dataset: {}, children: [], listeners: {}, className: '', textContent: '', addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); }, appendChild(n) { this.children.push(n); }, setAttribute() {} }),
@@ -150,6 +154,8 @@ function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, app
   vm.runInContext(`const VEHICLES = [{ key: 'sedan', maxPax: 3, maxBags: 3 }, { key: 'minivan', maxPax: 7, maxBags: 7 }, { key: 'minibus', maxPax: 12, maxBags: 12 }];
     const state = Object.assign({ passengers: 2, luggage: 1, tripType: 'one-way', selectedVehicle: null, selectedTour: null, pickup: { name: '✈ Nadi Airport' }, destination: { hotel: 'Hotel A', name: 'Hotel A' } }, ${JSON.stringify(appState)});
     this.__state = () => state;`, ctx);
+  vm.runInContext(fijiSrc, ctx);        // index.html loads fiji-pickup.js before booking-extras.js
+  if (fijiPassed) ctx.NadiFijiTime.hasPassed = fijiPassed;   // test seam: lets a test decide what the FIJI clock says, independent of the device clock
   vm.runInContext(extrasSrc, ctx);
   return { ctx, els, calls, data, timers, winListeners, docListeners, reloads: () => reloads, getObserver: () => observer, api: ctx.NadiBookingExtras, state: () => ctx.__state(), tripBtns };
 }
@@ -212,7 +218,7 @@ test('RESTORE never shows a capacity alert: a vehicle that no longer fits is not
 
 test('RESTORE keeps today\'s default date when the saved date is in the past; ignores malformed times and out-of-range counts', () => {
   const e = makeEnv({ stored: goodDraft({ travelDate: '2000-01-01', travelTime: '25:xx', passengers: 99, luggage: -4 }) });
-  assert.equal(e.els.travelDate.value, '', 'past date not applied (the default date stays)'); assert.equal(e.els.travelTime.value, '', 'malformed time not applied');
+  assert.equal(e.els.travelDate.value, F.tomorrow(), 'past date not applied (the default date, tomorrow in Fiji, stays)'); assert.equal(e.els.travelTime.value, '', 'malformed time not applied');
   assert.equal(e.state().passengers, 12, '99 passengers is clamped to the page maximum of 12'); assert.equal(e.state().luggage, 0, '-4 bags is clamped to 0');
 });
 
@@ -292,26 +298,28 @@ test('CLAIM link updates as the guest types, and is set up when the result card 
 });
 
 // ── 7. SAFE RESTORATION (acceptance point 2) ─────────────────────────────────────────────────────────────────────────────
-const isoDay = (offsetDays) => { const d = new Date(Date.now() + offsetDays * 86400000); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
-const hhmm = (offsetMin) => { const d = new Date(Date.now() + offsetMin * 60000); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const isoDay = (offsetDays) => F.addDays(F.today(), offsetDays);                                  // Fiji dates, from the real module
+const hhmm = (offsetMin) => F.now(Date.now() + offsetMin * 60000).time;                           // Fiji clock time
 
 test('PAST PICKUP: a saved pickup date that has passed is not restored, the guest is told which date, and the date field is flagged until they touch it', () => {
   const e = makeEnv({ stored: goodDraft({ travelDate: '2020-02-03', travelTime: '14:30' }) });
-  assert.equal(e.els.travelDate.value, '', 'the old date is NOT written back (the page keeps its own default)');
+  assert.equal(e.els.travelDate.value, F.tomorrow(), 'the old date is NOT written back (the page keeps its own default: tomorrow in Fiji)');
   assert.equal(e.els.travelTime.value, '', 'nor its time');
   const notice = e.els.step1.children[0]; assert.ok(notice);
-  assert.match(notice.children[0].textContent, /Your earlier pickup date \(.*2020.*\) has passed, so please check the pickup date and time below before you continue\./);
+  assert.match(notice.children[0].textContent, /Your earlier pickup \(.*2020 at 14:30\) has passed in Fiji time, so please check the Fiji pickup date and time below before you continue\./);
+  assert.ok(!/date has passed/i.test(notice.children[0].textContent), 'the wording says the pickup TIME has passed, not that a date has');
   assert.equal(e.els.travelDate.classList.contains('needs-check'), true, 'date field highlighted');
-  e.els.travelDate.listeners.change[0](); assert.equal(e.els.travelDate.classList.contains('needs-check'), false, 'cleared once the guest changes the date');
+  assert.equal(e.els.travelTime.classList.contains('needs-check'), true, 'time field flagged too');
+  e.els.travelDate.listeners.change.forEach((f) => f()); assert.equal(e.els.travelDate.classList.contains('needs-check'), false, 'cleared once the guest changes the date'); assert.equal(e.els.travelTime.classList.contains('needs-check'), false);
   assert.equal(e.els.destination.value, 'HOTEL_B', 'the rest of the journey is still restored');
 });
 
 test('PAST PICKUP, same day: today with a time that has already gone counts as passed; a time still ahead is restored; no valid time on today is kept', () => {
   const gone = makeEnv({ stored: goodDraft({ travelDate: isoDay(0), travelTime: hhmm(-90) }) });
   const ahead = makeEnv({ stored: goodDraft({ travelDate: isoDay(0), travelTime: hhmm(+90) }) });
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const nowMin = parseInt(F.now().time.slice(0, 2), 10) * 60 + parseInt(F.now().time.slice(3), 10);   // minutes into the Fiji day
   if (nowMin >= 90 && nowMin < 24 * 60 - 90) {                       // skip the two midnight-straddling windows so the test is never flaky
-    assert.equal(gone.els.travelDate.value, '', 'passed time today: not restored'); assert.ok(gone.els.travelDate.classList.contains('needs-check'));
+    assert.equal(gone.els.travelDate.value, F.tomorrow(), 'passed time today: not restored'); assert.ok(gone.els.travelDate.classList.contains('needs-check'));
     assert.equal(ahead.els.travelDate.value, isoDay(0), 'a time later today is still valid'); assert.equal(ahead.els.travelTime.value, hhmm(+90));
   }
   const future = makeEnv({ stored: goodDraft({ travelDate: isoDay(5), travelTime: '09:00' }) });
@@ -382,4 +390,25 @@ test('CONTACT FIELDS: with name, email, phone and notes filled in, nothing of th
 // ── 8. the page-only candidate does not depend on the Worker catalogue validator ───────────────────────────────────────────
 test('INDEPENDENCE: this page-only candidate sends no catalogue_ref and depends on no Worker change (the validator is a separate, held gate)', () => {
   for (const f of ['booking-extras.js', 'index.html', 'app.js']) assert.ok(!read(f).includes('catalogue_ref'), f + ' must not reference catalogue_ref');
+});
+
+test('RESTORED-PICKUP EXPIRY ASKS THE FIJI CLOCK, NOT THE DEVICE: the decision follows NadiFijiTime.hasPassed in both directions', () => {
+  const never = makeEnv({ fijiPassed: () => false, stored: goodDraft({ travelDate: '2020-02-03', travelTime: '14:30' }) });
+  assert.equal(never.els.travelDate.value, '2020-02-03', 'Fiji says "not passed": restored, even though the device clock would call 2020 long gone');
+  const always = makeEnv({ fijiPassed: () => true, stored: goodDraft({ travelDate: '2099-03-04', travelTime: '14:30' }) });
+  assert.equal(always.els.travelDate.value, F.tomorrow(), 'Fiji says "passed": not restored, even though 2099 is far in the future on the device clock');
+  assert.match(always.els.step1.children[0].children[0].textContent, /has passed in Fiji time, so please check the Fiji pickup date and time below/);
+});
+
+test('WORDING: the restore notice says the pickup TIME has passed in Fiji time (never "date has passed"), and names the saved date and time', () => {
+  const e = makeEnv({ fijiPassed: () => true, stored: goodDraft({ travelDate: '2099-03-04', travelTime: '14:30' }) });
+  const t = e.els.step1.children[0].children[0].textContent;
+  assert.ok(/Your earlier pickup \(.*2099 at 14:30\) has passed in Fiji time/.test(t)); assert.ok(!/date has passed/i.test(t));
+});
+
+test('LOAD ORDER: fiji-pickup.js, then booking-extras.js, both before app.js and both waiting for every DOMContentLoaded handler (a zero-delay timer) so they run after app.js\'s own setup, in that order', () => {
+  const f = html.indexOf('src="fiji-pickup.js'), b = html.indexOf('src="booking-extras.js'), a = html.indexOf('src="app.js');
+  assert.ok(f > 0 && f < b && b < a, 'order: ' + [f, b, a].join(' < '));
+  assert.match(extrasSrc, /addEventListener\('DOMContentLoaded', function \(\) \{ setTimeout\(wire, 0\); \}\)/);
+  assert.match(read('fiji-pickup.js'), /addEventListener\('DOMContentLoaded', function \(\) \{ setTimeout\(init, 0\); \}\)/);
 });
