@@ -297,6 +297,12 @@
       #ftt-chat-launcher svg { width: 24px; height: 24px; }
       #ftt-chat-tooltip { display: none; }
     }
+
+    /* Clearance (2026-10-11): on small screens the launcher steps aside while it would sit on top of a page control (see setupClearance) */
+    @media (max-width: 600px) {
+      #ftt-chat-widget { transition: opacity 0.15s ease; }
+      #ftt-chat-widget.ftt-yield { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s ease, visibility 0s linear 0.15s; }
+    }
   `;
 
   // ─── Build DOM ──────────────────────────────────────────────────────
@@ -502,11 +508,50 @@ What can I help with?`;
     document.getElementById('ftt-chat-input').addEventListener('input', autoResizeInput);
   }
 
+  // ─── Stay clear of page controls (small screens) ────────────────────
+  // The launcher is a fixed circle in the bottom-right corner, so on a phone it lands on top of whatever the guest is scrolling past: fields, selectors, buttons.
+  // While the topmost page element under the launcher is a control (or part of one), the launcher fades out and cannot be tapped or focused; it returns as soon as the spot
+  // is clear. It never moves, never hides while the chat panel is open, and does nothing on wider screens. The widget itself is otherwise unchanged.
+  const CLEARANCE_AVOID = 'a[href],button,input,select,textarea,summary,label,[role="button"],[onclick],.field-input,.typeahead-trigger,.vehicle-card,.vehicle-detail-card';
+  function setupClearance() {
+    const widget = document.getElementById('ftt-chat-widget');
+    const launcher = document.getElementById('ftt-chat-launcher');
+    if (!widget || !launcher || !window.matchMedia || !document.elementsFromPoint) return;
+    const mq = window.matchMedia('(max-width: 600px)');
+    const probes = [[0.5, 0.5], [0.15, 0.5], [0.85, 0.5], [0.5, 0.15], [0.5, 0.85], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
+    let queued = false;
+    function evaluate() {
+      queued = false;
+      if (!mq.matches || isOpen) { widget.classList.remove('ftt-yield'); return; }
+      const r = launcher.getBoundingClientRect();
+      let covers = false;
+      for (let i = 0; i < probes.length && !covers; i++) {
+        const stack = document.elementsFromPoint(r.left + r.width * probes[i][0], r.top + r.height * probes[i][1]);
+        for (let j = 0; j < stack.length; j++) {
+          if (widget.contains(stack[j])) continue;                 // skip the widget itself
+          covers = !!(stack[j].closest && stack[j].closest(CLEARANCE_AVOID));
+          break;                                                  // only the topmost page element counts
+        }
+      }
+      widget.classList.toggle('ftt-yield', covers);
+    }
+    function queue() { if (!queued) { queued = true; setTimeout(evaluate, 80); } }   // a short timer, not requestAnimationFrame: it must not depend on the page being painted
+    window.addEventListener('scroll', queue, { passive: true });
+    window.addEventListener('resize', queue);
+    document.addEventListener('click', function () { setTimeout(queue, 60); });
+    document.addEventListener('input', queue);
+    document.addEventListener('change', queue);
+    if (mq.addEventListener) mq.addEventListener('change', queue);
+    setInterval(queue, 1000);                                     // layout changes that fire no event (steps, sticky bars appearing)
+    queue();
+  }
+
   // ─── Initialise ─────────────────────────────────────────────────────
   function init() {
     if (document.getElementById('ftt-chat-widget')) return; // prevent double-injection
     injectWidget();
     wireEvents();
+    setupClearance();
   }
 
   if (document.readyState === 'loading') {
