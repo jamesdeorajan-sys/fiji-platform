@@ -1,0 +1,26 @@
+/* Styles for booking-extras.js and the matching blocks in index.html (2026-10-11 candidate). Loaded after styles.css; uses its variables only. */
+
+/* Notice shown when a saved journey was restored */
+.draft-notice{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 14px;padding:10px 14px;background:var(--teal-light);border:1px solid var(--teal);border-radius:var(--radius-sm);font-size:14px;line-height:1.4;color:var(--dark)}
+.draft-notice-clear{background:none;border:0;padding:6px 2px;font:inherit;font-weight:600;color:var(--ocean-dark);text-decoration:underline;cursor:pointer;min-height:36px}
+
+/* Open-and-Send steps, directly above the green button: three short chips so the button stays near the top of a phone screen */
+.bula-steps{list-style:none;counter-reset:bula-step;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 auto 6px;padding:0;max-width:540px}
+.bula-steps li{counter-increment:bula-step;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13.5px;line-height:1.3;color:#0f172a;text-align:center}
+.bula-steps li::before{content:counter(bula-step);width:24px;height:24px;border-radius:50%;background:var(--teal-dark);color:var(--white);font-weight:700;font-size:13px;line-height:24px;text-align:center}
+.bula-steps li:nth-child(2){border-color:var(--teal-dark);background:var(--teal-light)}
+.bula-steps-note{margin:0 auto 14px;max-width:540px;font-size:13px;line-height:1.4;color:#334155;text-align:center}
+
+/* Optional price-beat request: quiet, collapsed, never competes with the green button */
+.price-beat{margin:18px auto 6px;max-width:540px;text-align:left;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--white)}
+.price-beat > summary{cursor:pointer;padding:14px 16px;font-size:15px;line-height:1.4;color:var(--dark);list-style:none;min-height:44px}
+.price-beat > summary::-webkit-details-marker{display:none}
+.price-beat > summary::after{content:'+';float:right;margin-left:10px;font-weight:700;color:var(--ocean-dark)}
+.price-beat[open] > summary::after{content:'\2212'}
+.price-beat-body{padding:0 16px 16px}
+.price-beat-body p{margin:0 0 12px;font-size:14px;line-height:1.5;color:#334155}
+.price-beat-body label{display:block;margin:10px 0 4px;font-size:13px;font-weight:600;color:var(--dark)}
+.price-beat-body .field-input{font-size:16px}   /* 16px stops iPhone Safari zooming the page when the field is focused */
+.price-beat-send{display:flex;justify-content:center;margin:14px 0 10px;width:100%;box-sizing:border-box;text-decoration:none;text-align:center;color:var(--ocean-dark);border-color:var(--ocean-dark)}
+.price-beat-send:hover{color:var(--white);background:var(--ocean-dark);border-color:var(--ocean-dark)}
+.price-beat-body .price-beat-note{margin:0;font-size:13px;color:var(--mid)}

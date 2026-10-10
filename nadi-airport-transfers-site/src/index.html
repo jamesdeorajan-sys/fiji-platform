@@ -27,6 +27,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css?v=20261005-wa-handoff">
+<link rel="stylesheet" href="booking-extras.css?v=20261011-extras">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -796,6 +797,15 @@
 
         <p class="bula-handoff" id="bulaHandoff">Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.</p>
 
+        <!-- Open-and-Send steps (2026-10-11 candidate). Sits directly above the button so the instruction is read at the moment of the tap. Static text: it never changes with the save state and
+             never claims anything was sent or confirmed. The paragraph above and the note below are unchanged. -->
+        <ol class="bula-steps" id="bulaSteps" aria-label="How to send your reservation">
+          <li><strong>Tap</strong> the green button</li>
+          <li><strong>Press Send</strong> in WhatsApp</li>
+          <li><strong>We reply</strong> and confirm with you</li>
+        </ol>
+        <p class="bula-steps-note">Nothing reaches our team until you press Send in WhatsApp.</p>
+
         <a id="bulaWaBtn" href="https://wa.me/61478886145" target="_blank" rel="noopener" class="btn-whatsapp btn-whatsapp-primary bula-wa-btn">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 2C6.477 2 2 6.477 2 12c0 1.99.574 3.844 1.558 5.414L2 22l4.735-1.535A9.967 9.967 0 0012 22c5.523 0 10-4.477 10-10S17.522 2 11.999 2zM12 20c-1.77 0-3.41-.483-4.82-1.317l-.344-.204-3.578 1.158 1.112-3.508-.227-.362A7.96 7.96 0 014 12c0-4.418 3.582-8 8-8s8 3.582 8 8-3.582 8-8 8z"/></svg>
           <span>Open WhatsApp — send reservation</span>
@@ -803,6 +813,21 @@
 
         <p class="bula-handoff-note"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>
         <button id="bulaRetry" type="button" class="btn-secondary" hidden onclick="retryBooking()">Review and retry — keep my details</button>
+
+        <!-- Optional 10% price-beat request (2026-10-11 candidate). Collapsed by default, below the normal WhatsApp button, and independent of it: it only opens a WhatsApp message to the same team number.
+             No price is calculated or promised here; the Fiji team verifies the guest's quote and confirms any new fare. Terms wording is DRAFT pending James's final text. -->
+        <details class="price-beat" id="priceBeat">
+          <summary>Found a lower price elsewhere? <strong>We'll beat a verified lower price by 10%.</strong></summary>
+          <div class="price-beat-body">
+            <p>Optional, and it does not change your reservation above. If you have a lower written price for the same private transfer (same route, date, pickup time, vehicle and passengers), tell us what it is and where you saw it. Our Fiji team checks the quote and confirms any new fare with you on WhatsApp. Your fare stays as it is until they do.</p>
+            <label for="pbPrice">Their price (include the currency)</label>
+            <input type="text" id="pbPrice" class="field-input" maxlength="40" autocomplete="off" placeholder="e.g. FJ$ 40">
+            <label for="pbWhere">Where you saw it (company or website)</label>
+            <input type="text" id="pbWhere" class="field-input" maxlength="120" autocomplete="off" placeholder="e.g. company or website">
+            <a id="pbSend" class="btn-secondary price-beat-send" href="https://wa.me/61478886145" target="_blank" rel="noopener">Send price-beat request on WhatsApp</a>
+            <p class="price-beat-note">WhatsApp opens with your journey details already typed. Press Send, and attach a screenshot of their quote if you can. Applies to like-for-like private transfers with a quote we can check; not to shared shuttles or prices we cannot verify.</p>
+          </div>
+        </details>
 
         <!-- A2: free booking modification reassurance with one-tap WhatsApp link -->
         <div class="bula-modify">
@@ -1901,7 +1926,7 @@
   </div>
 </div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261005-wa-handoff"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261005-wa-handoff"></script><script src="booking-extras.js?v=20261011-extras"></script>
 <script src="chat-widget.js?v=20260908a"></script>
 <!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "40d766fdaddc4cb68ce32a56801f1639"}'></script><!-- Cloudflare Pages Analytics --></body>
 </html>
