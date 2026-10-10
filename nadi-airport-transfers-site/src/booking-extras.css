@@ -24,3 +24,6 @@
 .price-beat-send{display:flex;justify-content:center;margin:14px 0 10px;width:100%;box-sizing:border-box;text-decoration:none;text-align:center;color:var(--ocean-dark);border-color:var(--ocean-dark)}
 .price-beat-send:hover{color:var(--white);background:var(--ocean-dark);border-color:var(--ocean-dark)}
 .price-beat-body .price-beat-note{margin:0;font-size:13px;color:var(--mid)}
+.price-beat-terms{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.5;color:#334155}
+.price-beat-terms li{margin:0 0 4px}
+#travelDate.needs-check{outline:3px solid var(--warning);outline-offset:1px}

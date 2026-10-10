@@ -47,6 +47,14 @@
   function store() {
     try { return typeof sessionStorage !== 'undefined' ? sessionStorage : null; } catch (e) { return null; }
   }
+  function isIsoDate(v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00').getTime()); }
+  function isHHMM(v) { return typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v); }
+  // A saved pickup is "passed" when its date is before today, or it is today and the saved time is not in the future (a date with no valid time passes only if the date is before today).
+  function pickupPassed(date, time) {
+    if (date < todayIso()) return true;
+    if (date === todayIso() && isHHMM(time)) return new Date(date + 'T' + time + ':00').getTime() <= Date.now();
+    return false;
+  }
   function todayIso() { var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 
   // ── 1. journey draft ─────────────────────────────────────────────────────
@@ -83,6 +91,7 @@
   }
 
   function saveDraft() {
+    if (savingSuppressed) return false;
     var s = store();
     if (!s) return false;
     try {
@@ -131,13 +140,22 @@
     call('onDestinationChange');
     call('setSelectByValue', 'customPickupZone', d.customPickupZone);
     call('setSelectByValue', 'customDestZone', d.customDestZone);
-    setField('customPickupAddress', d.customPickupAddress);
-    setField('customDestAddress', d.customDestAddress);
-    if (typeof d.travelDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.travelDate) && d.travelDate >= todayIso()) setField('travelDate', d.travelDate);
-    if (typeof d.travelTime === 'string' && /^\d{2}:\d{2}$/.test(d.travelTime)) setField('travelTime', d.travelTime);
-    if (typeof d.returnDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.returnDate) && d.returnDate >= todayIso()) setField('returnDate', d.returnDate);
-    if (typeof d.returnTime === 'string' && /^\d{2}:\d{2}$/.test(d.returnTime)) setField('returnTime', d.returnTime);
-    setField('flightNum', d.flightNum);
+    setField('customPickupAddress', cap(d.customPickupAddress, 200));
+    setField('customDestAddress', cap(d.customDestAddress, 200));
+    // Saved dates are revalidated against today. A pickup that has passed is NOT restored (the page keeps its own default date) and the guest is told, so an old date can never silently become the booking.
+    restoreNotes = { pickupPassed: '', returnDropped: false };
+    var pickupOk = isIsoDate(d.travelDate) && !pickupPassed(d.travelDate, d.travelTime);
+    if (pickupOk) {
+      setField('travelDate', d.travelDate);
+      if (isHHMM(d.travelTime)) setField('travelTime', d.travelTime);
+    } else if (isIsoDate(d.travelDate)) {
+      restoreNotes.pickupPassed = d.travelDate;
+    }
+    if (d.returnDate) {
+      var returnOk = isIsoDate(d.returnDate) && d.returnDate >= todayIso() && (!pickupOk || d.returnDate >= d.travelDate);
+      if (returnOk) { setField('returnDate', d.returnDate); if (isHHMM(d.returnTime)) setField('returnTime', d.returnTime); } else restoreNotes.returnDropped = true;
+    }
+    setField('flightNum', cap(d.flightNum, 20));
     var fu = $('flightUnknown'); if (fu && d.flightUnknown === true) fu.checked = true;
     // passengers and luggage move by the page's own +/- functions so capacity checks and vehicle re-rendering run as they do for a guest
     var paxTarget = Math.max(1, Math.min(12, parseInt(d.passengers, 10) || 1));
@@ -147,7 +165,7 @@
     if (d.tripType === 'return') {
       var btns = document.querySelectorAll('.trip-btn');
       if (btns && btns[1]) call('setTripType', 'return', btns[1]);
-      if (d.returnPickupLocation) { var rp = $('returnPickupLocation'); if (rp) { rp.value = d.returnPickupLocation; if (rp.dataset) rp.dataset.dirty = 'true'; } }
+      if (typeof d.returnPickupLocation === 'string' && d.returnPickupLocation) { var rp = $('returnPickupLocation'); if (rp) { rp.value = cap(d.returnPickupLocation, 200); if (rp.dataset) rp.dataset.dirty = 'true'; } }
     }
     var ex = d.extras || {};
     var map = { lei: 'extra-lei', seat: 'extra-seat', stop: 'extra-stop', surf: 'extra-surf' };
@@ -175,14 +193,25 @@
     box.className = 'draft-notice';
     box.setAttribute('role', 'status');
     var text = document.createElement('span');
-    text.textContent = 'We kept your trip details from earlier. ';
+    var msg = 'We kept your trip details from earlier. We have recalculated the fare for them.';
+    if (restoreNotes.pickupPassed) msg += ' Your earlier pickup date (' + longDate(restoreNotes.pickupPassed) + ') has passed, so please check the pickup date and time below before you continue.';
+    if (restoreNotes.returnDropped) msg += ' Please choose your return date again.';
+    text.textContent = msg + ' ';
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'draft-notice-clear';
     btn.textContent = 'Start again';
-    btn.addEventListener('click', function () { clearDraft(); try { window.location.reload(); } catch (e) { /* ignore */ } });
+    btn.addEventListener('click', function () { savingSuppressed = true; clearDraft(); try { window.location.reload(); } catch (e) { /* ignore */ } });
     box.appendChild(text); box.appendChild(btn);
     step1.insertBefore(box, step1.firstChild);
+    if (restoreNotes.pickupPassed) {
+      var dateEl = $('travelDate');
+      if (dateEl && dateEl.classList) {
+        dateEl.classList.add('needs-check');
+        var clear = function () { dateEl.classList.remove('needs-check'); };
+        dateEl.addEventListener('change', clear); dateEl.addEventListener('input', clear);
+      }
+    }
   }
 
   function restoreDraftIfAny() {
@@ -197,6 +226,8 @@
     return ok;
   }
 
+  var restoreNotes = { pickupPassed: '', returnDropped: false };
+  var savingSuppressed = false;      // set by "Start again" so the page-hide that follows the reload cannot write the draft back
   var saveTimer = null;
   var restoring = false;
   function scheduleSave() {
@@ -222,7 +253,7 @@
   // Journey details for the message, read from the live form + page state (the same sources the existing WhatsApp message uses).
   function journeyContext() {
     var st = getState();
-    var ctx = { reference: '', route: '', trip: '', when: '', returnWhen: '', vehicle: '', passengers: '', fare: '', flight: '' };
+    var ctx = { reference: '', route: '', trip: '', when: '', returnWhen: '', vehicle: '', passengers: '', luggage: '', extras: '', fare: '', flight: '' };
     var ref = $('bulaRef');
     if (ref) ctx.reference = clean(ref.textContent, 80);
     if (st) {
@@ -232,11 +263,18 @@
       ctx.trip = st.tripType === 'return' ? 'Return' : 'One-way';
       ctx.vehicle = VEHICLE_NAMES[st.selectedVehicle] || '';
       ctx.passengers = String(st.passengers || '');
+      ctx.luggage = String(st.luggage == null ? '' : st.luggage);
     }
     var date = val('travelDate'), time = val('travelTime');
     if (date) ctx.when = clean(longDate(date) + (time ? ', ' + time : ''), 60);
     if (ctx.trip === 'Return' && val('returnDate')) ctx.returnWhen = clean(longDate(val('returnDate')) + (val('returnTime') ? ', ' + val('returnTime') : ''), 60);
     ctx.flight = clean(val('flightNum'), 20);
+    var ex = [];
+    if (checked('extra-lei')) ex.push('shell lei welcome');
+    if (checked('extra-seat')) ex.push('child/baby seat');
+    if (checked('extra-stop')) ex.push('supermarket stop');
+    if (checked('extra-surf')) ex.push('surfboard/oversized');
+    ctx.extras = ex.length ? ex.join(', ') : 'none';
     try {
       var t = window.calculateTotal();
       if (t && isFinite(t.final)) ctx.fare = 'FJ$' + window.fareText(t.final);
@@ -249,7 +287,7 @@
     ctx = ctx || {}; claim = claim || {};
     var price = clean(claim.price, 40), where = clean(claim.where, 120);
     var lines = [
-      'Hi Fiji Tour Transfers, I found a lower price for the same private transfer and would like to use your 10% price-beat offer.',
+      'Hi Fiji Tour Transfers, I found a lower total price for the same journey and would like to use your price-beat offer (10% below their verified total).',
       '',
       'MY BOOKING' + (ctx.reference ? '' : ' (not saved online yet)'),
       ctx.reference ? ctx.reference : null,
@@ -258,13 +296,15 @@
       ctx.returnWhen ? 'Return pickup: ' + ctx.returnWhen : null,
       ctx.flight ? 'Flight: ' + ctx.flight : null,
       ctx.vehicle || ctx.passengers ? 'Vehicle: ' + [ctx.vehicle, ctx.passengers ? ctx.passengers + (ctx.passengers === '1' ? ' passenger' : ' passengers') : ''].filter(Boolean).join(', ') : null,
+      ctx.luggage !== '' && ctx.luggage != null ? 'Luggage: ' + ctx.luggage + (ctx.luggage === '1' ? ' bag' : ' bags') : null,
+      ctx.extras ? 'Extras: ' + ctx.extras : null,
       ctx.fare ? 'Fare I was shown: ' + ctx.fare : null,
       '',
       'THE LOWER PRICE I FOUND',
-      'Their price: ' + (price || 'I will attach their quote'),
+      'Their total price (including mandatory charges): ' + (price || 'I will attach their quote'),
       'Where I saw it: ' + (where || 'I will attach a screenshot or link'),
       '',
-      'Please check it and confirm any new fare with me here before anything changes. Thank you.'
+      'Please check their quote against my journey above and confirm any new fare with me here before anything changes. Thank you.'
     ];
     return lines.filter(function (l) { return l !== null; }).join('\n');
   }

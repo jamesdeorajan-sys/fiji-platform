@@ -817,15 +817,25 @@
         <!-- Optional 10% price-beat request (2026-10-11 candidate). Collapsed by default, below the normal WhatsApp button, and independent of it: it only opens a WhatsApp message to the same team number.
              No price is calculated or promised here; the Fiji team verifies the guest's quote and confirms any new fare. Terms wording is DRAFT pending James's final text. -->
         <details class="price-beat" id="priceBeat">
-          <summary>Found a lower price elsewhere? <strong>We'll beat a verified lower price by 10%.</strong></summary>
+          <summary>Found a lower total price elsewhere? <strong>We'll go 10% below it.</strong></summary>
           <div class="price-beat-body">
-            <p>Optional, and it does not change your reservation above. If you have a lower written price for the same private transfer (same route, date, pickup time, vehicle and passengers), tell us what it is and where you saw it. Our Fiji team checks the quote and confirms any new fare with you on WhatsApp. Your fare stays as it is until they do.</p>
-            <label for="pbPrice">Their price (include the currency)</label>
+            <p>If you find a lower total price for the same journey, we will price your transfer <strong>10% below that verified total</strong>. That is 10% below their price, not 10% off ours.</p>
+            <p>The offer applies when their quote is for:</p>
+            <ul class="price-beat-terms">
+              <li>the same route and trip type (one-way or return)</li>
+              <li>the same pickup date and time</li>
+              <li>the same vehicle or service, for the same number of passengers</li>
+              <li>the same luggage and requested extras</li>
+              <li>a total that includes all mandatory charges</li>
+              <li>a current quote that is available for your journey</li>
+            </ul>
+            <p>Send us the quote below. Our Fiji team verifies it, and a reduced fare is confirmed only when they confirm it with you on WhatsApp. Until then your reservation stays at the fare you were shown. This is optional and does not affect your reservation or the WhatsApp message above.</p>
+            <label for="pbPrice">Their total price (include the currency)</label>
             <input type="text" id="pbPrice" class="field-input" maxlength="40" autocomplete="off" placeholder="e.g. FJ$ 40">
             <label for="pbWhere">Where you saw it (company or website)</label>
             <input type="text" id="pbWhere" class="field-input" maxlength="120" autocomplete="off" placeholder="e.g. company or website">
             <a id="pbSend" class="btn-secondary price-beat-send" href="https://wa.me/61478886145" target="_blank" rel="noopener">Send price-beat request on WhatsApp</a>
-            <p class="price-beat-note">WhatsApp opens with your journey details already typed. Press Send, and attach a screenshot of their quote if you can. Applies to like-for-like private transfers with a quote we can check; not to shared shuttles or prices we cannot verify.</p>
+            <p class="price-beat-note">WhatsApp opens with your journey details already typed. Press Send, and attach a screenshot or link of their quote if you can.</p>
           </div>
         </details>
 

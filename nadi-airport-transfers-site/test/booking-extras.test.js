@@ -52,22 +52,40 @@ test('STEPS: a numbered instruction sits between the handoff paragraph and the g
 });
 
 // ── 3. price-beat block: placement, honesty of the wording ───────────────────────────────────────────────────────────────
-test('PRICE-BEAT block: collapsed by default, after the main button, before the modification block; optional; separate link; no price shown or promised', () => {
+test('PRICE-BEAT block: collapsed by default, after the main button, before the modification block; optional; separate link', () => {
   const i = card.indexOf('id="priceBeat"');
   assert.ok(i > card.indexOf('id="bulaWaBtn"') && i > card.indexOf('id="bulaRetry"') && i < card.indexOf('class="bula-modify"'));
   const open = card.slice(card.lastIndexOf('<details', i), card.indexOf('>', i));
   assert.ok(!/\bopen\b/.test(open), 'collapsed by default');
   const block = card.slice(i, card.indexOf('</details>', i));
-  assert.match(block, /We'll beat a verified lower price by 10%/);
-  assert.match(block, /Optional, and it does not change your reservation above/);
-  assert.match(block, /confirms any new fare with you on WhatsApp/);
-  assert.match(block, /Your fare stays as it is until they do/);
-  assert.match(block, /not to shared shuttles or prices we cannot verify/);
   assert.match(block, /id="pbSend"[^>]*href="https:\/\/wa\.me\/61478886145"/);
-  assert.ok(!/\bFJ\$\s*\d|\$\s*\d/.test(block.replace(/e\.g\. FJ\$ 40/, '')), 'the block shows no price');
-  for (const claim of [/lowest price/i, /cheapest/i, /price guarantee/i, /guaranteed/i, /60[- ]second/i, /any price/i, /always beat/i, /we will match/i]) assert.ok(!claim.test(block), 'no unrestricted claim: ' + claim);
   assert.ok(!/required/.test(block), 'no required field: the guest can open the block, leave it empty and still just send');
   assert.ok(!/onclick|onsubmit/i.test(block), 'a plain link: no handler');
+});
+
+const plain = (h) => h.replace(/<\/?(strong|em)>/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const priceBeatText = () => plain(card.slice(card.indexOf('id="priceBeat"'), card.indexOf('</details>', card.indexOf('id="priceBeat"'))));
+
+test('PRICE-BEAT WORDING (James-approved 10%): says 10% BELOW the verified competitor total, not 10% off our fare', () => {
+  const t = priceBeatText();
+  assert.match(t, /Found a lower total price elsewhere\? We'll go 10% below it\./);
+  assert.match(t, /we will price your transfer 10% below that verified total\. That is 10% below their price, not 10% off ours\./);
+});
+
+test('PRICE-BEAT TERMS list every like-for-like condition James specified, in the published wording', () => {
+  const t = priceBeatText();
+  for (const term of ['the same route and trip type (one-way or return)', 'the same pickup date and time', 'the same vehicle or service, for the same number of passengers', 'the same luggage and requested extras',
+    'a total that includes all mandatory charges', 'a current quote that is available for your journey']) assert.ok(t.includes(term), 'missing term: ' + term);
+  assert.equal((card.slice(card.indexOf('price-beat-terms')).match(/<li>/g) || []).length >= 6, true);
+});
+
+test('PRICE-BEAT is a conditional offer, not a disclaimer: no invented minimum fare or hidden exclusion; no price shown; no unrestricted claim; confirmation only after human verification', () => {
+  const t = priceBeatText();
+  assert.match(t, /Our Fiji team verifies it, and a reduced fare is confirmed only when they confirm it with you on WhatsApp\. Until then your reservation stays at the fare you were shown\./);
+  assert.match(t, /This is optional and does not affect your reservation or the WhatsApp message above\./);
+  for (const bad of [/minimum/i, /at least/i, /except/i, /excluding/i, /subject to availability/i, /no promise/i, /not (a )?promise/i, /not guaranteed/i, /at our (sole )?discretion/i, /reserve the right/i, /we may (decline|refuse)/i, /shared shuttle/i,
+    /lowest price/i, /cheapest/i, /price guarantee/i, /60[- ]second/i, /any price/i, /always beat/i, /instantly/i]) assert.ok(!bad.test(t), 'forbidden wording: ' + bad);
+  assert.ok(!/(FJ\$|\$)\s*\d/.test(t.replace('e.g. FJ$ 40', '')), 'no price appears in the wording');
 });
 
 test('PRICE-BEAT block is outside the booking form steps, so it cannot gate or change submission', () => {
@@ -85,6 +103,7 @@ function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, app
   const mk = (id, props = {}) => (els[id] = Object.assign({
     id, value: '', checked: false, hidden: false, textContent: '', href: '', className: '', style: {}, dataset: {}, children: [], listeners: {},
     addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); },
+    classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
     insertBefore(n) { this.children.unshift(n); }, appendChild(n) { this.children.push(n); }, setAttribute() {}, focus() {},
   }, props));
   for (const id of ['pickup', 'destination', 'customPickupAddress', 'customPickupZone', 'customDestAddress', 'customDestZone', 'travelDate', 'travelTime', 'returnDate', 'returnTime', 'returnPickupLocation',
@@ -108,7 +127,7 @@ function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, app
       readyState: 'complete', visibilityState: 'visible', body: {},
       getElementById: (id) => els[id] || null,
       querySelectorAll: (sel) => (sel === '.trip-btn' ? tripBtns : []),
-      createElement: () => ({ style: {}, dataset: {}, children: [], className: '', textContent: '', addEventListener() {}, appendChild() {}, setAttribute() {} }),
+      createElement: () => ({ style: {}, dataset: {}, children: [], listeners: {}, className: '', textContent: '', addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); }, appendChild(n) { this.children.push(n); }, setAttribute() {} }),
       addEventListener(t, f) { (docListeners[t] = docListeners[t] || []).push(f); },
     },
     addEventListener(t, f) { (winListeners[t] = winListeners[t] || []).push(f); },
@@ -124,14 +143,15 @@ function makeEnv({ stored = null, search = '', storageMode = 'ok', ids = {}, app
     fareText: (n) => String(Math.round(Number(n) * 100) / 100),
     calculateTotal: () => ({ final: ctx.__fare ?? 49 }),
   };
-  ctx.window = ctx; ctx.window.location = { search };
+  let reloads = 0;
+  ctx.window = ctx; ctx.window.location = { search, reload() { reloads += 1; } };
   Object.defineProperty(ctx, 'sessionStorage', { get() { if (storageMode === 'blocked') throw new Error('SecurityError'); return storage || undefined; }, configurable: true });
   vm.createContext(ctx);
   vm.runInContext(`const VEHICLES = [{ key: 'sedan', maxPax: 3, maxBags: 3 }, { key: 'minivan', maxPax: 7, maxBags: 7 }, { key: 'minibus', maxPax: 12, maxBags: 12 }];
     const state = Object.assign({ passengers: 2, luggage: 1, tripType: 'one-way', selectedVehicle: null, selectedTour: null, pickup: { name: '✈ Nadi Airport' }, destination: { hotel: 'Hotel A', name: 'Hotel A' } }, ${JSON.stringify(appState)});
     this.__state = () => state;`, ctx);
   vm.runInContext(extrasSrc, ctx);
-  return { ctx, els, calls, data, timers, winListeners, docListeners, getObserver: () => observer, api: ctx.NadiBookingExtras, state: () => ctx.__state(), tripBtns };
+  return { ctx, els, calls, data, timers, winListeners, docListeners, reloads: () => reloads, getObserver: () => observer, api: ctx.NadiBookingExtras, state: () => ctx.__state(), tripBtns };
 }
 
 const goodDraft = (over = {}) => ({ v: 1, t: Date.now(), pickup: 'NAN', destination: 'HOTEL_B', customPickupAddress: '', customPickupZone: '', customDestAddress: '', customDestZone: '', travelDate: '2099-03-04', travelTime: '14:30',
@@ -233,7 +253,7 @@ const claimEnv = () => {
 test('CLAIM message carries booking reference, route, trip, pickup and return times, flight, vehicle, passengers, fare shown, and the guest\'s own price and source', () => {
   const e = claimEnv(); const ctx = e.api.journeyContext();
   const m = e.api.buildClaimMessage(ctx, { price: 'FJ$ 40', where: 'Example Transfers (example.com)' });
-  for (const part of ['Booking #281 · Ref: FTT-AB12', 'Nadi Airport → Hotel A (Return)', 'Pickup: ' + new Date('2099-05-06T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) + ', 10:00', 'Return pickup: ' + new Date('2099-05-12T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) + ', 09:30', 'Flight: FJ391', 'Vehicle: Private Sedan, 2 passengers', 'Fare I was shown: FJ$47.87', 'Their price: FJ$ 40', 'Where I saw it: Example Transfers (example.com)', '10% price-beat offer'])
+  for (const part of ['price-beat offer (10% below their verified total)', 'Luggage: 1 bag', 'Extras: none', 'Booking #281 · Ref: FTT-AB12', 'Nadi Airport → Hotel A (Return)', 'Pickup: ' + new Date('2099-05-06T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) + ', 10:00', 'Return pickup: ' + new Date('2099-05-12T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) + ', 09:30', 'Flight: FJ391', 'Vehicle: Private Sedan, 2 passengers', 'Fare I was shown: FJ$47.87', 'Their total price (including mandatory charges): FJ$ 40', 'Where I saw it: Example Transfers (example.com)'])
     assert.ok(m.includes(part), 'missing: ' + part + '\n' + m);
 });
 
@@ -243,13 +263,14 @@ test('CLAIM never invents a price, availability or confirmation: no reduced figu
   const numbers = (m.match(/\d+(?:\.\d+)?/g) || []);
   for (const forbidden of ['36', '36.00', '43.08', '42.0', '37.8']) assert.ok(!numbers.includes(forbidden), 'no derived price ' + forbidden);   // 40*0.9 = 36; 47.87*0.9 = 43.08
   assert.ok(!/(accepted|approved|is confirmed|booked for|guaranteed|available)/i.test(m));
-  assert.match(m, /Please check it and confirm any new fare with me here before anything changes/);
+  assert.equal((m.match(/10%/g) || []).length, 1, 'the 10% appears only in the offer sentence');
+  assert.match(m, /Please check their quote against my journey above and confirm any new fare with me here before anything changes/);
 });
 
 test('CLAIM with nothing typed still produces a usable message that asks the guest to attach the quote; and a not-yet-saved booking is stated as such', () => {
   const e = makeEnv(); e.els.bulaRef.textContent = '';
   const m = e.api.buildClaimMessage(e.api.journeyContext(), {});
-  assert.match(m, /Their price: I will attach their quote/); assert.match(m, /Where I saw it: I will attach a screenshot or link/); assert.match(m, /MY BOOKING \(not saved online yet\)/);
+  assert.match(m, /Their total price \(including mandatory charges\): I will attach their quote/); assert.match(m, /Where I saw it: I will attach a screenshot or link/); assert.match(m, /MY BOOKING \(not saved online yet\)/);
 });
 
 test('CLAIM text from the guest is sanitised and bounded; the final link stays under WhatsApp\'s practical length limit', () => {
@@ -267,5 +288,98 @@ test('CLAIM link updates as the guest types, and is set up when the result card 
   const e = claimEnv(); e.els.bulaSuccess.style.display = 'block'; e.getObserver()();
   assert.ok(decodeURIComponent(e.els.pbSend.href).includes('Booking #281'));
   e.els.pbPrice.value = 'AUD 55'; e.els.pbPrice.listeners.input[0]();
-  assert.ok(decodeURIComponent(e.els.pbSend.href).includes('Their price: AUD 55'));
+  assert.ok(decodeURIComponent(e.els.pbSend.href).includes('Their total price (including mandatory charges): AUD 55'));
+});
+
+// ── 7. SAFE RESTORATION (acceptance point 2) ─────────────────────────────────────────────────────────────────────────────
+const isoDay = (offsetDays) => { const d = new Date(Date.now() + offsetDays * 86400000); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const hhmm = (offsetMin) => { const d = new Date(Date.now() + offsetMin * 60000); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+
+test('PAST PICKUP: a saved pickup date that has passed is not restored, the guest is told which date, and the date field is flagged until they touch it', () => {
+  const e = makeEnv({ stored: goodDraft({ travelDate: '2020-02-03', travelTime: '14:30' }) });
+  assert.equal(e.els.travelDate.value, '', 'the old date is NOT written back (the page keeps its own default)');
+  assert.equal(e.els.travelTime.value, '', 'nor its time');
+  const notice = e.els.step1.children[0]; assert.ok(notice);
+  assert.match(notice.children[0].textContent, /Your earlier pickup date \(.*2020.*\) has passed, so please check the pickup date and time below before you continue\./);
+  assert.equal(e.els.travelDate.classList.contains('needs-check'), true, 'date field highlighted');
+  e.els.travelDate.listeners.change[0](); assert.equal(e.els.travelDate.classList.contains('needs-check'), false, 'cleared once the guest changes the date');
+  assert.equal(e.els.destination.value, 'HOTEL_B', 'the rest of the journey is still restored');
+});
+
+test('PAST PICKUP, same day: today with a time that has already gone counts as passed; a time still ahead is restored; no valid time on today is kept', () => {
+  const gone = makeEnv({ stored: goodDraft({ travelDate: isoDay(0), travelTime: hhmm(-90) }) });
+  const ahead = makeEnv({ stored: goodDraft({ travelDate: isoDay(0), travelTime: hhmm(+90) }) });
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  if (nowMin >= 90 && nowMin < 24 * 60 - 90) {                       // skip the two midnight-straddling windows so the test is never flaky
+    assert.equal(gone.els.travelDate.value, '', 'passed time today: not restored'); assert.ok(gone.els.travelDate.classList.contains('needs-check'));
+    assert.equal(ahead.els.travelDate.value, isoDay(0), 'a time later today is still valid'); assert.equal(ahead.els.travelTime.value, hhmm(+90));
+  }
+  const future = makeEnv({ stored: goodDraft({ travelDate: isoDay(5), travelTime: '09:00' }) });
+  assert.equal(future.els.travelDate.value, isoDay(5)); assert.equal(future.els.travelDate.classList.contains('needs-check'), false);
+});
+
+test('RETURN DATE is revalidated: a passed return date, or one before the restored pickup date, is dropped and the guest is told', () => {
+  const past = makeEnv({ stored: goodDraft({ tripType: 'return', returnDate: '2020-02-10', returnTime: '08:00' }) });
+  assert.equal(past.els.returnDate.value, ''); assert.match(past.els.step1.children[0].children[0].textContent, /Please choose your return date again\./);
+  const before = makeEnv({ stored: goodDraft({ tripType: 'return', travelDate: '2099-03-04', returnDate: '2099-03-01' }) });
+  assert.equal(before.els.returnDate.value, '', 'return before pickup is not restored');
+  const ok = makeEnv({ stored: goodDraft({ tripType: 'return', travelDate: '2099-03-04', returnDate: '2099-03-09', returnTime: '08:00' }) });
+  assert.equal(ok.els.returnDate.value, '2099-03-09');
+});
+
+test('REVALIDATED AND RECALCULATED: the draft never stores a fare or price; after restore the page\'s own pricing functions run last, so the fare shown is the current one', () => {
+  const e = makeEnv({ appState: { passengers: 3, luggage: 2, selectedVehicle: 'minivan' } }); e.els.destination.value = 'HOTEL_A';
+  const d = e.api.snapshotDraft();
+  assert.deepEqual(Object.keys(d).sort(), ['customDestAddress', 'customDestZone', 'customPickupAddress', 'customPickupZone', 'destination', 'extras', 'flightNum', 'flightUnknown', 'luggage', 'passengers', 'pickup', 'returnDate',
+    'returnPickupLocation', 'returnTime', 't', 'travelDate', 'travelTime', 'tripType', 'v', 'vehicle'], 'an allow-list of keys: nothing else can be persisted');
+  assert.ok(!/fare|price|amount|total|quote|override|name|email|phone|notes/i.test(Object.keys(d).join(',')), 'no money, contact or note key');
+  const r = makeEnv({ stored: goodDraft() }); const order = r.calls.map((c) => c[0]);
+  assert.ok(order.lastIndexOf('updatePricing') > order.lastIndexOf('updateExtras') && order.lastIndexOf('updatePricing') > order.lastIndexOf('changePax'), 'pricing recalculated after capacity/extras are set');
+  assert.ok(order.indexOf('selectVehicle') > order.indexOf('updatePricing'), 'vehicle is re-selected only after the fresh prices exist (and only if it still fits)');
+});
+
+test('START AGAIN clears the draft, reloads, and the page-hide that follows cannot write it back', () => {
+  const e = makeEnv({ stored: goodDraft() });
+  const btn = e.els.step1.children[0].children[1]; assert.equal(btn.textContent, 'Start again');
+  btn.listeners.click[0]();
+  assert.equal(e.data.ftt_journey_draft_v1, undefined, 'draft removed'); assert.equal(e.reloads(), 1, 'page reloaded');
+  e.winListeners.pagehide[0](); e.docListeners.visibilitychange && (e.ctx.document.visibilityState = 'hidden', e.docListeners.visibilitychange[0]());
+  e.els.bookingWidget.listeners.change[0](); e.timers.forEach((t) => t());
+  assert.equal(e.data.ftt_journey_draft_v1, undefined, 'still not written back by pagehide, visibility change or a pending debounce');
+});
+
+test('CORRUPTED OR HOSTILE STORAGE CONTENT never throws and never restores anything unsafe', () => {
+  const huge = 'x'.repeat(100000);
+  const shapes = [['array', '[1,2,3]'], ['string', '"hello"'], ['number', '42'], ['null', 'null'], ['empty object', '{}'], ['wrong types', JSON.stringify({ v: 1, t: Date.now(), destination: 'HOTEL_A', pickup: 7, passengers: 'many', luggage: {}, extras: [1], travelDate: 20260101, tripType: {}, vehicle: ['sedan'], flightNum: 5 })],
+    ['proto keys', '{"v":1,"t":' + Date.now() + ',"destination":"HOTEL_A","__proto__":{"polluted":true},"constructor":{"x":1}}'], ['huge strings', JSON.stringify(goodDraft({ flightNum: huge, customDestAddress: huge, customPickupAddress: huge, returnPickupLocation: huge, tripType: 'return' }))],
+    ['script text', JSON.stringify(goodDraft({ flightNum: '<img src=x onerror=alert(1)>', customDestAddress: '<script>alert(1)</script>' }))], ['truncated json', '{"v":1,"t":' + Date.now() + ',"dest']];
+  for (const [label, stored] of shapes) {
+    let e; assert.doesNotThrow(() => { e = makeEnv({ stored }); }, label);
+    assert.ok(e.state().passengers >= 1 && e.state().passengers <= 12 && e.state().luggage >= 0 && e.state().luggage <= 20, label + ': counts stay in range');
+    assert.ok(({}).polluted === undefined, label + ': no prototype pollution');
+    assert.ok(String(e.els.flightNum.value).length <= 20 && String(e.els.customDestAddress.value).length <= 200 && String(e.els.customPickupAddress.value).length <= 200 && String(e.els.returnPickupLocation.value).length <= 200, label + ': restored text is length-capped');
+  }
+  const html = makeEnv({ stored: JSON.stringify(goodDraft({ flightNum: '<img src=x onerror=alert(1)>' })) });
+  assert.equal(html.els.step1.children[0].children[0].textContent.includes('<img'), false, 'restored text is only ever assigned to form values, never into markup');
+  assert.ok(!/innerHTML|insertAdjacentHTML|document\.write/.test(extrasSrc), 'the script never builds markup from stored or typed text');
+});
+
+test('STORAGE FAILURE modes: blocked, throwing on every call, quota exceeded on write only - the form and booking still work', () => {
+  const quota = makeEnv({ stored: goodDraft() }); quota.ctx.sessionStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  quota.els.destination.value = 'HOTEL_A'; assert.doesNotThrow(() => quota.api.saveDraft()); assert.equal(quota.api.saveDraft(), false);
+  quota.els.bookingWidget.listeners.input[0](); assert.doesNotThrow(() => quota.timers.forEach((t) => t()));
+});
+
+test('CONTACT FIELDS: with name, email, phone and notes filled in, nothing of them is ever written to storage by any save path', () => {
+  const e = makeEnv(); e.els.destination.value = 'HOTEL_A';
+  Object.assign(e.els.firstName, { value: 'Zed' }); Object.assign(e.els.lastName, { value: 'Quincy' }); Object.assign(e.els.email, { value: 'zed.quincy@example.com' }); Object.assign(e.els.phone, { value: '+61400111222' }); Object.assign(e.els.notes, { value: 'room 12, allergic' });
+  e.api.saveDraft(); e.winListeners.pagehide[0](); e.els.bookingWidget.listeners.input[0](); e.timers.forEach((t) => t());
+  const all = JSON.stringify(e.data);
+  for (const secret of ['Zed', 'Quincy', 'zed.quincy', '61400111222', 'room 12', 'allergic']) assert.ok(!all.includes(secret), secret);
+  assert.deepEqual(Object.keys(e.data), ['ftt_journey_draft_v1'], 'one key only');
+});
+
+// ── 8. the page-only candidate does not depend on the Worker catalogue validator ───────────────────────────────────────────
+test('INDEPENDENCE: this page-only candidate sends no catalogue_ref and depends on no Worker change (the validator is a separate, held gate)', () => {
+  for (const f of ['booking-extras.js', 'index.html', 'app.js']) assert.ok(!read(f).includes('catalogue_ref'), f + ' must not reference catalogue_ref');
 });
