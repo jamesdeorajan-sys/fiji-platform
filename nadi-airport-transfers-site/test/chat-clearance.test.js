@@ -92,6 +92,7 @@ test('CONTACT ROUTE: while the launcher is tucked away <html> carries ftt-chat-y
 test('CONTACT ROUTE CSS: the header link is revealed ONLY on phones and ONLY while yielded, as a >=44px icon; no invisible blocking: the hidden launcher is visibility:hidden + pointer-events:none, and nothing else stays behind', () => {
   const css = src.slice(src.indexOf('Clearance (2026-10-11)'), src.indexOf('`;', src.indexOf('Clearance (2026-10-11)')));
   assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*html\.ftt-chat-yielded \.nav-phone \{ display: flex;[^}]*min-width: 44px; min-height: 44px;/);
-  assert.equal((css.match(/ftt-chat-yielded/g) || []).length, 2, 'only the nav-phone rules use it');
+  assert.equal((css.match(/ftt-chat-yielded/g) || []).length, 3, 'only the nav-phone rules use it');
+  assert.match(css, /html\.ftt-chat-yielded \.nav-phone ~ \.btn-nav \{ display: none; \}/, 'Book Now makes room for the icon, and only next to a .nav-phone link (never on FijiDash)');
   assert.match(css, /#ftt-chat-widget\.ftt-yield \{ opacity: 0; visibility: hidden; pointer-events: none;/);
 });

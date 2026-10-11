@@ -305,6 +305,8 @@
       /* While the launcher is tucked away the header's own WhatsApp link (display:none on phones) is shown as a compact icon, so a contact route stays visible. Pages without that link are unaffected. */
       html.ftt-chat-yielded .nav-phone { display: flex; font-size: 0; gap: 0; padding: 8px; margin-left: auto; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
       html.ftt-chat-yielded .nav-phone svg { width: 26px; height: 26px; color: #25d366; }
+      /* Room for the icon on a phone header: the "Book Now" button that follows it is hidden meanwhile (the guest is already at the form). Only matches where a .nav-phone link precedes it, i.e. never on FijiDash. */
+      html.ftt-chat-yielded .nav-phone ~ .btn-nav { display: none; }
     }
   `;
 
