@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 BASE=aebfab6   # live commit (Pages deployment b392d9c2)
 want='29 0 nadi-airport-transfers-site/src/booking-extras.css
-376 0 nadi-airport-transfers-site/src/booking-extras.js
+379 0 nadi-airport-transfers-site/src/booking-extras.js
 50 0 nadi-airport-transfers-site/src/chat-widget.js
 103 0 nadi-airport-transfers-site/src/fiji-pickup.js
 37 1 nadi-airport-transfers-site/src/index.html'
