@@ -213,7 +213,7 @@ test('sticky CTA never wraps or shrinks on narrow phones (text stays on one line
 });
 
 test('cache-busting versions were bumped for the changed assets', () => {
-  assert.match(html, /app\.js\?v=20261005-wa-handoff/); // bumped for the WhatsApp reservation handoff (on top of the P0 #237 quote-consent repair)
+  assert.match(html, /app\.js\?v=20261012-return-draft/); // bumped for the return-trip details in the normal WhatsApp message (previous key 20261005-wa-handoff)
   assert.match(html, /styles\.css\?v=20261005-wa-handoff/);
 });
 

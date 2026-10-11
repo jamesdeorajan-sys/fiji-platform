@@ -1178,6 +1178,25 @@ function buildWhatsAppURL(ref) {
       ]
     : [];
 
+  // Return-leg details for the normal WhatsApp message (same block as book.fijidash.com's buildWhatsAppURL): a return
+  // booking previously reached this message as just "Trip: Return". Not shown for a tour (the return fields are hidden for tours).
+  const returnSection = (state.tripType === 'return' && !t.hasTour)
+    ? (() => {
+        const returnDate = document.getElementById('returnDate')?.value;
+        const returnTime = document.getElementById('returnTime')?.value || 'Not set';
+        const returnLocation = document.getElementById('returnPickupLocation')?.value.trim() || toName;
+        const returnDateStr = returnDate ? new Date(returnDate+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'long',year:'numeric'}) : 'Not set';
+        return [
+          ``,
+          `*RETURN JOURNEY*`,
+          `-------------------------------------`,
+          `Return date:   ${returnDateStr}`,
+          `Return pickup: ${returnTime}`,
+          `Return from:   ${stripEmoji(returnLocation)}`,
+        ];
+      })()
+    : [];
+
   const msg = [
     `*NEW BOOKING REQUEST*`,
     `Fiji Tour Transfers`,
@@ -1196,7 +1215,9 @@ function buildWhatsAppURL(ref) {
     `Date:     ${dateStr}`,
     `Pickup:   ${time}`,
     `Trip:     ${tripLabel}`,
-    `Distance: ${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`,``,
+    `Distance: ${state.distanceKm.toFixed(1)} km · approx. ${formatDuration(state.durationMin)}`,
+    ...returnSection,
+    ``,
     `*VEHICLE & PASSENGERS*`,
     `-------------------------------------`,
     `Vehicle:    ${vName}`,

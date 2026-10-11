@@ -17,8 +17,9 @@ const sha = (f) => createHash('sha256').update(readFileSync(new URL('../src/' + 
 const card = html.slice(html.indexOf('id="bulaSuccess"'), html.indexOf('<div class="bula-divider">'));
 
 // ── 1. SCOPE: nothing the booking, price or save depends on has been touched ─────────────────────────────────────────────
-test('SCOPE: app.js and styles.css are byte-identical to the live commit aebfab6 (submit, payload, price, WhatsApp-message code cannot have changed)', () => {
-  assert.equal(sha('app.js'), '4dbb46c517bee8b27e46e18ae381d05cca13305c46cf328c8d1a7caf8297e1f4', 'app.js changed: this candidate must not edit booking, price or save code');
+test('SCOPE: styles.css is byte-identical to the live commit aebfab6; app.js is byte-identical outside buildWhatsAppURL() (submit, payload, price and save code cannot have changed; the permitted return-details change is pinned in return-draft.test.js)', () => {
+  const appSrc = read('app.js'); const a = appSrc.indexOf('function buildWhatsAppURL(ref) {'); const rest = appSrc.slice(0, a) + appSrc.slice(appSrc.indexOf('\n}\n', a) + 3);
+  assert.equal(createHash('sha256').update(rest).digest('hex'), '1582a4772eeb3f72f4ea80156ec3a0e2ef7758ce7fea1c7dd6bd1f4fcd60da32', 'app.js changed outside buildWhatsAppURL(): this candidate must not edit booking, price or save code');
   assert.equal(sha('styles.css'), 'ddfccf65c777f2781ce4f4877625749fa4377edda4c2879d0ee49c94b78dd0ff');
 });
 
@@ -34,8 +35,8 @@ test('SCOPE: the new script makes no network request, uses no persistent storage
 test('SCOPE: index.html changes are additive: the two new files are loaded after the existing ones with new cache keys; the pinned handoff paragraph and button are unchanged', () => {
   assert.equal(html.match(/<link rel="stylesheet" href="booking-extras\.css\?v=20261011-extras">/g).length, 1);
   assert.equal(html.match(/<script src="booking-extras\.js\?v=20261011-extras"><\/script>/g).length, 1);
-  assert.ok(html.indexOf('src="booking-extras.js') < html.indexOf('src="app.js?v=20261005-wa-handoff"'), 'the new scripts sit on their own line before app.js (they wait for DOMContentLoaded), so the app.js line is untouched');
-  assert.ok(html.includes('<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261005-wa-handoff"></script>'), 'the original app.js line is byte-identical');
+  assert.ok(html.indexOf('src="booking-extras.js') < html.indexOf('src="app.js?v=20261012-return-draft"'), 'the new scripts sit on their own line before app.js (they wait for DOMContentLoaded), so the app.js line is untouched');
+  assert.ok(html.includes('<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="app.js?v=20261012-return-draft"></script>'), 'the original app.js line is byte-identical');
   assert.ok(card.includes('<p class="bula-handoff" id="bulaHandoff">Tap the green button, then press Send in WhatsApp to send your reservation details. Our Fiji team will reply Bula, vinaka, check your details and confirm your transfer with you.</p>'));
   assert.ok(card.includes('<span>Open WhatsApp — send reservation</span>'));
   assert.ok(card.includes('<p class="bula-handoff-note"><strong>Opening WhatsApp alone does not send your request.</strong> Your transfer is confirmed only after our Fiji team confirms it with you.</p>'));
