@@ -50,7 +50,8 @@ test('STEPS: a numbered instruction sits between the handoff paragraph and the g
   assert.match(steps, /<strong>Tap<\/strong> the green button/);
   assert.match(steps, /<strong>Press Send<\/strong> in WhatsApp/);
   assert.match(steps, /<strong>We reply<\/strong> and confirm with you/);
-  assert.match(card, /<p class="bula-steps-note">Nothing reaches our team until you press Send in WhatsApp\.<\/p>/);
+  assert.match(card, /<p class="bula-steps-note">Press Send in WhatsApp to start your conversation with our Fiji team\.<\/p>/);
+  assert.ok(!/Nothing reaches our team/.test(html), 'the old sentence is gone everywhere on the page');
   assert.ok(card.indexOf('bula-steps-note') < card.indexOf('id="bulaWaBtn"'), 'the whole instruction is above the button');
   assert.ok(!/(has been sent|was sent|is confirmed|are confirmed|booked|guaranteed)/i.test(steps + card.slice(card.indexOf('bula-steps-note'), card.indexOf('bula-steps-note') + 120)), 'steps never claim a send or a confirmation');
 });
@@ -411,4 +412,25 @@ test('LOAD ORDER: fiji-pickup.js, then booking-extras.js, both before app.js and
   assert.ok(f > 0 && f < b && b < a, 'order: ' + [f, b, a].join(' < '));
   assert.match(extrasSrc, /addEventListener\('DOMContentLoaded', function \(\) \{ setTimeout\(wire, 0\); \}\)/);
   assert.match(read('fiji-pickup.js'), /addEventListener\('DOMContentLoaded', function \(\) \{ setTimeout\(init, 0\); \}\)/);
+});
+
+test('RETURN PICKUP LOCATION: a return journey\'s price-beat message carries the actual return pickup location, the default and an edited one; one-way journeys and an empty field add nothing', () => {
+  const ret = (location) => { const e = claimEnv(); e.els.returnPickupLocation.value = location; return e.api.buildClaimMessage(e.api.journeyContext(), { price: 'FJ$ 40', where: 'x' }); };
+  assert.ok(ret('Hotel A').includes('Return pickup: ') && ret('Hotel A').includes('Return pickup location: Hotel A'), 'the default (the destination hotel) is carried');
+  assert.ok(ret('Other hotel lobby, Wailoaloa').includes('Return pickup location: Other hotel lobby, Wailoaloa'), 'an edited location is carried exactly');
+  const m = ret('Other hotel lobby, Wailoaloa'); assert.ok(m.indexOf('Return pickup: ') < m.indexOf('Return pickup location: '), 'it sits right after the return date and time');
+  assert.ok(!ret('').includes('Return pickup location'), 'an empty field adds no line');
+  const one = makeEnv({ appState: { tripType: 'one-way' } }); one.els.returnPickupLocation.value = 'Hotel A'; one.els.travelDate.value = '2099-05-06';
+  assert.ok(!one.api.buildClaimMessage(one.api.journeyContext(), {}).includes('Return pickup location'), 'a one-way journey never includes it');
+  const hostile = ret('Lobby\u0000\r\n' + 'x'.repeat(500)); const line = hostile.split('\n').find((l) => l.startsWith('Return pickup location: '));
+  assert.ok(line && line.length <= 'Return pickup location: '.length + 160 && !/[\u0000-\u001f]/.test(line), 'sanitised and bounded');
+  assert.ok(e2url(ret('Other hotel lobby, Wailoaloa')).length < 2000, 'the link stays under the practical WhatsApp length');
+});
+function e2url(message) { return 'https://wa.me/61478886145?text=' + encodeURIComponent(message); }
+
+test('RETURN PICKUP LOCATION is read when the result card appears (so an edit made at any step is what the message carries) and follows the link as the guest types', () => {
+  const e = claimEnv(); e.els.returnPickupLocation.value = 'Edited lobby'; e.els.bulaSuccess.style.display = 'block'; e.getObserver()();
+  assert.ok(decodeURIComponent(e.els.pbSend.href).includes('Return pickup location: Edited lobby'));
+  e.els.pbPrice.value = 'AUD 55'; e.els.pbPrice.listeners.input[0]();
+  assert.ok(decodeURIComponent(e.els.pbSend.href).includes('Return pickup location: Edited lobby') && decodeURIComponent(e.els.pbSend.href).includes('AUD 55'));
 });

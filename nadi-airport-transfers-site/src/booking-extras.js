@@ -263,7 +263,7 @@
   // Journey details for the message, read from the live form + page state (the same sources the existing WhatsApp message uses).
   function journeyContext() {
     var st = getState();
-    var ctx = { reference: '', route: '', trip: '', when: '', returnWhen: '', vehicle: '', passengers: '', luggage: '', extras: '', fare: '', flight: '' };
+    var ctx = { reference: '', route: '', trip: '', when: '', returnWhen: '', returnFrom: '', vehicle: '', passengers: '', luggage: '', extras: '', fare: '', flight: '' };
     var ref = $('bulaRef');
     if (ref) ctx.reference = clean(ref.textContent, 80);
     if (st) {
@@ -277,6 +277,8 @@
     }
     var date = val('travelDate'), time = val('travelTime');
     if (date) ctx.when = clean(longDate(date) + (time ? ', ' + time : ''), 60);
+    // the location the guest will actually be collected from on the way back: the field's current value, so a location they edited is carried, not just the default
+    if (ctx.trip === 'Return') ctx.returnFrom = clean(val('returnPickupLocation'), 160);
     if (ctx.trip === 'Return' && val('returnDate')) ctx.returnWhen = clean(longDate(val('returnDate')) + (val('returnTime') ? ', ' + val('returnTime') : ''), 60);
     ctx.flight = clean(val('flightNum'), 20);
     var ex = [];
@@ -304,6 +306,7 @@
       ctx.route ? 'Route: ' + ctx.route + (ctx.trip ? ' (' + ctx.trip + ')' : '') : (ctx.trip ? 'Trip: ' + ctx.trip : null),
       ctx.when ? 'Pickup: ' + ctx.when : null,
       ctx.returnWhen ? 'Return pickup: ' + ctx.returnWhen : null,
+      ctx.returnFrom ? 'Return pickup location: ' + ctx.returnFrom : null,
       ctx.flight ? 'Flight: ' + ctx.flight : null,
       ctx.vehicle || ctx.passengers ? 'Vehicle: ' + [ctx.vehicle, ctx.passengers ? ctx.passengers + (ctx.passengers === '1' ? ' passenger' : ' passengers') : ''].filter(Boolean).join(', ') : null,
       ctx.luggage !== '' && ctx.luggage != null ? 'Luggage: ' + ctx.luggage + (ctx.luggage === '1' ? ' bag' : ' bags') : null,
