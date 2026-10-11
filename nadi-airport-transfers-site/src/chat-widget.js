@@ -513,30 +513,62 @@ What can I help with?`;
     document.getElementById('ftt-chat-input').addEventListener('input', autoResizeInput);
   }
 
-  // ─── Stay clear of page controls (small screens) ────────────────────
-  // The launcher is a fixed circle in the bottom-right corner, so on a phone it lands on top of whatever the guest is scrolling past: fields, selectors, buttons.
-  // While the topmost page element under the launcher is a control (or part of one), the launcher fades out and cannot be tapped or focused; it returns as soon as the spot
-  // is clear. It never moves, never hides while the chat panel is open, and does nothing on wider screens. The widget itself is otherwise unchanged.
+  // ─── Stay clear of page controls AND the result-card instructions (small screens) ──────────────────────────────────
+  // The launcher is a fixed circle in the bottom-right corner, so on a phone it lands on top of whatever the guest is scrolling past. While ANY control, or any line of text in a
+  // result card, overlaps the launcher's footprint, even by a sliver, the launcher fades out and cannot be tapped or focused; it returns as soon as the spot is clear.
+  // It never moves, never hides while the chat panel is open, and does nothing on wider screens. The widget itself is otherwise unchanged.
+  // HOW IT DECIDES (exact, not sampled): the footprint is the launcher's whole bounding box (plus the speech-bubble tooltip when it is showing), grown by CLEARANCE_MARGIN px. Every
+  // control, and every text-bearing element inside a result card, contributes its real on-screen rectangles (getClientRects: one per line for wrapped text). If any rectangle shares
+  // area with the footprint, the launcher yields. There are no probe points, so there is no band of the launcher that goes unchecked; an element hidden by display, visibility or
+  // content-visibility is ignored. Over-hiding (an element that is covered by something else) is the safe direction: the header's own WhatsApp link is shown meanwhile.
   // While it is hidden, <html> carries .ftt-chat-yielded; the CSS above uses it to show the header's own WhatsApp link (if the page has one) as an icon.
   const CLEARANCE_AVOID = 'a[href],button,input,select,textarea,summary,label,[role="button"],[onclick],.field-input,.typeahead-trigger,.vehicle-card,.vehicle-detail-card';
+  const CLEARANCE_TEXT_ROOTS = '.bula-success, .price-beat, .confirmation-card';   // booking result cards and the price-beat block: their instructions must stay readable
+  const CLEARANCE_MARGIN = 2;                                                       // px
   function setupClearance() {
     const widget = document.getElementById('ftt-chat-widget');
     const launcher = document.getElementById('ftt-chat-launcher');
-    if (!widget || !launcher || !window.matchMedia || !document.elementsFromPoint) return;
+    if (!widget || !launcher || !window.matchMedia) return;
     const mq = window.matchMedia('(max-width: 600px)');
-    const probes = [[0.5, 0.5], [0.15, 0.5], [0.85, 0.5], [0.5, 0.15], [0.5, 0.85], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
     let queued = false;
+    const shown = (el) => { try { return el.checkVisibility ? el.checkVisibility({ checkVisibilityCSS: true }) : true; } catch (e) { return true; } };
+    function footprints() {
+      const out = [];
+      const add = (el) => { const r = el && el.getBoundingClientRect && el.getBoundingClientRect(); if (r && (r.width > 0 || r.right > r.left) && (r.height > 0 || r.bottom > r.top)) out.push({ left: r.left - CLEARANCE_MARGIN, top: r.top - CLEARANCE_MARGIN, right: (r.right !== undefined ? r.right : r.left + r.width) + CLEARANCE_MARGIN, bottom: (r.bottom !== undefined ? r.bottom : r.top + r.height) + CLEARANCE_MARGIN }); };
+      add(launcher);
+      const tip = document.getElementById('ftt-chat-tooltip');
+      if (tip && shown(tip) && tip.offsetParent !== null) add(tip);
+      return out;
+    }
+    function overlaps(el, fps) {
+      const rects = el.getClientRects ? el.getClientRects() : [];
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i]; const right = r.right !== undefined ? r.right : r.left + r.width; const bottom = r.bottom !== undefined ? r.bottom : r.top + r.height;
+        if (!(right > r.left) || !(bottom > r.top)) continue;                    // empty box
+        for (let j = 0; j < fps.length; j++) {
+          const f = fps[j];
+          if (right > f.left && r.left < f.right && bottom > f.top && r.top < f.bottom && shown(el)) return true;
+        }
+      }
+      return false;
+    }
+    const hasOwnText = (el) => { const n = el.childNodes || []; for (let i = 0; i < n.length; i++) if (n[i].nodeType === 3 && /\S/.test(n[i].nodeValue || n[i].textContent || '')) return true; return false; };
     function evaluate() {
       queued = false;
       if (!mq.matches || isOpen) { widget.classList.remove('ftt-yield'); document.documentElement.classList.remove('ftt-chat-yielded'); return; }
-      const r = launcher.getBoundingClientRect();
+      const fps = footprints();
       let covers = false;
-      for (let i = 0; i < probes.length && !covers; i++) {
-        const stack = document.elementsFromPoint(r.left + r.width * probes[i][0], r.top + r.height * probes[i][1]);
-        for (let j = 0; j < stack.length; j++) {
-          if (widget.contains(stack[j])) continue;                 // skip the widget itself
-          covers = !!(stack[j].closest && stack[j].closest(CLEARANCE_AVOID));
-          break;                                                  // only the topmost page element counts
+      if (fps.length) {
+        const controls = document.querySelectorAll(CLEARANCE_AVOID);
+        for (let i = 0; i < controls.length && !covers; i++) { if (widget.contains(controls[i])) continue; covers = overlaps(controls[i], fps); }
+        if (!covers) {
+          const roots = document.querySelectorAll(CLEARANCE_TEXT_ROOTS);
+          for (let i = 0; i < roots.length && !covers; i++) {
+            if (widget.contains(roots[i]) || !roots[i].getClientRects().length) continue;   // a result card that is not on screen has nothing to protect
+            const all = roots[i].querySelectorAll('*');
+            for (let j = 0; j < all.length && !covers; j++) { if (hasOwnText(all[j])) covers = overlaps(all[j], fps); }
+            if (!covers && hasOwnText(roots[i])) covers = overlaps(roots[i], fps);
+          }
         }
       }
       widget.classList.toggle('ftt-yield', covers);
