@@ -15,7 +15,7 @@ function env({ narrow = true, stack = [] } = {}) {
     getBoundingClientRect() { return { left: 300, top: 700, width: 54, height: 54 }; } });
   const widgetKids = ['ftt-chat-launcher', 'ftt-chat-panel', 'ftt-chat-close', 'ftt-chat-send', 'ftt-chat-input', 'ftt-chat-messages', 'ftt-chat-whatsapp', 'ftt-chat-tooltip', 'ftt-chat-typing'];
   const document = {
-    readyState: 'complete', head: mk('head'), body: { appendChild(el) { ids[el.id] = el; el._widget = true; widgetKids.forEach((k) => { ids[k] = mk(k); ids[k]._widget = true; }); } },
+    readyState: 'complete', documentElement: mk('html'), head: mk('head'), body: { appendChild(el) { ids[el.id] = el; el._widget = true; widgetKids.forEach((k) => { ids[k] = mk(k); ids[k]._widget = true; }); } },
     getElementById: (id) => ids[id] || null, createElement: () => mk(''), querySelector: () => null, querySelectorAll: () => [],
     addEventListener(t, f) { (listeners.document[t] = listeners.document[t] || []).push(f); },
     elementsFromPoint: () => stack,
@@ -26,7 +26,7 @@ function env({ narrow = true, stack = [] } = {}) {
   ctx.window = ctx; vm.createContext(ctx); vm.runInContext(src, ctx);
   const widget = ids['ftt-chat-widget'];
   const flush = () => { for (let i = 0; i < 20 && timers.length; i++) { const q = timers.splice(0); q.forEach((f) => f()); } };
-  return { ctx, widget, ids, listeners, flush, timers, setStack(s) { stack.length = 0; s.forEach((x) => stack.push(x)); } };
+  return { ctx, widget, ids, listeners, flush, timers, html: document.documentElement, setStack(s) { stack.length = 0; s.forEach((x) => stack.push(x)); } };
 }
 const page = (match, extra = {}) => ({ closest: (sel) => (match ? { sel } : null), ...extra });
 const inWidget = { _widget: true, closest: () => ({}) };
@@ -77,4 +77,21 @@ test('THE THROTTLE DOES NOT DEPEND ON PAINTING: the clearance check is driven by
   const body = src.slice(src.indexOf('function setupClearance()'), src.indexOf('// ─── Initialise')).replace(/\/\/.*$/gm, '');   // comments may name it
   assert.ok(!/requestAnimationFrame/.test(body), 'setupClearance must not use requestAnimationFrame');
   assert.match(body, /setTimeout\(evaluate, 80\)/);
+});
+
+test('CONTACT ROUTE: while the launcher is tucked away <html> carries ftt-chat-yielded (so the page can show its own WhatsApp link); it is removed when the launcher returns, when the panel opens and on wide screens', () => {
+  const e = env({ stack: [inWidget, page(true)] }); e.flush();
+  assert.equal(e.html.classList.contains('ftt-chat-yielded'), true, 'hidden: flag on');
+  e.setStack([inWidget, page(false)]); e.listeners.window.scroll[0](); e.flush();
+  assert.equal(e.widget.classList.contains('ftt-yield'), false); assert.equal(e.html.classList.contains('ftt-chat-yielded'), false, 'back: flag off');
+  const wide = env({ narrow: false, stack: [inWidget, page(true)] }); wide.flush(); assert.equal(wide.html.classList.contains('ftt-chat-yielded'), false);
+  const open = env({ stack: [inWidget, page(true)] }); open.flush(); open.ids['ftt-chat-launcher'].listeners.click[0](); open.listeners.window.scroll[0](); open.flush();
+  assert.equal(open.html.classList.contains('ftt-chat-yielded'), false, 'panel open: flag off');
+});
+
+test('CONTACT ROUTE CSS: the header link is revealed ONLY on phones and ONLY while yielded, as a >=44px icon; no invisible blocking: the hidden launcher is visibility:hidden + pointer-events:none, and nothing else stays behind', () => {
+  const css = src.slice(src.indexOf('Clearance (2026-10-11)'), src.indexOf('`;', src.indexOf('Clearance (2026-10-11)')));
+  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*html\.ftt-chat-yielded \.nav-phone \{ display: flex;[^}]*min-width: 44px; min-height: 44px;/);
+  assert.equal((css.match(/ftt-chat-yielded/g) || []).length, 2, 'only the nav-phone rules use it');
+  assert.match(css, /#ftt-chat-widget\.ftt-yield \{ opacity: 0; visibility: hidden; pointer-events: none;/);
 });

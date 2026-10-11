@@ -302,6 +302,9 @@
     @media (max-width: 600px) {
       #ftt-chat-widget { transition: opacity 0.15s ease; }
       #ftt-chat-widget.ftt-yield { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s ease, visibility 0s linear 0.15s; }
+      /* While the launcher is tucked away the header's own WhatsApp link (display:none on phones) is shown as a compact icon, so a contact route stays visible. Pages without that link are unaffected. */
+      html.ftt-chat-yielded .nav-phone { display: flex; font-size: 0; gap: 0; padding: 8px; margin-left: auto; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+      html.ftt-chat-yielded .nav-phone svg { width: 26px; height: 26px; color: #25d366; }
     }
   `;
 
@@ -512,6 +515,7 @@ What can I help with?`;
   // The launcher is a fixed circle in the bottom-right corner, so on a phone it lands on top of whatever the guest is scrolling past: fields, selectors, buttons.
   // While the topmost page element under the launcher is a control (or part of one), the launcher fades out and cannot be tapped or focused; it returns as soon as the spot
   // is clear. It never moves, never hides while the chat panel is open, and does nothing on wider screens. The widget itself is otherwise unchanged.
+  // While it is hidden, <html> carries .ftt-chat-yielded; the CSS above uses it to show the header's own WhatsApp link (if the page has one) as an icon.
   const CLEARANCE_AVOID = 'a[href],button,input,select,textarea,summary,label,[role="button"],[onclick],.field-input,.typeahead-trigger,.vehicle-card,.vehicle-detail-card';
   function setupClearance() {
     const widget = document.getElementById('ftt-chat-widget');
@@ -522,7 +526,7 @@ What can I help with?`;
     let queued = false;
     function evaluate() {
       queued = false;
-      if (!mq.matches || isOpen) { widget.classList.remove('ftt-yield'); return; }
+      if (!mq.matches || isOpen) { widget.classList.remove('ftt-yield'); document.documentElement.classList.remove('ftt-chat-yielded'); return; }
       const r = launcher.getBoundingClientRect();
       let covers = false;
       for (let i = 0; i < probes.length && !covers; i++) {
@@ -534,6 +538,7 @@ What can I help with?`;
         }
       }
       widget.classList.toggle('ftt-yield', covers);
+      document.documentElement.classList.toggle('ftt-chat-yielded', covers);   // lets the page show its own contact link while the launcher is hidden
     }
     function queue() { if (!queued) { queued = true; setTimeout(evaluate, 80); } }   // a short timer, not requestAnimationFrame: it must not depend on the page being painted
     window.addEventListener('scroll', queue, { passive: true });
