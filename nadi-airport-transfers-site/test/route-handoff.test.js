@@ -206,6 +206,9 @@ const EXACT_PAGES = [
   { file: 'coral-coast-outrigger.html', dest: 'OUTRIGGER_FIJI', slug: 'coral-coast-outrigger' },
 ];
 
+// pages that carry one additional in-content booking link (same builder, same destination) after the "Quick answers" block
+const INLINE_CTA_PAGES = new Set(['port-denarau.html', 'coral-coast-outrigger.html', 'natadola-intercontinental.html']);
+
 const CHOOSER_PAGES = [
   { file: 'port-denarau.html', slug: 'port-denarau', codes: ['HILTON_DENARAU', 'SOFITEL_DENARAU'], mustNotOffer: ['PORT_DENARAU_MARINA'] },
   { file: 'pacific-harbour.html', slug: 'pacific-harbour', codes: ['ARTS_VILLAGE', 'PEARL_SOUTH_PACIFIC', 'UPRISING', 'NANUKU_RESORT'], mustNotOffer: [] },
@@ -221,7 +224,8 @@ for (const { file, dest, slug } of EXACT_PAGES) {
     const html = readPage(file);
     const expectedHtmlUrl = RouteHandoff.buildHandoffUrl(dest, slug).replaceAll('&', '&amp;');
     const exactLinkCount = html.split(`href="${expectedHtmlUrl}" data-route-cta`).length - 1;
-    assert.equal(exactLinkCount, 5, `expected 5 resilient, correctly attributed CTAs in ${file}`);
+    const expectedCtas = 5 + (INLINE_CTA_PAGES.has(file) ? 1 : 0);   // 2026-10-12: one extra in-content booking link on the three SEO-candidate pages
+    assert.equal(exactLinkCount, expectedCtas, `expected ${expectedCtas} resilient, correctly attributed CTAs in ${file}`);
     assert.ok(html.includes('<script src="../route-handoff.js"></script>'), `${file} must load the shared builder`);
     assert.ok(
       html.includes(`NadiRouteHandoff.applyDestToAllCtas('${dest}', '${slug}');`),
@@ -234,7 +238,8 @@ for (const { file, slug, codes, mustNotOffer } of CHOOSER_PAGES) {
   test(`${file}: native GET form works without JavaScript and secondary CTAs guide to its allowlisted chooser`, () => {
     const html = readPage(file);
     const chooserLinkCount = (html.match(/href="#destChooser" data-route-cta/g) || []).length;
-    assert.equal(chooserLinkCount, 4, `expected 4 secondary CTAs to guide to the chooser in ${file}`);
+    const expectedChooserCtas = 4 + (INLINE_CTA_PAGES.has(file) ? 1 : 0);
+    assert.equal(chooserLinkCount, expectedChooserCtas, `expected ${expectedChooserCtas} secondary CTAs to guide to the chooser in ${file}`);
     assert.ok(html.includes('<form id="destChooserForm" class="rp-dest-form" action="https://book.fijidash.com/" method="get">'));
     assert.ok(html.includes('<select id="destChooser" class="rp-dest-chooser" name="dest" required>'));
     assert.ok(html.includes('<input type="hidden" name="pickup" value="NAN">'));
