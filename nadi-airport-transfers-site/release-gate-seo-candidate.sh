@@ -9,9 +9,9 @@ BASE=ac3642e
 want='1 0 nadi-airport-transfers-site/src/transfer/radisson-blu-resort-fiji-denarau.html
 1 0 nadi-airport-transfers-site/src/transfer/sofitel-fiji-resort-spa.html
 1 0 nadi-airport-transfers-site/src/transfer/westin-denarau-island-resort.html
-27 5 nadi-airport-transfers-site/src/transfer/natadola-intercontinental.html
-29 7 nadi-airport-transfers-site/src/transfer/coral-coast-outrigger.html
-30 7 nadi-airport-transfers-site/src/transfer/port-denarau.html'
+25 3 nadi-airport-transfers-site/src/transfer/natadola-intercontinental.html
+26 4 nadi-airport-transfers-site/src/transfer/coral-coast-outrigger.html
+27 4 nadi-airport-transfers-site/src/transfer/port-denarau.html'
 got=$(git diff --numstat "$BASE" HEAD -- src | tr -s "\t" " " | sort)
 echo "src diff vs $BASE:"; echo "$got"
 [ "$got" = "$(printf '%s' "$want" | sort)" ] || { echo "FAIL: the src diff is not exactly the approved set"; exit 1; }

@@ -16,9 +16,9 @@ const RouteHandoff = (() => { const w = {}; const c = { window: w, document: {},
 const app = read('app.js');
 
 const PAGES = [
-  { file: 'transfer/port-denarau.html', slug: 'port-denarau', canonical: 'https://nadiairporttransfers.com/transfer/port-denarau', sedan: 'FJ$49', chooser: true, km: '10km', mins: '20 minutes' },
-  { file: 'transfer/coral-coast-outrigger.html', slug: 'coral-coast-outrigger', canonical: 'https://nadiairporttransfers.com/transfer/coral-coast-outrigger', sedan: 'FJ$129', dest: 'OUTRIGGER_FIJI', km: '88km', mins: '1 hour 28 minutes' },
-  { file: 'transfer/natadola-intercontinental.html', slug: 'natadola-intercontinental', canonical: 'https://nadiairporttransfers.com/transfer/natadola-intercontinental', sedan: 'FJ$99', dest: 'INTERCONTINENTAL_NATADOLA', km: '59km', mins: '1 hour 5 minutes' },
+  { file: 'transfer/port-denarau.html', slug: 'port-denarau', canonical: 'https://nadiairporttransfers.com/transfer/port-denarau', sedan: 'FJ$49', chooser: true, existing: ['12km, around 22 minutes'] },
+  { file: 'transfer/coral-coast-outrigger.html', slug: 'coral-coast-outrigger', canonical: 'https://nadiairporttransfers.com/transfer/coral-coast-outrigger', sedan: 'FJ$129', dest: 'OUTRIGGER_FIJI', existing: ['98km, around 1 hour 36 minutes'] },
+  { file: 'transfer/natadola-intercontinental.html', slug: 'natadola-intercontinental', canonical: 'https://nadiairporttransfers.com/transfer/natadola-intercontinental', sedan: 'FJ$99', dest: 'INTERCONTINENTAL_NATADOLA', existing: ['Your driver will confirm exact journey time when you book'] },
 ];
 const unesc = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 const text = (h) => unesc(h.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
@@ -40,18 +40,25 @@ for (const P of PAGES) {
     assert.ok(!/<meta name="robots"/i.test(h) && !/noindex/i.test(h));
     assert.equal((h.match(/<link rel="canonical"/g) || []).length, 1);
   });
-  test(`${P.slug}: quick answers carry only verified facts (capacity and bags equal the booking application's vehicle table; journey time stated as an estimate)`, () => {
+  test(`${P.slug}: quick answers state only what is verified: booking-form limits, the confirmation-instructions pickup line, the human-confirmation line, and NO new distance or journey-time figure`, () => {
     const g = h.slice(h.indexOf('id="at-a-glance"'), h.indexOf('</ul>', h.indexOf('id="at-a-glance"')));
     const t = text(g);
-    // the booking application's own table
     for (const c of ["maxPax:3,  maxBags:3", "maxPax:7,  maxBags:7", "maxPax:12, maxBags:14", "cap:'1–3 passengers'", "cap:'4–7 passengers'", "cap:'8–12 passengers'"]) assert.ok(app.includes(c), 'booking app no longer says: ' + c);
-    assert.ok(t.includes('Sedan 1–3 passengers, minivan 4–7, minibus 8–12') && t.includes('The fare is per vehicle, not per person'));
-    assert.ok(t.includes('Sedan up to 3 bags, minivan up to 7, minibus up to 14'));
-    assert.ok(t.includes('international arrivals hall') && t.includes('sign showing your name'), 'pickup wording from the site FAQ');
-    assert.ok(app.includes('Your driver waits in the international arrivals hall with a sign showing your name.'));
+    assert.ok(t.includes('In the booking form: sedan 1–3 passengers, minivan 4–7, minibus 8–12. The fare is per vehicle, not per person.'));
+    assert.ok(t.includes('In the booking form: sedan up to 3 bags, minivan up to 7, minibus up to 14.'));
+    assert.ok(t.includes('Pickup: Follow the meeting instructions in your transfer confirmation.'), 'meeting location is unverified: instruction wording only');
+    assert.ok(!/arrivals hall|sign showing|meets you|waits in/i.test(t), 'no meeting-location claim');
+    assert.ok(!/surf|oversized/i.test(t), 'no luggage-handling promise beyond the booking-form limits');
     assert.ok(t.includes('No payment now') && t.includes('confirms your pickup directly'));
-    assert.ok(new RegExp(`about ${P.km.replace('km', ' km')}.*${P.mins}`).test(t) || t.includes(P.km), t);
-    assert.ok(/estimated/.test(text(g)) || /estimate/.test(text(g)), 'journey time is labelled as an estimate');
+    assert.ok(t.includes('Journey time: Your driver confirms the journey time for your resort when you book'), t);
+    assert.ok(!/\d+(\.\d+)?\s?(km|kilomet|min|hr|hour)/i.test(t), 'no precise distance or time in the quick answers: ' + t);
+  });
+  test(`${P.slug}: the page's pre-existing journey text and fares are exactly as they were (nothing replaced with another uncertain figure)`, () => {
+    for (const e of P.existing) assert.ok(h.includes(e), 'pre-existing text missing: ' + e);
+    for (const bad of ['10km', 'about 88', '88km', '59km', '1 hour 28', '1 hour 5 ', 'around 20 minutes', 'estimated for', 'booking tool']) assert.ok(!h.includes(bad), 'new precise figure present: ' + bad);
+    const desc = unesc(h.match(/<meta name="description" content="([^"]*)">/)[1]) + ' ' + unesc(h.match(/<meta property="og:description" content="([^"]*)">/)[1]);
+    assert.ok(!/\d+\s?(km|min|hr|hour)|about an? (hour|hr)/i.test(desc), 'no journey time in descriptions: ' + desc);
+    assert.ok(h.includes(`${P.sedan}`));
   });
   test(`${P.slug}: nothing invented: no lowest-price, availability, review, rating, response-time or guarantee claims in the new copy or descriptions`, () => {
     const g = text(h.slice(h.indexOf('id="at-a-glance"'), h.indexOf('</ul>', h.indexOf('id="at-a-glance"'))));
@@ -65,7 +72,7 @@ for (const P of PAGES) {
     const vis = [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(m[2]).replace(/\s+/g, ' ').trim()]);
     const ld = faq.mainEntity.map((q) => [q.name, q.acceptedAnswer.text.replace(/\s+/g, ' ').trim()]);
     assert.deepEqual(ld, vis);
-    assert.ok(ld.length >= 6 && ld.some(([q]) => /passengers and bags/.test(q)) && ld.some(([q]) => /meet my driver/.test(q)));
+    assert.ok(ld.length >= 6 && ld.some(([q]) => /passengers and bags/.test(q)) && ld.some(([q, a]) => /meet my driver/.test(q) && a === 'Follow the meeting instructions in your transfer confirmation.'));
     for (const b of ldBlocks(h)) assert.ok(b['@context']);
   });
   test(`${P.slug}: a prominent in-content booking link keeps the destination (same builder; exact URL for fixed-resort pages, chooser anchor for the Denarau chooser)`, () => {
