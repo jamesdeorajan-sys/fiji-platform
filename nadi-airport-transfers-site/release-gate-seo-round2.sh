@@ -6,8 +6,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 BASE=5144a7f981f29a3c8a1a2280cf636413bdd594d6
-want='25 23 nadi-airport-transfers-site/src/transfer/shangri-la-yanuca-island.html
-26 24 nadi-airport-transfers-site/src/transfer/naviti-resort.html
+want='24 22 nadi-airport-transfers-site/src/transfer/shangri-la-yanuca-island.html
+25 23 nadi-airport-transfers-site/src/transfer/naviti-resort.html
 30 20 nadi-airport-transfers-site/src/transfer/pearl-south-pacific-resort.html
 38 24 nadi-airport-transfers-site/src/transfer/doubletree-sonaisali-island.html
 42 29 nadi-airport-transfers-site/src/transfer/hilton-fiji-beach-resort.html'
