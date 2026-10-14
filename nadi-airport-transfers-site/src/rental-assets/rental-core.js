@@ -3,6 +3,16 @@
 // A test (test/rental-page.test.js) runs both implementations over the same cases and fails if they ever disagree.
 
 export const CONSENT_VERSION = 'rental-consent-2026-10-14';
+
+// A version-4 UUID for the request id. crypto.randomUUID() exists only in secure contexts and in newer browsers (it is missing on iOS 15.0-15.3), so fall back
+// to getRandomValues, which every browser the booking site supports has.
+export function newRequestId(c = globalThis.crypto) {
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  const b = new Uint8Array(16); c.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 const MAX_RENTAL_DAYS = 120;
 const MAX_ADVANCE_DAYS = 550;
 

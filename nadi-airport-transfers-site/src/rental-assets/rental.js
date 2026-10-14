@@ -2,7 +2,7 @@
 // A saved request is NOT a confirmed rental. The page saves the request to the NAT backend (which alerts staff automatically),
 // shows the reference, and offers WhatsApp only as an optional extra. If saving fails the guest keeps their details and can
 // retry (same request id, so a retry never creates a second request) or send a WhatsApp-only enquiry instead.
-import { CONSENT_VERSION, fijiNow, validateTrip, validateContact, normalisePhone, summary, whatsappMessage } from './rental-core.js';
+import { CONSENT_VERSION, fijiNow, validateTrip, validateContact, normalisePhone, summary, whatsappMessage, newRequestId } from './rental-core.js';
 
 const NAT_WHATSAPP = '61478886145';
 const form = document.querySelector('#rental-form');
@@ -21,7 +21,7 @@ if (form) {
   // One id per request, kept for the browser session so a retry or a reload re-sends the SAME id (server-side idempotency).
   function requestId() {
     try { const s = sessionStorage.getItem(ID_KEY); if (s) return s; } catch { /* storage may be blocked */ }
-    const id = crypto.randomUUID();
+    const id = newRequestId();
     try { sessionStorage.setItem(ID_KEY, id); } catch { /* ignore */ }
     return id;
   }

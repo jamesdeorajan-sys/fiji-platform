@@ -158,6 +158,14 @@ test('shared validation (browser copy): Fiji-time dates, impossible dates, count
   assert.match(core.whatsappMessage({ ...good, ...base, vehicle: 'Toyota Aqua' }, 'NAT-R-ABC234'), /Rental reference: NAT-R-ABC234/);
 });
 
+test('request id: a valid v4 UUID even where crypto.randomUUID is unavailable (plain-http previews, iOS 15.0-15.3); the script never calls crypto.randomUUID directly', () => {
+  const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  assert.match(core.newRequestId(), uuid4);
+  const noRandomUuid = { getRandomValues: (a) => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 255; return a; } };
+  assert.match(core.newRequestId(noRandomUuid), uuid4);
+  assert.equal(new Set(Array.from({ length: 50 }, () => core.newRequestId({ getRandomValues: (a) => globalThis.crypto.getRandomValues(a) }))).size, 50);
+  assert.ok(!/crypto\.randomUUID/.test(JS), 'rental.js uses newRequestId()');
+});
 test('mobile experience: NAT shell, 16px inputs (no iOS zoom), 44px targets, stacked layout under 768px, sticky request bar that steps aside for the form', () => {
   assert.ok(PAGE.includes('<link rel="stylesheet" href="/styles.css?v=20260908a">') && PAGE.includes('family=Sora') && PAGE.includes('family=DM+Sans'));
   assert.match(PAGE, /\.rt-form input,\.rt-form select,\.rt-form textarea\{font:inherit;font-size:16px/);
