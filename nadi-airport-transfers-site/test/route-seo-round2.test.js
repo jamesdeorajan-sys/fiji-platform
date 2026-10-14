@@ -71,8 +71,7 @@ for (const P of PAGES) {
     const m = visible.match(UNVERIFIED); assert.equal(m, null, 'unverified wording: ' + (m && m[0]));
     if (P.slug !== 'doubletree-sonaisali-island') assert.ok(!/24\/7/.test(visible), '24/7 is only permitted where Hilton is the stated source (DoubleTree)');
     const fig = [...visible.matchAll(/\b\d+(\.\d+)?\s?(km|kilomet\w*|minutes?|hours?|hr)\b/gi)].map((x) => x[0]);
-    if (P.slug === 'shangri-la-yanuca-island') assert.ok(fig.every((x) => /^50 minutes$/.test(x)), 'only the resort-published 50 minutes: ' + fig);
-    else if (P.slug === 'doubletree-sonaisali-island') {
+    if (P.slug === 'doubletree-sonaisali-island') {
       assert.ok(fig.every((x) => /^25 minutes$/.test(x)), 'only Hilton\u2019s own 25 minutes: ' + fig);
       const sentences = visible.split(/(?<=[.!?])\s+/).filter((x) => /\b25 minutes\b/.test(x));
       assert.ok(sentences.length >= 1 && sentences.every((x) => /Hilton\u2019s website/.test(x)), 'the figure must be attributed to Hilton: ' + sentences);
@@ -86,10 +85,13 @@ for (const P of PAGES) {
   });
 }
 
-test('Shangri-La: the 50-minute figure is attributed to the resort’s own directions; no peninsula/beach/buggy claims', () => {
-  const h = read('transfer/shangri-la-yanuca-island.html');
-  assert.ok(h.includes('The resort’s own directions describe the drive from the airport as approximately 50 minutes by road'));
-  assert.ok(h.includes('shangri-la.com') && /do not guarantee a journey time/.test(h));
+test('Shangri-La: NO numerical journey time anywhere (visible copy, FAQ, JSON-LD, description) while the resort-published 50 minutes and the booking tool\u2019s 70 minutes disagree; the FAQ gives the same neutral answer as the other pages', () => {
+  const h = read('transfer/shangri-la-yanuca-island.html'); const v = text(h);
+  assert.ok(!/\b\d+\s?(minutes?|mins?|hours?|hrs?|km|kilomet\w*)\b/i.test(v), 'no figure');
+  assert.ok(!/50\s?minutes|approximately 50|shangri-la\.com|resort\u2019s own directions/i.test(h), 'the resort-published figure and its citation are gone from the page source (visible text and JSON-LD)');
+  const faq = ldBlocks(h).find((b) => b['@type'] === 'FAQPage').mainEntity.find((q) => /How long does the drive to Shangri-La Yanuca take\?/.test(q.name));
+  assert.ok(faq && faq.acceptedAnswer.text.startsWith('Journey time depends on traffic, road conditions and your exact pickup and drop-off point.') && /do not publish a fixed journey time/.test(faq.acceptedAnswer.text));
+  assert.ok(!/How far is Shangri-La/.test(h), 'old distance question removed');
 });
 test('Naviti: the Warwick relationship is stated as a shared brand, not a geography or ranking claim', () => {
   const h = read('transfer/naviti-resort.html'); const v = text(h);
