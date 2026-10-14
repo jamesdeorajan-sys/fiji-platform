@@ -135,8 +135,9 @@ test('SCOPE: booking JavaScript, styles, handoff builder, chat widget, extras, h
     'app.js': '77f9d10d26d9c009f6734d0d21d2fd16c14781ab266e7e21a82bb988de824191', 'styles.css': 'ddfccf65c777f2781ce4f4877625749fa4377edda4c2879d0ee49c94b78dd0ff',
     'route-handoff.js': '8d7f90cc9682aaa1baf91bb4384f6ea12025b5728de8242c7f5e4c9d856147ee', 'chat-widget.js': 'e8a3891fe69c51664d6c2ef6dd2a2d11a9e7b3d6a024f257ce262809503c4836',
     'booking-extras.js': 'e8aef0ce78f8cb1f7eb9ad925d52ad190aa1a4a1ae5329f48493add334276739', 'booking-extras.css': '5da6759b2dc795ade7d5bd67dd98bb689fba7300d04be3749ee1fc657c162e76',
-    'fiji-pickup.js': '9ac0ea0e887dbfdd1e9032e465faab27c51f407a5202d013090a3456cbbfafdb', 'index.html': 'c7974bfbea6e1320f3e89b9478ab2eb4ae32072f5feccb4eada7fa2d80b9cb70',
-    'sitemap.xml': 'ca1c6463ae929fb0dffea916aa635c108f5b8385cd89bc903f064e0dd57e1400', 'robots.txt': '2b6dbb0871547ca5e283f9679be2eac10d0a81ce56d86daffa2a6fcb4f9c10de',
+    'fiji-pickup.js': '9ac0ea0e887dbfdd1e9032e465faab27c51f407a5202d013090a3456cbbfafdb',
+    // index.html and sitemap.xml are NOT pinned here any more: the car-rental release changes exactly three navigation lines and one sitemap entry, pinned exactly in rental-page.test.js
+    'robots.txt': '2b6dbb0871547ca5e283f9679be2eac10d0a81ce56d86daffa2a6fcb4f9c10de',
     '_redirects': '578cd6f94e366cbeeba342ec4a34d912dc309e33f000953b8a3a8c3c38189de3',
   };
   for (const [f, want] of Object.entries(PINS)) assert.equal(sha(f), want, f + ' changed');
