@@ -65,11 +65,12 @@ if (form) {
     return a;
   }
 
-  function showSaved(d, ref, duplicate) {
+  function showSaved(d, ref, duplicate, related) {
     form.hidden = true; result.hidden = false; result.replaceChildren();
     document.querySelector('#wa-fallback')?.remove();
     add('h3', duplicate ? 'We already have this request.' : 'Your rental request is saved.');
     add('span', ref).className = 'rt-ref';
+    if (related) add('p', 'You sent a request with the same dates earlier (' + related + '). We saved these details as a new request and linked the two, so our team can see both.');
     add('p', 'This is not a confirmed rental. Best Adventure Fiji confirms the vehicle, the full price and the rental terms after our team connects you.');
     add('p', 'Our team is alerted automatically. We will message you on WhatsApp to start the conversation with the rental agent. You do not need to send anything else.');
     add('p', 'Quote this reference if you contact us. Want to say hello now? You can also message us, but this is optional.');
@@ -105,7 +106,10 @@ if (form) {
         }),
       });
       let body = null; try { body = await res.json(); } catch { /* not json */ }
-      if (res.ok && body && body.saved === true && body.reference) { showSaved(d, body.reference, !!body.duplicate); return; }
+      if (res.ok && body && body.saved === true && body.reference) { showSaved(d, body.reference, !!body.duplicate, body.related_reference || ''); return; }
+      // The same request id was already saved with DIFFERENT details (e.g. the first reply was lost and the guest then edited the form). Nothing was discarded or
+      // overwritten: the earlier request stays as it is, and sending again uses a fresh id so these changes are saved as a new, linked request.
+      if (res.status === 409 && body && body.code === 'REQUEST_ID_CONFLICT') resetRequestId();
       throw new Error((body && body.error) || 'We could not confirm your request was saved.');
     } catch (err) {
       // Never show raw browser error text ("Failed to fetch"): a dropped or blocked connection gets a plain sentence; server messages are already guest-ready.

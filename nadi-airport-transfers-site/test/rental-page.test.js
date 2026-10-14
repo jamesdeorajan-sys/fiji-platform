@@ -136,6 +136,13 @@ test('form script: safe DOM writes, same-id retry, honest saved-vs-confirmed wor
   assert.ok(!/fetch\([^)]*(?!endpoint)/.test(JS.replace(/fetch\(endpoint/g, '')), 'the only network call is to the form endpoint');
 });
 
+test('changed details are never silently dropped: a request-id conflict gets a fresh id and a clear message, and a linked save says so', () => {
+  assert.match(JS, /res\.status === 409 && body && body\.code === 'REQUEST_ID_CONFLICT'\) resetRequestId\(\)/, 'a 409 conflict resets the request id so the next send saves the changes as a new request');
+  assert.match(JS, /body\.related_reference/); assert.match(JS, /We saved these details as a new request and linked the two/);
+  assert.ok(!/duplicate\s*\?[^:]*changed/i.test(JS));
+  assert.match(JS, /showSaved\(d, body\.reference, !!body\.duplicate, body\.related_reference \|\| ''\)/);
+  assert.match(JS, /We already have this request\./, 'the duplicate wording is only reachable when the server says duplicate:true');
+});
 test('shared validation (browser copy): Fiji-time dates, impossible dates, country-code phone, consent, data-minimisation rules', () => {
   const base = { pickupDate: '2026-10-20', pickupTime: '10:00', returnDate: '2026-10-27', returnTime: '10:00', passengers: '2', bags: '2', pickup: 'Nadi International Airport (NAN)', dropoff: 'Same as collection', notes: '' };
   const now = '2026-10-14T23:30';
