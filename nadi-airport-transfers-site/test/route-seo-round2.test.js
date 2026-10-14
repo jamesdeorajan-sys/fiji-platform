@@ -50,7 +50,7 @@ for (const P of PAGES) {
     assert.equal(hrefs.length, { 'naviti-resort': 5, 'shangri-la-yanuca-island': 5, 'hilton-fiji-beach-resort': 5, 'doubletree-sonaisali-island': 5, 'pearl-south-pacific-resort': 5 }[P.slug]);
   });
   test(`${P.slug}: published fares unchanged and consistent (hero, table, schema); returns are below two one-ways`, () => {
-    assert.ok(h.includes(`<div class="rp-fare-amount">Published sedan fare FJ$${P.sedan}</div>`));
+    assert.ok(h.includes(`<div class="rp-fare-amount">FJ$${P.sedan}</div>`)); assert.ok(/<div class="rp-fare-note">Published sedan fare · 1–3 passengers/.test(h));
     const rows = [...h.matchAll(/<tr><td>(Sedan|Minivan|Minibus)[\s\S]*?<\/td><td>FJ\$(\d+)<\/td>(?:<td>FJ\$(\d+)<\/td>)?<\/tr>/g)];
     assert.deepEqual(rows.map((r) => Number(r[2])), P.one);
     if (P.ret) { assert.deepEqual(rows.map((r) => Number(r[3])), P.ret); P.ret.forEach((r, i) => assert.ok(r < 2 * P.one[i])); } else assert.ok(rows.every((r) => !r[3]));
