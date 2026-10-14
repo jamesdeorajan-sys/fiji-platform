@@ -1,6 +1,7 @@
-// NAT SEO round 2 (2026-10-14 candidate on 5144a7f): five existing resort pages. Local candidate, not deployed.
+// NAT SEO round 2, FOUR-PAGE candidate (2026-10-14, on production 5144a7f): Naviti, Shangri-La, Hilton and Pearl. Local candidate, not deployed.
+// DoubleTree is HELD pending ground-team confirmation of the road drop-off: its page must stay byte-identical to production (pinned below).
 // Pins: exact FijiDash destination codes through the handoff, unchanged fares and fare tables, FAQ schema = visible FAQ, no unverified operational/geography/journey claims,
-// the DoubleTree road-transfer endpoint vs the resort boat, and byte-identical booking/indexing assets.
+// the DoubleTree page held byte-identical to production, and byte-identical booking/indexing assets.
 // Run: node --test test/route-seo-round2.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,6 @@ const PAGES = [
   { slug: 'naviti-resort', dest: 'NAVITI_RESORT', sedan: 149, one: [149, 189, 239], ret: [280, 350, 445] },
   { slug: 'shangri-la-yanuca-island', dest: 'SHANGRI_LA_YANUCA', sedan: 129, one: [129, 159, 199], ret: [240, 295, 370] },
   { slug: 'hilton-fiji-beach-resort', dest: 'HILTON_DENARAU', sedan: 49, one: [49, 69, 99], ret: [95, 130, 185] },
-  { slug: 'doubletree-sonaisali-island', dest: 'DOUBLETREE_SONAISALI', sedan: 69, one: [69, 89, 119], ret: null },
   { slug: 'pearl-south-pacific-resort', dest: 'PEARL_SOUTH_PACIFIC', sedan: 199, one: [199, 269, 299], ret: [370, 500, 555] },
 ];
 const UNVERIFIED = /door-to-door|tracks your flight|monitors your flight|Flight-monitored|dedicated taxi|porte-coch|buggy|three beaches|fixed rate|Fixed Whole-Vehicle|adjusts pickup timing|southern tip|one of the largest|further east|family pool complex|western anchor|arrivals area|Sand Dunes|Sonaisali turnoff|lowest|cheapest|best price|\bwe guarantee|guaranteed (price|fare|time)|price guarantee|instantly confirm|\breviews\b|\brated\b|five-star/i;
@@ -47,7 +47,7 @@ for (const P of PAGES) {
       assert.equal(q.get('utm_source'), 'organic');
     }
     assert.equal(new Set(hrefs).size, 1, 'all CTAs are the same exact link');
-    assert.equal(hrefs.length, { 'naviti-resort': 5, 'shangri-la-yanuca-island': 5, 'hilton-fiji-beach-resort': 5, 'doubletree-sonaisali-island': 5, 'pearl-south-pacific-resort': 5 }[P.slug]);
+    assert.equal(hrefs.length, { 'naviti-resort': 5, 'shangri-la-yanuca-island': 5, 'hilton-fiji-beach-resort': 5, 'pearl-south-pacific-resort': 5 }[P.slug]);
   });
   test(`${P.slug}: published fares unchanged and consistent (hero, table, schema); returns are below two one-ways`, () => {
     assert.ok(h.includes(`<div class="rp-fare-amount">FJ$${P.sedan}</div>`)); assert.ok(/<div class="rp-fare-note">Published sedan fare · 1–3 passengers/.test(h));
@@ -69,13 +69,9 @@ for (const P of PAGES) {
   });
   test(`${P.slug}: no unverified geography, operational promise or journey figure is stated`, () => {
     const m = visible.match(UNVERIFIED); assert.equal(m, null, 'unverified wording: ' + (m && m[0]));
-    if (P.slug !== 'doubletree-sonaisali-island') assert.ok(!/24\/7/.test(visible), '24/7 is only permitted where Hilton is the stated source (DoubleTree)');
+    assert.ok(!/24\/7/.test(visible), '24/7 is not stated on these pages');
     const fig = [...visible.matchAll(/\b\d+(\.\d+)?\s?(km|kilomet\w*|minutes?|hours?|hr)\b/gi)].map((x) => x[0]);
-    if (P.slug === 'doubletree-sonaisali-island') {
-      assert.ok(fig.every((x) => /^25 minutes$/.test(x)), 'only Hilton\u2019s own 25 minutes: ' + fig);
-      const sentences = visible.split(/(?<=[.!?])\s+/).filter((x) => /\b25 minutes\b/.test(x));
-      assert.ok(sentences.length >= 1 && sentences.every((x) => /Hilton\u2019s website/.test(x)), 'the figure must be attributed to Hilton: ' + sentences);
-    } else assert.deepEqual(fig, [], 'journey figures: ' + fig);
+    assert.deepEqual(fig, [], 'journey figures: ' + fig);
   });
   test(`${P.slug}: related links point at existing pages without duplicates`, () => {
     const list = h.slice(h.lastIndexOf('<div class="rp-links">'), h.indexOf('</div>', h.lastIndexOf('<div class="rp-links">')));
@@ -98,23 +94,12 @@ test('Naviti: the Warwick relationship is stated as a shared brand, not a geogra
   assert.ok(v.includes('separate properties under the same Warwick Hotels & Resorts brand'));
   assert.ok(v.includes('Kids Club and a children’s playground') && !/family pool|slightly further|sister property/i.test(v));
 });
-test('DoubleTree: our fare is the road leg to the mainland jetty; the resort boat is described only as Hilton describes it (complimentary, 24/7 on demand, contact the resort), always attributed; no separate boat purchase is implied; no invented drop-off point', () => {
-  const h = read('transfer/doubletree-sonaisali-island.html'); const v = text(h);
-  assert.ok(v.includes('Our fare covers the road transfer only: it ends at the jetty on the mainland.'));
-  assert.ok(v.includes('Our road transfer starts and ends at the Sonaisali jetty'));
-  assert.ok(v.includes('The boat is the resort\u2019s service, not ours.'));
-  assert.ok(v.includes('travel to the island requires a complimentary short boat ride from the mainland that runs 24/7 on demand'), 'Hilton\u2019s own wording (hilton.com, read 14 Oct 2026)');
-  assert.ok(v.includes('contact the resort directly for boarding details'));
-  // every sentence that makes a boat/service claim names Hilton as the source
-  const claim = /complimentary|24\/7|on demand|three minutes|25 minutes|boarding/i;
-  const sentences = v.split(/(?<=[.!?])\s+/).filter((x) => claim.test(x));
-  assert.ok(sentences.length >= 5, 'claims present: ' + sentences.length);
-  for (const x of sentences) assert.ok(/Hilton\u2019s website|According to Hilton|Hilton describes/.test(x) || /boarding details, transfers or mobility assistance/.test(x), 'unattributed resort claim: ' + x);
-  // no implication that the guest must buy a separate boat transfer from us, and no price/hour claim of our own
-  assert.ok(!/(extra|additional|separate)\s+(boat\s+)?(charge|cost|fee|fare|ticket|transfer fee)|boat (transfer )?(costs|fare|fee|price)|pay (for )?the boat|book(ing)? the boat (with|through) us|purchase/i.test(v), 'no implied separate boat purchase');
-  assert.ok(!/not part of our fare|is not included/i.test(v), 'old "not included/not part of our fare" wording removed (it implied an extra charge)');
-  assert.ok(!/(meeting|drop-?off|pick-?up) (bay|spot|area|building|gate|desk)|car park|parking|jetty (name|address|road)|Jetty Road|wharf|marina/i.test(v.replace(/Sonaisali jetty/g, '')), 'no invented drop-off or meeting point');
-  assert.ok(/<title>Nadi Airport to DoubleTree Sonaisali Jetty: Private Transfer<\/title>/.test(h));
+test('DoubleTree is HELD: its page is byte-identical to the approved production page (5144a7f) pending ground-team confirmation of the road drop-off; this release does not touch it', () => {
+  assert.equal(sha('transfer/doubletree-sonaisali-island.html'), '08d82204bd716518d92ae318456d611f6ebd01fb89e6782d95769da8f4fa2cff', 'the DoubleTree page differs from production');
+  assert.ok(PAGES.every((x) => x.slug !== 'doubletree-sonaisali-island'), 'DoubleTree is not among the four pages');
+  const h = read('transfer/doubletree-sonaisali-island.html');
+  assert.equal(h.match(/<link rel="canonical" href="([^"]*)">/)[1], 'https://nadiairporttransfers.com/transfer/doubletree-sonaisali-island');
+  assert.ok(h.includes('dest=DOUBLETREE_SONAISALI'), 'its booking handoff still names the DoubleTree destination code');
 });
 test('MUTATION: the unsupported-claims detector really fires (a guarantee, lowest-price, review, rating or door-to-door sentence added to a real page fails it)', () => {
   const real = text(read('transfer/naviti-resort.html'));
@@ -128,7 +113,7 @@ test('MUTATION: the unsupported-claims detector really fires (a guarantee, lowes
   assert.ok(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(UNVERIFIED.source), 'the detector contains no control characters');
   assert.ok(UNVERIFIED.source.includes('\\bwe guarantee') && UNVERIFIED.source.includes('\\breviews\\b') && UNVERIFIED.source.includes('\\brated\\b'), 'real \\b boundaries present');
 });
-test('HYGIENE: the round-1 and round-2 SEO test files and the five pages contain no unintended control characters', () => {
+test('HYGIENE: the round-1 and round-2 SEO test files and the four pages contain no unintended control characters', () => {
   const files = [path.join(here, 'route-seo.test.js'), path.join(here, 'route-seo-round2.test.js')].concat(PAGES.map((x) => path.join(SRC, 'transfer', x.slug + '.html')));
   for (const f of files) {
     const bytes = readFileSync(f);
