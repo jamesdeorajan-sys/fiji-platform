@@ -23,7 +23,7 @@ const PAGES = [
   { slug: 'doubletree-sonaisali-island', dest: 'DOUBLETREE_SONAISALI', sedan: 69, one: [69, 89, 119], ret: null },
   { slug: 'pearl-south-pacific-resort', dest: 'PEARL_SOUTH_PACIFIC', sedan: 199, one: [199, 269, 299], ret: [370, 500, 555] },
 ];
-const UNVERIFIED = /door-to-door|tracks your flight|monitors your flight|Flight-monitored|dedicated taxi|porte-coch|buggy|three beaches|fixed rate|Fixed Whole-Vehicle|adjusts pickup timing|southern tip|one of the largest|further east|family pool complex|western anchor|arrivals area|Sand Dunes|Sonaisali turnoff|lowest|cheapest|best price|we guarantee|guaranteed (price|fare|time)|price guarantee|instantly confirm|24\/7|reviews|rated|five-star/i;
+const UNVERIFIED = /door-to-door|tracks your flight|monitors your flight|Flight-monitored|dedicated taxi|porte-coch|buggy|three beaches|fixed rate|Fixed Whole-Vehicle|adjusts pickup timing|southern tip|one of the largest|further east|family pool complex|western anchor|arrivals area|Sand Dunes|Sonaisali turnoff|lowest|cheapest|best price|\bwe guarantee|guaranteed (price|fare|time)|price guarantee|instantly confirm|\breviews\b|\brated\b|five-star/i;
 
 for (const P of PAGES) {
   const h = read(`transfer/${P.slug}.html`);
@@ -63,15 +63,20 @@ for (const P of PAGES) {
     assert.deepEqual(ld, vis); assert.ok(ld.length >= 9);
     for (const k of [/same as the fare shown/, /group and luggage/, /child seat/, /return transfer/, /meet my driver/, /pay now/, /confirms my booking/]) assert.ok(ld.some(([q]) => k.test(q)), String(k));
     const a = (re) => ld.find(([q]) => re.test(q))[1];
-    assert.ok(a(/same as the fare shown/).includes('published fares') && a(/same as the fare shown/).includes('can be higher or lower') && a(/same as the fare shown/).includes('over FJ$50') && a(/same as the fare shown/).includes('Child seats are FJ$8'));
+    assert.ok(a(/same as the fare shown/).includes('published fares') && a(/same as the fare shown/).includes('can be higher or lower') && a(/same as the fare shown/).includes('eligible standard transfer bookings') && a(/same as the fare shown/).includes('over FJ$50') && a(/same as the fare shown/).includes('Review step') && a(/same as the fare shown/).includes('Child seats are FJ$8'));
     assert.equal(a(/meet my driver/), 'Follow the meeting instructions in your transfer confirmation. If you cannot find your driver, contact our team on WhatsApp.');
     assert.ok(a(/pay now/).startsWith('No.') && !/arranged directly with your driver/.test(a(/pay now/)));
   });
   test(`${P.slug}: no unverified geography, operational promise or journey figure is stated`, () => {
     const m = visible.match(UNVERIFIED); assert.equal(m, null, 'unverified wording: ' + (m && m[0]));
+    if (P.slug !== 'doubletree-sonaisali-island') assert.ok(!/24\/7/.test(visible), '24/7 is only permitted where Hilton is the stated source (DoubleTree)');
     const fig = [...visible.matchAll(/\b\d+(\.\d+)?\s?(km|kilomet\w*|minutes?|hours?|hr)\b/gi)].map((x) => x[0]);
     if (P.slug === 'shangri-la-yanuca-island') assert.ok(fig.every((x) => /^50 minutes$/.test(x)), 'only the resort-published 50 minutes: ' + fig);
-    else assert.deepEqual(fig, [], 'journey figures: ' + fig);
+    else if (P.slug === 'doubletree-sonaisali-island') {
+      assert.ok(fig.every((x) => /^25 minutes$/.test(x)), 'only Hilton\u2019s own 25 minutes: ' + fig);
+      const sentences = visible.split(/(?<=[.!?])\s+/).filter((x) => /\b25 minutes\b/.test(x));
+      assert.ok(sentences.length >= 1 && sentences.every((x) => /Hilton\u2019s website/.test(x)), 'the figure must be attributed to Hilton: ' + sentences);
+    } else assert.deepEqual(fig, [], 'journey figures: ' + fig);
   });
   test(`${P.slug}: related links point at existing pages without duplicates`, () => {
     const list = h.slice(h.lastIndexOf('<div class="rp-links">'), h.indexOf('</div>', h.lastIndexOf('<div class="rp-links">')));
@@ -91,13 +96,43 @@ test('Naviti: the Warwick relationship is stated as a shared brand, not a geogra
   assert.ok(v.includes('separate properties under the same Warwick Hotels & Resorts brand'));
   assert.ok(v.includes('Kids Club and a children’s playground') && !/family pool|slightly further|sister property/i.test(v));
 });
-test('DoubleTree: the road transfer ends at the Sonaisali jetty and the resort’s boat is separate, arranged by the resort, and not part of our fare; no boat price/hours claim', () => {
+test('DoubleTree: our fare is the road leg to the mainland jetty; the resort boat is described only as Hilton describes it (complimentary, 24/7 on demand, contact the resort), always attributed; no separate boat purchase is implied; no invented drop-off point', () => {
   const h = read('transfer/doubletree-sonaisali-island.html'); const v = text(h);
   assert.ok(v.includes('Our fare covers the road transfer only: it ends at the jetty on the mainland.'));
-  assert.ok(v.includes('arranged and run by the resort, not by us, and is not part of our fare'));
   assert.ok(v.includes('Our road transfer starts and ends at the Sonaisali jetty'));
-  assert.ok(!/complimentary|free boat|on demand|3 minutes|three minutes|boat (runs|operates)|every \d+/i.test(v), 'no unverified boat claim');
+  assert.ok(v.includes('The boat is the resort\u2019s service, not ours.'));
+  assert.ok(v.includes('travel to the island requires a complimentary short boat ride from the mainland that runs 24/7 on demand'), 'Hilton\u2019s own wording (hilton.com, read 14 Oct 2026)');
+  assert.ok(v.includes('contact the resort directly for boarding details'));
+  // every sentence that makes a boat/service claim names Hilton as the source
+  const claim = /complimentary|24\/7|on demand|three minutes|25 minutes|boarding/i;
+  const sentences = v.split(/(?<=[.!?])\s+/).filter((x) => claim.test(x));
+  assert.ok(sentences.length >= 5, 'claims present: ' + sentences.length);
+  for (const x of sentences) assert.ok(/Hilton\u2019s website|According to Hilton|Hilton describes/.test(x) || /boarding details, transfers or mobility assistance/.test(x), 'unattributed resort claim: ' + x);
+  // no implication that the guest must buy a separate boat transfer from us, and no price/hour claim of our own
+  assert.ok(!/(extra|additional|separate)\s+(boat\s+)?(charge|cost|fee|fare|ticket|transfer fee)|boat (transfer )?(costs|fare|fee|price)|pay (for )?the boat|book(ing)? the boat (with|through) us|purchase/i.test(v), 'no implied separate boat purchase');
+  assert.ok(!/not part of our fare|is not included/i.test(v), 'old "not included/not part of our fare" wording removed (it implied an extra charge)');
+  assert.ok(!/(meeting|drop-?off|pick-?up) (bay|spot|area|building|gate|desk)|car park|parking|jetty (name|address|road)|Jetty Road|wharf|marina/i.test(v.replace(/Sonaisali jetty/g, '')), 'no invented drop-off or meeting point');
   assert.ok(/<title>Nadi Airport to DoubleTree Sonaisali Jetty: Private Transfer<\/title>/.test(h));
+});
+test('MUTATION: the unsupported-claims detector really fires (a guarantee, lowest-price, review, rating or door-to-door sentence added to a real page fails it)', () => {
+  const real = text(read('transfer/naviti-resort.html'));
+  assert.equal(real.match(UNVERIFIED), null, 'baseline page is clean');
+  for (const injected of ['We guarantee your transfer.', 'Lowest price in Fiji.', 'Rated by customer reviews.', 'We guarantee a 24/7 service.', 'Our five-star service.', 'Private door-to-door transfer.', 'Your driver tracks your flight.', 'Best price guaranteed.', 'The cheapest transfer.']) {
+    assert.ok(UNVERIFIED.test(real + ' ' + injected), 'detector missed: ' + injected);
+  }
+  // the repaired boundaries behave as word boundaries: ordinary words that merely contain the letters do not trigger it
+  assert.equal('Your final total is shown at the Review step.'.match(UNVERIFIED), null);
+  assert.equal('Children preview the pool.'.match(UNVERIFIED), null);
+  assert.ok(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(UNVERIFIED.source), 'the detector contains no control characters');
+  assert.ok(UNVERIFIED.source.includes('\\bwe guarantee') && UNVERIFIED.source.includes('\\breviews\\b') && UNVERIFIED.source.includes('\\brated\\b'), 'real \\b boundaries present');
+});
+test('HYGIENE: the round-1 and round-2 SEO test files and the five pages contain no unintended control characters', () => {
+  const files = [path.join(here, 'route-seo.test.js'), path.join(here, 'route-seo-round2.test.js')].concat(PAGES.map((x) => path.join(SRC, 'transfer', x.slug + '.html')));
+  for (const f of files) {
+    const bytes = readFileSync(f);
+    const bad = [...bytes].map((c, i) => [c, i]).filter(([c]) => c < 32 && c !== 9 && c !== 10 && c !== 13);
+    assert.equal(bad.length, 0, f + ' has control characters at byte offsets ' + bad.slice(0, 5).map((x) => x[1]));
+  }
 });
 test('Pearl: Pacific Harbour wording is promotional attribution only (promoted as the adventure capital), no distance or time', () => {
   const v = text(read('transfer/pearl-south-pacific-resort.html'));
