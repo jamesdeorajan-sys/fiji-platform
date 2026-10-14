@@ -46,7 +46,7 @@ if (form) {
   }
 
   document.querySelector('#next').addEventListener('click', () => {
-    if (!form.reportValidity()) return;
+    if (!form.reportValidity()) { errorEl.textContent = 'Please complete the required fields.'; return; }
     const issue = validateTrip(data());
     if (issue) { errorEl.textContent = issue; return; }
     document.querySelector('#summary').textContent = summary(data());
@@ -67,6 +67,7 @@ if (form) {
 
   function showSaved(d, ref, duplicate) {
     form.hidden = true; result.hidden = false; result.replaceChildren();
+    document.querySelector('#wa-fallback')?.remove();
     add('h3', duplicate ? 'We already have this request.' : 'Your rental request is saved.');
     add('span', ref).className = 'rt-ref';
     add('p', 'This is not a confirmed rental. Best Adventure Fiji confirms the vehicle, the full price and the rental terms after our team connects you.');
@@ -83,7 +84,7 @@ if (form) {
     const d = data();
     const tripIssue = validateTrip(d);
     if (tripIssue) { step(1); errorEl.textContent = tripIssue; return; }
-    if (!form.reportValidity()) return;
+    if (!form.reportValidity()) { errorEl.textContent = 'Please complete the required fields and tick both consent boxes.'; return; }
     const contactIssue = validateContact(d);
     if (contactIssue) { errorEl.textContent = contactIssue.message; field(contactIssue.field)?.focus(); return; }
     d.phone = normalisePhone(d.phone);
@@ -107,8 +108,13 @@ if (form) {
       if (res.ok && body && body.saved === true && body.reference) { showSaved(d, body.reference, !!body.duplicate); return; }
       throw new Error((body && body.error) || 'We could not confirm your request was saved.');
     } catch (err) {
+      // Never show raw browser error text ("Failed to fetch"): a dropped or blocked connection gets a plain sentence; server messages are already guest-ready.
       const aborted = err && err.name === 'AbortError';
-      errorEl.textContent = (aborted ? 'The connection was slow and we could not confirm your request was saved. ' : (err && err.message ? err.message + ' ' : '')) + 'Your details are still here. You can try again (it is safe: the same request is never saved twice) or send a WhatsApp-only enquiry instead.';
+      const network = err instanceof TypeError;
+      const lead = aborted ? 'The connection was slow and we could not confirm your request was saved. '
+        : network ? 'We could not reach our server, so we could not confirm your request was saved. '
+        : (err && err.message ? err.message.replace(/\s*$/, ' ') : 'We could not confirm your request was saved. ');
+      errorEl.textContent = lead + 'Your details are still here. You can try again (it is safe: the same request is never saved twice) or send a WhatsApp-only enquiry instead.';
       document.querySelector('#wa-fallback')?.remove();
       const wrap = document.createElement('div'); wrap.id = 'wa-fallback'; wrap.className = 'rt-actions';
       waLink(d, null, 'Send a WhatsApp-only enquiry instead', wrap);
