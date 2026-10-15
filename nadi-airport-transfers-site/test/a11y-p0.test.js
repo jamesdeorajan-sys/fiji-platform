@@ -39,12 +39,14 @@ test('SCOPE: the home page shows exactly the same text as production (only attri
   for (const h of ['Popular routes', 'Tours', 'Information']) assert.match(html, new RegExp(`<div class="footer-col">\\s*<h3>${h}</h3>`));
 });
 
-test('labels: every booking field label is programmatically tied to its control (17 fields)', () => {
-  const want = ['pickup', 'destination', 'customPickupAddress', 'customPickupZone', 'customDestAddress', 'customDestZone', 'travelDate', 'travelTime',
+test('labels: every booking field label is programmatically tied to its control (15 fields by for=, pickup and destination through the typeahead)', () => {
+  const want = ['customPickupAddress', 'customPickupZone', 'customDestAddress', 'customDestZone', 'travelDate', 'travelTime',
     'returnDate', 'returnTime', 'returnPickupLocation', 'flightNum', 'firstName', 'lastName', 'email', 'phone', 'notes'];
-  const fors = [...html.matchAll(/<label class="field-label"(?: id="\w+")? for="(\w+)">/g)].map((m) => m[1]);
+  const fors = [...html.matchAll(/<label class="field-label" for="(\w+)">/g)].map((m) => m[1]);
   assert.deepEqual([...fors].sort(), [...want].sort());
   for (const id of want) assert.equal((html.match(new RegExp(`<(?:input|select|textarea)\\b[^>]*\\bid="${id}"`, 'g')) || []).length, 1, id + ' control exists once');
+  assert.ok(html.includes('<label class="field-label" id="pickupLabel">') && html.includes('<label class="field-label" id="destinationLabel">'), 'pickup/destination labels name the visible typeahead, not the hidden select');
+  assert.ok(app.includes("  sel.tabIndex = -1;\n  sel.setAttribute('aria-hidden', 'true');"), 'hidden native select is out of the Tab order and the accessibility tree');
   assert.ok(html.includes('id="flightNum" class="field-input" aria-describedby="flightError"') && html.includes('<p id="flightError" role="alert" hidden>'));
 });
 
@@ -57,7 +59,7 @@ test('names: counters, swap, every Book button and the typeahead parts have spec
   assert.equal(tour.length, 16); assert.equal(new Set(tour).size, 16, 'tour Book names are unique');
   assert.ok(route.includes('Book Fiji Marriott Resort Momi Bay transfer') && tour.every((t) => t.startsWith('Book tour: ')));
   assert.ok(app.includes('aria-label="Book ${escapeHtml(r.dest)} transfer"') && app.includes('aria-label="Book tour: ${escapeHtml(t.name)}"'), 'the JS re-render keeps the same names');
-  assert.ok(app.includes('aria-labelledby="${selectId}Label ${selectId}_ta_text"') && html.includes('id="pickupLabel" for="pickup"') && html.includes('id="destinationLabel" for="destination"'));
+  assert.ok(app.includes('aria-labelledby="${selectId}Label ${selectId}_ta_text"') && html.includes('id="pickupLabel"') && html.includes('id="destinationLabel"'));
   assert.ok(app.includes("searchLabel: 'Search pickup locations', listLabel: 'Pickup locations'") && app.includes("searchLabel: 'Search destinations', listLabel: 'Destinations'"));
 });
 

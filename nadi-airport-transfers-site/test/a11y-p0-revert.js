@@ -27,6 +27,8 @@ function faqKey(e, i, el) {
   ['<div class="typeahead-list" id="${selectId}_ta_list" role="listbox"></div>',
    '<div class="typeahead-list" id="${selectId}_ta_list" role="listbox" aria-label="${opts.listLabel || \'Matching places\'}"></div>'],
   ['<div class="ta-opt ta-opt-sentinel" data-val="${s.value}">', '<div class="ta-opt ta-opt-sentinel" role="option" aria-selected="false" data-val="${s.value}">'],
+  ["  sel.classList.add('typeahead-hidden-select');\n",
+   "  sel.classList.add('typeahead-hidden-select');\n  // The visible typeahead is the control; keep the hidden native select out of the Tab order and the accessibility tree.\n  sel.tabIndex = -1;\n  sel.setAttribute('aria-hidden', 'true');\n"],
   ['<div class="ta-group-label">${g.label}</div>', '<div class="ta-group-label" role="presentation">${g.label}</div>'],
   ['<div class="ta-opt" data-val="${o.value}">', '<div class="ta-opt" role="option" aria-selected="false" data-val="${o.value}">'],
   [`    list.innerHTML = html;
@@ -101,7 +103,7 @@ function undoPairs(s, pairs, f) {
 }
 function undoIndex(s) {
   return s
-    .replace(/<label class="field-label" id="(pickup|destination)Label" for="\1">/g, '<label class="field-label">')
+    .replace(/<label class="field-label" id="(?:pickup|destination)Label">/g, '<label class="field-label">')
     .replace(/<label class="field-label" for="[A-Za-z]+">/g, '<label class="field-label">')
     .replace(/<label class="field-label" id="(?:paxLabel|luggageLabel)">/g, '<label class="field-label">')
     .replace(/<div class="pax-counter" role="group" aria-labelledby="(?:paxLabel|luggageLabel)">/g, '<div class="pax-counter">')

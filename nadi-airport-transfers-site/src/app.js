@@ -2233,6 +2233,9 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 
   // Hide the native select but keep it functional
   sel.classList.add('typeahead-hidden-select');
+  // The visible typeahead is the control; keep the hidden native select out of the Tab order and the accessibility tree.
+  sel.tabIndex = -1;
+  sel.setAttribute('aria-hidden', 'true');
   sel.parentNode.insertBefore(wrap, sel.nextSibling);
 
   const trigger    = wrap.querySelector('.typeahead-trigger');
