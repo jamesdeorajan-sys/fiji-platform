@@ -103,6 +103,7 @@ function undoPairs(s, pairs, f) {
 }
 function undoIndex(s) {
   return s
+    .replace('<a href="/transfer/coral-coast-outrigger">Nadi Airport → Outrigger Fiji</a>', '<a href="/transfer/outrigger-fiji-beach-resort">Nadi Airport → Outrigger Fiji</a>') // SEO fix A (ceo/nat-seo-verified-fixes): footer link no longer points at a redirect
     .replace(/<label class="field-label" id="(?:pickup|destination)Label">/g, '<label class="field-label">')
     .replace(/<label class="field-label" for="[A-Za-z]+">/g, '<label class="field-label">')
     .replace(/<label class="field-label" id="(?:paxLabel|luggageLabel)">/g, '<label class="field-label">')
