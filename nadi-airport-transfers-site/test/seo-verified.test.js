@@ -39,3 +39,11 @@ test('C: no unsupported superlative claims in any page text (#1, number one, che
   }
   assert.ok(readFileSync(path.join(SRC, 'index.html'), 'utf8').includes("WhatsApp our team now —\n            it's the same team that is arranging your transfer."));
 });
+
+test('D: the home page links to every live destination page in the sitemap', () => {
+  const home = readFileSync(path.join(SRC, 'index.html'), 'utf8');
+  const sitemap = readFileSync(path.join(SRC, 'sitemap.xml'), 'utf8');
+  const routes = [...sitemap.matchAll(/<loc>https:\/\/nadiairporttransfers\.com(\/transfer\/[a-z0-9-]+)<\/loc>/g)].map((m) => m[1]);
+  assert.equal(routes.length, 23);
+  for (const r of routes) assert.ok(home.includes(`href="${r}"`), 'home does not link to ' + r);
+});

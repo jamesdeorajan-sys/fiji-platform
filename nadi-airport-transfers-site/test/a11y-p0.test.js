@@ -36,7 +36,7 @@ test('SCOPE: every other served file (route pages incl. DoubleTree, rental page,
 });
 
 // The only approved page-text edit on top of production (candidate C, wording subject to James's approval); everything else must be identical.
-const APPROVED_TEXT_EDITS = [["it's the same team that is arranging your transfer.", "we're the #1 team to reach out to during your Fiji stay."]];
+const APPROVED_TEXT_EDITS = [['        <a href="/transfer/radisson-blu-resort-fiji-denarau">Nadi Airport → Radisson Blu Denarau</a>\n        <a href="/transfer/sofitel-fiji-resort-spa">Nadi Airport → Sofitel Denarau</a>\n        <a href="/transfer/westin-denarau-island-resort">Nadi Airport → Westin Denarau</a>\n        <a href="/transfer/crowne-plaza-fiji-nadi-bay">Nadi Airport → Crowne Plaza Nadi Bay</a>\n        <a href="/transfer/first-landing-beach-resort">Nadi Airport → First Landing, Vuda Point</a>\n        <a href="/transfer/fiji-marriott-resort-momi-bay">Nadi Airport → Marriott Momi Bay</a>\n        <a href="/transfer/warwick-fiji">Nadi Airport → The Warwick Fiji</a>\n        <a href="/transfer/tanoa-international-hotel">Nadi Airport → Tanoa International</a>\n        <a href="/transfer/tokatoka-resort-hotel">Nadi Airport → Tokatoka Resort</a>\n', ''], ["it's the same team that is arranging your transfer.", "we're the #1 team to reach out to during your Fiji stay."]];
 test('SCOPE: the home page shows exactly the same text as production apart from the listed approved text edits (only attributes and one heading level change)', () => {
   const asProduction = APPROVED_TEXT_EDITS.reduce((s, [now, was]) => s.replace(now, was), html);
   assert.equal(visible(asProduction), visible(a11yRevert('index.html', html)));
