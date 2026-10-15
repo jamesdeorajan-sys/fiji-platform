@@ -48,6 +48,9 @@
     try {
       if (!document.getElementById('booking')) return; // only pages with the booking form
       send('booking_page_view', 'view');
+      // a route already filled in on arrival (deep link ?pickup=&dest=, or a restored draft) is set by the page without a change event
+      var p0 = document.getElementById('pickup'), d0 = document.getElementById('destination');
+      if (p0 && d0 && p0.value && d0.value) send('route_selected', 'route');
       document.addEventListener('change', function (e) {
         var t = e.target; if (!t) return;
         if (t.id === 'pickup' || t.id === 'destination') {

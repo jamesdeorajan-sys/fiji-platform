@@ -89,3 +89,20 @@ test('route attribution and robustness: route slug from utm_content; storage fai
   assert.doesNotThrow(() => vm.runInContext(SRC, c));
   assert.equal(c.__NAT_FUNNEL_CAPTURE.length, 0, 'no booking form on the page -> no events');
 });
+
+test('deep link / restored draft: a route already filled in on arrival records route_selected once', () => {
+  const p = page({ search: '?pickup=NAN&dest=NAVITI_RESORT&utm_content=naviti-resort' });
+  // page() runs the script immediately with empty fields; simulate the page having prefilled them before the script ran
+  const q = (() => {
+    const els = { booking: { id: 'booking' }, pickup: { id: 'pickup', value: 'NAN' }, destination: { id: 'destination', value: 'NAVITI_RESORT' } };
+    const c = { window: { __NAT_FUNNEL_CAPTURE: [] }, document: { readyState: 'complete', referrer: '', getElementById: (id) => els[id] || null, addEventListener() {} }, location: { pathname: '/', search: '?pickup=NAN&dest=NAVITI_RESORT' }, URLSearchParams, JSON, Object, Array, Math, Uint8Array, Blob: class {}, sessionStorage: { getItem: () => null, setItem() {} }, crypto: { randomUUID: () => 's' }, navigator: {}, MutationObserver: class { observe() {} } };
+    vm.createContext(c); vm.runInContext('Object.assign(globalThis, window); window = globalThis;', c); vm.runInContext(SRC, c);
+    return c.__NAT_FUNNEL_CAPTURE.map((e) => e.event_type);
+  })();
+  assert.deepEqual(q, ['booking_page_view', 'route_selected']);
+  // an empty form on arrival does not record a route
+  assert.deepEqual(p.events(), ['booking_page_view']);
+  // and a later change does not record it twice
+  p.els.pickup.value = 'NAN'; p.els.destination.value = 'NAVITI_RESORT'; p.fire('change', p.els.destination); p.fire('change', p.els.destination);
+  assert.deepEqual(p.events(), ['booking_page_view', 'route_selected']);
+});
