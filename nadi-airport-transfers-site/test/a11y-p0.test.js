@@ -30,7 +30,7 @@ test('SCOPE: every other served file (route pages incl. DoubleTree, rental page,
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC);
-  const others = files.filter((f) => !(f in PROD)).sort();
+  const others = files.filter((f) => !(f in PROD) && f !== 'funnel-nat.js').sort(); // funnel-nat.js: new file of the funnel candidate, tested in funnel-nat.test.js
   assert.equal(others.length, 41);
   assert.equal(sha(others.map((f) => `${f}\0${sha(readFileSync(path.join(SRC, f)))}\n`).join('')), OTHERS_PROD);
 });
