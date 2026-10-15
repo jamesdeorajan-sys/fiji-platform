@@ -31,3 +31,11 @@ test('B: homepage title fits search results (<= 60), keeps the site name first a
   assert.ok(s.includes(`<meta property="og:title" content="${title}">`) && s.includes(`<meta name="twitter:title" content="${title}">`));
   for (const w of ['cheapest', 'best', 'lowest', '#1', 'guaranteed']) assert.ok(!(title + desc).toLowerCase().includes(w), w);
 });
+
+test('C: no unsupported superlative claims in any page text (#1, number one, cheapest); the replacement states only how WhatsApp support works', () => {
+  for (const p of html) {
+    const v = readFileSync(p, 'utf8').replace(/<head\b[\s\S]*?<\/head>/i, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/g, '').replace(/<[^>]+>/g, ' ');
+    for (const re of [/#1\b/, /number one/i, /\bcheapest\b/i]) assert.ok(!re.test(v), `${path.relative(SRC, p)}: ${re}`);
+  }
+  assert.ok(readFileSync(path.join(SRC, 'index.html'), 'utf8').includes("WhatsApp our team now —\n            it's the same team that is arranging your transfer."));
+});

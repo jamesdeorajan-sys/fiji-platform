@@ -35,8 +35,11 @@ test('SCOPE: every other served file (route pages incl. DoubleTree, rental page,
   assert.equal(sha(others.map((f) => `${f}\0${sha(readFileSync(path.join(SRC, f)))}\n`).join('')), OTHERS_PROD);
 });
 
-test('SCOPE: the home page shows exactly the same text as production (only attributes and one heading level change)', () => {
-  assert.equal(visible(html), visible(a11yRevert('index.html', html)));
+// The only approved page-text edit on top of production (candidate C, wording subject to James's approval); everything else must be identical.
+const APPROVED_TEXT_EDITS = [["it's the same team that is arranging your transfer.", "we're the #1 team to reach out to during your Fiji stay."]];
+test('SCOPE: the home page shows exactly the same text as production apart from the listed approved text edits (only attributes and one heading level change)', () => {
+  const asProduction = APPROVED_TEXT_EDITS.reduce((s, [now, was]) => s.replace(now, was), html);
+  assert.equal(visible(asProduction), visible(a11yRevert('index.html', html)));
   for (const h of ['Popular routes', 'Tours', 'Information']) assert.match(html, new RegExp(`<div class="footer-col">\\s*<h3>${h}</h3>`));
 });
 

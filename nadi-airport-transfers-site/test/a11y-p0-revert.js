@@ -103,6 +103,7 @@ function undoPairs(s, pairs, f) {
 }
 function undoIndex(s) {
   return s
+    .replace("            it's the same team that is arranging your transfer.", "            we're the #1 team to reach out to during your Fiji stay.") // candidate C: unsupported '#1 team' claim replaced (wording needs James's approval)
     .split('Nadi Airport Transfers | Fixed-Price Fiji Airport Transfers').join('Nadi Airport Transfers — Fixed-Price Private Transfers | Fiji Tour Transfers').replace('Private Nadi Airport transfers to Denarau, the Coral Coast, Pacific Harbour, Sigatoka and 50+ hotels. Fixed whole-vehicle prices online; no payment to request.', 'Request a private transfer from Nadi International Airport to Denarau, the Coral Coast, Pacific Harbour, Sigatoka and 50+ hotels. Fixed whole-vehicle prices shown online; no payment now. Your transfer is confirmed by our Fiji team.') // SEO candidate B: homepage title/description
     .replace('<a href="/transfer/coral-coast-outrigger">Nadi Airport → Outrigger Fiji</a>', '<a href="/transfer/outrigger-fiji-beach-resort">Nadi Airport → Outrigger Fiji</a>') // SEO fix A (ceo/nat-seo-verified-fixes): footer link no longer points at a redirect
     .replace(/<label class="field-label" id="(?:pickup|destination)Label">/g, '<label class="field-label">')
