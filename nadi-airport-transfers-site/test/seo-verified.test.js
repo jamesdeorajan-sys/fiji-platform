@@ -47,3 +47,9 @@ test('D: the home page links to every live destination page in the sitemap', () 
   assert.equal(routes.length, 23);
   for (const r of routes) assert.ok(home.includes(`href="${r}"`), 'home does not link to ' + r);
 });
+
+test('E: booking contact fields declare their purpose for autofill and assistive tech (WCAG 1.3.5)', () => {
+  const home = readFileSync(path.join(SRC, 'index.html'), 'utf8');
+  for (const [id, ac] of [['firstName', 'given-name'], ['lastName', 'family-name'], ['email', 'email'], ['phone', 'tel']])
+    assert.match(home, new RegExp(`id="${id}" class="field-input" autocomplete="${ac}"`), id);
+});
