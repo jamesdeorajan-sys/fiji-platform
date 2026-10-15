@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -47,8 +48,8 @@ test('SCOPE: the production tree is byte-identical except the home page (3 added
     'fiji-pickup.js': '9ac0ea0e887dbfdd1e9032e465faab27c51f407a5202d013090a3456cbbfafdb', 'robots.txt': '2b6dbb0871547ca5e283f9679be2eac10d0a81ce56d86daffa2a6fcb4f9c10de',
     '_redirects': '578cd6f94e366cbeeba342ec4a34d912dc309e33f000953b8a3a8c3c38189de3',
   };
-  for (const [f, want] of Object.entries(PINS)) assert.equal(shaFile(f), want, f + ' changed');
-  let home = rd('index.html');
+  for (const [f, want] of Object.entries(PINS)) assert.equal(f === 'app.js' || f === 'styles.css' ? sha(a11yRevert(f, rd(f))) : shaFile(f), want, f + ' changed');
+  let home = a11yRevert('index.html', rd('index.html'));
   for (const a of ['      <a href="/nadi-airport-car-rentals/">Car rentals</a>\n', '    <a href="/nadi-airport-car-rentals/">Car rentals</a>\n', '        <a href="/nadi-airport-car-rentals/">Request a rental car</a>\n']) {
     assert.equal(home.split(a).length, 2, 'home page line present exactly once: ' + a.trim());
     home = home.replace(a, '');

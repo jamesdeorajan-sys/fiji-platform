@@ -123,9 +123,9 @@ h4{font-size:1rem;font-weight:600}
 .select-wrap{position:relative}
 .select-wrap::after{content:"▼";position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--mid);pointer-events:none}
 select.field-input,.select-wrap select{width:100%;appearance:none;-webkit-appearance:none;background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 36px 10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--dark);cursor:pointer;transition:var(--transition)}
-select.field-input:focus,.select-wrap select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+select.field-input:focus,.select-wrap select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.35)}
 .field-input{background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--dark);transition:var(--transition);width:100%}
-.field-input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.1)}
+.field-input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(0,102,204,.35)}
 textarea.field-input{resize:vertical;min-height:80px}
 /* A1: friendly flight-monitoring hint shown when pickup is Nadi Airport */
 .flight-hint{margin-top:6px;font-size:12px;line-height:1.4;color:#0c4a6e;background:#f0f9ff;border-left:3px solid #0ea5e9;border-radius:4px;padding:8px 10px;font-weight:500}
@@ -340,7 +340,7 @@ textarea.field-input{resize:vertical;min-height:80px}
 .footer-contact{display:flex;flex-direction:column;gap:6px}
 .footer-contact a{font-size:13px;color:var(--ocean);transition:color .2s}
 .footer-contact a:hover{color:#fff}
-.footer-col h4{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:14px}
+.footer-col h3,.footer-col h4{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:14px}
 .footer-col a{display:block;font-size:13px;color:rgba(255,255,255,.55);padding:3px 0;transition:color .2s}
 .footer-col a:hover{color:#fff}
 .footer-bottom{padding:20px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
@@ -783,10 +783,10 @@ body.booking-in-view .sticky-bar,body.booking-flow .sticky-bar{display:none}
   font-size:14px;color:#0f172a;
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   transition:background .12s ease}
-.ta-opt:hover{background:#eff6ff;color:var(--ocean)}
+.ta-opt:hover,.ta-opt.ta-active{background:#eff6ff;color:var(--ocean)}
 .ta-opt-sentinel{
   font-weight:600;color:#92400e;background:#fffbeb}
-.ta-opt-sentinel:hover{background:#fef3c7;color:#78350f}
+.ta-opt-sentinel:hover,.ta-opt-sentinel.ta-active{background:#fef3c7;color:#78350f}
 
 .ta-opt-area{
   font-size:11px;color:#94a3b8;font-weight:500;

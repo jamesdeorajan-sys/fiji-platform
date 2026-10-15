@@ -1799,7 +1799,7 @@ function buildRoutesTable() {
       <td>${priceCell(r.s)}</td>
       <td>${priceCell(r.v)}</td>
       <td>${priceCell(r.m)}</td>
-      <td><button class="btn-book" onclick="bookRoute(${i})">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(${i})" aria-label="Book ${escapeHtml(r.dest)} transfer">Book →</button></td>
     </tr>`).join('');
 }
 
@@ -2113,7 +2113,7 @@ function buildToursGrid() {
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(${i})">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(${i})" aria-label="Book tour: ${escapeHtml(t.name)}">Book this tour →</button>
           <a class="tour-link" href="${t.liveUrl}" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -2169,7 +2169,7 @@ function buildFAQ() {
   if (!list) return;
   list.innerHTML = FAQ_DATA.map((f, i) => `
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(${i},this)">${f.q} <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-${i}" onclick="toggleFaq(${i},this)" onkeydown="faqKey(event,${i},this)">${f.q} <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-${i}">${f.a}</div>
     </div>`).join('');
 }
@@ -2177,8 +2177,12 @@ function toggleFaq(i, el) {
   const a = document.getElementById(`faq-a-${i}`);
   const wasOpen = a.classList.contains('open');
   document.querySelectorAll('.faq-a').forEach(x => x.classList.remove('open'));
-  document.querySelectorAll('.faq-q').forEach(x => x.classList.remove('open'));
-  if (!wasOpen) { a.classList.add('open'); el.classList.add('open'); }
+  document.querySelectorAll('.faq-q').forEach(x => { x.classList.remove('open'); x.setAttribute('aria-expanded', 'false'); });
+  if (!wasOpen) { a.classList.add('open'); el.classList.add('open'); el.setAttribute('aria-expanded', 'true'); }
+}
+// Enter or Space on a focused FAQ question opens or closes it, like a click.
+function faqKey(e, i, el) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFaq(i, el); }
 }
 
 // ─── TYPEAHEAD SEARCH FOR DESTINATION & PICKUP ───────────────────────────────
@@ -2215,16 +2219,16 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'typeahead-wrap';
   wrap.innerHTML = `
-    <button type="button" class="typeahead-trigger" id="${selectId}_ta_trigger" aria-haspopup="listbox" aria-expanded="false">
-      <span class="typeahead-trigger-text">${opts.placeholder || 'Select...'}</span>
+    <button type="button" class="typeahead-trigger" id="${selectId}_ta_trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="${selectId}_ta_panel"${document.getElementById(selectId + 'Label') ? ` aria-labelledby="${selectId}Label ${selectId}_ta_text"` : ''}>
+      <span class="typeahead-trigger-text" id="${selectId}_ta_text">${opts.placeholder || 'Select...'}</span>
       <span class="typeahead-chevron">▾</span>
     </button>
     <div class="typeahead-panel" id="${selectId}_ta_panel" hidden>
       <div class="typeahead-search-row">
-        <input type="text" class="typeahead-search" id="${selectId}_ta_search" placeholder="${opts.searchPlaceholder || 'Type a hotel or area name...'}" autocomplete="off" />
+        <input type="text" class="typeahead-search" id="${selectId}_ta_search" placeholder="${opts.searchPlaceholder || 'Type a hotel or area name...'}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="${selectId}_ta_list" aria-label="${opts.searchLabel || opts.searchPlaceholder || 'Search'}" />
         <button type="button" class="typeahead-close" id="${selectId}_ta_close" aria-label="Close">✕</button>
       </div>
-      <div class="typeahead-list" id="${selectId}_ta_list" role="listbox"></div>
+      <div class="typeahead-list" id="${selectId}_ta_list" role="listbox" aria-label="${opts.listLabel || 'Matching places'}"></div>
     </div>`;
 
   // Hide the native select but keep it functional
@@ -2246,14 +2250,14 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
     sentinels.forEach(s => {
       if (s.value === '' && f) return;          // hide blank when searching
       if (!f || s.text.toLowerCase().includes(f)) {
-        html += `<div class="ta-opt ta-opt-sentinel" data-val="${s.value}">${s.text}</div>`;
+        html += `<div class="ta-opt ta-opt-sentinel" role="option" aria-selected="false" data-val="${s.value}">${s.text}</div>`;
       }
     });
 
     if (ungrouped.length) {
       ungrouped.forEach(o => {
         if (!f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f)) {
-          html += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+          html += `<div class="ta-opt" role="option" aria-selected="false" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
         }
       });
     }
@@ -2263,9 +2267,9 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
         !f || o.text.toLowerCase().includes(f) || o.area.toLowerCase().includes(f) || g.label.toLowerCase().includes(f)
       );
       if (!matched.length) return;
-      html += `<div class="ta-group-label">${g.label}</div>`;
+      html += `<div class="ta-group-label" role="presentation">${g.label}</div>`;
       matched.forEach(o => {
-        html += `<div class="ta-opt" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
+        html += `<div class="ta-opt" role="option" aria-selected="false" data-val="${o.value}">${o.text}<span class="ta-opt-area">${o.area}</span></div>`;
       });
     });
 
@@ -2277,17 +2281,32 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
     // this one interpolation needed escaping.
     if (!html) html = `<div class="ta-empty">No matches for "${escapeHtml(filter)}". Try the area name (e.g. "Coral Coast") or pick "📍 Other / not listed".</div>`;
     list.innerHTML = html;
+    activeIdx = -1;
+    search.removeAttribute('aria-activedescendant');
 
     // Wire option clicks
-    list.querySelectorAll('.ta-opt').forEach(el => {
+    list.querySelectorAll('.ta-opt').forEach((el, n) => {
+      el.id = `${selectId}_ta_opt_${n}`;
       el.addEventListener('click', () => {
         const val = el.getAttribute('data-val');
         if (!setSelectByValue(selectId, val)) sel.value = val;
         sel.dispatchEvent(new Event('change', { bubbles: true }));
         updateTriggerLabel();
         closePanel();
+        trigger.focus();
       });
     });
+  }
+
+  // Arrow keys move a highlighted option (announced through aria-activedescendant); Enter picks it.
+  let activeIdx = -1;
+  function moveActive(step) {
+    const opts = Array.from(list.querySelectorAll('.ta-opt'));
+    if (!opts.length) return;
+    activeIdx = activeIdx < 0 ? (step > 0 ? 0 : opts.length - 1) : (activeIdx + step + opts.length) % opts.length;
+    opts.forEach((o, n) => { o.classList.toggle('ta-active', n === activeIdx); o.setAttribute('aria-selected', n === activeIdx ? 'true' : 'false'); });
+    search.setAttribute('aria-activedescendant', opts[activeIdx].id);
+    opts[activeIdx].scrollIntoView({ block: 'nearest' });
   }
 
   function updateTriggerLabel() {
@@ -2319,9 +2338,12 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
   closeBtn.addEventListener('click', closePanel);
   search.addEventListener('input', e => renderList(e.target.value));
   search.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closePanel();
+    if (e.key === 'Escape') { closePanel(); trigger.focus(); }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveActive(e.key === 'ArrowDown' ? 1 : -1); }
     if (e.key === 'Enter') {
-      const first = list.querySelector('.ta-opt:not(.ta-opt-sentinel)') || list.querySelector('.ta-opt');
+      e.preventDefault();
+      const active = activeIdx >= 0 ? list.querySelectorAll('.ta-opt')[activeIdx] : null;
+      const first = active || list.querySelector('.ta-opt:not(.ta-opt-sentinel)') || list.querySelector('.ta-opt');
       if (first) first.click();
     }
   });
@@ -2357,11 +2379,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Convert pickup & destination selects into searchable typeahead dropdowns
   enhanceSelectAsTypeahead('pickup', {
     placeholder: 'Select pickup point...',
-    searchPlaceholder: 'Search airports, hotels, areas...'
+    searchPlaceholder: 'Search airports, hotels, areas...',
+    searchLabel: 'Search pickup locations', listLabel: 'Pickup locations'
   });
   enhanceSelectAsTypeahead('destination', {
     placeholder: 'Select destination...',
-    searchPlaceholder: 'Search 110+ Fiji hotels...'
+    searchPlaceholder: 'Search 110+ Fiji hotels...',
+    searchLabel: 'Search destinations', listLabel: 'Destinations'
   });
 
   // A4: restore the customer's last currency choice if any

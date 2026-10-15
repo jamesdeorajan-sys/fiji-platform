@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
@@ -18,9 +19,9 @@ const card = html.slice(html.indexOf('id="bulaSuccess"'), html.indexOf('<div cla
 
 // ── 1. SCOPE: nothing the booking, price or save depends on has been touched ─────────────────────────────────────────────
 test('SCOPE: styles.css is byte-identical to the live commit aebfab6; app.js is byte-identical outside buildWhatsAppURL() (submit, payload, price and save code cannot have changed; the permitted return-details change is pinned in return-draft.test.js)', () => {
-  const appSrc = read('app.js'); const a = appSrc.indexOf('function buildWhatsAppURL(ref) {'); const rest = appSrc.slice(0, a) + appSrc.slice(appSrc.indexOf('\n}\n', a) + 3);
+  const appSrc = a11yRevert('app.js', read('app.js')); const a = appSrc.indexOf('function buildWhatsAppURL(ref) {'); const rest = appSrc.slice(0, a) + appSrc.slice(appSrc.indexOf('\n}\n', a) + 3);
   assert.equal(createHash('sha256').update(rest).digest('hex'), '1582a4772eeb3f72f4ea80156ec3a0e2ef7758ce7fea1c7dd6bd1f4fcd60da32', 'app.js changed outside buildWhatsAppURL(): this candidate must not edit booking, price or save code');
-  assert.equal(sha('styles.css'), 'ddfccf65c777f2781ce4f4877625749fa4377edda4c2879d0ee49c94b78dd0ff');
+  assert.equal(createHash('sha256').update(a11yRevert('styles.css', read('styles.css'))).digest('hex'), 'ddfccf65c777f2781ce4f4877625749fa4377edda4c2879d0ee49c94b78dd0ff');
 });
 
 test('SCOPE: the new script makes no network request, uses no persistent storage and never calls the booking functions', () => {

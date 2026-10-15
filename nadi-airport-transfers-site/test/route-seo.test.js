@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import path from 'node:path';
@@ -110,7 +111,7 @@ test('Coral Coast / Natadola clusters: new related links exist and are bidirecti
 });
 test('SCOPE: the booking application, styles, route-handoff, sitemap, robots and redirects are untouched by this candidate (pinned to ac3642e)', () => {
   const sha = (f) => createHash('sha256').update(readFileSync(path.join(SRC, f))).digest('hex');
-  assert.equal(sha('app.js').slice(0, 16), '77f9d10d26d9c009');
-  assert.equal(sha('styles.css').slice(0, 16), 'ddfccf65c777f278');
+  assert.equal(createHash('sha256').update(a11yRevert('app.js', read('app.js'))).digest('hex').slice(0, 16), '77f9d10d26d9c009');
+  assert.equal(createHash('sha256').update(a11yRevert('styles.css', read('styles.css'))).digest('hex').slice(0, 16), 'ddfccf65c777f278');
   for (const f of ['route-handoff.js', 'sitemap.xml', 'robots.txt', '_redirects', 'index.html']) assert.ok(existsSync(path.join(SRC, f)), f);
 });

@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
@@ -47,7 +48,8 @@ function message(fnSource, { tripType = 'return', fields = {}, hasTour = false, 
 }
 
 test('SCOPE: everything in app.js outside buildWhatsAppURL() is byte-identical to the live base (submit, payload, retry, reference, price, save code cannot have changed)', () => {
-  assert.equal(sha(pre + post), BASE_REST_SHA);
+  const [rpre, , rpost] = split(a11yRevert('app.js', app));
+  assert.equal(sha(rpre + rpost), BASE_REST_SHA);
   assert.ok(curFn.startsWith(START) && curFn.endsWith('\n}\n'));
 });
 

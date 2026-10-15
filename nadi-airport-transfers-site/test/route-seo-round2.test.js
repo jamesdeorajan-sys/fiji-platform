@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -140,5 +141,5 @@ test('SCOPE: booking JavaScript, styles, handoff builder, chat widget, extras, h
     'robots.txt': '2b6dbb0871547ca5e283f9679be2eac10d0a81ce56d86daffa2a6fcb4f9c10de',
     '_redirects': '578cd6f94e366cbeeba342ec4a34d912dc309e33f000953b8a3a8c3c38189de3',
   };
-  for (const [f, want] of Object.entries(PINS)) assert.equal(sha(f), want, f + ' changed');
+  for (const [f, want] of Object.entries(PINS)) assert.equal(f === 'app.js' || f === 'styles.css' ? createHash('sha256').update(a11yRevert(f, read(f))).digest('hex') : sha(f), want, f + ' changed');
 });

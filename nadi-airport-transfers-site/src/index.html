@@ -189,7 +189,7 @@
       <div class="booking-step" id="step1">
         <div class="field-row">
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" id="pickupLabel" for="pickup">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
               Pickup location
             </label>
@@ -284,12 +284,12 @@
             </div>
           </div>
           <div class="field-swap">
-            <button class="swap-btn" onclick="swapLocations()" title="Swap">
+            <button type="button" class="swap-btn" onclick="swapLocations()" title="Swap pickup and destination" aria-label="Swap pickup and destination">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
             </button>
           </div>
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" id="destinationLabel" for="destination">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
               Destination / Hotel
             </label>
@@ -464,11 +464,11 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Your address / hotel / villa name</label>
+              <label class="field-label" for="customPickupAddress">Your address / hotel / villa name</label>
               <input type="text" id="customPickupAddress" class="field-input" placeholder="e.g. Wakaya Villa, 27 Beach Rd, Pacific Harbour" oninput="updatePricing()">
             </div>
             <div class="field-group" style="flex:0 0 240px">
-              <label class="field-label">Pickup area</label>
+              <label class="field-label" for="customPickupZone">Pickup area</label>
               <select id="customPickupZone" class="field-input" onchange="updatePricing()">
                 <option value="">Select zone...</option>
                 <option value="NADI_TOWN"        data-lat="-17.7996" data-lng="177.4096">Nadi / Wailoaloa</option>
@@ -497,11 +497,11 @@
           </div>
           <div class="field-row">
             <div class="field-group" style="flex:1;min-width:0">
-              <label class="field-label">Hotel / address / villa name</label>
+              <label class="field-label" for="customDestAddress">Hotel / address / villa name</label>
               <input type="text" id="customDestAddress" class="field-input" placeholder="e.g. Wakaya Villa, 27 Beach Rd, Pacific Harbour" oninput="updatePricing()">
             </div>
             <div class="field-group" style="flex:0 0 240px">
-              <label class="field-label">Destination area</label>
+              <label class="field-label" for="customDestZone">Destination area</label>
               <select id="customDestZone" class="field-input" onchange="updatePricing()">
                 <option value="">Select zone...</option>
                 <option value="NADI_TOWN"        data-lat="-17.7996" data-lng="177.4096">Nadi / Wailoaloa</option>
@@ -534,28 +534,28 @@
         <!-- DATE/TIME -->
         <div class="field-row">
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" for="travelDate">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Date of travel
             </label>
             <input type="date" id="travelDate" class="field-input" onchange="updatePricing()">
           </div>
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" for="travelTime">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Pickup time
             </label>
             <input type="time" id="travelTime" class="field-input" value="10:00" onchange="updatePricing()">
           </div>
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" id="paxLabel">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
               Passengers
             </label>
-            <div class="pax-counter">
-              <button class="pax-btn" onclick="changePax(-1)">−</button>
-              <span class="pax-num" id="paxNum">2</span>
-              <button class="pax-btn" onclick="changePax(1)">+</button>
+            <div class="pax-counter" role="group" aria-labelledby="paxLabel">
+              <button type="button" class="pax-btn" onclick="changePax(-1)" aria-label="Fewer passengers">−</button>
+              <span class="pax-num" id="paxNum" aria-live="polite">2</span>
+              <button type="button" class="pax-btn" onclick="changePax(1)" aria-label="More passengers">+</button>
               <span class="pax-label">adults</span>
             </div>
           </div>
@@ -575,21 +575,21 @@
              submitNadiBooking()'s own header comment in app.js. -->
         <div class="field-row" id="returnTripFields" style="display:none">
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" for="returnDate">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Return date
             </label>
             <input type="date" id="returnDate" class="field-input" onchange="updatePricing()">
           </div>
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" for="returnTime">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Return pickup time
             </label>
             <input type="time" id="returnTime" class="field-input" value="10:00">
           </div>
           <div class="field-group">
-            <label class="field-label">
+            <label class="field-label" for="returnPickupLocation">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
               Return pickup location
             </label>
@@ -600,11 +600,11 @@
         <!-- FLIGHT -->
         <div class="field-row">
           <div class="field-group" style="flex:1">
-            <label class="field-label">
+            <label class="field-label" for="flightNum">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
               Flight number
             </label>
-            <input type="text" id="flightNum" class="field-input" placeholder="e.g. FJ401, QF351, NZ56" oninput="onFlightInput(); validateArrivalFlight()">
+            <input type="text" id="flightNum" class="field-input" aria-describedby="flightError" placeholder="e.g. FJ401, QF351, NZ56" oninput="onFlightInput(); validateArrivalFlight()">
             <label class="field-hint" style="display:block;margin-top:8px">
               <input type="checkbox" id="flightUnknown" onchange="validateArrivalFlight()"> I don't know my flight number yet
             </label>
@@ -614,14 +614,14 @@
             </div>
           </div>
           <div class="field-group" style="flex:1">
-            <label class="field-label">
+            <label class="field-label" id="luggageLabel">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
               Luggage pieces
             </label>
-            <div class="pax-counter">
-              <button class="pax-btn" onclick="changeLuggage(-1)">−</button>
-              <span class="pax-num" id="luggageNum">2</span>
-              <button class="pax-btn" onclick="changeLuggage(1)">+</button>
+            <div class="pax-counter" role="group" aria-labelledby="luggageLabel">
+              <button type="button" class="pax-btn" onclick="changeLuggage(-1)" aria-label="Fewer bags">−</button>
+              <span class="pax-num" id="luggageNum" aria-live="polite">2</span>
+              <button type="button" class="pax-btn" onclick="changeLuggage(1)" aria-label="More bags">+</button>
               <span class="pax-label">bags</span>
             </div>
           </div>
@@ -726,23 +726,23 @@
         <h3 class="step-title">Your details</h3>
         <div class="form-grid">
           <div class="field-group">
-            <label class="field-label">First name *</label>
+            <label class="field-label" for="firstName">First name *</label>
             <input type="text" id="firstName" class="field-input" placeholder="John" required>
           </div>
           <div class="field-group">
-            <label class="field-label">Last name *</label>
+            <label class="field-label" for="lastName">Last name *</label>
             <input type="text" id="lastName" class="field-input" placeholder="Smith" required>
           </div>
           <div class="field-group">
-            <label class="field-label">Email address *</label>
+            <label class="field-label" for="email">Email address *</label>
             <input type="email" id="email" class="field-input" placeholder="john@example.com" required>
           </div>
           <div class="field-group">
-            <label class="field-label">WhatsApp / Phone *</label>
+            <label class="field-label" for="phone">WhatsApp / Phone *</label>
             <input type="tel" id="phone" class="field-input" placeholder="+61 400 000 000" required>
           </div>
           <div class="field-group" style="grid-column:1/-1">
-            <label class="field-label">Special requests (optional)</label>
+            <label class="field-label" for="notes">Special requests (optional)</label>
             <textarea id="notes" class="field-input" rows="3" placeholder="e.g. travelling with infant, need wheelchair access, late night pickup..."></textarea>
           </div>
         </div>
@@ -1013,7 +1013,7 @@
       <td><strong>FJ$19</strong></td>
       <td><strong>FJ$49</strong></td>
       <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(0)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(0)" aria-label="Book Nadi Town Centre transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Tanoa International / Tokatoka<br><span class="area-badge">Nadi Airport</span></td>
@@ -1022,7 +1022,7 @@
       <td><strong>FJ$15</strong></td>
       <td><strong>FJ$25</strong></td>
       <td><strong>FJ$45</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(1)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(1)" aria-label="Book Tanoa International / Tokatoka transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Mercure / Tradewinds Hotel<br><span class="area-badge">Nadi</span></td>
@@ -1031,7 +1031,7 @@
       <td><strong>FJ$19</strong></td>
       <td><strong>FJ$49</strong></td>
       <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(2)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(2)" aria-label="Book Mercure / Tradewinds Hotel transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Wailoaloa Beach Hotels<br><span class="area-badge">Wailoaloa</span></td>
@@ -1040,7 +1040,7 @@
       <td><strong>FJ$39</strong></td>
       <td><span class="price-old">FJ$59</span><strong>FJ$53</strong></td>
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(3)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(3)" aria-label="Book Wailoaloa Beach Hotels transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Crowne Plaza / Smugglers / Ramada<br><span class="area-badge">Wailoaloa</span></td>
@@ -1049,7 +1049,7 @@
       <td><strong>FJ$39</strong></td>
       <td><span class="price-old">FJ$59</span><strong>FJ$53</strong></td>
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(4)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(4)" aria-label="Book Crowne Plaza / Smugglers / Ramada transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Hilton / Sheraton / Westin Denarau<br><span class="area-badge">Denarau</span></td>
@@ -1058,7 +1058,7 @@
       <td><strong>FJ$49</strong></td>
       <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(5)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(5)" aria-label="Book Hilton / Sheraton / Westin Denarau transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Sofitel / Radisson / Wyndham<br><span class="area-badge">Denarau</span></td>
@@ -1067,7 +1067,7 @@
       <td><strong>FJ$49</strong></td>
       <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(6)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(6)" aria-label="Book Sofitel / Radisson / Wyndham transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Port Denarau Marina (Yasawa Flyer)<br><span class="area-badge">Denarau</span></td>
@@ -1076,7 +1076,7 @@
       <td><strong>FJ$49</strong></td>
       <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(7)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(7)" aria-label="Book Port Denarau Marina (Yasawa Flyer) transfer">Book →</button></td>
     </tr>
     <tr>
       <td>DoubleTree Sonaisali Island<br><span class="area-badge">Sonaisali</span></td>
@@ -1085,7 +1085,7 @@
       <td><span class="price-old">FJ$69</span><strong>FJ$62</strong></td>
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
       <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(8)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(8)" aria-label="Book DoubleTree Sonaisali Island transfer">Book →</button></td>
     </tr>
     <tr>
       <td>First Landing Beach Resort<br><span class="area-badge">Vuda Point</span></td>
@@ -1094,7 +1094,7 @@
       <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(9)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(9)" aria-label="Book First Landing Beach Resort transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Vuda Marina (Yacht Haven)<br><span class="area-badge">Vuda Point</span></td>
@@ -1103,7 +1103,7 @@
       <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(10)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(10)" aria-label="Book Vuda Marina (Yacht Haven) transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Lautoka City Centre<br><span class="area-badge">Lautoka</span></td>
@@ -1112,7 +1112,7 @@
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
       <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(11)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(11)" aria-label="Book Lautoka City Centre transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Tanoa Waterfront / Cathay Lautoka<br><span class="area-badge">Lautoka</span></td>
@@ -1121,7 +1121,7 @@
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
       <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(12)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(12)" aria-label="Book Tanoa Waterfront / Cathay Lautoka transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Lautoka Cruise Terminal<br><span class="area-badge">Lautoka</span></td>
@@ -1130,7 +1130,7 @@
       <td><span class="price-old">FJ$89</span><strong>FJ$80</strong></td>
       <td><span class="price-old">FJ$119</span><strong>FJ$107</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(13)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(13)" aria-label="Book Lautoka Cruise Terminal transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Fiji Marriott Resort Momi Bay<br><span class="area-badge">Momi Bay</span></td>
@@ -1139,7 +1139,7 @@
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
       <td><span class="price-old">FJ$79</span><strong>FJ$71</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(14)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(14)" aria-label="Book Fiji Marriott Resort Momi Bay transfer">Book →</button></td>
     </tr>
     <tr>
       <td>InterContinental Natadola / Yatule<br><span class="area-badge">Natadola</span></td>
@@ -1148,7 +1148,7 @@
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
       <td><span class="price-old">FJ$179</span><strong>FJ$161</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(15)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(15)" aria-label="Book InterContinental Natadola / Yatule transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Robinson Crusoe Island (Likuri)<br><span class="area-badge">Natadola</span></td>
@@ -1157,7 +1157,7 @@
       <td><span class="price-old">FJ$99</span><strong>FJ$89</strong></td>
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
       <td><span class="price-old">FJ$179</span><strong>FJ$161</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(16)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(16)" aria-label="Book Robinson Crusoe Island (Likuri) transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Sigatoka Town / Sand Dunes<br><span class="area-badge">Sigatoka</span></td>
@@ -1166,7 +1166,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(17)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(17)" aria-label="Book Sigatoka Town / Sand Dunes transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Bedarra / Gecko's / Sandy Point<br><span class="area-badge">Sigatoka</span></td>
@@ -1175,7 +1175,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(18)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(18)" aria-label="Book Bedarra / Gecko&#x27;s / Sandy Point transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Kula Wild Adventure Park<br><span class="area-badge">Sigatoka</span></td>
@@ -1184,7 +1184,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(19)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(19)" aria-label="Book Kula Wild Adventure Park transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Shangri-La Yanuca Island<br><span class="area-badge">Coral Coast</span></td>
@@ -1193,7 +1193,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(20)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(20)" aria-label="Book Shangri-La Yanuca Island transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Hideaway Resort / Tambua Sands<br><span class="area-badge">Coral Coast</span></td>
@@ -1202,7 +1202,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(21)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(21)" aria-label="Book Hideaway Resort / Tambua Sands transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Crusoe's Retreat / Mango Bay<br><span class="area-badge">Coral Coast</span></td>
@@ -1211,7 +1211,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(22)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(22)" aria-label="Book Crusoe&#x27;s Retreat / Mango Bay transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Outrigger Fiji Beach Resort<br><span class="area-badge">Coral Coast</span></td>
@@ -1220,7 +1220,7 @@
       <td><span class="price-old">FJ$129</span><strong>FJ$116</strong></td>
       <td><span class="price-old">FJ$159</span><strong>FJ$143</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(23)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(23)" aria-label="Book Outrigger Fiji Beach Resort transfer">Book →</button></td>
     </tr>
     <tr>
       <td>The Warwick / The Naviti<br><span class="area-badge">Coral Coast</span></td>
@@ -1229,7 +1229,7 @@
       <td><span class="price-old">FJ$149</span><strong>FJ$134</strong></td>
       <td><span class="price-old">FJ$189</span><strong>FJ$170</strong></td>
       <td><span class="price-old">FJ$239</span><strong>FJ$215</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(24)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(24)" aria-label="Book The Warwick / The Naviti transfer">Book →</button></td>
     </tr>
     <tr>
       <td>The Beachouse Fiji<br><span class="area-badge">Coral Coast</span></td>
@@ -1238,7 +1238,7 @@
       <td><span class="price-old">FJ$169</span><strong>FJ$152</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$259</span><strong>FJ$233</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(25)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(25)" aria-label="Book The Beachouse Fiji transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Pacific Harbour Arts Village<br><span class="area-badge">Pacific Harbour</span></td>
@@ -1247,7 +1247,7 @@
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
       <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(26)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(26)" aria-label="Book Pacific Harbour Arts Village transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Pearl South Pacific Resort<br><span class="area-badge">Pacific Harbour</span></td>
@@ -1256,7 +1256,7 @@
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
       <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(27)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(27)" aria-label="Book Pearl South Pacific Resort transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Uprising Beach Resort<br><span class="area-badge">Pacific Harbour</span></td>
@@ -1265,7 +1265,7 @@
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
       <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(28)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(28)" aria-label="Book Uprising Beach Resort transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Nanuku Resort Fiji (Auberge)<br><span class="area-badge">Pacific Harbour</span></td>
@@ -1274,7 +1274,7 @@
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$269</span><strong>FJ$242</strong></td>
       <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(29)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(29)" aria-label="Book Nanuku Resort Fiji (Auberge) transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Ba Town<br><span class="area-badge">Ba</span></td>
@@ -1283,7 +1283,7 @@
       <td><span class="price-old">FJ$169</span><strong>FJ$152</strong></td>
       <td><span class="price-old">FJ$199</span><strong>FJ$179</strong></td>
       <td><span class="price-old">FJ$249</span><strong>FJ$224</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(30)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(30)" aria-label="Book Ba Town transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Volivoli / Wananavu Beach Resort<br><span class="area-badge">Rakiraki</span></td>
@@ -1292,7 +1292,7 @@
       <td><span class="price-old">FJ$249</span><strong>FJ$224</strong></td>
       <td><span class="price-old">FJ$299</span><strong>FJ$269</strong></td>
       <td><span class="price-old">FJ$349</span><strong>FJ$314</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(31)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(31)" aria-label="Book Volivoli / Wananavu Beach Resort transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Grand Pacific Hotel Suva<br><span class="area-badge">Suva</span></td>
@@ -1301,7 +1301,7 @@
       <td><span class="price-old">FJ$319</span><strong>FJ$287</strong></td>
       <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
       <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(32)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(32)" aria-label="Book Grand Pacific Hotel Suva transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Tanoa Plaza / Holiday Inn Suva<br><span class="area-badge">Suva</span></td>
@@ -1310,7 +1310,7 @@
       <td><span class="price-old">FJ$319</span><strong>FJ$287</strong></td>
       <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
       <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(33)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(33)" aria-label="Book Tanoa Plaza / Holiday Inn Suva transfer">Book →</button></td>
     </tr>
     <tr>
       <td>Nausori Airport (SUV)<br><span class="area-badge">Nausori</span></td>
@@ -1319,7 +1319,7 @@
       <td><span class="price-old">FJ$369</span><strong>FJ$332</strong></td>
       <td><span class="price-old">FJ$499</span><strong>FJ$449</strong></td>
       <td><span class="price-old">FJ$549</span><strong>FJ$494</strong></td>
-      <td><button class="btn-book" onclick="bookRoute(34)">Book →</button></td>
+      <td><button class="btn-book" onclick="bookRoute(34)" aria-label="Book Nausori Airport (SUV) transfer">Book →</button></td>
     </tr>
 </tbody>
       </table>
@@ -1357,7 +1357,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(0)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(0)" aria-label="Book tour: Nadi Cultural Night Tour">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nadi-cultural-night-tour-fiji-up-to-15-off/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1383,7 +1383,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(1)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(1)" aria-label="Book tour: Natadola Beach Horse Riding">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/natadola-beach-horse-riding-fiji-au95/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1409,7 +1409,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(2)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(2)" aria-label="Book tour: Natadola Beach Cross Country Horse Riding">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/natadola-beach-cross-country-horse-riding-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1435,7 +1435,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(3)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(3)" aria-label="Book tour: Coral Coast Beach Horse Riding">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/coral-coast-beach-horse-riding-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1461,7 +1461,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(4)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(4)" aria-label="Book tour: Biausevu Waterfall &amp; Village Trek">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/biausevu-waterfall-hiking-tour-in-sigatoka-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1487,7 +1487,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(5)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(5)" aria-label="Book tour: Sigatoka River Cruise + Biausevu Waterfall">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/sigatoka-river-cruise-tour-biausevu-waterfall-tour/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1513,7 +1513,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(6)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(6)" aria-label="Book tour: Coral Coast Full Day Experience">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/coral-coast-full-day-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1539,7 +1539,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(7)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(7)" aria-label="Book tour: Nadi Zip Line Tour">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nadi-zip-line-tour-fiji-2025/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1565,7 +1565,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(8)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(8)" aria-label="Book tour: Nausori Highland Off-Road ATV Adventure">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/nausori-highland-off-road-atv-bike-adventure-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1591,7 +1591,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(9)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(9)" aria-label="Book tour: Snorkel with Sharks">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/snorkel-with-sharks-in-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1617,7 +1617,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(10)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(10)" aria-label="Book tour: Mamanuca Islands All-Inclusive Sailing Cruise">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/fiji-mamanuca-islands-all-inclusive-sailing-cruise/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1643,7 +1643,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(11)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(11)" aria-label="Book tour: Whale&#x27;s Tale Cruises (Denarau)">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/whales-tale-day-cruise/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1669,7 +1669,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(12)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(12)" aria-label="Book tour: Naihehe Cave Tour (Sigatoka)">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/explore-nahehe-cave-tour-sigatoka-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1695,7 +1695,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(13)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(13)" aria-label="Book tour: Sabeto Hot Springs &amp; Mud Pool">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/mud-pool-tour-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1721,7 +1721,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(14)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(14)" aria-label="Book tour: Suva City Day Tour">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/suva-city-tour/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1747,7 +1747,7 @@
           <div class="tour-price-label">per person from</div>
         </div>
         <div class="tour-cta-row">
-          <button class="tour-cta" onclick="selectTour(15)">Book this tour →</button>
+          <button class="tour-cta" onclick="selectTour(15)" aria-label="Book tour: Sigatoka Coastal Fishing Charter">Book this tour →</button>
           <a class="tour-link" href="https://fijitourtransfers.com/st_tour/sigatoka-coastal-fishing-charter-fiji/" target="_blank" rel="noopener" title="View live tour page">↗</a>
         </div>
       </div>
@@ -1807,47 +1807,47 @@
     </div>
     <div class="faq-list" id="faqList">
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(0,this)">Is there Uber in Fiji? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-0" onclick="toggleFaq(0,this)" onkeydown="faqKey(event,0,this)">Is there Uber in Fiji? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-0">No — Uber does not operate in Fiji. Your reliable options are pre-booked private transfer services (like ours), shared shuttles, or licensed metered taxis. Pre-booking is strongly recommended to avoid negotiating fares after a long flight.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(1,this)">How long is the drive from Nadi Airport to the Coral Coast? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-1" onclick="toggleFaq(1,this)" onkeydown="faqKey(event,1,this)">How long is the drive from Nadi Airport to the Coral Coast? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-1">Journey times depend on your resort: Shangri-La Yanuca ~55 min (72 km), Gecko's / Bedarra ~80 min (82 km), Outrigger Fiji ~95 min (98 km), The Warwick / Naviti ~98 min (100 km). A private transfer is recommended.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(2,this)">How much does a Nadi Airport to Denarau transfer cost? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-2" onclick="toggleFaq(2,this)" onkeydown="faqKey(event,2,this)">How much does a Nadi Airport to Denarau transfer cost? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-2">Private sedan (1–3 pax): FJ$49 per vehicle. Private minivan (4–7 pax): FJ$69. Minibus (8–12 pax): FJ$99. Denarau is approximately 12 km from the airport — 18–20 minutes.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(3,this)">How is pricing calculated? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-3" onclick="toggleFaq(3,this)" onkeydown="faqKey(event,3,this)">How is pricing calculated? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-3">Distance-based pricing in FJD with no surge fees. Short trips (Nadi/Denarau): from FJ$19 sedan, FJ$49 minivan. Mid-range (Natadola, Sigatoka): from FJ$99 sedan. Long-haul (Coral Coast, Pacific Harbour, Suva): from FJ$129 sedan. A 20% night surcharge applies for pickups between 10 pm and 6 am. Return bookings are discounted vs two one-ways.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(4,this)">What if my flight is delayed? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-4" onclick="toggleFaq(4,this)" onkeydown="faqKey(event,4,this)">What if my flight is delayed? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-4">We monitor all incoming flights in real time. If your flight is delayed your driver adjusts automatically — no extra charge. Just provide your flight number at booking.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(5,this)">Can I stop at a supermarket or ATM on the way? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-5" onclick="toggleFaq(5,this)" onkeydown="faqKey(event,5,this)">Can I stop at a supermarket or ATM on the way? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-5">Yes — all private transfers include one complimentary stop at a supermarket, ATM, bottle shop or pharmacy en route. Mention it in special requests when booking.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(6,this)">Do you provide baby or child seats? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-6" onclick="toggleFaq(6,this)" onkeydown="faqKey(event,6,this)">Do you provide baby or child seats? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-6">Yes, on request for a small charge of FJ$8. Specify your children's ages in special requests so we can fit the right seat before your arrival.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(7,this)">How do I find my driver at Nadi Airport? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-7" onclick="toggleFaq(7,this)" onkeydown="faqKey(event,7,this)">How do I find my driver at Nadi Airport? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-7">Your driver waits in the international arrivals hall with a sign showing your name. If you can't find them, call or WhatsApp the number on your confirmation immediately.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(8,this)">Do you offer return transfers? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-8" onclick="toggleFaq(8,this)" onkeydown="faqKey(event,8,this)">Do you offer return transfers? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-8">Yes — book return at the time of booking for a small discount. Your return pickup can be from your resort back to Nadi Airport or anywhere else on Viti Levu.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(9,this)">Can I change my pickup time after booking? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-9" onclick="toggleFaq(9,this)" onkeydown="faqKey(event,9,this)">Can I change my pickup time after booking? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-9">Yes — pickup time, date, and stops can all be modified free of charge up to 2 hours before your scheduled pickup. Just WhatsApp us with your booking reference. No fees, no questions.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q" onclick="toggleFaq(10,this)">How far in advance should I book? <span class="faq-arrow">▼</span></div>
+      <div class="faq-q" role="button" tabindex="0" aria-expanded="false" aria-controls="faq-a-10" onclick="toggleFaq(10,this)" onkeydown="faqKey(event,10,this)">How far in advance should I book? <span class="faq-arrow">▼</span></div>
       <div class="faq-a" id="faq-a-10">We recommend 24–48 hours in advance, especially June–October and Christmas/New Year. For same-day bookings contact us via WhatsApp.</div>
     </div>
 </div>
@@ -1889,7 +1889,7 @@
         </div>
       </div>
       <div class="footer-col">
-        <h4>Popular routes</h4>
+        <h3>Popular routes</h3>
         <a href="/transfer/hilton-fiji-beach-resort">Nadi Airport → Hilton Denarau</a>
         <a href="/transfer/sheraton-fiji-golf-beach-resort">Nadi Airport → Sheraton Denarau</a>
         <a href="/transfer/outrigger-fiji-beach-resort">Nadi Airport → Outrigger Fiji</a>
@@ -1899,7 +1899,7 @@
         <a href="/transfer/grand-pacific-hotel-suva">Nadi Airport → Grand Pacific Suva</a>
       </div>
       <div class="footer-col">
-        <h4>Tours</h4>
+        <h3>Tours</h3>
         <a href="#tours">Sigatoka Sand Dunes</a>
         <a href="#tours">Kava Ceremony Tour</a>
         <a href="#tours">Coral Coast Day Tour</a>
@@ -1909,7 +1909,7 @@
         <a href="#tours">Cruise Shore Excursions</a>
       </div>
       <div class="footer-col">
-        <h4>Information</h4>
+        <h3>Information</h3>
         <a href="#faq">FAQ</a>
         <a href="#compare">Compare operators</a>
         <a href="#routes">All destinations</a>
