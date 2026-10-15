@@ -19,7 +19,8 @@ const PROD = { // production 67d0075 (Pages 6af90ee3-9ff8-4531-a421-d8494f09068a
 };
 const OTHERS_PROD = 'e6a3022f3861980e1ed26d5ae9f698cbd6a5e1eac2fb03ceac42792f3a041792'; // the other 41 served files, combined
 const html = rd('index.html'), app = rd('app.js'), css = rd('styles.css');
-const visible = (t) => t.replace(/<(script|style)\b[\s\S]*?<\/\1>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const visible = (t) => t.replace(/<head\b[\s\S]*?<\/head>/i, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/g, '').replace( // body text only (title/meta are not page text)
+/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
 test('SCOPE: undoing exactly the accessibility edits reproduces production index.html, app.js and styles.css byte for byte', () => {
   for (const f of Object.keys(PROD)) assert.equal(sha(a11yRevert(f, rd(f))), PROD[f], f + ' differs from production beyond the accessibility edits');

@@ -21,3 +21,13 @@ test('A: no internal link points at a URL that _redirects sends elsewhere (crawl
   }
   assert.ok(readFileSync(path.join(SRC, 'index.html'), 'utf8').includes('<a href="/transfer/coral-coast-outrigger">Nadi Airport → Outrigger Fiji</a>'));
 });
+
+test('B: homepage title fits search results (<= 60), keeps the site name first and adds the "Fiji airport transfers" phrase; description <= 160; social titles match; no new claims', () => {
+  const s = readFileSync(path.join(SRC, 'index.html'), 'utf8');
+  const title = s.match(/<title>([^<]*)<\/title>/)[1];
+  const desc = s.match(/<meta name="description" content="([^"]*)"/)[1];
+  assert.ok(title.length <= 60, title.length); assert.ok(title.startsWith('Nadi Airport Transfers')); assert.match(title, /Fiji Airport Transfers/);
+  assert.ok(desc.length <= 160, desc.length);
+  assert.ok(s.includes(`<meta property="og:title" content="${title}">`) && s.includes(`<meta name="twitter:title" content="${title}">`));
+  for (const w of ['cheapest', 'best', 'lowest', '#1', 'guaranteed']) assert.ok(!(title + desc).toLowerCase().includes(w), w);
+});
