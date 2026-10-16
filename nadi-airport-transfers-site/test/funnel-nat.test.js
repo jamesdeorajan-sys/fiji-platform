@@ -121,3 +121,12 @@ test('WhatsApp hand-off: only the booking hand-off button counts (as FijiDash), 
   p.fire('click', confirm); p.fire('click', handoff); // "Book another transfer" in the same tab: its own attempt and its own hand-off
   assert.deepEqual(p.events().slice(-2), ['confirm_clicked', 'whatsapp_opened']);
 });
+
+test('restored draft: a route filled in after init (booking-extras.js timer) records route_selected once', async () => {
+  const els = { booking: { id: 'booking' }, pickup: { id: 'pickup', value: '' }, destination: { id: 'destination', value: '' } };
+  const c = { window: { __NAT_FUNNEL_CAPTURE: [] }, document: { readyState: 'complete', referrer: '', getElementById: (id) => els[id] || null, addEventListener() {} }, location: { pathname: '/', search: '' }, URLSearchParams, JSON, Object, Array, Math, Uint8Array, Blob: class {}, sessionStorage: { getItem: () => null, setItem() {} }, crypto: { randomUUID: () => 's' }, navigator: {}, MutationObserver: class { observe() {} }, setTimeout };
+  vm.createContext(c); vm.runInContext('Object.assign(globalThis, window); window = globalThis;', c); vm.runInContext(SRC, c);
+  els.pickup.value = 'NAN'; els.destination.value = 'SHANGRI_LA_YANUCA'; // the draft restore, queued before the funnel's own timer
+  await new Promise((r) => setTimeout(r, 1700));
+  assert.deepEqual(c.__NAT_FUNNEL_CAPTURE.map((e) => e.event_type), ['booking_page_view', 'route_selected']);
+});

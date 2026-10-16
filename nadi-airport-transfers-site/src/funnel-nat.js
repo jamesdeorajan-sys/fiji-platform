@@ -48,9 +48,10 @@
     try {
       if (!document.getElementById('booking')) return; // only pages with the booking form
       send('booking_page_view', 'view');
-      // a route already filled in on arrival (deep link ?pickup=&dest=, or a restored draft) is set by the page without a change event
-      var p0 = document.getElementById('pickup'), d0 = document.getElementById('destination');
-      if (p0 && d0 && p0.value && d0.value) send('route_selected', 'route');
+      // a route already filled in on arrival is set by the page without a change event: a deep link (?pickup=&dest=, set by app.js before
+      // this runs) or a restored draft (booking-extras.js restores it in a timer queued after DOMContentLoaded, so check again after it)
+      var routeFilled = function () { var p0 = document.getElementById('pickup'), d0 = document.getElementById('destination'); if (p0 && d0 && p0.value && d0.value) send('route_selected', 'route'); };
+      routeFilled();
       document.addEventListener('change', function (e) {
         var t = e.target; if (!t) return;
         if (t.id === 'pickup' || t.id === 'destination') {
@@ -81,6 +82,7 @@
       [step3, bula].forEach(function (el) { if (el) mo.observe(el, opts); });
       var lead = document.getElementById('bulaLeadText'); if (lead) mo.observe(lead, { childList: true, characterData: true, subtree: true });
       var ref = document.getElementById('bulaRef'); if (ref) mo.observe(ref, { childList: true, characterData: true, subtree: true });
+      try { setTimeout(routeFilled, 0); setTimeout(routeFilled, 1500); } catch (e) { /* no timers: the immediate check above still ran */ }
     } catch (e) { /* never affect booking */ }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
