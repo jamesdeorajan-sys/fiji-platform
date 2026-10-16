@@ -58,7 +58,7 @@ function submitSandbox(response) {
   const fields = { firstName: { value: 'Guest' }, lastName: { value: 'Test' }, phone: { value: '+61400000000' }, email: { value: 'g@example.test' }, flightNum: { value: '' }, notes: { value: '' }, travelDate: { value: '2026-10-15' }, travelTime: { value: '09:15' },
     returnDate: { value: '2026-10-19' }, returnTime: { value: '06:00' }, returnPickupLocation: { value: 'Fiji Marriott Resort Momi Bay' }, 'extra-seat': { checked: true }, 'extra-surf': { checked: false } };
   const sb = { document: { getElementById: (id) => fields[id] }, state: { selectedVehicle: 'minibus', tripType: 'return', distanceKm: 40, passengers: 7, luggage: 7, destination: { hotel: 'Fiji Marriott Resort Momi Bay' } },
-    NADI_API_BASE: 'https://api.test', JSON, Number, calculateTotal: () => ({ final: 142 }), buildOperationalNotes: () => 'notes',
+    NADI_API_BASE: 'https://api.test', JSON, Number, calculateTotal: () => ({ final: 142 }), buildOperationalNotes: () => 'notes', getNatAttributionForPayload: () => ({}), // booking-source fields are tested in booking-attribution.test.js
     bookingRequest: async (url, o) => { calls.push({ url, body: JSON.parse(o.body) }); return response; }, reportNadiSyncFailure: async (...a) => { escalations.push(a); } };
   vm.createContext(sb); vm.runInContext(submitSrc(), sb);
   return { sb, calls, escalations };

@@ -1261,6 +1261,51 @@ function buildWhatsAppURL(ref) {
 // happens today for every guest right now.
 const NADI_API_BASE = 'https://api.nadiairporttransfers.com';
 
+// Booking source (first / last touch) sent with the booking: the same 15 fields, rules and storage shape as book.fijidash.com's
+// captureAttribution / getAttributionForPayload, which the booking Worker already accepts and filters for personal data. Only utm_* values,
+// the referrer host and the landing PATH are kept: never a query string, name, email, phone or booking detail. One difference from FijiDash:
+// a referrer from this same site keeps its path (e.g. nadiairporttransfers.com/transfer/naviti-resort), because the resort route pages link
+// here only through site navigation. Separate from the analytics script (works when analytics is blocked) and never throws.
+const NAT_ATTRIBUTION_KEY = 'nat_attribution_v1';
+const NAT_ATTRIBUTION_UTM = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+function readNatAttribution() {
+  try { const p = JSON.parse(localStorage.getItem(NAT_ATTRIBUTION_KEY) || 'null'); return p && typeof p === 'object' ? p : null; } catch (e) { return null; }
+}
+function captureNatAttribution() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const hasUtm = NAT_ATTRIBUTION_UTM.some((k) => params.get(k));
+    let referrer = null, external = false;
+    try {
+      if (document.referrer) {
+        const u = new URL(document.referrer);
+        external = u.hostname !== window.location.hostname;
+        referrer = external ? u.hostname : (u.hostname + u.pathname).slice(0, 200);
+      }
+    } catch (e) { referrer = null; }
+    const cap = (v) => (v ? String(v).slice(0, 100) : null);
+    const touch = { source: cap(params.get('utm_source')), medium: cap(params.get('utm_medium')), campaign: cap(params.get('utm_campaign')),
+      content: cap(params.get('utm_content')), term: cap(params.get('utm_term')), referrer, landingPath: window.location.pathname || null };
+    const store = readNatAttribution() || {};
+    if (!store.firstSeenAt) { store.first = touch; store.firstSeenAt = new Date().toISOString(); }
+    if (!store.last || hasUtm || external) store.last = touch;
+    localStorage.setItem(NAT_ATTRIBUTION_KEY, JSON.stringify(store));
+  } catch (e) { /* storage blocked or full: the booking simply carries no source */ }
+}
+function getNatAttributionForPayload() {
+  const out = { first_source: null, first_medium: null, first_campaign: null, first_content: null, first_term: null, first_referrer: null, first_landing_path: null,
+    first_seen_at: null, last_source: null, last_medium: null, last_campaign: null, last_content: null, last_term: null, last_referrer: null, last_landing_path: null };
+  try {
+    const store = readNatAttribution(); if (!store) return out;
+    const f = store.first || {}, l = store.last || f;
+    for (const [k, v] of [['source', 'source'], ['medium', 'medium'], ['campaign', 'campaign'], ['content', 'content'], ['term', 'term'], ['referrer', 'referrer'], ['landing_path', 'landingPath']]) {
+      out['first_' + k] = f[v] ?? null; out['last_' + k] = l[v] ?? null;
+    }
+    out.first_seen_at = store.firstSeenAt ?? null;
+  } catch (e) { /* never block a booking */ }
+  return out;
+}
+
 // Same real, unambiguous zone list/alias the Worker's `zones` table
 // actually contains - copied verbatim from book.fijidash.com/app.js, not
 // re-derived, so this can never drift into inventing a zone name the
@@ -1397,6 +1442,7 @@ async function submitNadiBooking(ref, destZone) {
     // P0 #237: this page shows the guest a fare and asks them to accept it. The booking system must never quietly save a different number: if its
     // own calculation disagrees it refuses (409 PRICE_MISMATCH) and tells us its fare, which the guest then reviews and accepts before anything is saved.
     require_quote_match: true,
+    ...getNatAttributionForPayload(), // booking source only (see captureNatAttribution); no guest data
   };
   // P0 #237: when the guest is accepting a revised price, tell the booking system what they were originally shown (recorded, never used for pricing).
   if (state.fareOverride && state.fareOverride.key === fareOverrideKey()) payload.revised_from_amount = state.fareOverride.original;
@@ -2367,6 +2413,7 @@ function enhanceSelectAsTypeahead(selectId, opts = {}) {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  try { captureNatAttribution(); } catch (e) { /* never blocks page init */ }
   // The "Get price" sticky bar is an acquisition prompt: hide it while the booking widget is visible.
   const bookingEl = document.getElementById('booking');
   if (bookingEl && 'IntersectionObserver' in window) {

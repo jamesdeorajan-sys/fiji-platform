@@ -1,7 +1,13 @@
+import { readFileSync as __rfs } from 'node:fs';
+const ATTR_BLOCK = JSON.parse(__rfs(new URL('./booking-attribution-block.json', import.meta.url), 'utf8'));
 // Undoes EXACTLY the accessibility changes of the NAT P0 accessibility candidate (labels, names, keyboard support, focus ring, footer heading level).
 // Scope tests pass a file through a11yRevert() before comparing it with an earlier pinned production hash, so they keep proving that nothing
 // else in that file changed; a11y-p0.test.js proves that reverting the current files reproduces production 67d0075 byte for byte.
 const APP = [
+  // booking-attribution candidate (ceo/nat-booking-attribution): its three additions, undone so the production pins still apply
+  ['', ATTR_BLOCK],
+  ['    require_quote_match: true,\n', '    require_quote_match: true,\n    ...getNatAttributionForPayload(), // booking source only (see captureNatAttribution); no guest data\n'],
+  ["document.addEventListener('DOMContentLoaded', () => {\n  // The ", "document.addEventListener('DOMContentLoaded', () => {\n  try { captureNatAttribution(); } catch (e) { /* never blocks page init */ }\n  // The "],
   ['<td><button class="btn-book" onclick="bookRoute(${i})">Book →</button></td>',
    '<td><button class="btn-book" onclick="bookRoute(${i})" aria-label="Book ${escapeHtml(r.dest)} transfer">Book →</button></td>'],
   ['<button class="tour-cta" onclick="selectTour(${i})">Book this tour →</button>',
