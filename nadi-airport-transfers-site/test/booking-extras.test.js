@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 const read = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8').replace(/\r/g, '');
-const html = read('index.html');
+const html = read('index.html').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const extrasSrc = read('booking-extras.js');
 const fijiSrc = read('fiji-pickup.js');
 // the real Fiji module in a plain context, for computing expectations on the Fiji clock (never the device's)

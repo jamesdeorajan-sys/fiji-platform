@@ -80,3 +80,9 @@ test('analytics is untouched: funnel-nat.js does not read or send the booking-so
   assert.ok(!FUNNEL.includes('nat_attribution_v1') && !FUNNEL.includes('getNatAttributionForPayload'));
   assert.ok(SRC.includes("try { captureNatAttribution(); } catch (e) { /* never blocks page init */ }"), 'captured once at page init, guarded');
 });
+
+test('cache key: app.js is requested with a new key (4 h max-age), and that script tag is the only index.html line changed', () => {
+  const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  assert.equal(html.split('app.js?v=20261016-attribution').length, 2);
+  assert.ok(!html.includes('app.js?v=20261012-return-draft'));
+});

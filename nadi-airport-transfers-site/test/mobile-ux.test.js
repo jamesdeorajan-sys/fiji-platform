@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const read = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), 'utf8');
 const app = read('app.js');
-const html = read('index.html');
+const html = read('index.html').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const css = read('styles.css');
 
 // Extract a top-level function (brace matched) or the VEHICLES const from app.js.

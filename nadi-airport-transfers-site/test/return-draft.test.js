@@ -13,7 +13,7 @@ import vm from 'node:vm';
 
 const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8').replace(/\r/g, '');
 const baseFn = readFileSync(new URL('./fixtures/buildWhatsAppURL.base.js', import.meta.url), 'utf8').replace(/\r/g, '');
-const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8').replace(/\r/g, '');
+const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8').replace(/\r/g, '').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
 const START = 'function buildWhatsAppURL(ref) {';
