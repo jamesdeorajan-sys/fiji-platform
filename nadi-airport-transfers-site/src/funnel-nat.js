@@ -61,8 +61,9 @@
       }, true);
       document.addEventListener('click', function (e) {
         var t = e.target && e.target.closest ? e.target : null; if (!t) return;
-        if (t.closest('.btn-confirm')) { delete once.outcome; send('confirm_clicked'); } // each press may lead to its own save attempt and outcome
-        var a = t.closest('a[href]'); if (a && /^https:\/\/(wa\.me|api\.whatsapp\.com)\//i.test(a.href)) send('whatsapp_opened', 'wa');
+        if (t.closest('.btn-confirm')) { delete once.outcome; delete once.wa; send('confirm_clicked'); } // each press may lead to its own save attempt, outcome and hand-off
+        // the booking hand-off button only (as FijiDash: #bulaWaBtn); header/footer/FAQ WhatsApp links are general contact, not a booking hand-off
+        if (t.closest('#bulaWaBtn')) send('whatsapp_opened', 'wa');
       }, true);
       var step3 = document.getElementById('step3'), bula = document.getElementById('bulaSuccess');
       var mo = new MutationObserver(function () {

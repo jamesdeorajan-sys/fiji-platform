@@ -55,7 +55,7 @@ test('happy path: the whole funnel produces the allowed events in order, with no
   p.els.step3.style.display = 'block'; p.mutate();
   p.fire('click', { closest: (s) => (s === '.btn-confirm' ? {} : null) });
   p.els.bulaRef.textContent = 'Booking #305 · Ref: FTT-ABC123'; p.els.bulaLeadText.textContent = 'Your request is saved online, but your transfer is not confirmed yet.'; p.els.bulaSuccess.style.display = 'block'; p.mutate();
-  p.fire('click', { closest: (s) => (s === 'a[href]' ? { href: 'https://wa.me/61478886145?text=x' } : null) });
+  p.fire('click', { closest: (s) => (s === '#bulaWaBtn' ? { href: 'https://wa.me/61478886145?text=x' } : null) });
   assert.deepEqual(p.events(), ['booking_page_view', 'route_selected', 'vehicle_selected', 'details_opened', 'confirm_clicked', 'booking_post_started', 'booking_post_succeeded', 'whatsapp_opened']);
   for (const e of p.payloads()) {
     assert.ok(ALLOWED.has(e.event_type), e.event_type);
@@ -105,4 +105,19 @@ test('deep link / restored draft: a route already filled in on arrival records r
   // and a later change does not record it twice
   p.els.pickup.value = 'NAN'; p.els.destination.value = 'NAVITI_RESORT'; p.fire('change', p.els.destination); p.fire('change', p.els.destination);
   assert.deepEqual(p.events(), ['booking_page_view', 'route_selected']);
+});
+
+test('WhatsApp hand-off: only the booking hand-off button counts (as FijiDash), once per save attempt; general WhatsApp links neither count nor block it', () => {
+  const generalWa = { closest: (s) => (s === 'a[href]' ? { href: 'https://wa.me/61478886145' } : null) }; // header / footer / FAQ link
+  const handoff = { closest: (s) => (s === '#bulaWaBtn' ? { href: 'https://wa.me/61478886145?text=x' } : null) };
+  const confirm = { closest: (s) => (s === '.btn-confirm' ? {} : null) };
+  const p = page();
+  p.fire('click', generalWa); p.fire('click', generalWa);
+  assert.deepEqual(p.events(), ['booking_page_view'], 'general WhatsApp contact is not a booking hand-off');
+  p.fire('click', confirm);
+  p.els.bulaRef.textContent = 'Booking #307 · Ref: FTT-Y'; p.els.bulaSuccess.style.display = 'block'; p.mutate();
+  p.fire('click', handoff); p.fire('click', handoff);
+  assert.deepEqual(p.events(), ['booking_page_view', 'confirm_clicked', 'booking_post_started', 'booking_post_succeeded', 'whatsapp_opened'], 'a double tap counts once');
+  p.fire('click', confirm); p.fire('click', handoff); // "Book another transfer" in the same tab: its own attempt and its own hand-off
+  assert.deepEqual(p.events().slice(-2), ['confirm_clicked', 'whatsapp_opened']);
 });
