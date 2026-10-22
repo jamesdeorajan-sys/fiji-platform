@@ -456,6 +456,7 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 
 | Issue | Priority | Status |
 |---|---|---|
+| External monitor (NAT/FijiDash) not yet running: no GitHub repo, no alert recipient, no tokens, drills not run - outages/booking failures still undetected externally until activated | **HIGH** | OPEN - staged package `e27a336` ready; see `docs/SESSION-HANDOFF-2026-10-22.md` |
 | `notifyPartner()` silently returns `false` with zero alerting if a partner has no `contact_channels` row, or if the notification call itself fails | **RESOLVED Session 58 — see P30** | Fixed via `alertOpsFailure()`, merged to `main` via PR #1 (commit `29da21a`), verified live with a real test lead and real delivered email. Not yet deployed to production. |
 | `sendEmailNotification()` returns `true` (false positive) when `env.SENDGRID_API_KEY` is unset, masking a real failure as a success in the `leads.notified` field | **RESOLVED Session 58 — see P30** | Fixed, merged, verified. Not yet deployed to production. |
 | SendGrid's 60-day free trial expired 2026-07-11, silently killing ALL email lead notifications platform-wide (not just P30's alert path) — root cause of the 22/93 historical `notified=0` leads | **RESOLVED Session 58** | Trial expiry date matched the real failure timing exactly. Fixed: payment added, `vakaviti.ai` domain authenticated (4 DNS records), upgraded to Essentials 50K ($19.95/mo). Confirmed working with a real live lead through Fiji Tour Transfers' Lagi widget. |
@@ -524,6 +525,10 @@ Not re-verified this session except where explicitly noted above. Refer to Sessi
 ---
 
 ## 18. SESSION HISTORY
+
+### Monitoring session - 2026-10-21/22 - CLOSED (handoff written) - External NAT/FijiDash monitor built and staged; NOT active
+
+Actor: Claude Code, directed by James. Booking-decline investigation closed; external read-only monitor package built (commits `77e3913` -> `de4a26e` frozen -> `e27a336` staged), 25 offline tests pass, no production/fare/deployment change, no paid service, no external alert. Blockers and exact next prompt: `docs/SESSION-HANDOFF-2026-10-22.md`. Key facts: 30-min cadence, fixed journeys NAT home + Hilton, durable state on branch `monitor-state` (verified on a local git remote only), D1 token is account-wide (allowlist limits the monitor), alert recipient unconfirmed, two receipt drills required, live Hilton link differs from recorded expectation (UNKNOWN until recalibrated).
 
 ### Session 59 — 2026-07-15/19 — CLOSED — WhatsApp template migration real-delivery-verified for all 4 templates; Nadi Airport Transfers driver marketplace Milestones 1-3 built and live-verified, fully isolated. Long, technically dense session, nothing merged to production.
 

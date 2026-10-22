@@ -1618,3 +1618,15 @@ live site, and only at final cutover), the full Section 9 test plan, and the cut
    focus to merge/cutover planning for what's already built.
 4. **WABA business verification** — still Unverified, not currently blocking anything, but worth
    revisiting.
+
+
+---
+
+## Monitoring session - 2026-10-21/22 - external NAT/FijiDash monitor built, hardened, staged; NOT active (Claude)
+
+Full detail and exact next steps: `docs/SESSION-HANDOFF-2026-10-22.md` (authoritative). Summary:
+- NAT booking-decline investigation CLOSED (handover delivered). Priority moved to dependable monitoring.
+- Built an external, read-only monitor (GitHub Actions runner, Playwright, Healthchecks dead-man's switch, independent uptime service planned). Package commits `77e3913` -> `de4a26e` (scope frozen) -> `e27a336` (staged: 30-min cadence, fixed journeys NAT homepage + Hilton, durable state on branch `monitor-state`, availability/browser independent of D1). 25 offline tests pass. Lives in its own private repo (not yet created - GitHub connector unlinked).
+- Seven pre-activation checks done offline: calibration (live Hilton link uses `legacy_route_page`/`nadi_legacy_rescue`, so the recorded expectation is outdated -> UNKNOWN), cross-process/cross-job incident persistence + dedupe + overlap, pending alert retry, completed-vs-healthy, write-blocking proof for every method, reviewed-query gating (D1 token itself is account-wide), cost estimate, drills.
+- NOT active: no paid service, no external alert, no workflow scheduled, no production change. Blockers: GitHub link/repo, alert recipient + drill authorisation, plan/spend cap, Cloudflare tokens + query approval, uptime provider eligibility. Two receipt drills required before "operational".
+- Carried forward untouched: flight-number proposal HELD; fare inconsistency UNVERIFIED; email follow-up / Marau / Momi candidates as recorded in AGENT_SYNC.md.
