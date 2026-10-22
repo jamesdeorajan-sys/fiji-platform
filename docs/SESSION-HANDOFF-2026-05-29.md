@@ -1,3 +1,9 @@
+> **HISTORICAL POINTER — NOT CANONICAL.** As of 2026-08-24, the living
+> handoff document is `docs/vakaviti-control-plane/SESSION_HANDOFF.md` and
+> the append-only history is `docs/vakaviti-control-plane/CHANGELOG.md`.
+> This file is preserved as a historical snapshot of 2026-05-29 and is not
+> updated further.
+
 # Vakaviti.ai — Lagi Session Handoff
 **Date:** Friday 29 May 2026 — 04:45 AEST  
 **Session:** Phase 1 complete · Phase 2 pending · Phase 3 ready to build
