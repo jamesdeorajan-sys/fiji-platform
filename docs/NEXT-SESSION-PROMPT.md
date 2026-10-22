@@ -1,0 +1,24 @@
+# NEXT-SESSION PROMPT - Vakaviti monitoring release (written 2026-10-22)
+
+Paste the block below into a new session. Sources of truth: `BUILD.md`, `VAKAVITI-BRAIN.md`, `SESSION-HANDOFF-2026-10-22.md` (incl. section 8 addendum).
+**This repository is PUBLIC, so the monitor package itself is deliberately NOT stored here** - it goes into a separate PRIVATE repo (step 2). Until then James must attach `vakaviti-monitor-e27a336.bundle`.
+
+```
+Continue the Vakaviti NAT/FijiDash monitoring release (James, Sydney, non-technical: be direct, step-by-step, production-ready, Cloudflare-first, built for 50+ partners).
+
+READ FIRST (sources of truth, in github.com/jamesdeorajan-sys/fiji-platform, main): docs/BUILD.md, docs/VAKAVITI-BRAIN.md, docs/SESSION-HANDOFF-2026-10-22.md (including its section 8 addendum), and the newest checkpoint in docs/AGENT_SYNC.md.
+
+STATE: The monitor package is finished but NOT ACTIVE. Commits 77e3913 -> de4a26e (scope frozen) -> e27a336 (staged release). If it is not yet in a private GitHub repo, I will attach vakaviti-monitor-e27a336.bundle (git bundle, branch main) and ACTIVATION-SHEET.md; the old container is gone. 25 offline tests passed (re-run needs NAT/FD source worktrees at ac3642e / 996d7be via scripts/checkout-test-sources.sh and Playwright 1.56.0). Design: GitHub Actions every 30 min; fixed browser journeys = NAT homepage + Hilton to the FijiDash review step (Confirm never pressed); static sweep of 23 route pages; independent external uptime 1-5 min plus a Healthchecks missed-run check (period 30 min, grace 15 min); durable state on git branch monitor-state (proven only on a local git remote, NOT yet on GitHub runners); UNKNOWN is never green; availability/browser do not depend on D1. The D1 Read token is account-wide: the query allowlist limits the monitor, not the token; queries run only after I approve them.
+
+HARD RULES: The NAT booking-decline investigation is CLOSED; do not reopen it, chase deployment timestamps or do historical analysis. Do not change NAT/FD code, fares or production deployments. No bookings, messages or credential entry. No paid service enabled, no external alert sent, and nobody contacted except me, until I authorise each. Flight-number proposal stays HELD; fare inconsistency stays UNVERIFIED. Scope stays frozen: staged activation only, no new features. Do not assume an alert recipient: I will state it.
+
+DO IN ORDER:
+1. Fix the stale package docs listed in handoff section 5 (SETUP-REQUIREMENTS state note, README rotation line, ACCEPTANCE-RESULTS counts/cadence, check RUNBOOK and PROPOSAL for 15-min/cache wording), re-run tests, commit, and re-issue bundle/zip with the new hash.
+2. GitHub is linked for fiji-platform (public repo: never put the monitor there). Ask me for the name of a PRIVATE monitor repo that I have created empty, make sure the Claude GitHub App has access to it, attach it, and push the bundle's main branch. Check visibility is private before pushing.
+3. Optional and read-only: use the Cloudflare Developer Platform connector, if available, to read live Pages/Worker deployment IDs and the D1 schema. Change nothing. Reconcile the recorded NAT releases (18f5caa4@ac3642e vs AGENT_SYNC e43dc900@4c2aec1), rebuild config/expected-routes.json from the live commit (the live Hilton link uses utm_medium=legacy_route_page and utm_campaign=nadi_legacy_rescue, so the current table is outdated and reports UNKNOWN), and confirm FijiDash element IDs.
+4. Walk me through the blockers one at a time: GitHub plan and spend cap (suggest $10/month, stop usage); alert recipient and channel (do not assume GitHub issues email me); Healthchecks account; external uptime provider after verifying commercial-use eligibility with the provider; Cloudflare tokens; approval of the reviewed query list (node scripts/review-queries.mjs approve "James").
+5. First GitHub dry run with alerts and heartbeat OFF: confirm the second run prints "restored state from branch", record measured runner seconds (node scripts/usage-report.mjs state --gh-seconds N), report real monthly minutes and cost (estimate so far: 1,440-2,880 min/month, $0-$5.3 overage on Free). Keep 30 min for about a week before considering 15.
+6. Only with my authorisation: alert-delivery drill (drill workflow action alert-send, then alert-ack with the code I received), then the missed-run drill (pause the workflow about 45 min, Healthchecks must alert and recover, then missed-run-confirm). Monitoring is operational only after I confirm actual receipt of BOTH. Then set MONITOR_ACTIVE=1.
+
+FINISH: update AGENT_SYNC.md (tracker), BUILD.md, VAKAVITI-BRAIN.md and the handoff; commit and push (my stop hook requires pushed work). End with only the concrete remaining blockers, measured or clearly labelled estimated cost, and the two receipt drills.
+```
