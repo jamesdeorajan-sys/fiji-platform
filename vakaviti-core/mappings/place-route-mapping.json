@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "description": "Deterministic mapping from each storefront's existing place/route identifier to a canonical Place/route anchor. Built only from values directly observed on each live storefront this pass (nadiairporttransfers/fijidash zones table; bookfijitransfers destinationId slugs from its own live API/bundle). No value was invented.",
+  "canonicalRouteAnchors": [
+    "Nadi Airport", "Nadi", "Wailoaloa", "Denarau", "Sonaisali", "Vuda Point",
+    "Lautoka", "Momi Bay", "Natadola", "Sigatoka", "Coral Coast",
+    "Pacific Harbour", "Ba", "Rakiraki", "Suva", "Nausori",
+    "Mamanuca Islands", "Yasawa Islands", "Beqa Lagoon"
+  ],
+  "mappings": {
+    "nadiairporttransfers_and_fijidash": {
+      "note": "Storefronts 1 and 2 share the exact same zones table (see inventory 01/02) — one mapping row covers both. ~55 named hotels each map to one of these zone anchors via ftt-booking-site/src/app.js's hotel table; only the zone-level anchors are listed here since that is the pricing-resolution granularity.",
+      "identity_mapping": "Each zones.name value IS the canonical route anchor already — no transformation needed for these two storefronts."
+    },
+    "bookfijitransfers": {
+      "nadi-airport-hotels": "Nadi Airport",
+      "wailoaloa-nadi": "Wailoaloa",
+      "hilton-denarau": "Denarau",
+      "sofitel-denarau": "Denarau",
+      "sheraton-denarau": "Denarau",
+      "radisson-denarau": "Denarau",
+      "port-denarau": "Denarau",
+      "sonaisali": "Sonaisali",
+      "vuda-lautoka": "Lautoka",
+      "marriott-momi": "Momi Bay",
+      "natadola-intercontinental": "Natadola",
+      "shangri-la-yanuca": "Coral Coast",
+      "outrigger-coral-coast": "Coral Coast",
+      "warwick-naviti": "Coral Coast",
+      "pearl-pacific-harbour": "Pacific Harbour",
+      "grand-pacific-suva": "Suva",
+      "rakiraki-volivoli": "Rakiraki"
+    }
+  },
+  "review_required": [
+    {
+      "issue": "many-to-one collision",
+      "detail": "bookfijitransfers.com's 'wailoaloa-nadi' slug rolls up multiple physical areas (Wailoaloa, Namaka, and unspecified 'Nadi hotels') under storefronts 1/2's single 'Wailoaloa' zone anchor. If 'Nadi hotels' in that grouping actually means storefronts 1/2's separate 'Nadi' zone (a different, slightly further zone than 'Wailoaloa' in the zones table), this mapping may be conflating two distinct canonical anchors into one. Not resolved — flagged for human confirmation of exactly which hotels bft's corridor covers."
+    },
+    {
+      "issue": "five-hotel collision under one anchor",
+      "detail": "hilton-denarau, sofitel-denarau, sheraton-denarau, radisson-denarau, and port-denarau all map to the single 'Denarau' anchor, matching storefronts 1/2's behavior (all Denarau hotels price identically there too) — EXCEPT port-denarau's live sedan fare (39) differs from the other four Denarau destinations (49), which is very likely the launch promo described in inventory 03, not a real distinct route. Treat as a promotional override on top of the Denarau anchor, not a separate anchor, pending confirmation."
+    },
+    {
+      "issue": "Natadola hotel-name ambiguity",
+      "detail": "bft's destinationId is literally 'natadola-intercontinental' but its display label is 'InterContinental Fiji & Yatule · Natadola' — grouping two named resorts (InterContinental, Yatule) under one anchor, consistent with storefronts 1/2 also treating InterContinental Natadola and Yatule Resort as the same 'Natadola' zone. No conflict found here, listed for completeness."
+    }
+  ]
+}

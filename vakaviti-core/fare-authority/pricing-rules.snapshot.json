@@ -1,0 +1,35 @@
+{
+  "_provenance": "Read-only snapshot of production nadi-marketplace-db.pricing_rules and .fuel_index, captured 2026-09-02 for Issue #38 R2 shadow-mode Fare Authority. This IS the real formula already backing nadiairporttransfers.com and book.fijidash.com today (see Issue #37's own note: 'start with FijiDash because its backend is already closest to the target architecture'). The Vakaviti Fare Authority v1 baseline deliberately reuses this exact fitted curve rather than inventing a new one, so that a shadow comparison against storefronts 1/2 starts from a known-zero baseline and any variance found there is a real bug, not a modeling choice.",
+  "fuelIndex": { "multiplier": 1.0, "fuelPriceFjdPerLitre": 3.39, "effectiveFrom": "2026-07-01" },
+  "constants": {
+    "nightSurchargeRate": 0.20,
+    "nightSurchargeWindow": "22:00-06:00",
+    "returnMultiplier": 1.85,
+    "discountThresholdFjd": 50,
+    "discountRate": 0.10
+  },
+  "tiers": {
+    "sedan": [
+      { "minKm": 0,   "maxKm": 15,  "ratePerKm": 3.592, "flagfall": 5.57 },
+      { "minKm": 15,  "maxKm": 35,  "ratePerKm": 1.568, "flagfall": 44.19 },
+      { "minKm": 35,  "maxKm": 70,  "ratePerKm": 1.438, "flagfall": 38.75 },
+      { "minKm": 70,  "maxKm": 160, "ratePerKm": 1.120, "flagfall": 33.65 },
+      { "minKm": 160, "maxKm": 300, "ratePerKm": 1.852, "flagfall": -47.67 }
+    ],
+    "minivan": [
+      { "minKm": 0,   "maxKm": 15,  "ratePerKm": 3.581, "flagfall": 26.91 },
+      { "minKm": 15,  "maxKm": 35,  "ratePerKm": 2.622, "flagfall": 43.54 },
+      { "minKm": 35,  "maxKm": 70,  "ratePerKm": 0.479, "flagfall": 128.92 },
+      { "minKm": 70,  "maxKm": 160, "ratePerKm": 1.764, "flagfall": 6.22 },
+      { "minKm": 160, "maxKm": 300, "ratePerKm": 4.815, "flagfall": -584.33 }
+    ],
+    "minibus": [
+      { "minKm": 0,   "maxKm": 15,  "ratePerKm": 4.133, "flagfall": 51.17 },
+      { "minKm": 15,  "maxKm": 35,  "ratePerKm": 2.622, "flagfall": 73.54 },
+      { "minKm": 35,  "maxKm": 70,  "ratePerKm": 0.956, "flagfall": 139.00 },
+      { "minKm": 70,  "maxKm": 160, "ratePerKm": 1.576, "flagfall": 66.96 },
+      { "minKm": 160, "maxKm": 300, "ratePerKm": 1.852, "flagfall": 132.33 }
+    ]
+  },
+  "_note_on_curve_shape": "The minivan 35-70km tier (rate 0.479, flagfall 128.92) and the negative flagfalls at the 160-300km tier for sedan/minivan are real, already-live production values, not typos introduced here — they read as a fitted/regressed curve rather than hand-set numbers. Reproduced faithfully because the shadow authority's job in R2 is to match what guests are actually charged today, not to correct it. Flagging the shape here for whoever eventually reviews the pricing model itself."
+}

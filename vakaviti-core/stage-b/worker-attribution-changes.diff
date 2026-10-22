@@ -1,0 +1,113 @@
+--- C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/56215cd6-a5fa-4f9e-b958-88dbaee22580/scratchpad/attribution-preview/original-worker-for-diff.js	2026-09-02 15:39:49.139634100 +1000
++++ C:/Users/James/AppData/Local/Temp/claude/C--Users-James-Desktop-VAKAVITI-MASTER/56215cd6-a5fa-4f9e-b958-88dbaee22580/scratchpad/attribution-preview/worker.js	2026-09-02 15:23:54.358465000 +1000
+@@ -64,6 +64,40 @@
+ // handleQuoteCreate (the destination_id branch returns before it), but is
+ // a real, valid vehicle_type for /bookings and admin test bookings.
+ const ALLOWED_VEHICLE_TYPES = ['sedan', 'minivan', 'minibus', 'boat'];
++
++// Milestone 35 (Issue #38 Step 3, CEO correction 2026-09-02) - source
++// attribution for the shared bookings table. Host header CANNOT be used
++// for this: both public storefronts call the exact same hardcoded
++// NADI_API_BASE ('https://api.nadiairporttransfers.com'), so a booking
++// placed via book.fijidash.com still arrives with
++// Host: api.nadiairporttransfers.com. The browser's Origin header is the
++// only reliable server-side signal - it reflects the page the guest is
++// actually on, is set by the browser itself (not app.js), and cannot be
++// forged from a normal page context the way a body field could be.
++// Closed allowlist, not a pattern match - an unrecognised or missing
++// Origin resolves to null/'unknown' rather than being guessed at.
++const STOREFRONT_ORIGIN_ALLOWLIST = {
++  'https://book.fijidash.com': { storefrontId: 'fijidash', canonicalSource: 'fijidash' },
++  'https://nadiairporttransfers.com': { storefrontId: 'nadiairporttransfers', canonicalSource: 'nadi_airport_transfers' },
++  'https://www.nadiairporttransfers.com': { storefrontId: 'nadiairporttransfers', canonicalSource: 'nadi_airport_transfers' },
++};
++
++// Resolves storefront/source attribution for a browser-originated request.
++// Deliberately takes the raw Request, not the parsed body - client-supplied
++// canonical_source/storefront_id are never read anywhere in this function
++// or its caller, so there is nothing for a guest's browser to override even
++// in principle. Non-browser/API traffic (partner, agent, direct_api) is
++// intentionally NOT handled here - Step 3 correction: that needs its own
++// authenticated/signed mechanism, out of scope for this release, and such
++// traffic falls through to 'unknown' exactly like any other unrecognised
++// Origin until that mechanism exists.
++function resolveStorefrontAttribution(request) {
++  const origin = request.headers.get('Origin');
++  if (origin && STOREFRONT_ORIGIN_ALLOWLIST[origin]) {
++    return { ...STOREFRONT_ORIGIN_ALLOWLIST[origin], originSeen: origin };
++  }
++  return { storefrontId: null, canonicalSource: 'unknown', originSeen: origin || null };
++}
+ // MILESTONE 16: real floor on Flexible Fare proposals, enforced here -
+ // server-side - not just as a client-side hint. Guest widget shows the
+ // same ratio as a "propose from" UX hint (NEGOTIATION_FLOOR_RATIO in
+@@ -1123,6 +1157,7 @@
+     `SELECT b.id, b.guest_name, b.guest_phone, b.guest_email, b.pickup_zone, b.destination_zone, b.distance_km,
+             b.vehicle_type, b.quoted_currency, b.quoted_amount, b.payment_method, b.status,
+             b.pickup_date, b.pickup_time, b.flight_number, b.notes, b.client_booking_ref,
++            b.canonical_source, b.storefront_id, b.campaign, b.referral_code, b.vakaviti_booking_id,
+             b.created_at, d.name AS driver_name,
+             (b.status = 'pending' AND b.assigned_driver_id IS NULL
+              AND (julianday('now') - julianday(b.created_at)) * 24 * 60 >= ?) AS is_stale
+@@ -2665,6 +2700,13 @@
+   // and aren't in scope for this fix. guestEmail/flightNumber are the two
+   // ops-required contact fields Issue #34 requirement 9 found missing.
+   clientBookingRef = null, guestEmail = null, flightNumber = null,
++  // Milestone 35 (Issue #38 Step 3) - canonicalSource/storefrontId are
++  // ALWAYS server-derived (see resolveStorefrontAttribution) and are never
++  // sourced from guest-editable request body fields, by construction -
++  // there is no "trust but verify" step here because the client's opinion
++  // of its own identity is never consulted in the first place. campaign/
++  // referralCode are lower-stakes free text and may come from the client.
++  canonicalSource = 'unknown', storefrontId = null, campaign = null, referralCode = null,
+   // Milestone 18 (Recommendation 1) - see computeAuthoritativePrice's own
+   // header comment for the full scope/tier reasoning. verificationMode
+   // defaults to 'trusted' (today's existing behavior, unchanged) so the
+@@ -2905,14 +2947,16 @@
+          quoted_currency, quoted_amount, fx_rate_at_booking, settlement_amount_fjd, fuel_multiplier_applied,
+          payment_method, status, source_ip, commission_base_fjd, assigned_driver_id,
+          pickup_date, pickup_time, notes, return_date, return_time, return_pickup_location,
+-         client_booking_ref, guest_email, flight_number)
+-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
++         client_booking_ref, guest_email, flight_number,
++         canonical_source, storefront_id, campaign, referral_code)
++       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ).bind(
+       guestName, guestPhone, pickupZone, destinationZone, distanceKm, vehicleType,
+       quotedCurrency, quotedAmount, fxRate, settlementAmountFjd, fuelMultiplierApplied,
+       paymentMethod, status, sourceIp, commissionBaseFjd, assignedDriverId,
+       pickupDate, pickupTime, notes, returnDate, returnTime, returnPickupLocation,
+-      clientBookingRef, guestEmail, flightNumber
++      clientBookingRef, guestEmail, flightNumber,
++      canonicalSource, storefrontId, campaign, referralCode
+     ).run();
+   } catch (err) {
+     // Milestone 34 - the race-safe half of idempotency: two genuinely
+@@ -2958,6 +3002,12 @@
+   let body;
+   try { body = await request.json(); } catch { return json({ ok: false, error: 'Invalid JSON.' }, 400); }
+ 
++  // Milestone 35 (Issue #38 Step 3, CEO correction) - resolved from the
++  // request itself, BEFORE body is consulted for anything identity-related.
++  // body.canonical_source / body.storefront_id are never read anywhere in
++  // this handler - there is nothing here for a guest's client to override.
++  const attribution = resolveStorefrontAttribution(request);
++
+   const result = await createBookingRecord(env, {
+     guestName: (body.guest_name || '').toString().trim().slice(0, 200) || 'Guest',
+     guestPhone: normalisePhone((body.guest_phone || '').toString()),
+@@ -2998,6 +3048,14 @@
+     hasChildSeat: body.has_child_seat === true,
+     hasSurfboard: body.has_surfboard === true,
+     actor: 'guest', // the public guest widget - a real guest's own booking submission
++    // Milestone 35 - server-derived only. campaign/referral_code are the
++    // one part of this a client may legitimately supply (low-stakes,
++    // non-identity, e.g. a UTM-style value) - normalisedItineraryString
++    // caps/sanitises them the same way notes/flight_number already are.
++    canonicalSource: attribution.canonicalSource,
++    storefrontId: attribution.storefrontId,
++    campaign: normalisedItineraryString(body.campaign, 100),
++    referralCode: normalisedItineraryString(body.referral_code, 100),
+   });
+   if (!result.ok) return json({ ok: false, errors: result.errors }, 400);
+ 
