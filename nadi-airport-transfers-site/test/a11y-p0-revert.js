@@ -101,8 +101,25 @@ function undoPairs(s, pairs, f) {
   }
   return s;
 }
+// Booking-expectations copy candidate (ceo/nat-booking-expectations, 2026-10-23): five explanatory text edits on the home page.
+// Undone first (each must be present exactly once) so the production pins below still prove nothing else changed.
+export const EXPECTATIONS_COPY = [
+  ['<p class="hero-sub">From Nadi International Airport to every resort on the island. Real-time distance pricing — just like Uber, but better. Managed by locals who know every road.</p>',
+   '<p class="hero-sub">Choose your airport or hotel transfer, review the total and send your request. Our Fiji team confirms the arrangements with you on WhatsApp.</p>'],
+  ['aria-label="Service guarantees"', 'aria-label="How your request works"'],
+  ['<span class="btb-tick">✓</span> Fixed price, no surge', '<span class="btb-tick">✓</span> Review the total before requesting'],
+  ['<span class="btb-tick">✓</span> Flight monitoring — delays cost nothing', '<span class="btb-tick">✓</span> Human confirmation on WhatsApp'],
+  ['<p>Select pickup, destination & vehicle — price calculated live by distance</p>', '<p>Choose your journey and vehicle, then review the total before sending your request.</p>'],
+];
+export function undoExpectationsCopy(s) {
+  for (const [before, after] of EXPECTATIONS_COPY) {
+    if (s.split(after).length !== 2) throw new Error('index.html: expected exactly one booking-expectations edit: ' + after.slice(0, 80));
+    s = s.replace(after, before);
+  }
+  return s;
+}
 function undoIndex(s) {
-  return s
+  return undoExpectationsCopy(s)
     .replace(/ autocomplete="(?:given-name|family-name|email|tel)"/g, '') // RC1 E: contact-field autocomplete
     .replace('        <a href="/transfer/radisson-blu-resort-fiji-denarau">Nadi Airport → Radisson Blu Denarau</a>\n        <a href="/transfer/sofitel-fiji-resort-spa">Nadi Airport → Sofitel Denarau</a>\n        <a href="/transfer/westin-denarau-island-resort">Nadi Airport → Westin Denarau</a>\n        <a href="/transfer/crowne-plaza-fiji-nadi-bay">Nadi Airport → Crowne Plaza Nadi Bay</a>\n        <a href="/transfer/first-landing-beach-resort">Nadi Airport → First Landing, Vuda Point</a>\n        <a href="/transfer/fiji-marriott-resort-momi-bay">Nadi Airport → Marriott Momi Bay</a>\n        <a href="/transfer/warwick-fiji">Nadi Airport → The Warwick Fiji</a>\n        <a href="/transfer/tanoa-international-hotel">Nadi Airport → Tanoa International</a>\n        <a href="/transfer/tokatoka-resort-hotel">Nadi Airport → Tokatoka Resort</a>\n', '') // RC1 D: footer links to every live destination page
     .replace("            it's the same team that is arranging your transfer.", "            we're the #1 team to reach out to during your Fiji stay.") // candidate C: unsupported '#1 team' claim replaced (wording needs James's approval)
