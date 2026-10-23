@@ -12,7 +12,7 @@ got=$(git diff --numstat "$BASE" HEAD -- src | tr -s "\t" " " | sort)
 echo "src diff vs $BASE:"; echo "$got"
 [ "$got" = "$want" ] || { echo "FAIL: the src diff is not exactly the approved index.html copy edit"; exit 1; }
 [ "$(git ls-tree -r --name-only HEAD -- src | wc -l)" = "45" ] || { echo "FAIL: upload tree is not the 45-file production tree"; exit 1; }
-[ "$(git ls-tree -r HEAD -- src | grep -v -P '\tnadi-airport-transfers-site/src/index\.html$' | sha256sum)" = "$(git ls-tree -r "$BASE" -- src | grep -v -P '\tnadi-airport-transfers-site/src/index\.html$' | sha256sum)" ] || { echo "FAIL: a file other than index.html differs from $BASE"; exit 1; }
+[ "$(git ls-tree -r HEAD -- src | grep -v -P '\t(.*/)?src/index\.html$' | sha256sum)" = "$(git ls-tree -r "$BASE" -- src | grep -v -P '\t(.*/)?src/index\.html$' | sha256sum)" ] || { echo "FAIL: a file other than index.html differs from $BASE"; exit 1; }
 echo "44 other upload files byte-identical to $BASE"
 node --test test/*.test.js > /tmp/nat-booking-expectations-gate.tap 2>&1 || { tail -40 /tmp/nat-booking-expectations-gate.tap; echo "FAIL: tests"; exit 1; }
 grep -E '^# (tests|pass|fail)' /tmp/nat-booking-expectations-gate.tap
