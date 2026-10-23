@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { a11yRevert, undoExpectationsCopy } from './a11y-p0-revert.js';
 import { undoTaxiFaq } from './taxi-faq-revert.js';
+import { undoRouteTitles } from './route-titles-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const rd = (f) => readFileSync(path.join(SRC, f), 'utf8');
@@ -33,8 +34,8 @@ test('SCOPE: every other served file (route pages incl. DoubleTree, rental page,
   walk(SRC);
   const others = files.filter((f) => !(f in PROD) && f !== 'funnel-nat.js').sort(); // funnel-nat.js: new file of the funnel candidate, tested in funnel-nat.test.js
   assert.equal(others.length, 41);
-  // route pages pass through undoTaxiFaq (the later taxi-FAQ candidate), so this pin still proves nothing else in them changed
-  const served = (f) => f.startsWith('transfer/') ? Buffer.from(undoTaxiFaq(readFileSync(path.join(SRC, f), 'utf8'))) : readFileSync(path.join(SRC, f));
+  // route pages pass through undoRouteTitles + undoTaxiFaq (the later title and taxi-FAQ candidates), so this pin still proves nothing else in them changed
+  const served = (f) => f.startsWith('transfer/') ? Buffer.from(undoTaxiFaq(undoRouteTitles(f, readFileSync(path.join(SRC, f), 'utf8')))) : readFileSync(path.join(SRC, f));
   assert.equal(sha(others.map((f) => `${f}\0${sha(served(f))}\n`).join('')), OTHERS_PROD);
 });
 

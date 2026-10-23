@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { undoTaxiFaq, TAXI_A_HTML } from './taxi-faq-revert.js';
+import { undoRouteTitles } from './route-titles-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -88,7 +89,8 @@ test('22 route pages answer "taxi or private transfer?" once, directly after the
 });
 
 test('SCOPE: removing the taxi question reproduces every production route page byte for byte; DoubleTree (HELD) is untouched', () => {
-  for (const f of ROUTES) assert.equal(sha(undoTaxiFaq(rd(f))), PROD[f], f + ' differs beyond the taxi FAQ');
+  // undoRouteTitles: the later title/description candidate (route-titles.test.js) is undone first
+  for (const f of ROUTES) assert.equal(sha(undoTaxiFaq(undoRouteTitles(f, rd(f)))), PROD[f], f + ' differs beyond the taxi FAQ');
   for (const f of HELD) assert.equal(sha(readFileSync(path.join(SRC, f))), PROD[f], f + ' must stay byte-identical');
 });
 
