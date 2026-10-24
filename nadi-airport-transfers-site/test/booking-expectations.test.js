@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXPECTATIONS_COPY, undoExpectationsCopy } from './a11y-p0-revert.js';
 import { undoTaxiFaq } from './taxi-faq-revert.js';
+import { undoAttribution } from './attribution-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const rd = (f) => readFileSync(path.join(SRC, f), 'utf8');
@@ -53,12 +54,12 @@ test('the replaced promises are gone from the home page (Uber comparison, live d
 
 test('SCOPE: undoing exactly the five copy edits reproduces the production home page byte for byte', () => {
   assert.equal(EXPECTATIONS_COPY.length, 5);
-  assert.equal(sha(undoExpectationsCopy(html)), PROD_INDEX);
+  assert.equal(sha(undoExpectationsCopy(undoAttribution('index.html', html))), PROD_INDEX); // undoAttribution: the later attribution release
 });
 
 test('SCOPE: every other served file is byte-identical to production 0de39c3 (fares, booking logic, hand-off, funnel, rentals, route pages)', () => {
   // route pages pass through undoTaxiFaq (the later taxi-FAQ candidate): nothing else in them may differ
-  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f))), want, f + ' changed');
+  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(readFileSync(path.join(SRC, f), 'utf8')) : (f === 'app.js' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f)))), want, f + ' changed');
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC);

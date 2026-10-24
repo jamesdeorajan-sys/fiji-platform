@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TITLES, undoRouteTitles } from './route-titles-revert.js';
+import { undoAttribution } from './attribution-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -97,6 +98,6 @@ test('SCOPE: undoing the title/description edit reproduces every production file
   assert.deepEqual(files.sort(), Object.keys(PROD).sort());
   for (const f of files) {
     const b = readFileSync(path.join(SRC, f));
-    assert.equal(sha(TITLES[f] ? undoRouteTitles(f, b.toString('utf8')) : b), PROD[f], f);
+    assert.equal(sha(TITLES[f] ? undoRouteTitles(f, b.toString('utf8')) : (f === 'app.js' || f === 'index.html' ? undoAttribution(f, b.toString('utf8')) : b)), PROD[f], f); // undoAttribution: the later attribution release
   }
 });

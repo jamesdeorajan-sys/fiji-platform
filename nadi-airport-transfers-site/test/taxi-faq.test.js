@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { undoTaxiFaq, TAXI_A_HTML } from './taxi-faq-revert.js';
 import { undoRouteTitles } from './route-titles-revert.js';
+import { undoAttribution } from './attribution-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -99,7 +100,7 @@ test('SCOPE: every other served file (home page, fares, booking logic, hand-off,
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC);
   assert.deepEqual(files.sort(), Object.keys(PROD).sort(), 'same 45-file upload tree');
-  for (const f of files.filter((x) => !x.startsWith('transfer/'))) assert.equal(sha(readFileSync(path.join(SRC, f))), PROD[f], f + ' changed');
+  for (const f of files.filter((x) => !x.startsWith('transfer/'))) assert.equal(sha(f === 'app.js' || f === 'index.html' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f))), PROD[f], f + ' changed'); // undoAttribution: the later attribution release
 });
 
 test('no new claim: the answer has no taxi fare, price, distance, journey time, guarantee, rating or superlative; it repeats only facts the page states', () => {
