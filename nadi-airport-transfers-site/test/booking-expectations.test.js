@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EXPECTATIONS_COPY, undoExpectationsCopy } from './a11y-p0-revert.js';
+import { undoRouteSource, ROUTE_SOURCE_FILE } from './route-source-revert.js';
 import { undoTaxiFaq } from './taxi-faq-revert.js';
 import { undoAttribution } from './attribution-revert.js';
 
@@ -59,10 +60,10 @@ test('SCOPE: undoing exactly the five copy edits reproduces the production home 
 
 test('SCOPE: every other served file is byte-identical to production 0de39c3 (fares, booking logic, hand-off, funnel, rentals, route pages)', () => {
   // route pages pass through undoTaxiFaq (the later taxi-FAQ candidate): nothing else in them may differ
-  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(readFileSync(path.join(SRC, f), 'utf8')) : (f === 'app.js' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f)))), want, f + ' changed');
+  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(undoRouteSource(f, readFileSync(path.join(SRC, f), 'utf8'))) : (f === 'app.js' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f)))), want, f + ' changed');
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
-  walk(SRC);
+  walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE)); // route-source release: its one new file
   assert.equal(files.length, 45, 'same 45-file upload tree as production');
 });
 

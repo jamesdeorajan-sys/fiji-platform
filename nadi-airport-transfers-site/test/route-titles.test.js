@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TITLES, undoRouteTitles } from './route-titles-revert.js';
+import { undoRouteSource, ROUTE_SOURCE_FILE } from './route-source-revert.js';
 import { undoAttribution } from './attribution-revert.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
@@ -94,10 +95,10 @@ test('every route page title is now within 65 characters except DoubleTree (HELD
 test('SCOPE: undoing the title/description edit reproduces every production file byte for byte (og, twitter, JSON-LD, body unchanged)', () => {
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
-  walk(SRC);
+  walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE)); // route-source release: its one new file
   assert.deepEqual(files.sort(), Object.keys(PROD).sort());
   for (const f of files) {
-    const b = readFileSync(path.join(SRC, f));
+    const b = f.startsWith('transfer/') ? Buffer.from(undoRouteSource(f, readFileSync(path.join(SRC, f), 'utf8'))) : readFileSync(path.join(SRC, f)); // undoRouteSource: the later route-source release
     assert.equal(sha(TITLES[f] ? undoRouteTitles(f, b.toString('utf8')) : (f === 'app.js' || f === 'index.html' ? undoAttribution(f, b.toString('utf8')) : b)), PROD[f], f); // undoAttribution: the later attribution release
   }
 });
