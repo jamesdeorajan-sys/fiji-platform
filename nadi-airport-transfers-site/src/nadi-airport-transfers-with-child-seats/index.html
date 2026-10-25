@@ -95,6 +95,7 @@
 }
 .rp-conditions{margin:0;padding-left:20px;font-size:14px;color:var(--mid)}
 .rp-conditions li{margin:6px 0}
+@media(max-width:480px){.fam-tbl th,.fam-tbl td{padding:10px 5px;font-size:13px}.fam-tbl th:first-child,.fam-tbl td:first-child{padding-left:10px}}
 </style>
 </head>
 <body>
@@ -144,7 +145,7 @@
       <span class="rp-prop">One free supermarket stop</span>
     </div>
     <div class="rp-cta-wrap">
-      <a href="https://book.fijidash.com/?pickup=NAN&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_family_transfers&amp;utm_content=nadi-airport-transfers-with-child-seats" class="rp-cta" id="primaryCta">CHECK YOUR FAMILY TRANSFER PRICE</a>
+      <a href="https://book.fijidash.com/?pickup=NAN&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_family_transfers&amp;utm_content=nadi-airport-transfers-with-child-seats" class="rp-cta" id="primaryCta">CHECK YOUR FAMILY PRICE</a>
     </div>
   </div>
 </header>
@@ -164,7 +165,8 @@
     </ul>
 
     <h3 style="font-size:16px;margin:22px 0 8px">Choosing a vehicle for a family with luggage</h3>
-    <table class="rp-fare-table">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table class="rp-fare-table fam-tbl">
       <thead><tr><th>Vehicle</th><th>Passengers</th><th>Bags</th></tr></thead>
       <tbody>
         <tr><td>Sedan</td><td>1&ndash;3</td><td>up to 3</td></tr>
@@ -172,6 +174,7 @@
         <tr><td>Minibus</td><td>8&ndash;12</td><td>up to 14</td></tr>
       </tbody>
     </table>
+    </div>
     <p style="font-size:14px;color:var(--mid);margin-top:12px">Choose the vehicle that fits both your group and your bags. Tell us in special requests how many children and child seats you are bringing, and mention any pushchair or other bulky gear, so our team can confirm the vehicle suits. A surfboard or oversized item is an FJ$24 extra in the booking form.</p>
 
     <h3 style="font-size:16px;margin:22px 0 8px">Supermarket stop, arrival and return journeys</h3>
@@ -187,19 +190,21 @@
 <section class="rp-section" style="background:var(--sand)">
   <div class="rp-section-inner">
     <h2>Published one-way fares to popular family resorts</h2>
-    <table class="rp-fare-table">
-      <thead><tr><th>Route</th><th>Sedan</th><th>Minivan</th><th>Minibus</th></tr></thead>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table class="rp-fare-table fam-tbl">
+      <thead><tr><th>From Nadi Airport to</th><th>Sedan</th><th>Minivan</th><th>Minibus</th></tr></thead>
       <tbody>
-        <tr><td><a href="/transfer/hilton-fiji-beach-resort" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Hilton Fiji Beach Resort (Denarau)</a></td><td>FJ$49</td><td>FJ$69</td><td>FJ$99</td></tr>
-        <tr><td><a href="/transfer/port-denarau-marina" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Port Denarau Marina (ferry terminal)</a></td><td>FJ$49</td><td>FJ$69</td><td>FJ$99</td></tr>
-        <tr><td><a href="/transfer/natadola-intercontinental" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Natadola InterContinental</a></td><td>FJ$99</td><td>FJ$149</td><td>FJ$179</td></tr>
-        <tr><td><a href="/transfer/coral-coast-outrigger" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Coral Coast / Outrigger</a></td><td>FJ$129</td><td>FJ$159</td><td>FJ$199</td></tr>
-        <tr><td><a href="/transfer/shangri-la-yanuca-island" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Shangri-La Yanuca Island</a></td><td>FJ$129</td><td>FJ$159</td><td>FJ$199</td></tr>
-        <tr><td><a href="/transfer/naviti-resort" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to The Naviti Resort</a></td><td>FJ$149</td><td>FJ$189</td><td>FJ$239</td></tr>
-        <tr><td><a href="/transfer/warwick-fiji" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to The Warwick Fiji</a></td><td>FJ$149</td><td>FJ$189</td><td>FJ$239</td></tr>
-        <tr><td><a href="/transfer/pearl-south-pacific-resort" style="color:var(--ocean-dark);font-weight:500">Nadi Airport to Pearl South Pacific Resort</a></td><td>FJ$199</td><td>FJ$269</td><td>FJ$299</td></tr>
+        <tr><td><a href="/transfer/hilton-fiji-beach-resort" style="color:var(--ocean-dark);font-weight:500">Hilton Fiji Beach Resort (Denarau)</a></td><td>FJ$49</td><td>FJ$69</td><td>FJ$99</td></tr>
+        <tr><td><a href="/transfer/port-denarau-marina" style="color:var(--ocean-dark);font-weight:500">Port Denarau Marina (ferry terminal)</a></td><td>FJ$49</td><td>FJ$69</td><td>FJ$99</td></tr>
+        <tr><td><a href="/transfer/natadola-intercontinental" style="color:var(--ocean-dark);font-weight:500">Natadola InterContinental</a></td><td>FJ$99</td><td>FJ$149</td><td>FJ$179</td></tr>
+        <tr><td><a href="/transfer/coral-coast-outrigger" style="color:var(--ocean-dark);font-weight:500">Coral Coast / Outrigger</a></td><td>FJ$129</td><td>FJ$159</td><td>FJ$199</td></tr>
+        <tr><td><a href="/transfer/shangri-la-yanuca-island" style="color:var(--ocean-dark);font-weight:500">Shangri-La Yanuca Island</a></td><td>FJ$129</td><td>FJ$159</td><td>FJ$199</td></tr>
+        <tr><td><a href="/transfer/naviti-resort" style="color:var(--ocean-dark);font-weight:500">The Naviti Resort</a></td><td>FJ$149</td><td>FJ$189</td><td>FJ$239</td></tr>
+        <tr><td><a href="/transfer/warwick-fiji" style="color:var(--ocean-dark);font-weight:500">The Warwick Fiji</a></td><td>FJ$149</td><td>FJ$189</td><td>FJ$239</td></tr>
+        <tr><td><a href="/transfer/pearl-south-pacific-resort" style="color:var(--ocean-dark);font-weight:500">Pearl South Pacific Resort</a></td><td>FJ$199</td><td>FJ$269</td><td>FJ$299</td></tr>
       </tbody>
     </table>
+    </div>
     <p style="font-size:14px;color:var(--mid);margin-top:12px">Fares are published one-way fares per vehicle, not per person; add FJ$8 for a child/baby seat. Your final total is shown at the Review step of the booking form before you send your request and can differ from the published fare. Another destination? Every route is bookable from the <a href="/#booking" style="color:var(--ocean-dark);font-weight:500">booking section on our homepage</a>.</p>
     <h3 style="font-size:16px;margin:22px 0 8px">How your request is confirmed</h3>
     <p style="font-size:14px;color:var(--mid);margin:0">Choose your route, vehicle and extras in the booking form. The Review step shows your total before you send your request, and no payment is requested at that step. A real member of our Fiji-based team then confirms the arrangements with you.</p>
@@ -225,7 +230,7 @@
 <div class="rp-cta-band">
   <h2>Ready to book your family transfer?</h2>
   <p>Get a whole-vehicle price and add a child seat. No payment requested; confirmed by a real person.</p>
-  <a href="https://book.fijidash.com/?pickup=NAN&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_family_transfers&amp;utm_content=nadi-airport-transfers-with-child-seats" class="rp-cta" style="display:inline-flex">CHECK YOUR FAMILY TRANSFER PRICE</a>
+  <a href="https://book.fijidash.com/?pickup=NAN&amp;utm_source=organic&amp;utm_medium=route_page&amp;utm_campaign=nadi_family_transfers&amp;utm_content=nadi-airport-transfers-with-child-seats" class="rp-cta" style="display:inline-flex">CHECK YOUR FAMILY PRICE</a>
 </div>
 
 <footer class="footer">
