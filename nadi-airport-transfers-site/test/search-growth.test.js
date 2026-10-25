@@ -22,7 +22,9 @@ const text = (h) => unesc(h.replace(/<(script|style)\b[\s\S]*?<\/\1>/g, ' ').rep
 const ldBlocks = (h) => [...h.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
 const visFaq = (h) => [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(m[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim()]);
 const ldFaq = (h) => ldBlocks(h).find((b) => b['@type'] === 'FAQPage').mainEntity.map((q) => [q.name, q.acceptedAnswer.text.replace(/\s+/g, ' ').trim()]);
-const MEET = 'Your driver waits in the international arrivals hall with a sign showing your name. If you cannot find your driver, contact our team on WhatsApp.';
+const MEET = 'Follow the meeting instructions in your transfer confirmation. If you cannot find your driver, contact our team on WhatsApp.'; // restored 26 Oct: the arrivals-hall wording is unverified
+const QUOTE = 'Review your displayed quote before sending your request. Our Fiji team confirms availability, pickup arrangements and the total payable with you.';
+const SEAT_OPT = 'currently FJ$8 in the booking form, subject to team confirmation';
 const BANNED = /tracks your flight|monitors your flight|guarantee|24\/7|\brated\b|\bstars?\b|testimonial|lowest|cheapest|best price|instantly confirm|arrivals area|door-to-door|aggregateRating|ratingValue|reviewCount/i;
 
 const HOTELS = [
@@ -46,7 +48,7 @@ for (const P of HOTELS) {
     assert.equal(title, unesc(before.match(/<title>([^<]*)<\/title>/)[1]), 'the live title is preserved byte for byte');
     assert.equal(h.match(/<meta property="og:title" content="([^"]*)">/)[1], before.match(/<meta property="og:title" content="([^"]*)">/)[1]);
     assert.ok(desc.length >= 100 && desc.length <= 160 && /^Private Nadi Airport to /.test(desc), `${desc.length}: ${desc}`);
-    assert.ok(desc.includes(`sedan FJ$${P.one[0]}`) && desc.includes(`return FJ$${P.ret[0]}`) && /per vehicle/.test(desc) && /Child seat FJ\$8/.test(desc), desc);
+    assert.ok(desc.includes(`sedan fare FJ$${P.one[0]}`) && !/return/i.test(desc) && /published sedan fare/.test(desc) && /per vehicle/.test(desc) && !/child seat|FJ\$8/i.test(desc), desc);
     assert.notEqual(desc, unesc(before.match(/<meta name="description" content="([^"]*)">/)[1]));
   });
   test(`${P.slug}: published fares, return fares and fare table are byte-identical to production`, () => {
@@ -71,12 +73,12 @@ for (const P of HOTELS) {
   test(`${P.slug}: the five required answers are in the initial HTML`, () => {
     const sec = h.slice(h.indexOf('id="before-you-book"'), h.indexOf('<section class="rp-section rp-mobile-assist-section"'));
     const t = text(sec);
-    assert.ok(/waits in the international arrivals hall with a sign showing your name/.test(t) && /WhatsApp/.test(t), 'meeting');
-    assert.ok(/child\/baby seat is an optional FJ\$8 add-on in the booking form, added once to your booking total \(also on a return trip\)/.test(t) && /single seat option/.test(t) && /Luggage limits are listed per vehicle/.test(t), 'child seat + luggage');
-    assert.ok(/Published return fares for a round trip booked together \(also in the fare table above\): sedan FJ\$\d+, minivan FJ\$\d+, minibus FJ\$\d+/.test(t), 'return');
-    assert.ok(/Review step shows your total before you send your request/.test(t) && /no payment is requested/.test(t) && /real member of our Fiji-based team/.test(t), 'confirmation');
+    assert.ok(/Follow the meeting instructions in your transfer confirmation/.test(t) && !/arrivals hall/.test(t) && /WhatsApp/.test(t), 'meeting');
+    assert.ok(/booking form currently offers a child\/baby seat option at FJ\$8, subject to team confirmation/.test(t) && !/added once/.test(t) && /more than one seat/.test(t) && /Luggage limits are listed per vehicle/.test(t), 'child seat + luggage');
+    assert.ok(/Choose a return trip in the booking form and add your return date and time/.test(t) && !/return fares/i.test(t) && !/FJ\$(95|130|185|280|350|445|240|295|370|500|555)\b/.test(t), 'return instructions without fixed return prices');
+    assert.ok(t.includes(QUOTE) && /No payment is requested/.test(t) && !/final total/i.test(t), 'confirmation');
     const all = text(body);
-    for (const k of [/not per person|per vehicle/, /sedan 1.3 passengers and up to 3 bags/, /supermarket stop is a complimentary add-on/i, /added once to the booking/, /over FJ\$50/]) assert.ok(k.test(all), String(k));
+    for (const k of [/not per person|per vehicle/, /sedan 1.3 passengers and up to 3 bags/, /supermarket stop is a complimentary add-on/i, /child\/baby seat option \(currently FJ\$8 in the booking form, subject to team confirmation\)/, /over FJ\$50/]) assert.ok(k.test(all), String(k));
   });
   test(`${P.slug}: FAQPage JSON-LD equals the visible FAQ; fare, per-vehicle, private, extras, child seat, return, meeting, payment all answered once`, () => {
     assert.deepEqual(ldFaq(h), visFaq(h));
@@ -164,7 +166,7 @@ test('family page: states only verified seat types and conditions; no invented a
   assert.ok(!/\b(booster|isofix|infant carrier|rear[- ]facing|convertible|forward[- ]facing)\b/i.test(t), 'no seat type is named');
   assert.deepEqual([...t.matchAll(/\b\d+(\.\d+)?\s?(km|kilomet\w*|minutes?|hours?|hr)\b/gi)].map((x) => x[0]), []);
   assert.ok(!/\bin stock\b|always available|guaranteed|free of charge seat/i.test(t));
-  for (const k of [/FJ\$8/, /sedan up to 3 passengers and 3 bags/, /minivan 4.7 passengers and 7 bags/, /minibus 8.12 passengers and 14 bags/, /FJ\$24/, /our team confirms the applicable charge/, /single seat option/, /added once to your booking total/, /supermarket stop is a complimentary add-on/, /not per person/, /international arrivals hall with a sign showing your name/])
+  for (const k of [/FJ\$8/, /sedan up to 3 passengers and 3 bags/, /minivan 4.7 passengers and 7 bags/, /minibus 8.12 passengers and 14 bags/, /FJ\$24/, /our team confirms the applicable charge/, /single seat option/, /subject to team confirmation/, /supermarket stop is a complimentary add-on/, /not per person/, /Follow the meeting instructions in your transfer confirmation/])
     assert.ok(k.test(t), String(k));
 });
 test('family page: fare table equals each linked page’s own published one-way table; every internal link resolves to a served page', () => {
@@ -252,4 +254,45 @@ test('Marina wording: hero, new section and FAQ all describe the road transfer t
   assert.ok(/Private road transfer from Nadi International Airport to Port Denarau Marina/.test(h));
   assert.ok(/This is the road transfer to the ferry terminal only/.test(h));
   assert.ok(/booked straight to Port Denarau Marina, the ferry terminal/.test(h));
+});
+
+// ---------- 26 Oct corrections: quote wording, no fixed return prices, meeting wording, child-seat wording ----------
+const NEW_LINES = (file) => { const was = new Set(fix(file).split('\n')); return read(file).split('\n').filter((l) => !was.has(l)).join('\n'); };
+const NO_NEW_CLAIMS = [
+  [/final total/i, 'final-total promise'],
+  [/arrivals hall/i, 'unverified arrivals-hall wording'],
+  [/added once/i, 'child seat treated as an approved once-per-booking policy'],
+  [/lower than two one-way/i, 'return-vs-one-way price claim'],
+  [/return (fares?|FJ\$)/i, 'fixed return price'],
+  [/FJ\$(95|130|185|280|350|445|240|295|370|500|555|91|128|183)\b/, 'fixed return price figure'],
+];
+for (const file of [...HOTELS.map((P) => `transfer/${P.slug}.html`), 'transfer/port-denarau.html', 'index.html']) {
+  test(`corrections: ${file}: new text has no final-total promise, no fixed return price, no arrivals-hall wording, no once-per-booking seat policy`, () => {
+    const added = text(NEW_LINES(file));
+    for (const [re, why] of NO_NEW_CLAIMS) assert.ok(!re.test(added), `${why}: ${(added.match(re) || [])[0]}`);
+    const meta = unesc(read(file).match(/<meta name="description" content="([^"]*)">/)[1]);
+    assert.ok(!/return|final total|child seat|FJ\$8/i.test(meta), meta);
+  });
+}
+for (const file of [...HOTELS.map((P) => `transfer/${P.slug}.html`), 'transfer/port-denarau.html', 'index.html', FAM]) {
+  test(`corrections: ${file}: carries the approved quote sentence and keeps the surcharge condition beside it`, () => {
+    const t = text(read(file));
+    assert.ok(t.includes(QUOTE), 'quote sentence');
+    const i = t.indexOf(QUOTE), near = t.slice(Math.max(0, i - 900), i + QUOTE.length + 900);
+    assert.ok(/surcharge/i.test(near), 'surcharge condition stated beside the quote explanation');
+  });
+}
+test('corrections: family page has no fixed return price, no final-total promise, no arrivals-hall wording, and describes FJ$8 as the current option subject to team confirmation', () => {
+  const t = text(read(FAM));
+  for (const [re, why] of NO_NEW_CLAIMS.filter(([, w]) => !/figure/.test(w) || true)) assert.ok(!re.test(t) || /fare table/.test(why), `${why}: ${(t.match(re) || [])[0]}`);
+  assert.ok(/currently offers a child\/baby seat option at FJ\$8, subject to team confirmation/.test(t));
+  assert.ok(t.includes('Follow the meeting instructions in your transfer confirmation'));
+});
+test('corrections: titles, destination codes and booking links are unchanged by the corrections', () => {
+  for (const P of HOTELS) {
+    const h = read(`transfer/${P.slug}.html`), b = fix(`transfer/${P.slug}.html`);
+    assert.equal(h.match(/<title>([^<]*)<\/title>/)[1], b.match(/<title>([^<]*)<\/title>/)[1]);
+    const links = (s) => [...s.matchAll(/href="(https:\/\/book\.fijidash\.com\/[^"]*)"/g)].map((m) => m[1]);
+    assert.deepEqual([...new Set(links(h))], [...new Set(links(b))]);
+  }
 });

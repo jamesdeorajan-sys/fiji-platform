@@ -36,7 +36,7 @@ for (const P of PAGES) {
     const title = unesc(h.match(/<title>([^<]*)<\/title>/)[1]), desc = unesc(h.match(/<meta name="description" content="([^"]*)">/)[1]);
     assert.ok(title.length >= 45 && title.length <= 65 && /^Nadi Airport to /.test(title) && /(Private)/.test(title), title);
     assert.ok(desc.length >= 100 && desc.length <= 165, `description ${desc.length}: ${desc}`);
-    assert.ok(desc.includes(`FJ$${P.sedan}`) && /per vehicle/i.test(desc) && /child seat FJ\$8/i.test(desc) && /private/i.test(desc), desc);
+    assert.ok(desc.includes(`FJ$${P.sedan}`) && /per vehicle/i.test(desc) && /private/i.test(desc) && !/child seat|return/i.test(desc), desc);
     assert.ok(!/\d+\s?(km|min|hour|hr)\b/i.test(title + desc), 'no journey figure in the title or description');
   });
   test(`${P.slug}: every booking link goes to FijiDash with pickup NAN and the exact destination ${P.dest}; the set of links is unchanged in number`, () => {
@@ -65,7 +65,7 @@ for (const P of PAGES) {
     for (const k of [/same as the fare shown/, /group and luggage/, /child seat/, /return transfer/, /meet my driver/, /pay now/, /confirms my booking/]) assert.ok(ld.some(([q]) => k.test(q)), String(k));
     const a = (re) => ld.find(([q]) => re.test(q))[1];
     assert.ok(a(/same as the fare shown/).includes('published fares') && a(/same as the fare shown/).includes('can be higher or lower') && a(/same as the fare shown/).includes('eligible standard transfer bookings') && a(/same as the fare shown/).includes('over FJ$50') && a(/same as the fare shown/).includes('Review step') && a(/same as the fare shown/).includes('Child seats are FJ$8'));
-    assert.equal(a(/meet my driver/), 'Your driver waits in the international arrivals hall with a sign showing your name. If you cannot find your driver, contact our team on WhatsApp.'); // search-growth release: the meeting arrangement already approved on the home page FAQ
+    assert.equal(a(/meet my driver/), 'Follow the meeting instructions in your transfer confirmation. If you cannot find your driver, contact our team on WhatsApp.'); // search-growth release: the meeting arrangement already approved on the home page FAQ
     assert.ok(a(/pay now/).startsWith('No.') && !/arranged directly with your driver/.test(a(/pay now/)));
   });
   test(`${P.slug}: no unverified geography, operational promise or journey figure is stated`, () => {
