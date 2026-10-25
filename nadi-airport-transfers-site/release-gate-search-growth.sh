@@ -12,7 +12,7 @@ echo "changed upload files vs $BASE:"; echo "$got"
 [ "$got" = "$want" ] || { echo "FAIL: changed-file set differs from the 9 approved files"; exit 1; }
 echo "$got" | grep -q doubletree && { echo "FAIL: DoubleTree is HELD"; exit 1; }
 [ "$(git ls-tree -r --name-only HEAD -- src | wc -l)" = "47" ] || { echo "FAIL: upload tree is not the 46 production files + 1 new page"; exit 1; }
-others() { git ls-tree -r "$1" -- src | grep -vP '\t(.*/)?src/(index\.html|sitemap\.xml|nadi-airport-transfers-with-child-seats/|transfer/(hilton-fiji-beach-resort|naviti-resort|pearl-south-pacific-resort|port-denarau-marina|port-denarau|shangri-la-yanuca-island)\.html)$' | sha256sum; }
+others() { git ls-tree -r "$1" -- src | grep -vP '\t(.*/)?src/(index\.html|sitemap\.xml|nadi-airport-transfers-with-child-seats/index\.html|transfer/(hilton-fiji-beach-resort|naviti-resort|pearl-south-pacific-resort|port-denarau-marina|port-denarau|shangri-la-yanuca-island)\.html)$' | sha256sum; }
 [ "$(others HEAD)" = "$(others "$BASE")" ] || { echo "FAIL: another upload file differs from $BASE"; exit 1; }
 echo "9 files changed/added; all other upload files byte-identical to $BASE"
 node --test test/*.test.js > /tmp/nat-search-growth-gate.tap 2>&1 || { tail -40 /tmp/nat-search-growth-gate.tap; echo "FAIL: tests"; exit 1; }
