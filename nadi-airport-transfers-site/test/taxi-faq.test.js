@@ -91,13 +91,13 @@ test('22 route pages answer "taxi or private transfer?" once, directly after the
   }
 });
 
-test('SCOPE: removing the taxi question reproduces every production route page byte for byte; DoubleTree (HELD) is untouched', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: removing the taxi question reproduces every production route page byte for byte; DoubleTree (HELD) is untouched', () => {
   // undoRouteTitles: the later title/description candidate (route-titles.test.js) is undone first
   for (const f of ROUTES) assert.equal(sha(undoTaxiFaq(undoRouteTitles(f, undoRouteSource(f, rd(f))))), PROD[f], f + ' differs beyond the taxi FAQ');
   for (const f of HELD) assert.equal(sha(readFileSync(path.join(SRC, f))), PROD[f], f + ' must stay byte-identical');
 });
 
-test('SCOPE: every other served file (home page, fares, booking logic, hand-off, funnel, rentals, sitemap, redirects) is byte-identical to production', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: every other served file (home page, fares, booking logic, hand-off, funnel, rentals, sitemap, redirects) is byte-identical to production', () => {
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE && x !== SEARCH_GROWTH_NEW)); // route-source release: its one new file; search-growth release: its one new page

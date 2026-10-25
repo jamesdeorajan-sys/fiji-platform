@@ -41,7 +41,7 @@ test('indexing: self-canonical, indexable, and no preview gating or banner left 
   assert.equal(existsSync(path.join(SRC, '_headers')), false, 'no new header rules: Cloudflare already marks *.pages.dev deployment URLs noindex');
 });
 
-test('SCOPE: the production tree is byte-identical except the home page (3 added navigation lines) and the sitemap (1 added entry)', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: the production tree is byte-identical except the home page (3 added navigation lines) and the sitemap (1 added entry)', () => {
   const PINS = {
     'app.js': '77f9d10d26d9c009f6734d0d21d2fd16c14781ab266e7e21a82bb988de824191', 'styles.css': 'ddfccf65c777f2781ce4f4877625749fa4377edda4c2879d0ee49c94b78dd0ff',
     'route-handoff.js': '8d7f90cc9682aaa1baf91bb4384f6ea12025b5728de8242c7f5e4c9d856147ee', 'chat-widget.js': 'e8a3891fe69c51664d6c2ef6dd2a2d11a9e7b3d6a024f257ce262809503c4836',

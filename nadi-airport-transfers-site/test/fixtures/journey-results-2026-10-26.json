@@ -1,0 +1,53 @@
+{
+  "note": "Live book.fijidash.com journeys driven to the Review step on 2026-10-26 with synthetic details (QA ReviewTest, example.invalid, +61 400 000 000, 'SYNTHETIC QA TEST - DO NOT ACTION'). Confirm was never pressed and WhatsApp never opened. Travel date 10 Nov 2026 12:00 unless stated; return 15 Nov. Review = values shown on the Review & confirm screen; quote = vehicle-card price shown at the vehicle step (published fare, with 10% line where shown).",
+  "review": [
+    {"case": "Hilton one-way sedan", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Port Denarau Marina one-way sedan", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Naviti one-way sedan", "sub": 141.96, "disc": 14, "total": 127.96},
+    {"case": "Shangri-La one-way sedan", "sub": 141.96, "disc": 14, "total": 127.96},
+    {"case": "Pearl one-way sedan", "sub": 198.95, "disc": 20, "total": 178.95},
+    {"case": "Hilton one-way sedan + seat (27 Oct 10:00)", "sub": 55.87, "disc": 6, "total": 49.87},
+    {"case": "Naviti one-way sedan + seat", "sub": 149.96, "disc": 15, "total": 134.96},
+    {"case": "Hilton one-way minivan", "sub": 69.08, "disc": 7, "total": 62.08},
+    {"case": "Hilton return sedan", "sub": 88.56, "disc": 9, "total": 79.56},
+    {"case": "Hilton return sedan + seat", "sub": 96.56, "disc": 10, "total": 86.56},
+    {"case": "Naviti return sedan", "sub": 262.63, "disc": 26, "total": 236.63},
+    {"case": "Nadi Downtown one-way sedan", "sub": null, "disc": 0, "total": 30.15},
+    {"case": "Nadi Downtown sedan + seat", "sub": null, "disc": 0, "total": 38.15},
+    {"case": "Nadi Downtown sedan + seat + surfboard", "sub": 62.15, "disc": 6, "total": 56.15},
+    {"case": "FAMILY link, Hilton return minivan + seat + supermarket stop", "sub": 135.8, "disc": 14, "total": 121.8},
+    {"case": "FAMILY link, Shangri-La return sedan + seat", "sub": 270.63, "disc": 27, "total": 243.63},
+    {"case": "FAMILY link, Marina one-way minibus + supermarket stop", "sub": 99.84, "disc": 10, "total": 89.84},
+    {"case": "Hilton sedan 21:59", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Hilton sedan 22:00", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Hilton sedan 05:59", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Hilton sedan 06:00", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Hilton sedan 23:30", "sub": null, "disc": 0, "total": 47.87},
+    {"case": "Naviti sedan 23:30", "sub": 141.96, "disc": 14, "total": 127.96},
+    {"case": "Hilton return + seat, out 23:30 back 05:00", "sub": 96.56, "disc": 10, "total": 86.56},
+    {"case": "FAMILY link, Pearl one-way sedan + seat 23:30", "sub": 206.95, "disc": 21, "total": 185.95}
+  ],
+  "quote_night": [
+    {"case": "Hilton sedan 21:59", "published": 49, "after_discount_line": null, "night_flag": false},
+    {"case": "Hilton sedan 22:00", "published": 60, "after_discount_line": 54, "night_flag": true},
+    {"case": "Hilton sedan 23:30", "published": 60, "after_discount_line": 54, "night_flag": true},
+    {"case": "Hilton sedan 05:59", "published": 60, "after_discount_line": 54, "night_flag": true},
+    {"case": "Hilton sedan 06:00", "published": 49, "after_discount_line": null, "night_flag": false},
+    {"case": "Naviti sedan 23:30", "published": 180, "after_discount_line": 162, "night_flag": true},
+    {"case": "Hilton return sedan out 23:30 back 05:00", "published": 110, "after_discount_line": 99, "night_flag": true},
+    {"case": "FAMILY link, Pearl sedan 23:30", "published": 240, "after_discount_line": 216, "night_flag": true}
+  ],
+  "quote_day": [
+    {"case": "Hilton/Marina", "sedan": 49, "minivan": 69, "minibus": 99, "return": [95, 130, 185]},
+    {"case": "Naviti", "sedan": 149, "minivan": 189, "minibus": 239, "return": [280, 350, 445]},
+    {"case": "Shangri-La", "sedan": 129, "minivan": 159, "minibus": 199, "return": [240, 295, 370]},
+    {"case": "Pearl", "sedan": 199, "minivan": 269, "minibus": 299}
+  ],
+  "findings": [
+    "Review totals are the server live fare (cent precision) and differ from the published/quote fares in both directions.",
+    "The 20% night surcharge appears at the quote step for 22:00 to 05:59 and not at 21:59 or 06:00, but the Review total never includes it (all night cases above equal the day cases).",
+    "Child seat: a single checkbox, FJ$8, added once per booking (return trip not doubled); no quantity control.",
+    "Discount: 10% of the Review subtotal including extras, shown rounded to whole dollars, only when the subtotal is above FJ$50 in these cases; the banner says 'over FJ$50' and the Review line says 'orders FJ$50+'.",
+    "Supermarket stop and shell lei are complimentary add-ons; surfboard/oversized adds FJ$24."
+  ]
+}

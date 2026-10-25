@@ -26,11 +26,11 @@ const html = rd('index.html'), app = rd('app.js'), css = rd('styles.css');
 const visible = (t) => t.replace(/<head\b[\s\S]*?<\/head>/i, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/g, '').replace( // body text only (title/meta are not page text)
 /<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-test('SCOPE: undoing exactly the accessibility edits reproduces production index.html, app.js and styles.css byte for byte', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: undoing exactly the accessibility edits reproduces production index.html, app.js and styles.css byte for byte', () => {
   for (const f of Object.keys(PROD)) assert.equal(sha(a11yRevert(f, undoSearchGrowth(f, rd(f)))), PROD[f], f + ' differs from production beyond the accessibility edits');
 });
 
-test('SCOPE: every other served file (route pages incl. DoubleTree, rental page, booking extras, handoff, chat, sitemap, robots, redirects) is byte-identical to production', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: every other served file (route pages incl. DoubleTree, rental page, booking extras, handoff, chat, sitemap, robots, redirects) is byte-identical to production', () => {
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE && x !== SEARCH_GROWTH_NEW)); // route-source release: its one new file; search-growth release: its one new page

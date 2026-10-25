@@ -109,7 +109,7 @@ test('22 route pages load the script once, just before </body>; DoubleTree (HELD
   }
 });
 
-test('SCOPE: removing the script line reproduces every live route page byte for byte; every other served file is unchanged; route-source.js is the only new file', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: removing the script line reproduces every live route page byte for byte; every other served file is unchanged; route-source.js is the only new file', () => {
   const base = '9233350'; // live code before this release (2ed37c4 changed only app.js and index.html)
   const prodFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'src'], { cwd: new URL('..', SRC) }).toString().trim().split('\n').map((p) => p.replace(/^src\//, ''));
   const now = [];

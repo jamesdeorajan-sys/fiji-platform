@@ -93,7 +93,7 @@ test('every route page title is now within 65 characters except DoubleTree (HELD
   for (const f of all) if (f !== 'transfer/doubletree-sonaisali-island.html') assert.ok(title(rd(f)).replace(/&amp;/g, '&').length <= 65, f);
 });
 
-test('SCOPE: undoing the title/description edit reproduces every production file byte for byte (og, twitter, JSON-LD, body unchanged)', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: undoing the title/description edit reproduces every production file byte for byte (og, twitter, JSON-LD, body unchanged)', () => {
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE && x !== SEARCH_GROWTH_NEW)); // route-source release: its one new file; search-growth release: its one new page

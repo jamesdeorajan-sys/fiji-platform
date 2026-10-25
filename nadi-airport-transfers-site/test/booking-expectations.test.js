@@ -54,12 +54,12 @@ test('the replaced promises are gone from the home page (Uber comparison, live d
   for (const [before] of EXPECTATIONS_COPY) assert.equal(html.includes(before), false, 'old copy still present: ' + before.slice(0, 60));
 });
 
-test('SCOPE: undoing exactly the five copy edits reproduces the production home page byte for byte', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: undoing exactly the five copy edits reproduces the production home page byte for byte', () => {
   assert.equal(EXPECTATIONS_COPY.length, 5);
   assert.equal(sha(undoExpectationsCopy(undoAttribution('index.html', undoSearchGrowth('index.html', html)))), PROD_INDEX); // undoAttribution: the later attribution release
 });
 
-test('SCOPE: every other served file is byte-identical to production 0de39c3 (fares, booking logic, hand-off, funnel, rentals, route pages)', () => {
+test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: every other served file is byte-identical to production 0de39c3 (fares, booking logic, hand-off, funnel, rentals, route pages)', () => {
   // route pages pass through undoTaxiFaq (the later taxi-FAQ candidate): nothing else in them may differ
   for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(undoRouteSource(f, readFileSync(path.join(SRC, f), 'utf8'))) : (f === 'app.js' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : undoSearchGrowthBuf(f, readFileSync(path.join(SRC, f))))), want, f + ' changed');
   const files = [];

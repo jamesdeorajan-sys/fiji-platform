@@ -38,12 +38,13 @@ for (const P of HOTELS) {
   const f = `transfer/${P.slug}.html`;
   const h = read(f), before = fix(f);
   const body = h.slice(h.indexOf('<header class="rp-hero">'), h.indexOf('<footer'));
-  test(`${P.slug}: URL, canonical and indexability unchanged; unique search-length title and description`, () => {
+  test(`${P.slug}: URL, canonical and indexability unchanged; title unchanged (23 Oct experiment); description recorded`, () => {
     assert.equal(h.match(/<link rel="canonical" href="([^"]*)">/)[1], `https://nadiairporttransfers.com/transfer/${P.slug}`);
     assert.equal((h.match(/<link rel="canonical"/g) || []).length, 1);
     assert.ok(!/<meta name="robots"/i.test(h) && !/noindex/i.test(h));
     const title = unesc(h.match(/<title>([^<]*)<\/title>/)[1]), desc = unesc(h.match(/<meta name="description" content="([^"]*)">/)[1]);
-    assert.ok(title.length >= 45 && title.length <= 65 && /^Nadi Airport to /.test(title) && /Private/.test(title), title);
+    assert.equal(title, unesc(before.match(/<title>([^<]*)<\/title>/)[1]), 'the live title is preserved byte for byte');
+    assert.equal(h.match(/<meta property="og:title" content="([^"]*)">/)[1], before.match(/<meta property="og:title" content="([^"]*)">/)[1]);
     assert.ok(desc.length >= 100 && desc.length <= 160 && /^Private Nadi Airport to /.test(desc), `${desc.length}: ${desc}`);
     assert.ok(desc.includes(`sedan FJ$${P.one[0]}`) && desc.includes(`return FJ$${P.ret[0]}`) && /per vehicle/.test(desc) && /Child seat FJ\$8/.test(desc), desc);
     assert.notEqual(desc, unesc(before.match(/<meta name="description" content="([^"]*)">/)[1]));
@@ -71,11 +72,11 @@ for (const P of HOTELS) {
     const sec = h.slice(h.indexOf('id="before-you-book"'), h.indexOf('<section class="rp-section rp-mobile-assist-section"'));
     const t = text(sec);
     assert.ok(/waits in the international arrivals hall with a sign showing your name/.test(t) && /WhatsApp/.test(t), 'meeting');
-    assert.ok(/child\/baby seat is FJ\$8 on request/.test(t) && /Luggage limits are listed per vehicle/.test(t), 'child seat + luggage');
-    assert.ok(/Return fares for a round trip booked together: sedan FJ\$\d+, minivan FJ\$\d+, minibus FJ\$\d+/.test(t), 'return');
+    assert.ok(/child\/baby seat is an optional FJ\$8 add-on in the booking form, added once to your booking total \(also on a return trip\)/.test(t) && /single seat option/.test(t) && /Luggage limits are listed per vehicle/.test(t), 'child seat + luggage');
+    assert.ok(/Published return fares for a round trip booked together \(also in the fare table above\): sedan FJ\$\d+, minivan FJ\$\d+, minibus FJ\$\d+/.test(t), 'return');
     assert.ok(/Review step shows your total before you send your request/.test(t) && /no payment is requested/.test(t) && /real member of our Fiji-based team/.test(t), 'confirmation');
     const all = text(body);
-    for (const k of [/not per person|per vehicle/, /sedan 1.3 passengers and up to 3 bags/, /20% night surcharge/, /one stop at a supermarket|complimentary/i, /over FJ\$50/]) assert.ok(k.test(all), String(k));
+    for (const k of [/not per person|per vehicle/, /sedan 1.3 passengers and up to 3 bags/, /supermarket stop is a complimentary add-on/i, /added once to the booking/, /over FJ\$50/]) assert.ok(k.test(all), String(k));
   });
   test(`${P.slug}: FAQPage JSON-LD equals the visible FAQ; fare, per-vehicle, private, extras, child seat, return, meeting, payment all answered once`, () => {
     assert.deepEqual(ldFaq(h), visFaq(h));
@@ -100,7 +101,7 @@ test('Port Denarau chooser (/transfer/port-denarau): fare-search answers added, 
   const h = read('transfer/port-denarau.html'), b = fix('transfer/port-denarau.html');
   assert.equal(h.match(/<link rel="canonical" href="([^"]*)">/)[1], 'https://nadiairporttransfers.com/transfer/port-denarau');
   const title = unesc(h.match(/<title>([^<]*)<\/title>/)[1]), desc = unesc(h.match(/<meta name="description" content="([^"]*)">/)[1]);
-  assert.ok(title.length <= 65 && /How Much Is Nadi Airport to Denarau/.test(title)); assert.ok(desc.length <= 160 && /per vehicle, not per person/.test(desc));
+  assert.equal(title, unesc(b.match(/<title>([^<]*)<\/title>/)[1]), 'live title preserved'); assert.ok(desc.length <= 160 && /per vehicle, not per person/.test(desc));
   assert.deepEqual(ldFaq(h), visFaq(h));
   const qs = visFaq(h).map(([q]) => q);
   assert.ok(qs.includes('How much is Nadi Airport to Denarau?') && qs.some((q) => /per person or per vehicle/.test(q)));
@@ -163,7 +164,7 @@ test('family page: states only verified seat types and conditions; no invented a
   assert.ok(!/\b(booster|isofix|infant carrier|rear[- ]facing|convertible|forward[- ]facing)\b/i.test(t), 'no seat type is named');
   assert.deepEqual([...t.matchAll(/\b\d+(\.\d+)?\s?(km|kilomet\w*|minutes?|hours?|hr)\b/gi)].map((x) => x[0]), []);
   assert.ok(!/\bin stock\b|always available|guaranteed|free of charge seat/i.test(t));
-  for (const k of [/FJ\$8/, /sedan up to 3 passengers and 3 bags/, /minivan 4.7 passengers and 7 bags/, /minibus 8.12 passengers and 14 bags/, /FJ\$24/, /10 pm and 6 am carry a 20% night surcharge/, /one complimentary stop at a supermarket, ATM, bottle shop or pharmacy/, /not per person/, /international arrivals hall with a sign showing your name/])
+  for (const k of [/FJ\$8/, /sedan up to 3 passengers and 3 bags/, /minivan 4.7 passengers and 7 bags/, /minibus 8.12 passengers and 14 bags/, /FJ\$24/, /our team confirms the applicable charge/, /single seat option/, /added once to your booking total/, /supermarket stop is a complimentary add-on/, /not per person/, /international arrivals hall with a sign showing your name/])
     assert.ok(k.test(t), String(k));
 });
 test('family page: fare table equals each linked page’s own published one-way table; every internal link resolves to a served page', () => {
@@ -208,4 +209,47 @@ test('SCOPE: exactly 8 existing files edited and 1 added; every other served fil
   };
   for (const [f, w] of Object.entries(prodFixtureHashes)) assert.equal(sha(fix(f)).slice(0, 16), w, 'fixture ' + f + ' must be the production bytes');
   for (const f of SEARCH_GROWTH_EDITED) assert.notEqual(sha(read(f)), sha(fix(f)), f + ' should differ');
+});
+
+// ---------- pricing statements checked against the live booking journey (26 Oct) ----------
+const J = JSON.parse(readFileSync(path.join(FIX, '..', 'journey-results-2026-10-26.json'), 'utf8'));
+test('journey evidence: discount = 10% of the Review subtotal (extras included) rounded to whole dollars, only above FJ$50; total = subtotal - discount', () => {
+  for (const r of J.review) {
+    const sub = r.sub ?? r.total;
+    if (r.disc > 0) { assert.equal(Math.round(sub * 0.1), r.disc, r.case); assert.ok(sub > 50, r.case); assert.ok(Math.abs(r.total - (sub - r.disc)) < 0.005, r.case); }
+    else { assert.ok(sub <= 50, r.case + ': no discount below FJ$50'); assert.equal(r.total, sub, r.case); }
+  }
+});
+test('journey evidence: child seat is FJ$8 added once per booking (return not doubled); surfboard FJ$24', () => {
+  const g = (c) => J.review.find((r) => r.case === c);
+  assert.ok(Math.abs(g('Hilton return sedan + seat').sub - g('Hilton return sedan').sub - 8) < 0.005);
+  assert.ok(Math.abs(g('Naviti one-way sedan + seat').sub - g('Naviti one-way sedan').sub - 8) < 0.005);
+  assert.ok(Math.abs(g('Nadi Downtown sedan + seat + surfboard').sub - g('Nadi Downtown sedan + seat').total - 24) < 0.005);
+});
+test('journey evidence: the night surcharge is NOT reflected at Review, so no page states its rate or hours', () => {
+  const nightRev = J.review.filter((r) => /23:30|22:00|05:59|out 23:30/.test(r.case));
+  assert.ok(nightRev.length >= 4);
+  for (const [n, d] of [['Hilton sedan 23:30', 'Hilton one-way sedan'], ['Naviti sedan 23:30', 'Naviti one-way sedan'], ['Hilton sedan 22:00', 'Hilton one-way sedan'], ['Hilton sedan 05:59', 'Hilton one-way sedan']])
+    assert.equal(J.review.find((r) => r.case === n).total, J.review.find((r) => r.case === d).total, n + ' Review equals the daytime Review');
+  const pages = [...HOTELS.map((P) => `transfer/${P.slug}.html`), 'transfer/port-denarau.html', FAM];
+  for (const f of pages) { const t = text(read(f)); assert.ok(!/20% night|10 pm|6 am|night surcharge applies|carry a 20%/i.test(t), f + ' must not state the night rate or hours'); }
+  const homeAdded = read('index.html').split('\n').filter((l) => !fix('index.html').split('\n').includes(l)).join(' ');
+  assert.ok(!/10 pm|6 am|20%/.test(homeAdded));
+  for (const f of pages) assert.ok(/can carry a surcharge; our team confirms the applicable charge|our team confirms any night-pickup surcharge|confirms the final charge, including any night surcharge/.test(read(f)) || f.endsWith('port-denarau.html'), f + ' says the team confirms the night charge');
+});
+test('journey evidence: published quote-step fares equal the page tables (Review totals differ and the pages say so)', () => {
+  const q = Object.fromEntries(J.quote_day.map((r) => [r.case, r]));
+  for (const [slug, key] of [['hilton-fiji-beach-resort', 'Hilton/Marina'], ['port-denarau-marina', 'Hilton/Marina'], ['naviti-resort', 'Naviti'], ['shangri-la-yanuca-island', 'Shangri-La'], ['pearl-south-pacific-resort', 'Pearl']]) {
+    const nums = fareRows(read(`transfer/${slug}.html`)).map((r) => [...r.matchAll(/FJ\$(\d+)/g)].map((m) => Number(m[1])));
+    assert.deepEqual(nums.map((n) => n[0]), [q[key].sedan, q[key].minivan, q[key].minibus], slug);
+    if (q[key].return) assert.deepEqual(nums.map((n) => n[1]), q[key].return, slug);
+    assert.ok(/can (be )?higher or lower|can differ from the published fare/i.test(text(read(`transfer/${slug}.html`))), slug + ' tells the guest the Review total can differ');
+  }
+});
+test('Marina wording: hero, new section and FAQ all describe the road transfer to the ferry terminal; no door-to-door', () => {
+  const h = read('transfer/port-denarau-marina.html');
+  assert.ok(!/door-to-door/i.test(h));
+  assert.ok(/Private road transfer from Nadi International Airport to Port Denarau Marina/.test(h));
+  assert.ok(/This is the road transfer to the ferry terminal only/.test(h));
+  assert.ok(/booked straight to Port Denarau Marina, the ferry terminal/.test(h));
 });
