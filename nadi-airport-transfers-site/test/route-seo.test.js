@@ -33,7 +33,9 @@ for (const P of PAGES) {
     assert.ok(title.length >= 40 && title.length <= 65, `title length ${title.length}: ${title}`);
     assert.ok(/Nadi Airport/.test(title) && /Transfer/.test(title));
     assert.ok(desc.length >= 100 && desc.length <= 165, `description length ${desc.length}`);
-    assert.ok(/Private/.test(desc) && desc.includes(`sedan fare ${P.sedan}`) && /no payment now/i.test(desc) && /Fiji team/.test(desc), desc);
+    assert.ok(P.slug === 'port-denarau' // search-growth release: the chooser page answers the fare-search questions (price, per vehicle) directly
+      ? /Private/.test(desc) && desc.includes(`sedan ${P.sedan}`) && /per vehicle, not per person/.test(desc)
+      : /Private/.test(desc) && desc.includes(`sedan fare ${P.sedan}`) && /no payment now/i.test(desc) && /Fiji team/.test(desc), desc);
     const ogt = unesc(h.match(/<meta property="og:title" content="([^"]*)">/)[1]); assert.ok(ogt.length <= 70 && /Nadi Airport/.test(ogt));
   });
   test(`${P.slug}: URL, canonical and indexing directives are unchanged; the page is indexable`, () => {
@@ -70,10 +72,10 @@ for (const P of PAGES) {
   });
   test(`${P.slug}: FAQPage schema is valid JSON and matches the visible FAQ exactly (question and answer)`, () => {
     const faq = ldBlocks(h).find((b) => b['@type'] === 'FAQPage');
-    const vis = [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(m[2]).replace(/\s+/g, ' ').trim()]);
+    const vis = [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(P.slug === 'port-denarau' ? m[2].replace(/<[^>]+>/g, '') : m[2]).replace(/\s+/g, ' ').trim()]);
     const ld = faq.mainEntity.map((q) => [q.name, q.acceptedAnswer.text.replace(/\s+/g, ' ').trim()]);
     assert.deepEqual(ld, vis);
-    assert.ok(ld.length >= 6 && ld.some(([q]) => /passengers and bags/.test(q)) && ld.some(([q, a]) => /meet my driver/.test(q) && a === 'Follow the meeting instructions in your transfer confirmation.'));
+    assert.ok(ld.length >= 6 && ld.some(([q]) => /passengers and bags/.test(q)) && ld.some(([q, a]) => /meet my driver/.test(q) && (P.slug === 'port-denarau' ? a.startsWith('Your driver waits in the international arrivals hall with a sign showing your name.') : a === 'Follow the meeting instructions in your transfer confirmation.')));
     for (const b of ldBlocks(h)) assert.ok(b['@context']);
   });
   test(`${P.slug}: a prominent in-content booking link keeps the destination (same builder; exact URL for fixed-resort pages, chooser anchor for the Denarau chooser)`, () => {

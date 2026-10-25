@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { ROUTE_SOURCE_TAG, ROUTE_SOURCE_HELD, undoRouteSource } from './route-source-revert.js';
+import { SEARCH_GROWTH_NEW, undoSearchGrowthBuf } from './search-growth-revert.js';
 
 const SRC = new URL('../src/', import.meta.url);
 const CODE = readFileSync(new URL('route-source.js', SRC), 'utf8');
@@ -114,11 +115,11 @@ test('SCOPE: removing the script line reproduces every live route page byte for 
   const now = [];
   const walk = (d, pre = '') => { for (const e of readdirSync(new URL(d, SRC), { withFileTypes: true })) e.isDirectory() ? walk(d + e.name + '/', pre + e.name + '/') : now.push(pre + e.name); };
   walk('');
-  assert.deepEqual(now.filter((f) => f !== 'route-source.js').sort(), prodFiles.sort());
+  assert.deepEqual(now.filter((f) => f !== 'route-source.js' && f !== SEARCH_GROWTH_NEW).sort(), prodFiles.sort());
   for (const f of prodFiles) {
     if (f === 'app.js' || f === 'index.html') continue; // changed by the attribution release (2ed37c4); pinned in booking-attribution tests
     const live = execFileSync('git', ['show', `${base}:./src/${f}`], { cwd: new URL('..', SRC) });
     const cur = readFileSync(new URL(f, SRC));
-    assert.equal(sha(f.startsWith('transfer/') ? undoRouteSource(f, cur.toString('utf8')) : cur), sha(live), f);
+    assert.equal(sha(f.startsWith('transfer/') ? undoRouteSource(f, cur.toString('utf8')) : undoSearchGrowthBuf(f, cur)), sha(live), f);
   }
 });

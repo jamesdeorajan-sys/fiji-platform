@@ -3,6 +3,7 @@
 // no unverified claims, shared validation logic, link integrity, and that nothing else in the production tree changed except
 // three navigation/footer lines on the home page and one sitemap entry.
 // Run: node --test test/rental-page.test.js
+import { undoSearchGrowth } from './search-growth-revert.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -49,13 +50,13 @@ test('SCOPE: the production tree is byte-identical except the home page (3 added
     '_redirects': '578cd6f94e366cbeeba342ec4a34d912dc309e33f000953b8a3a8c3c38189de3',
   };
   for (const [f, want] of Object.entries(PINS)) assert.equal(f === 'app.js' || f === 'styles.css' ? sha(a11yRevert(f, rd(f))) : shaFile(f), want, f + ' changed');
-  let home = a11yRevert('index.html', rd('index.html'));
+  let home = a11yRevert('index.html', undoSearchGrowth('index.html', rd('index.html')));
   for (const a of ['      <a href="/nadi-airport-car-rentals/">Car rentals</a>\n', '    <a href="/nadi-airport-car-rentals/">Car rentals</a>\n', '        <a href="/nadi-airport-car-rentals/">Request a rental car</a>\n']) {
     assert.equal(home.split(a).length, 2, 'home page line present exactly once: ' + a.trim());
     home = home.replace(a, '');
   }
   assert.equal(sha(home), HOME_PRODUCTION_SHA, 'home page minus the three navigation lines equals the production file');
-  const sm = rd('sitemap.xml');
+  const sm = undoSearchGrowth('sitemap.xml', rd('sitemap.xml'));
   assert.equal(sm.split(SITEMAP_BLOCK).length, 2, 'the new sitemap entry appears exactly once');
   assert.equal(sha(sm.replace(SITEMAP_BLOCK, '')), SITEMAP_PRODUCTION_SHA, 'sitemap minus the new entry equals the production file');
   assert.ok(!/nadi-airport-car-rentals/.test(rd('robots.txt')) && !/nadi-airport-car-rentals/.test(rd('_redirects')));

@@ -36,7 +36,7 @@ for (const P of PAGES) {
     const title = unesc(h.match(/<title>([^<]*)<\/title>/)[1]), desc = unesc(h.match(/<meta name="description" content="([^"]*)">/)[1]);
     assert.ok(title.length >= 45 && title.length <= 65 && /^Nadi Airport to /.test(title) && /(Private)/.test(title), title);
     assert.ok(desc.length >= 100 && desc.length <= 165, `description ${desc.length}: ${desc}`);
-    assert.ok(desc.includes(`FJ$${P.sedan}`) && /no payment to request/i.test(desc) && /private/i.test(desc), desc);
+    assert.ok(desc.includes(`FJ$${P.sedan}`) && /per vehicle/i.test(desc) && /child seat FJ\$8/i.test(desc) && /private/i.test(desc), desc);
     assert.ok(!/\d+\s?(km|min|hour|hr)\b/i.test(title + desc), 'no journey figure in the title or description');
   });
   test(`${P.slug}: every booking link goes to FijiDash with pickup NAN and the exact destination ${P.dest}; the set of links is unchanged in number`, () => {
@@ -48,7 +48,7 @@ for (const P of PAGES) {
       assert.equal(q.get('utm_source'), 'organic');
     }
     assert.equal(new Set(hrefs).size, 1, 'all CTAs are the same exact link');
-    assert.equal(hrefs.length, { 'naviti-resort': 5, 'shangri-la-yanuca-island': 5, 'hilton-fiji-beach-resort': 5, 'pearl-south-pacific-resort': 5 }[P.slug]);
+    assert.equal(hrefs.length, 6); // search-growth release: five original links plus one prominent booking button in the new "before you book" section (same exact link)
   });
   test(`${P.slug}: published fares unchanged and consistent (hero, table, schema); returns are below two one-ways`, () => {
     assert.ok(h.includes(`<div class="rp-fare-amount">FJ$${P.sedan}</div>`)); assert.ok(/<div class="rp-fare-note">Published sedan fare · 1–3 passengers/.test(h));
@@ -59,13 +59,13 @@ for (const P of PAGES) {
   });
   test(`${P.slug}: FAQPage schema equals the visible FAQ exactly and covers fare vs final total, capacity, child seat, return, meeting and payment`, () => {
     const faq = ldBlocks(h).find((b) => b['@type'] === 'FAQPage');
-    const vis = [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(m[2]).replace(/\s+/g, ' ').trim()]);
+    const vis = [...h.matchAll(/<div class="rp-faq-item"><h3>([^<]*)<\/h3><p>([\s\S]*?)<\/p><\/div>/g)].map((m) => [unesc(m[1]), unesc(m[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim()]);
     const ld = faq.mainEntity.map((q) => [q.name, q.acceptedAnswer.text.replace(/\s+/g, ' ').trim()]);
     assert.deepEqual(ld, vis); assert.ok(ld.length >= 9);
     for (const k of [/same as the fare shown/, /group and luggage/, /child seat/, /return transfer/, /meet my driver/, /pay now/, /confirms my booking/]) assert.ok(ld.some(([q]) => k.test(q)), String(k));
     const a = (re) => ld.find(([q]) => re.test(q))[1];
     assert.ok(a(/same as the fare shown/).includes('published fares') && a(/same as the fare shown/).includes('can be higher or lower') && a(/same as the fare shown/).includes('eligible standard transfer bookings') && a(/same as the fare shown/).includes('over FJ$50') && a(/same as the fare shown/).includes('Review step') && a(/same as the fare shown/).includes('Child seats are FJ$8'));
-    assert.equal(a(/meet my driver/), 'Follow the meeting instructions in your transfer confirmation. If you cannot find your driver, contact our team on WhatsApp.');
+    assert.equal(a(/meet my driver/), 'Your driver waits in the international arrivals hall with a sign showing your name. If you cannot find your driver, contact our team on WhatsApp.'); // search-growth release: the meeting arrangement already approved on the home page FAQ
     assert.ok(a(/pay now/).startsWith('No.') && !/arranged directly with your driver/.test(a(/pay now/)));
   });
   test(`${P.slug}: no unverified geography, operational promise or journey figure is stated`, () => {

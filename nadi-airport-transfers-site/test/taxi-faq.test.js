@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { undoTaxiFaq, TAXI_A_HTML } from './taxi-faq-revert.js';
 import { undoRouteSource, ROUTE_SOURCE_FILE } from './route-source-revert.js';
+import { SEARCH_GROWTH_NEW, undoSearchGrowth, undoSearchGrowthBuf } from './search-growth-revert.js';
 import { undoRouteTitles } from './route-titles-revert.js';
 import { undoAttribution } from './attribution-revert.js';
 
@@ -99,9 +100,9 @@ test('SCOPE: removing the taxi question reproduces every production route page b
 test('SCOPE: every other served file (home page, fares, booking logic, hand-off, funnel, rentals, sitemap, redirects) is byte-identical to production', () => {
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
-  walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE)); // route-source release: its one new file
+  walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE && x !== SEARCH_GROWTH_NEW)); // route-source release: its one new file; search-growth release: its one new page
   assert.deepEqual(files.sort(), Object.keys(PROD).sort(), 'same 45-file upload tree');
-  for (const f of files.filter((x) => !x.startsWith('transfer/'))) assert.equal(sha(f === 'app.js' || f === 'index.html' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : readFileSync(path.join(SRC, f))), PROD[f], f + ' changed'); // undoAttribution: the later attribution release
+  for (const f of files.filter((x) => !x.startsWith('transfer/'))) assert.equal(sha(f === 'app.js' || f === 'index.html' ? undoAttribution(f, undoSearchGrowth(f, readFileSync(path.join(SRC, f), 'utf8'))) : undoSearchGrowthBuf(f, readFileSync(path.join(SRC, f)))), PROD[f], f + ' changed'); // undoAttribution: the later attribution release
 });
 
 test('no new claim: the answer has no taxi fare, price, distance, journey time, guarantee, rating or superlative; it repeats only facts the page states', () => {
