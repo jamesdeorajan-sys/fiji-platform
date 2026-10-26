@@ -1,3 +1,4 @@
+import { scheduleLeadConversion, sweepLeadConversions } from "./openai-ads.mjs";
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -1047,7 +1048,7 @@ var worker_default = {
     } else if (controller.cron === "0 12 * * 6") {
       ctx.waitUntil(checkFuelIndexUpdate(env));
     } else if (controller.cron === "*/5 * * * *") {
-      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env), sweepDriverBroadcasts(env), rental.sweepAlerts(env)]));
+      ctx.waitUntil(Promise.allSettled([runHealthCheckAlert(env), sweepAdminNotifications(env), sweepDriverBroadcasts(env), rental.sweepAlerts(env), sweepLeadConversions(env)]));
     } else if (controller.cron === "0 14 * * *") {
       ctx.waitUntil(runD1Backup(env));
     }
@@ -3395,6 +3396,7 @@ async function handleGuestBookingCreate(request, env, ctx) {
   }
   const b = result.booking;
   const broadcast = await dispatchNewBookingSideEffects(env, ctx, b);
+  scheduleLeadConversion(env, ctx, request, body, b);
   return json({ ok: true, booking_id: result.bookingId, booking: result.booking, broadcast, idempotent: false }, 201);
 }
 __name(handleGuestBookingCreate, "handleGuestBookingCreate");
