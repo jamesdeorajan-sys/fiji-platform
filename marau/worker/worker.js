@@ -28,6 +28,7 @@ import { findPayloadMismatch } from './booking_conflict.js';
 import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } from './vehicle_allocation.js';
 import { normalizePickupDatetime, toFijiWallClockInputValue, formatFijiDateTime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
+import { bulaOnSavedBooking, bulaRunOutbox } from '../bula/hook.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
@@ -407,6 +408,9 @@ async function handleCreateBooking(request, env) {
   }
 
   if (insertResult.meta.changes === 1) {
+    // Bula Happiness (flag-gated, default OFF): durable email jobs for this verified server-side save. Can never fail the booking;
+    // anything missed here is picked up by the outbox reconciliation sweep.
+    try { await bulaOnSavedBooking(env, clientBookingRef); } catch (err) { console.error('[bula] enqueue failed (will be reconciled)', err && err.message); }
     // A referral code attributes this brand-new guest to the referrer (first touch only; self-referral and
     // existing-guest cases are recorded as rejected). It can never fail the booking, and the response says only
     // whether the code was applied - never who referred whom.
@@ -2608,6 +2612,7 @@ export default {
       if (method === 'GET' && pathname === '/icon-512.png') return PNG_RESPONSE(ICON512_PNG_BASE64);
       if (method === 'GET' && pathname === '/icon-180.png') return PNG_RESPONSE(ICON180_PNG_BASE64);
 
+      if (method === 'POST' && pathname === '/preview/bula/outbox/run') return requireAdmin(request, env) ? json(await bulaRunOutbox(env)) : json({ error: 'unauthorized' }, 401);
       if (method === 'POST' && pathname === '/preview/bookings') return await handleCreateBooking(request, env);
       if (method === 'GET' && pathname === '/preview/trip') return await handleGetTrip(request, env);
       if (method === 'POST' && pathname === '/preview/trip/revoke') return await handleRevokeTrip(request, env);
