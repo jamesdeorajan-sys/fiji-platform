@@ -412,6 +412,19 @@ export function createGuestContact(deps) {
     return json({ ok: true, prepared, already_prepared: already, refreshed, level: PILOT_LEVEL, nothing_was_sent: true, demonstration_data: true });
   }
 
+  /** The staff browser confirms the clipboard ACCEPTED the text. Records "copied" only: the entry stays 'prepared' and nothing is sent. */
+  async function markCopied(request, env, editionId, sessionId) {
+    const st = await staffOr401(request, env); if (st.error) return st.error;
+    const row = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE edition_id = ? AND guest_session_id = ?').bind(editionId, sessionId).first();
+    if (!row) return json({ error: 'no prepared send for this guest and edition' }, 404);
+    if (row.status !== 'prepared') return json({ error: 'INVALID_STATE', status: row.status, detail: 'only a prepared entry can be marked as copied' }, 409);
+    if (!row.checked_at) return json({ error: 'NOT_CHECKED', detail: 'the message was never handed out for this entry; check it first' }, 409);
+    if (row.stale_reason) return json({ error: 'PREPARED_ENTRY_STALE', stale_reason: row.stale_reason, detail: 'a fact changed; this entry cannot be recorded as copied. Prepare the list again.' }, 409);
+    const now = nowIso();
+    await env.DB.prepare('UPDATE marau_edition_sends SET message_copied_at = ? WHERE id = ?').bind(now, row.id).run();
+    return json({ ok: true, status: 'prepared', copied_at: now, copied_by: st.operator, nothing_was_sent: true, demonstration_data: true });
+  }
+
   function composeMessageText(ed, offers) {
     const lines = offers.filter((o) => o.state === 'open').map((o) => `- ${o.title}: FJ$${Number(o.price_fjd).toFixed(2)} per place (${o.places_left} left)`);
     return `Marau deals (${ed.slot}, ${ed.fiji_date}):\n${lines.join('\n')}\nReply here to request a place - a person will confirm with you. Reply STOP and we will not send deals again.`;
@@ -435,7 +448,8 @@ export function createGuestContact(deps) {
     const fresh = await env.DB.prepare('SELECT * FROM marau_edition_sends WHERE id = ?').bind(row.id).first();
     if (fresh.stale_reason) return json({ error: 'PREPARED_ENTRY_STALE', stale_reason: fresh.stale_reason, detail: 'a fact changed since this list was prepared; prepare the list again', nothing_was_sent: true }, 409);
     const now = nowIso();
-    await env.DB.prepare('UPDATE marau_edition_sends SET checked_at = ?, checked_by = ?, message_copied_at = ? WHERE id = ?').bind(now, st.operator, now, row.id).run();
+    // Handing the text out is "checked". It is NOT "copied" (that is confirmed separately, only after the browser's clipboard accepts it) and never "sent".
+    await env.DB.prepare('UPDATE marau_edition_sends SET checked_at = ?, checked_by = ?, message_copied_at = NULL WHERE id = ?').bind(now, st.operator, row.id).run();
     return json({ ok: true, eligible: true, channel: row.channel, checked_at: now, checked_by: st.operator, message_text: composeMessageText(ed, offers), level: PILOT_LEVEL, app_cannot_prevent_external_send: CANNOT_PREVENT, nothing_was_sent: true, demonstration_data: true });
   }
 
@@ -514,6 +528,7 @@ export function createGuestContact(deps) {
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/prepare$/); if (m === 'POST' && x) return prepareSends(request, env, decodeURIComponent(x[1]));
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/(gs_[^/]+)\/outcome$/); if (m === 'POST' && x) return recordOutcome(request, env, decodeURIComponent(x[1]), x[2]);
     x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/(gs_[^/]+)\/check$/); if (m === 'POST' && x) return preSendCheck(request, env, decodeURIComponent(x[1]), x[2]);
+    x = p.match(/^\/preview\/admin\/editions\/([^/]+)\/sends\/(gs_[^/]+)\/copied$/); if (m === 'POST' && x) return markCopied(request, env, decodeURIComponent(x[1]), x[2]);
     return null;
   }
 

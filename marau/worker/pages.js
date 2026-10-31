@@ -1124,6 +1124,12 @@ ${SHARED_STYLE}
     <div class="panel">
       <h2>Deals pilot - manual send</h2>
       <p class="small muted">A person reviews a published edition, sends by hand outside Marau, and records the outcome here. Nothing is sent, scheduled or delivered by this page.</p>
+      <div id="copyPanel" role="region" aria-label="Message to copy" style="display:none;border:2px solid var(--lagoon);border-radius:12px;padding:12px;margin:10px 0">
+        <p class="small"><b id="copyTitle">Message</b></p>
+        <textarea id="copyText" rows="7" readonly style="width:100%;font:inherit"></textarea>
+        <p class="small" id="copyStatus" role="status"></p>
+        <button class="btn btn-primary" id="copyBtn" type="button">Copy to clipboard</button> <button class="btn btn-light" id="copyClose" type="button">Close</button>
+      </div>
       <div id="rPilot"></div>
     </div>
 
@@ -1143,7 +1149,7 @@ ${SHARED_STYLE}
 <script>
 ${BUNDLER_NAME_SHIM}
 ${createStaffConsole.toString()}
-createStaffConsole({ document: document, storage: sessionStorage, fetchImpl: function (u, o) { return fetch(u, o); }, prompt: function (m) { return window.prompt(m); } }).init();
+createStaffConsole({ document: document, storage: sessionStorage, fetchImpl: function (u, o) { return fetch(u, o); }, prompt: function (m, d) { return window.prompt(m, d); }, clipboard: (typeof navigator !== 'undefined' && navigator.clipboard) ? navigator.clipboard : undefined }).init();
 </script>
 </body>
 </html>`;

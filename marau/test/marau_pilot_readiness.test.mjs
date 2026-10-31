@@ -195,7 +195,7 @@ test('PRE-SEND CHECK: immediately before staff copy a message the app rechecks c
   assert.equal(c.data.nothing_was_sent, true);
   assert.match(c.data.app_cannot_prevent_external_send, /cannot (technically )?prevent/i);
   const row = (await p.list()).sends.find((s) => s.session_id === g.sid);
-  assert.equal(row.checked_by, 'Bala (ops)'); assert.ok(row.message_copied_at);
+  assert.equal(row.checked_by, 'Bala (ops)'); assert.equal(row.message_copied_at, null, 'RC4 repair: handing the text out is "checked", not "copied"');
   assert.equal((await call(p.env, `/preview/admin/editions/${E}/sends/${g.sid}/check`, { method: 'POST', headers: guestH(g.token), body: {} })).status, 401);
 });
 
