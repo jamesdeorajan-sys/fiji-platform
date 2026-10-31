@@ -1,3 +1,4 @@
+/* SUPERSEDED reference model (in-memory). Kept for history; the D1-backed inventory_credit.js / outbox_d1.js replace it and fix the review findings (scoped idempotency, authority, cancel policy, durable leases). Do not wire this file. */
 /* Bula Happiness — welcome promotional-credit ledger (ISOLATED, in-memory reference implementation).
  * Integer FJD cents. Append-only entries; balances derived; never negative.
  * NOT an earned reward: separate grant type, separate from referral/payment-evidence rules. */

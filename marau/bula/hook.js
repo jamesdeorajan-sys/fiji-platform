@@ -19,3 +19,11 @@ export async function bulaRunOutbox(env, nowMs = Date.now()) {
   const stats = await dispatch(env.DB, cfg, sender, { workerId: `w-${nowMs}`, nowMs });
   return { reconciled, resolved, ...stats };
 }
+
+/** Non-sensitive build metadata (names/ids only). BULA_BUILD / BULA_COMMIT are set at deploy time. */
+export function bulaVersion(env) { return { app: 'marau-bula', build: env.BULA_BUILD || 'unset', commit: env.BULA_COMMIT || 'unset', schema: 'marau-0043+bula-0045' }; }
+export function bulaWithBuild(pageHtml, env) {
+  const v = bulaVersion(env); const i = pageHtml.lastIndexOf('</body>'); if (i < 0) return pageHtml;
+  const esc = (x) => String(x).replace(/[^\w.-]/g, '');
+  return `${pageHtml.slice(0, i)}<div id="app-build" data-build="${esc(v.build)}" style="position:fixed;right:6px;bottom:2px;font:10px system-ui;opacity:.45;pointer-events:none">build ${esc(v.build)}</div>${pageHtml.slice(i)}`;
+}

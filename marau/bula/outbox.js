@@ -1,3 +1,4 @@
+/* SUPERSEDED reference model (in-memory). Kept for history; the D1-backed inventory_credit.js / outbox_d1.js replace it and fix the review findings (scoped idempotency, authority, cancel policy, durable leases). Do not wire this file. */
 /* Bula Happiness — transactional email outbox (ISOLATED). Capture sender only; live sender is a disabled stub.
  * Email failure can never fail or lose a saved booking. Provider acceptance != delivery != human acknowledgement. */
 export const TEMPLATE_VERSION = 'booking-received-v1';

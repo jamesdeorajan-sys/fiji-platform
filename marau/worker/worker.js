@@ -28,7 +28,7 @@ import { findPayloadMismatch } from './booking_conflict.js';
 import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } from './vehicle_allocation.js';
 import { normalizePickupDatetime, toFijiWallClockInputValue, formatFijiDateTime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
-import { bulaOnSavedBooking, bulaRunOutbox } from '../bula/hook.js';
+import { bulaOnSavedBooking, bulaRunOutbox, bulaVersion, bulaWithBuild } from '../bula/hook.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
@@ -40,8 +40,10 @@ import { createReferrals } from './referrals.js';
 import { validatePhone, validateEmail } from './contact_policy.js';
 import { createGuestContact } from './guest_contact.js';
 
-const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
-const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8' };
+// Private trip data must never sit in a shared/public cache; the app shell revalidates on every launch so a new build is picked up on reload
+// (there is no service worker, so the browser HTTP cache is the only update path).
+const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+const HTML_HEADERS = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' };
 const LINK_REQUEST_TTL_MS = 10 * 60 * 1000; // 10 minutes, mirrors the deal-hold-adjacent language elsewhere
 
 function nowIso() {
@@ -2599,7 +2601,8 @@ export default {
 
     try {
       if (method === 'GET' && pathname === '/health') return json({ status: 'ok', mode: 'preview' });
-      if (method === 'GET' && (pathname === '/' || pathname === '/app' || pathname === '/index.html')) return html(GUEST_APP_HTML);
+      if (method === 'GET' && (pathname === '/' || pathname === '/app' || pathname === '/index.html')) return html(bulaWithBuild(GUEST_APP_HTML, env));
+      if (method === 'GET' && pathname === '/version.json') return json(bulaVersion(env));
       if (method === 'GET' && (pathname === '/admin' || pathname === '/admin.html')) return html(ADMIN_APP_HTML);
       if (method === 'GET' && pathname === '/staff') return html(STAFF_CONSOLE_HTML);
       // Third independent review, finding 4: home-screen installation is

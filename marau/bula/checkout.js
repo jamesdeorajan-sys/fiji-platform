@@ -1,3 +1,4 @@
+/* SUPERSEDED reference model (in-memory). Kept for history; the D1-backed inventory_credit.js / outbox_d1.js replace it and fix the review findings (scoped idempotency, authority, cancel policy, durable leases). Do not wire this file. */
 /* Bula Happiness — bounded reservation of inventory + credit (ISOLATED reference implementation).
  * Single-threaded critical section = atomic here; the D1 version must use one conditional UPDATE/transaction
  * (see bula/README.md). Revalidates offer version, price and balance at checkout. */
