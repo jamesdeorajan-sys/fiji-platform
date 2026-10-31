@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMemoryStore } from '../src/db.js';
 import { discoverOffer, validateOffer, activateOffer, holdOffer, releaseHold, fillOffer, expireOffer } from '../src/offers.js';
+// Relative to the real clock so the fixture never silently expires (was a fixed 2026-10-10, which broke after that date).
+const FUTURE_ISO = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
 
 async function activeOffer(store, overrides = {}) {
   const offer = await discoverOffer(store, {
@@ -14,7 +16,7 @@ async function activeOffer(store, overrides = {}) {
     capacity: 1,
     standard_price: 40,
     absolute_floor: 25,
-    expires_at: '2026-10-10T10:00:00Z',
+    expires_at: FUTURE_ISO,
     test_data: true,
     ...overrides,
   });
@@ -79,7 +81,7 @@ test('validateOffer rejects an offer missing required fields', async () => {
     destination_zone: 'DENARAU',
     // vehicle_class intentionally omitted
     standard_price: 40,
-    expires_at: '2026-10-10T10:00:00Z',
+    expires_at: FUTURE_ISO,
     test_data: true,
   });
   const result = await validateOffer(store, offer.offer_id);

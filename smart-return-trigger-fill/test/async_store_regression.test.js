@@ -21,6 +21,8 @@ import { discoverOffer, validateOffer, activateOffer, holdOffer, fillOffer } fro
 import { ingestMovement, linkReturnMovement } from '../src/ledger.js';
 import { buildSevenDayMovementBoard } from '../src/board.js';
 import { processIncomingMovement } from '../src/pipeline.js';
+// Relative to the real clock so the fixture never silently expires (was a fixed 2026-10-10, which broke after that date).
+const FUTURE_ISO = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
 
 function asyncStore() {
   const inner = createMemoryStore();
@@ -49,7 +51,7 @@ function offerParams(overrides = {}) {
     capacity: 1,
     standard_price: 40,
     absolute_floor: 25,
-    expires_at: '2026-10-10T10:00:00Z',
+    expires_at: FUTURE_ISO,
     test_data: true,
     ...overrides,
   };
