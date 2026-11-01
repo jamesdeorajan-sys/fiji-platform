@@ -16,8 +16,8 @@ for (const [k, role] of [['ceo', 'ceo'], ['ops', 'ops'], ['approver', 'approver'
 const ver = await (await fetch(BASE + '/version.json')).json(); rec('deployed build identifies itself', /^[0-9a-f]{7,40}$/.test(ver.commit), { build: ver.build, commit: ver.commit, schema: ver.schema });
 const guest = async (i) => { const r = await fetch(BASE + '/preview/bookings', { method: 'POST', headers: J, body: JSON.stringify({ guest_email: `acc${i}.${run}@example.invalid`, guest_phone: `+1500555${String(1000 + (i % 9000))}`, client_booking_ref: `${run}-g${i}`, pickup_zone: 'NAD_AIRPORT', destination_zone: 'DENARAU', vehicle_type: 'Sedan', pickup_datetime: new Date(now + 72 * H).toISOString(), leg_type: 'arrival', quoted_amount: 45, quoted_currency: 'FJD', demonstration_data: true }) }); const j = await r.json(); if (!j.access_token) { console.error('guest create failed', r.status, JSON.stringify(j).slice(0, 200)); process.exit(1); } return j.access_token; };
 const cols = 'offer_id,title,operator_id,service_date,service_time,pickup_zones,pricing_basis,offer_price_fjd,max_credit_fjd,capacity_unit,capacity_quantity,booking_cutoff,inclusions,exclusions,min_spend_fjd,cancellation_terms,credit_restore_hours_before,inventory_restore_hours_before,funding_party,operator_payout_fjd,instant_confirm,operator_contract_id';
-const mkOffer = async (id, cap, { startInMs = 5 * H, cutoffInMs = 3 * H, restore = 1 } = {}) => { const st = fj(now + startInMs), co = fj(now + cutoffInMs);
-  const row = [id, 'ACC synthetic ' + id, 'op_acc', st.date, st.time, 'Denarau', 'person', '100.00', '25', 'seat', String(cap), `${co.date} ${co.time}`, 'Lunch', '', '', 'Free cancel', String(restore), String(restore), 'vakaviti', '80', 'no', ''].join(',');
+const mkOffer = async (id, cap, { startInMs = 5 * H, cutoffInMs = 3 * H, restore = 1, op = 'op_acc' } = {}) => { const st = fj(now + startInMs), co = fj(now + cutoffInMs);
+  const row = [id, 'ACC synthetic ' + id, op, st.date, st.time, 'Denarau', 'person', '100.00', '25', 'seat', String(cap), `${co.date} ${co.time}`, 'Lunch', '', '', 'Free cancel', String(restore), String(restore), 'vakaviti', '80', 'no', ''].join(',');
   const i = await api('POST', '/preview/admin/bula/offers/import', { staff: T.ops, body: { csv: cols + '\n' + row } }); const a = i.d && i.d.created ? await api('POST', `/preview/admin/bula/offers/${id}/approve`, { staff: T.approver, body: {} }) : i; return { imp: i, app: a }; };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const wallet = async (t) => (await api('GET', '/preview/bula/offers', { tok: t })).d;
@@ -103,11 +103,15 @@ if (!SKIP) { const co = await mkOffer(`${run}-CUT`, 2, { startInMs: 2 * H, cutof
 // and no manual publish — until it is published. It passes only if the publication audit row names a cron trigger and this offer. (A 2026-11-01 run showed why: an offer
 // created earlier had been released ~1.5 s later by the guest route, not by the cron, and no audit row existed to tell the difference.) ----
 if (!SKIP) {
-  const id = `${run}-SCHED`; const mk = await mkOffer(id, 2); const readOffer = async () => (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === id);
+  const id = `${run}-SCHED`; const mk = await mkOffer(id, 2, { op: 'op_acc_sched' });   // operator is cron-only: no guest read, open page or manual publish can publish it const readOffer = async () => (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === id);
   const pre = await readOffer(); rec('scheduler precondition (re-read immediately before waiting): offer approved and unpublished', mk.app.s === 200 && pre && pre.status === 'approved', { status: pre && pre.status });
+  // Positive control for the isolation (added after a real phone left open published the previous SCHED offer via the guest route): guest reads AND a manual publish happen NOW, and the offer must still be unpublished.
+  await wallet(toks[1]); await wallet(toks[2]); await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const ctl = await readOffer();
+  rec('scheduler isolation: guest reads and a manual publish do NOT publish the cron-only offer', !!ctl && ctl.status === 'approved', { status: ctl && ctl.status });
   let st = pre && pre.status; const t0 = Date.now(); while (Date.now() - t0 < 17 * M) { await wait(30e3); st = (await readOffer()).status; if (st !== 'approved' && st !== 'scheduled') break; }
   const audit = (await api('GET', '/preview/admin/bula/audit', { staff: T.ceo })).d.audit || []; const row = audit.find((r) => r.action === 'edition_published' && String(r.detail || '').split(',').includes(id));
-  rec('scheduler: the approved offer was published with no guest or manual publish call in the window', st === 'published', { status: st, waitedSec: Math.round((Date.now() - t0) / 1000) });
+  const nonCron = audit.filter((r) => r.action === 'edition_published' && String(r.detail || '').split(',').includes(id) && !/^cron:\d+$/.test(r.actor));
+  rec('scheduler: the approved offer was published, and no guest/manual publication names it', st === 'published' && nonCron.length === 0, { status: st, nonCronActors: nonCron.map((r) => r.actor), waitedSec: Math.round((Date.now() - t0) / 1000) });
   rec('scheduler: publication audit row exists, names this offer, and its trigger is the cron', !!row && /^cron:\d+$/.test(row.actor), { actor: row ? (/^cron:\d+$/.test(row.actor) ? 'cron:<ms>' : row.actor) : null, found: !!row });
 }
 const verify = { run, base: new URL(BASE).host, commit: ver.commit, results: ev, failed: fails, finished: new Date().toISOString() };

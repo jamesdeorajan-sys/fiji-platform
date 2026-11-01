@@ -10,7 +10,7 @@ export const TARGET = Object.freeze({ worker: 'marau-bula-acceptance', dbName: '
 const HASHED = ['worker.js', 'schema.sql', 'wrangler.json', 'hosted_acceptance.mjs', 'migration_0047.sql'];
 const TOP_KEYS = new Set(['name', 'main', 'compatibility_date', 'account_id', 'workers_dev', 'd1_databases', 'triggers', 'vars']);
 const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING']);
-const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS']);
+const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS', 'BULA_CRON_ONLY_OPERATORS']);
 const OFF = (v) => v === 'off';
 
 export class Fail extends Error { constructor(msg) { super(msg); this.name = 'Fail'; } }

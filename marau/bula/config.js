@@ -15,6 +15,7 @@ export function loadConfig(env = {}) {
     holdTtlMs: Number.isInteger(+env.BULA_HOLD_TTL_MS) && +env.BULA_HOLD_TTL_MS > 0 ? +env.BULA_HOLD_TTL_MS : 10 * 60000,
     deviceTtlMs: Number.isInteger(+env.BULA_DEVICE_TTL_MS) && +env.BULA_DEVICE_TTL_MS > 0 ? +env.BULA_DEVICE_TTL_MS : 30 * 24 * 3600e3,
     pairingTtlMs: 10 * 60e3, maxDevices: 5, pairFailLimit: 10, pairFailWindowMs: 10 * 60e3,
+    cronOnlyOperators: Object.freeze(String(env.BULA_CRON_ONLY_OPERATORS || '').split(',').map((x) => x.trim()).filter(Boolean)),   // offers of these operators are published ONLY by the scheduled publisher (cron:*); guest reads and manual publish skip them (test isolation; empty in production)
     hiddenOperators: Object.freeze(String(env.BULA_CATALOGUE_HIDDEN_OPERATORS || '').split(',').map((x) => x.trim()).filter(Boolean)),   // operators whose offers are test fixtures: kept out of the GUEST catalogue (still bookable by id, so automated tests are unchanged)
     policyVersion: env.BULA_POLICY_VERSION || 'policy-unset',
     guestOrigin: env.BULA_GUEST_ORIGIN || '',             // https origin of the guest app

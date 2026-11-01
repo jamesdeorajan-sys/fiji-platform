@@ -26,7 +26,8 @@ BULA_DEVICE_PAIRING = "on"
 BULA_OUTBOX_ENABLED = "off"
 BULA_EMAIL_SEND_ENABLED = "off"
 BULA_POLICY_VERSION = "synthetic-acceptance-1"
-BULA_CATALOGUE_HIDDEN_OPERATORS = "op_acc"   # acceptance fault-test fixtures stay out of the guest catalogue (still bookable by id for the automated checks)
+BULA_CATALOGUE_HIDDEN_OPERATORS = "op_acc,op_acc_sched"
+BULA_CRON_ONLY_OPERATORS = "op_acc_sched"   # the scheduler-test offer is published ONLY by the cron: guest reads (e.g. a phone left open) and manual publish skip it   # acceptance fault-test fixtures stay out of the guest catalogue (still bookable by id for the automated checks)
 BULA_BUILD = "unset"
 BULA_COMMIT = "unset"
 # Secret (set by run_acceptance.mjs via stdin, never in this file/argv/chat): MARAU_ADMIN_TEST_TOKEN
