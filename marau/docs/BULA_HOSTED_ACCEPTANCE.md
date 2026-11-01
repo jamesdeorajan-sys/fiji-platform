@@ -24,3 +24,6 @@ ON: SYNTHETIC_TEST, CHECKOUT, CREDITS, EDITION_PUBLISH, FAULT_HARNESS. OFF: OUTB
 
 ## After acceptance
 Order: phone testing → evidence collected → `lockdown` (flags off, harness off) → rotate/revoke the secrets file → only then, with James's separate approval, scoped cleanup (delete Worker, then database). Nothing is torn down before then.
+
+## Installed Home Screen app (device pairing)
+iOS gives a Home Screen app its own storage, so it never has the Safari link. `BULA_DEVICE_PAIRING=on` (acceptance only; `lockdown` turns it off) enables a one-time connect code: Safari (or staff via `run_acceptance.mjs . pair`) issues an 8-character code (10 minutes, single use, stored hashed); the installed app redeems it once and receives its own 256-bit device key (stored hashed, 30-day expiry, individually revocable, void when the guest session is revoked). The key resolves to the SAME guest: same party and wallet, no second guest or credit grant. Migration `0047` (three small tables) is applied by `resume`/`all`/`migrate` only if its tables are absent, only to the isolated database. The manifest remains static (`start_url=/bula`, no credential).
