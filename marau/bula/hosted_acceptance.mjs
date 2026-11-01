@@ -103,7 +103,7 @@ if (!SKIP) { const co = await mkOffer(`${run}-CUT`, 2, { startInMs: 2 * H, cutof
 // and no manual publish — until it is published. It passes only if the publication audit row names a cron trigger and this offer. (A 2026-11-01 run showed why: an offer
 // created earlier had been released ~1.5 s later by the guest route, not by the cron, and no audit row existed to tell the difference.) ----
 if (!SKIP) {
-  const id = `${run}-SCHED`; const mk = await mkOffer(id, 2, { op: 'op_acc_sched' });   // operator is cron-only: no guest read, open page or manual publish can publish it const readOffer = async () => (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === id);
+  const id = `${run}-SCHED`; /* operator is cron-only: no guest read, open page or manual publish can publish it */ const mk = await mkOffer(id, 2, { op: 'op_acc_sched' }); const readOffer = async () => (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === id);
   const pre = await readOffer(); rec('scheduler precondition (re-read immediately before waiting): offer approved and unpublished', mk.app.s === 200 && pre && pre.status === 'approved', { status: pre && pre.status });
   // Positive control for the isolation (added after a real phone left open published the previous SCHED offer via the guest route): guest reads AND a manual publish happen NOW, and the offer must still be unpublished.
   await wallet(toks[1]); await wallet(toks[2]); await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const ctl = await readOffer();
