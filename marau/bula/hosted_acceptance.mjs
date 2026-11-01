@@ -98,7 +98,10 @@ rec('ownership: another guest cannot cancel/release the hold', (await api('POST'
 // ---- 4. cutoff ----
 if (!SKIP) { const co = await mkOffer(`${run}-CUT`, 2, { startInMs: 2 * H, cutoffInMs: 2 * M }); await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const pre = await api('POST', '/preview/bula/reserve', { tok: toks[5], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'pre' } });
   const cutMs = Date.parse(fj(now + 2 * M).date + 'T00:00:00Z'); void cutMs; await wait(3.2 * M); const post = await api('POST', '/preview/bula/reserve', { tok: toks[6], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'post' } });
-  rec('cutoff: reserve accepted before the cutoff, refused after (server clock)', co.app.s === 200 && pre.s === 201 && post.d && post.d.code === 'past_cutoff', { pre: pre.s, post: post.d && post.d.code }); }
+  const cutRow = ((await api('GET', '/preview/admin/bula/offers', { staff: T.ceo })).d.offers || []).find((o) => o.offer_id === `${run}-CUT`); const pc = post.d && post.d.code;
+  // After the cutoff the refusal is `past_cutoff` while the offer is still marked published, or `not_published` once ANY publisher run (the */15 cron, or a guest read such as an open phone page) has already expired it. Both are correct refusals;
+  // `not_published` is accepted only when the offer really is in status `expired`, and in both cases no place may have been taken by the late request (remaining stays 1 of 2).
+  rec('cutoff: reserve accepted before the cutoff, refused after (server clock)', co.app.s === 200 && pre.s === 201 && post.s >= 400 && ((pc === 'past_cutoff') || (pc === 'not_published' && cutRow && cutRow.status === 'expired')) && !!cutRow && cutRow.remaining === 1, { pre: pre.s, post: pc, status: cutRow && cutRow.status, remaining: cutRow && cutRow.remaining }); }
 // ---- 5. scheduler (LAST, in isolation): the offer is created and approved now, then ONLY admin reads are made — no guest request (the guest route can lazy-publish)
 // and no manual publish — until it is published. It passes only if the publication audit row names a cron trigger and this offer. (A 2026-11-01 run showed why: an offer
 // created earlier had been released ~1.5 s later by the guest route, not by the cron, and no audit row existed to tell the difference.) ----
