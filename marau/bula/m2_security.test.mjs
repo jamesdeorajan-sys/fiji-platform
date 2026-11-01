@@ -82,3 +82,18 @@ test('GUEST_UI/STAFF_UI pages serve, are no-cache, and use no external hosts', a
   const env = mk();
   for (const p of ['/bula', '/bula/staff']) { const r = await call(env, 'GET', p, { admin: false }); assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-cache'); const t = await r.text(); assert.doesNotMatch(t, /https?:\/\//); assert.doesNotMatch(t, /innerHTML/); }
 });
+
+test('REPEATED staff bootstrap: identical repeat is idempotent (no writes, no audit row); same token under a NEW staff_id is a 409 (never 500, never re-assigned) and reveals the bound identity only to the admin credential; roles, ids and tokens preserved; authorisation intact', async () => {
+  const env = mk(); const tok = await staff(env, 'ceo-run1', 'ceo'); const seed = (b, o = {}) => call(env, 'POST', '/preview/admin/bula/staff', { body: { token: tok, staff_id: 'ceo-run1', display_name: 'ceo-run1', role: 'ceo', ...b }, ...o });
+  const audits = async () => (await env.DB.prepare("SELECT COUNT(*) n FROM bula_audit WHERE action='staff_role_set'").first()).n; const before = await audits();
+  const again = await seed({}); assert.equal(again.status, 200); assert.equal((await again.json()).unchanged, true); assert.equal(await audits(), before, 'no new audit row for an identical repeat');
+  const clash = await seed({ staff_id: 'ceo-run2' }); assert.equal(clash.status, 409); const cj = await clash.json(); assert.equal(cj.staff_id, 'ceo-run1'); assert.equal(cj.role, 'ceo'); assert.equal(cj.active, 1);
+  const rows = (await env.DB.prepare('SELECT staff_id, token, role, active FROM bula_staff_roles').all()).results; assert.equal(JSON.stringify(rows), JSON.stringify([{ staff_id: 'ceo-run1', token: tok, role: 'ceo', active: 1 }]));
+  const me = await call(env, 'GET', '/preview/admin/bula/me', { staff: tok }); assert.equal((await me.json()).staffId, 'ceo-run1'); assert.equal(await audits(), before);
+  assert.equal((await seed({ staff_id: 'ceo-run2' }, { admin: false, tok: 'x' })).status, 401, 'non-admin gets 401, learns nothing');
+  assert.equal((await seed({}, { admin: false, staff: tok, tok: 'wrong' })).status, 401);
+  assert.equal((await call(env, 'POST', '/preview/admin/bula/staff', { admin: false, staff: tok, body: { token: 't2', staff_id: 'x2', display_name: 'x2', role: 'ceo' } })).status, 401, 'a staff token alone cannot enrol staff');
+  const rr = await seed({ role: 'ops' }); assert.equal(rr.status, 200); assert.equal((await env.DB.prepare('SELECT role FROM bula_staff_roles WHERE staff_id=?').bind('ceo-run1').first()).role, 'ops', 'an explicit admin role change still works and is audited'); assert.equal(await audits(), before + 1);
+  for (const tk of ['t_a', 't_b']) await staff(env, 'id_' + tk, 'ops');   // three bootstraps in a row, different tokens: unaffected
+  const par = await Promise.all([1, 2, 3, 4].map(() => call(env, 'POST', '/preview/admin/bula/staff', { body: { token: 'stf_race', staff_id: 'race-1', display_name: 'race-1', role: 'ops' } }))); assert.ok(par.every((x) => [200, 409].includes(x.status)), 'concurrent identical bootstraps never 500'); assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM bula_staff_roles WHERE token='stf_race'").first()).n, 1);
+});

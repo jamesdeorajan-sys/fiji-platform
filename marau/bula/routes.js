@@ -116,9 +116,16 @@ async function bulaRouteInner(request, env, pathname, method) {
       if (!adminOnly(request, env)) return out({ error: 'unauthorized' }, 401);
       const b = await body(request);
       if (!isStr(b.token, 200) || !/^[\w.-]{2,40}$/.test(b.staff_id || '') || !isStr(b.display_name, 80) || !['ceo', 'approver', 'ops', 'editor'].includes(b.role)) return out({ error: 'token, staff_id, display_name and a valid role are required' }, 400);
+      // A token is bound to exactly ONE staff identity. Re-seeding is idempotent; binding a token that already belongs to another staff_id is refused (409), never a 500 and never a silent re-assignment.
+      const byTok = await env.DB.prepare('SELECT staff_id, role, active FROM bula_staff_roles WHERE token = ?').bind(b.token).first();
+      if (byTok && byTok.staff_id !== b.staff_id) return out({ error: 'token already bound to another staff identity', staff_id: byTok.staff_id, role: byTok.role, active: byTok.active }, 409);
+      const same = await env.DB.prepare('SELECT token, display_name, role, active FROM bula_staff_roles WHERE staff_id = ?').bind(b.staff_id).first();
+      if (same && same.token === b.token && same.role === b.role && same.display_name === b.display_name && same.active === 1) return out({ ok: true, unchanged: true });   // repeat of an identical request: no writes, no new audit row
+      try {
       await env.DB.batch([env.DB.prepare('INSERT INTO marau_staff_identities (token, operator_name, created_at) VALUES (?,?,?) ON CONFLICT(token) DO UPDATE SET operator_name = excluded.operator_name').bind(b.token, b.display_name, new Date(nowMs).toISOString()),
         env.DB.prepare('INSERT INTO bula_staff_roles (staff_id, token, display_name, role, active, created_by, created_at) VALUES (?,?,?,?,1,?,?) ON CONFLICT(staff_id) DO UPDATE SET role = excluded.role, token = excluded.token, display_name = excluded.display_name, active = 1').bind(b.staff_id, b.token, b.display_name, b.role, 'admin-credential', nowMs),
         env.DB.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(nowMs, 'admin-credential', 'staff_role_set', b.staff_id, b.role)]);
+      } catch (e) { if (/UNIQUE|constraint/i.test(String(e && e.message))) return out({ error: 'staff identity conflict' }, 409); throw e; }
       return out({ ok: true });
     }
     const actor = await staffFromRequest(request, env); if (!actor) return out({ error: 'unauthorized' }, 401);
