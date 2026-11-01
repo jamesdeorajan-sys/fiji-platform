@@ -37,3 +37,12 @@ Set the flags OFF (instant). Worker version rollback restores the previous code.
 
 ## Run
 `node --test bula/*.test.mjs` (54 + 3) · full: `NADI_REAL_WORKER_DIR=<checkout of ceo/nadi-booking-read-itinerary>/nadi-marketplace node --test test/*.test.mjs`
+
+## M2 (isolated; unapplied; flags OFF)
+- Identity: guest = bearer session only (party derived from the session); staff = admin credential **and** individual staff token → `bula_staff_roles` (migration 0046). Roles: ceo / approver / ops / editor (`ROLE_POLICY` in `offers_d1.js`). The CEO may self-approve only on an audited `offer_approved_ceo_self_approval` path.
+- Instant confirmation requires an active, in-date, same-operator, in-scope row in `bula_operator_contracts`; authority is minted server-side, never from request fields.
+- `capacity_unit` must match `pricing_basis` (person→seat, party→party, vehicle→vehicle); party/vehicle holds are qty 1.
+- Booking mirror: `bula_booking_snapshots` (read-only, provenance, `not_in_source` for fields the source lacks — today passengers/luggage/add-ons/discount).
+- Recovery: `recovery.js` sweep repairs missing snapshot/jobs/grant idempotently; guest email waits ≤ 15 min for the grant, then sends without any credit line.
+- Screens: `/bula` (guest) and `/bula/staff`; `scheduled()` + `wrangler.bula.toml` crons (flags OFF). See `docs/BULA_HOSTED_ACCEPTANCE.md`, `docs/BULA_PHYSICAL_PHONE_CHECKLIST.md`.
+- Dev: `node bula/dev_server.mjs 8799 [--clock-fiji=…]` (simulated clock is labelled), `node bula/mobile_journey.mjs …`.

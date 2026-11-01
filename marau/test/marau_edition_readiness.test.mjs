@@ -13,10 +13,12 @@ import worker from '../worker/worker.js';
 import { editionSlotAt, OFFER_DEFAULTS } from '../worker/experience_offers.js';
 import { toFijiWallClockInputValue } from '../worker/fiji_time.js';
 
+import { bulaScheduled } from '../bula/hook.js';
 installNetworkGuard();
 
-test('NOT SCHEDULED: the Worker exports no scheduled/queue handler and wrangler.toml defines no cron trigger', () => {
-  assert.equal(typeof worker.scheduled, 'undefined');
+test('NOT SCHEDULED: wrangler.toml defines no cron trigger, there is no queue handler, and the (Bula) scheduled handler is a no-op while its flags are OFF', async () => {
+  // M2: a scheduled() handler now exists for the isolated Bula worker config (wrangler.bula.toml), but nothing runs unless a cron is configured AND a flag is on.
+  assert.equal(typeof worker.scheduled, 'function'); assert.deepEqual(await bulaScheduled({}, Date.now()), {});
   assert.equal(typeof worker.queue, 'undefined');
   const toml = fs.readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
   assert.equal(/^\s*\[triggers\]/m.test(toml), false);

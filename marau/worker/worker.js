@@ -28,7 +28,8 @@ import { findPayloadMismatch } from './booking_conflict.js';
 import { claimVehicleAllocation, releaseVehicleAllocation, findVehicleWindow } from './vehicle_allocation.js';
 import { normalizePickupDatetime, toFijiWallClockInputValue, formatFijiDateTime } from './fiji_time.js';
 import { selectDefaultBooking } from './booking_selection.js';
-import { bulaOnSavedBooking, bulaRunOutbox, bulaVersion, bulaWithBuild } from '../bula/hook.js';
+import { bulaOnSavedBooking, bulaVersion, bulaWithBuild, bulaScheduled } from '../bula/hook.js';
+import { bulaRoute } from '../bula/routes.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
@@ -2581,6 +2582,9 @@ const experience = createExperienceOffers({
 // ---------------------------------------------------------------------
 
 export default {
+  // Bula Happiness: scheduled entry (cron). Does nothing unless the BULA_* flags are ON; with no [triggers] configured it is never invoked.
+  async scheduled(event, env, ctx) { ctx.waitUntil(bulaScheduled(env).catch((e) => console.error('[bula] scheduled failed', e && e.message))); },
+
   // FIX (round 19, found while wiring the synthetic-source hosted-demo
   // harness): every route below is now `return await handleFoo(...)`,
   // not a bare `return handleFoo(...)`. In an async function, `return
@@ -2615,7 +2619,7 @@ export default {
       if (method === 'GET' && pathname === '/icon-512.png') return PNG_RESPONSE(ICON512_PNG_BASE64);
       if (method === 'GET' && pathname === '/icon-180.png') return PNG_RESPONSE(ICON180_PNG_BASE64);
 
-      if (method === 'POST' && pathname === '/preview/bula/outbox/run') return requireAdmin(request, env) ? json(await bulaRunOutbox(env)) : json({ error: 'unauthorized' }, 401);
+      if (pathname === '/bula' || pathname === '/bula/staff' || pathname.startsWith('/preview/bula/') || pathname.startsWith('/preview/admin/bula/')) { const br = await bulaRoute(request, env, pathname, method); if (br) return br; }
       if (method === 'POST' && pathname === '/preview/bookings') return await handleCreateBooking(request, env);
       if (method === 'GET' && pathname === '/preview/trip') return await handleGetTrip(request, env);
       if (method === 'POST' && pathname === '/preview/trip/revoke') return await handleRevokeTrip(request, env);

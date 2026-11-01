@@ -59,6 +59,7 @@ export async function reserve(db, cfg, { partyKey, idemKey, offerId, qty = 1, ex
     if (o.service_date > latestVisibleServiceDate(nowMs)) return { ok: false, code: 'not_yet_released' };
     if (o.version !== expectedVersion) return { ok: false, code: 'offer_changed' };
     if (!Number.isInteger(qty) || qty < 1) return { ok: false, code: 'bad_quantity' };
+    if (o.pricing_basis !== 'person' && qty !== 1) return { ok: false, code: 'qty_must_be_1' };   // a party/vehicle price consumes exactly one unit; a person price consumes one seat per person
     if (o.remaining < qty) return { ok: false, code: o.remaining === 0 ? 'sold_out' : 'insufficient_inventory' };
     const acct = cfg.creditsEnabled ? await db.prepare('SELECT available_cents a, expires_at e FROM bula_credit_accounts WHERE party_key = ?').bind(partyKey).first() : null;
     const avail = acct && (acct.e == null || acct.e > nowMs) ? acct.a : 0;

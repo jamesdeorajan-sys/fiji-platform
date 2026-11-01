@@ -29,3 +29,8 @@ All prices and capacity are **yours** — the system and AI never fill in or cha
 | operator_contract_id | Contract reference (required if instant_confirm = yes) | |
 
 Money is in whole dollars and cents (`150`, `150.5`, `150.50`). Do not use currency symbols or commas inside numbers.
+
+## M2 rules added
+- `capacity_unit` must match `pricing_basis`: `person`→`seat`, `party`→`party`, `vehicle`→`vehicle`. A party/vehicle offer reserves one unit per booking regardless of passenger count.
+- The CSV is strict: duplicate/unknown/missing headers, wrong cell counts, impossible dates (e.g. 2026-02-31) and unterminated quotes reject the whole file; nothing is written.
+- Roles: ops/editor/CEO import and edit; a second named approver (or the CEO on an audited self-approval path) approves. Editing a published offer drops it to draft.

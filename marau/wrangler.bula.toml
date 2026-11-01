@@ -1,0 +1,26 @@
+# Bula Happiness — NEW isolated hosted-acceptance Worker + NEW synthetic D1. NOT DEPLOYED. Nothing here may point at an existing preview/production binding.
+# Before use: create the database (see docs/BULA_HOSTED_ACCEPTANCE.md), paste its NEW id below, and set secrets with `wrangler secret put` (never in this file).
+name = "marau-bula-acceptance"
+main = "worker/worker.js"
+compatibility_date = "2026-07-19"
+account_id = "595101df2c562b3c65595420d43f9fe1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bula-acceptance-synthetic-1"
+database_id = "REPLACE_WITH_NEW_DATABASE_ID"     # placeholder on purpose: a deploy with this value fails rather than touching another database
+migrations_dir = "bula/migrations"               # applied AFTER the shared + marau migrations (see doc for the exact ordered commands)
+
+# Scheduled publisher: 06:00 UTC = 18:00 Pacific/Fiji (Fiji has had no DST since 2022; the handler re-derives Fiji time from tzdata, so a rule change cannot shift the release).
+# The */15 sweep catches up a missed run, expires holds/grants and drains the outbox. Every step inside is flag-gated and flags are OFF below.
+[triggers]
+crons = ["0 6 * * *", "*/15 * * * *"]
+
+[vars]
+BULA_SYNTHETIC_TEST = "on"            # synthetic guests only
+BULA_EDITION_PUBLISH_ENABLED = "off"  # flip to "on" only for the acceptance run
+BULA_CHECKOUT_ENABLED = "off"
+BULA_CREDITS_ENABLED = "off"
+BULA_OUTBOX_ENABLED = "off"
+BULA_BUILD = "unset"
+# Secrets (wrangler secret put): MARAU_ADMIN_TEST_TOKEN — fresh, random, 32+ bytes, unique to this Worker; never reuse any token from public history.

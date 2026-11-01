@@ -16,3 +16,17 @@ export function issueCancellationAuthority({ kind, ref, verifiedBy, refundCredit
 export const isIssued = (a) => !!a && typeof a === 'object' && issued.has(a);
 export const isConfirmation = (a) => isIssued(a) && CONFIRM_KINDS.has(a.kind);
 export const isCancellation = (a) => isIssued(a) && CANCEL_KINDS.has(a.kind);
+
+/* Verified staff actor: minted ONLY by the route layer after it has checked the admin credential, the individual staff token
+ * and the bula_staff_roles row. Modules reject strings/plain objects, so a browser-supplied name or role is never accepted. */
+const ROLES = new Set(['ceo', 'approver', 'ops', 'editor']);
+export function issueStaffActor({ staffId, role }) {
+  if (!staffId || !ROLES.has(role)) throw new Error('bad staff actor');
+  const a = Object.freeze({ staffId: String(staffId), role }); issued.add(a); return a;
+}
+export const isStaffActor = (a) => isIssued(a) && ROLES.has(a.role) && !!a.staffId;
+export function requireRole(actor, roles) {
+  if (!isStaffActor(actor)) throw Object.assign(new Error('STAFF_IDENTITY_REQUIRED'), { code: 'STAFF_IDENTITY_REQUIRED' });
+  if (!roles.includes(actor.role)) throw Object.assign(new Error('ROLE_NOT_PERMITTED'), { code: 'ROLE_NOT_PERMITTED' });
+  return actor;
+}

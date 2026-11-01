@@ -1,27 +1,38 @@
-/* Bula Happiness — thin Worker integration (flag-gated; every flag defaults OFF). Never throws into a booking path. */
+/* Bula Happiness — thin Worker integration (flag-gated; every flag defaults OFF). Never throws into a booking path.
+ * NOTE: the booking read here is the Marau SYNTHETIC booking table through real Worker code — it is not a live NAT saved-booking
+ * integration. A live source would supply `deps.sourceSnapshot` from the read-only nadi_booking_reader. */
 import { loadConfig } from './config.js';
-import { enqueueSavedBooking, reconcileMissing, dispatch, reconcileAmbiguous, liveSenderDisabled } from './outbox_d1.js';
-import { grantWelcome } from './inventory_credit.js';
+import { dispatch, reconcileAmbiguous, liveSenderDisabled } from './outbox_d1.js';
+import { processSavedBooking, reconcileAll } from './recovery.js';
+import { runPublisher } from './offers_d1.js';
+import { sweepExpired, expireGrants } from './inventory_credit.js';
 
 export async function bulaOnSavedBooking(env, clientBookingRef, nowMs = Date.now()) {
   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
   const b = await env.DB.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(clientBookingRef).first();
   if (!b) return { skipped: 'no_booking' };
-  await enqueueSavedBooking(env.DB, cfg, b, nowMs);
-  if (cfg.creditsEnabled) { try { await grantWelcome(env.DB, cfg, { partyKey: `trip:${clientBookingRef}`, actor: 'system', source: 'saved-booking', nowMs }); } catch (e) { console.error('[bula] grant failed', e && e.code); } }
-  return { enqueued: true };
+  const failed = await processSavedBooking(env.DB, cfg, b, nowMs);
+  if (failed.length) console.error('[bula] partial save-step failure; sweep will repair:', failed.join(','));
+  return { enqueued: !failed.includes('jobs'), failed };
 }
 export async function bulaRunOutbox(env, nowMs = Date.now()) {
   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
   const sender = env.BULA_CAPTURE_SENDER || liveSenderDisabled;     // there is no live sender in this candidate
-  const reconciled = await reconcileMissing(env.DB, cfg, nowMs);
+  let repaired = { jobs: 0, grants: 0, snapshots: 0 }; try { repaired = await reconcileAll(env.DB, cfg, nowMs); } catch (e) { console.error('[bula] reconcile failed; dispatch continues'); }
   const resolved = await reconcileAmbiguous(env.DB, sender, nowMs);
   const stats = await dispatch(env.DB, cfg, sender, { workerId: `w-${nowMs}`, nowMs });
-  return { reconciled, resolved, ...stats };
+  return { reconciled: repaired.jobs, repaired, resolved, ...stats };
 }
-
+/** Cloudflare cron entry. Everything is behind flags that default OFF; each step is idempotent and safe to repeat (catch-up after an outage). */
+export async function bulaScheduled(env, nowMs = Date.now()) {
+  const cfg = loadConfig(env); const r = {};
+  if (cfg.editionPublishEnabled) r.publish = await runPublisher(env.DB, cfg, nowMs, `cron:${nowMs}`);
+  if (cfg.checkoutEnabled) { r.holdsSettled = await sweepExpired(env.DB, nowMs); if (cfg.creditsEnabled) r.grantsExpired = await expireGrants(env.DB, nowMs); }
+  if (cfg.outboxEnabled) r.outbox = await bulaRunOutbox(env, nowMs);
+  return r;
+}
 /** Non-sensitive build metadata (names/ids only). BULA_BUILD / BULA_COMMIT are set at deploy time. */
-export function bulaVersion(env) { return { app: 'marau-bula', build: env.BULA_BUILD || 'unset', commit: env.BULA_COMMIT || 'unset', schema: 'marau-0043+bula-0045' }; }
+export function bulaVersion(env) { return { app: 'marau-bula', build: env.BULA_BUILD || 'unset', commit: env.BULA_COMMIT || 'unset', schema: 'marau-0043+bula-0046' }; }
 export function bulaWithBuild(pageHtml, env) {
   const v = bulaVersion(env); const i = pageHtml.lastIndexOf('</body>'); if (i < 0) return pageHtml;
   const esc = (x) => String(x).replace(/[^\w.-]/g, '');

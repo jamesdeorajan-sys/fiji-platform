@@ -18,6 +18,9 @@ import { validatedRoot, bookingIdFromRef } from './nadi_source_client.js';
 const STATUSES = new Set(['pending', 'accepted', 'en_route', 'completed', 'cancelled']);
 const STRING_FIELDS = ['client_booking_ref', 'guest_phone', 'guest_email', 'pickup_zone', 'destination_zone', 'vehicle_type', 'quoted_currency', 'pickup_date', 'pickup_time', 'return_date', 'return_time', 'return_pickup_location', 'flight_number', 'created_at'];
 const NUMBER_FIELDS = ['quoted_amount', 'settlement_amount_fjd', 'commission_base_fjd'];
+// Optional fields a FUTURE source contract may add (passengers/luggage/add-ons/discount are NOT stored by the real `bookings` table today). Absent -> null.
+const OPTIONAL_STRING_FIELDS = ['add_ons'];
+const OPTIONAL_NUMBER_FIELDS = ['passengers', 'luggage_count', 'discount_amount'];
 
 function bad(code) { return new Error(`SOURCE_${code}`); }
 
@@ -50,6 +53,8 @@ export function createNadiBookingReader({ baseUrl, adminToken, fetchImpl, timeou
       else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
       else throw bad(`MALFORMED_FIELD_${k}`);
     }
+    for (const k of OPTIONAL_STRING_FIELDS) { const v = b[k]; if (v == null) out[k] = null; else if (typeof v === 'string') out[k] = v; else throw bad(`MALFORMED_FIELD_${k}`); }
+    for (const k of OPTIONAL_NUMBER_FIELDS) { const v = b[k]; if (v == null) out[k] = null; else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v; else throw bad(`MALFORMED_FIELD_${k}`); }
     return out;
   }
   reader.provenance = Object.freeze({ kind: 'nadi_dispatch_api', origin: new URL(root).origin, authenticated: true, read_only: true });

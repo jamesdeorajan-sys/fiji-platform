@@ -26,8 +26,9 @@ export async function enqueueSavedBooking(db, cfg, booking, nowMs) {
 export async function reconcileMissing(db, cfg, nowMs) {
   const cut = await db.prepare("SELECT value FROM bula_settings WHERE key = 'outbox_cutover_iso'").first();
   if (!cut) return 0;
+  // a booking with FEWER than the two expected jobs (none, or only one after a partial failure) gets the missing ones; inserts are idempotent
   const { results } = await db.prepare(`SELECT b.* FROM marau_test_bookings b WHERE b.created_at >= ? AND b.parent_booking_id IS NULL
-      AND NOT EXISTS (SELECT 1 FROM bula_outbox o WHERE o.source_event_key = 'saved-booking:' || b.client_booking_ref)`).bind(cut.value).all();
+      AND (SELECT COUNT(*) FROM bula_outbox o WHERE o.source_event_key = 'saved-booking:' || b.client_booking_ref) < 2`).bind(cut.value).all();
   for (const b of results) await enqueueSavedBooking(db, cfg, b, nowMs);
   return results.length;
 }
@@ -83,7 +84,13 @@ export async function dispatch(db, cfg, sender, { workerId = 'w1', nowMs, limit 
     const job = await db.prepare('SELECT * FROM bula_outbox WHERE job_key = ?').bind(job_key).first();
     const b = await db.prepare('SELECT * FROM marau_test_bookings WHERE client_booking_ref = ?').bind(job.booking_ref).first();
     const s = await db.prepare('SELECT * FROM guest_sessions WHERE session_id = ?').bind(job.session_id).first();
-    const credit = job.recipient_kind === 'guest' && cfg.creditsEnabled ? await db.prepare('SELECT available_cents, expires_at FROM bula_credit_accounts WHERE party_key = ?').bind(`trip:${job.booking_ref}`).first() : null;
+    let credit = null;
+    if (job.recipient_kind === 'guest' && cfg.creditsEnabled) {
+      try { credit = await db.prepare('SELECT available_cents, expires_at FROM bula_credit_accounts WHERE party_key = ?').bind(`trip:${job.booking_ref}`).first(); } catch (e) { credit = null; }   // a credit-store fault must never block or crash the email
+      if (!credit && nowMs - job.created_at < (cfg.grantGraceMs ?? 900000)) {   // grant not there yet: wait briefly rather than send an email that omits (or later contradicts) the credit
+        await db.prepare("UPDATE bula_outbox SET state = 'queued', attempts = attempts - 1, lease_owner = NULL, updated_at = ? WHERE job_key = ?").bind(nowMs, job_key).run(); stats.deferred = (stats.deferred || 0) + 1; continue;
+      }
+    }
     const out = !b || !s ? { blocked: 'booking_or_session_missing' } : job.recipient_kind === 'guest' ? renderGuest(b, s, cfg, credit) : renderStaff(b, cfg);
     if (out.blocked) { await db.batch([db.prepare("UPDATE bula_outbox SET state = 'blocked', blocked_reason = ?, lease_owner = NULL, updated_at = ? WHERE job_key = ? AND lease_owner = ?").bind(out.blocked, nowMs, job_key, workerId), evt(db, job_key, nowMs, 'blocked', out.blocked)]); stats.blocked++; continue; }
     try {

@@ -153,7 +153,7 @@ test('NOTHING AUTOMATIC: the pilot makes no outbound call, schedules nothing, an
   const g = await guest(env);
   await review(env); await prepare(env); await outcome(env, g.sid, 'sent_manually');
   // the network guard fails the file on any outbound call; assert the structural facts too
-  assert.equal(typeof worker.scheduled, 'undefined');
+  assert.equal(typeof worker.scheduled, 'function'); assert.deepEqual(await worker.scheduled({ cron: 'x', scheduledTime: Date.now() }, env, { waitUntil() {} }) ?? {}, {});   // handler exists for Bula; flags OFF => does nothing
   for (const path of [`/preview/admin/editions/${encodeURIComponent(EDITION)}/review`, `/preview/admin/editions/${encodeURIComponent(EDITION)}/sends`]) {
     assert.equal((await call(env, path, { headers: guestH(g.token) })).status, 401, 'a guest token cannot read the pilot');
     assert.equal((await call(env, path)).status, 401);

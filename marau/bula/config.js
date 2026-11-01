@@ -10,6 +10,7 @@ export function loadConfig(env = {}) {
     syntheticTest: on(env.BULA_SYNTHETIC_TEST),           // fixtures/test balances only
     welcomeCents: Number.isInteger(+env.BULA_WELCOME_CENTS) && +env.BULA_WELCOME_CENTS > 0 ? +env.BULA_WELCOME_CENTS : 50000, // FJ$500 synthetic default
     creditTtlMs: Number.isInteger(+env.BULA_CREDIT_TTL_MS) && +env.BULA_CREDIT_TTL_MS > 0 ? +env.BULA_CREDIT_TTL_MS : null,
+    requestHoldTtlMs: Number.isInteger(+env.BULA_REQUEST_HOLD_TTL_MS) && +env.BULA_REQUEST_HOLD_TTL_MS > 0 ? +env.BULA_REQUEST_HOLD_TTL_MS : 12 * 3600000,
     holdTtlMs: Number.isInteger(+env.BULA_HOLD_TTL_MS) && +env.BULA_HOLD_TTL_MS > 0 ? +env.BULA_HOLD_TTL_MS : 10 * 60000,
     policyVersion: env.BULA_POLICY_VERSION || 'policy-unset',
     guestOrigin: env.BULA_GUEST_ORIGIN || '',             // https origin of the guest app
@@ -17,6 +18,6 @@ export function loadConfig(env = {}) {
     supportWhatsapp: env.BULA_SUPPORT_WHATSAPP || '',     // must be verified by James before production
     supportVerified: on(env.BULA_SUPPORT_VERIFIED),
     defaultCurrency: env.BULA_DEFAULT_CURRENCY || 'FJD',
-    outboxMaxAttempts: 5, leaseMs: 60000,
+    grantGraceMs: 15 * 60000, outboxMaxAttempts: 5, leaseMs: 60000,
   });
 }
