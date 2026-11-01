@@ -1,5 +1,5 @@
 // Hosted acceptance orchestrator for the ISOLATED synthetic candidate (Worker marau-bula-acceptance + D1 6c54341a-…). Run where `wrangler` is logged in (James's PC).
-//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | diagnose | prepare | schema | deploy | accept | phone | lockdown | resume | all
+//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | diagnose | prepare | schema | migrate | pair | deploy | accept | phone | lockdown | resume | all
 // Safety: NOTHING touches Cloudflare until (1) every bundle file matches BUNDLE.json sha256 and (2) the generated wrangler.json is proven to target ONLY the
 // acceptance Worker + database (allowlisted keys; no routes/zones/custom domains/other bindings; email sending off). Any subprocess launch error, signal
 // interruption, missing exit code or non-zero exit is a FAILURE. `all` exits non-zero on any failure and creates the phone QR only after acceptance passed.
@@ -7,9 +7,9 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto'; import { spawnSync } from 'node:child_process'; import { pathToFileURL } from 'node:url';
 
 export const TARGET = Object.freeze({ worker: 'marau-bula-acceptance', dbName: 'bula-acceptance-synthetic-1', dbId: '6c54341a-6c21-4314-b514-bb44ed5fa1b5', account: '595101df2c562b3c65595420d43f9fe1' });
-const HASHED = ['worker.js', 'schema.sql', 'wrangler.json', 'hosted_acceptance.mjs'];
+const HASHED = ['worker.js', 'schema.sql', 'wrangler.json', 'hosted_acceptance.mjs', 'migration_0047.sql'];
 const TOP_KEYS = new Set(['name', 'main', 'compatibility_date', 'account_id', 'workers_dev', 'd1_databases', 'triggers', 'vars']);
-const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED']);
+const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING']);
 const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS']);
 const OFF = (v) => v === 'off';
 
@@ -69,27 +69,39 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
     verify() { verified = verifyBundle(B); log(`bundle verified: commit ${verified.meta.commit} — targets only ${TARGET.worker} / ${TARGET.dbName}; email sending off; no routes`); },
     prepare() { need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const existing = load(SEC, null); const s = existing || { admin: rnd(), staff: { ceo: rnd(), ops: rnd(), approver: rnd() }, created: new Date().toISOString() }; if (!existing) save(SEC, s); log(existing ? 'existing secrets kept unchanged (not printed):' : 'secrets generated (not printed):', SEC); return s; },
     schema() { need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--file', 'schema.sql', '-c', 'wrangler.json']); if (!r.ok) throw new Fail(`schema step failed (${r.reason})\n${r.out.slice(-1200)}`); log(`schema applied to ${TARGET.dbName} ONLY`); },
-    /** Read-only probe of the TARGET database: all expected tables present => the schema need not be applied again.
-     *  Method 1 passes the SQL in a file; if that output does not show every table, method 2 passes it with --command (properly quoted on Windows).
-     *  The requirement is NOT relaxed: all five tables must be seen. The redacted raw output of each attempt is kept in R.lastProbe for the diagnostic. */
-    schemaPresent() {
-      need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const probe = path.join(home, 'probe.sql'); const want = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'];
+    /** Read-only table probe of the TARGET database. Method 1 passes the SQL in a file; if that output does not show every wanted table, method 2 passes it with --command (quoted on Windows).
+     *  The redacted raw output of each attempt is kept in R.lastProbe for the diagnostic. Returns {got, attempts, anyOk, anyParsed}; never relaxes anything by itself. */
+    readTables(want, label) {
+      need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const probe = path.join(home, 'probe.sql');
       const sql = `SELECT name FROM sqlite_master WHERE type='table' AND name IN (${want.map((n) => `'${n}'`).join(',')})`; fs.writeFileSync(probe, sql + ';\n');
       const names = (j, acc = []) => { if (Array.isArray(j)) j.forEach((x) => names(x, acc)); else if (j && typeof j === 'object') { if (Array.isArray(j.results)) for (const r of j.results) if (r && typeof r.name === 'string') acc.push(r.name); for (const v of Object.values(j)) if (v && typeof v === 'object' && !Array.isArray(j.results)) names(v, acc); } return acc; };
       const parse = (out) => { const t = out.replace(/\x1b\[[0-9;]*m/g, '').trim(); const cands = [t]; const i = t.indexOf('['), k = t.lastIndexOf(']'); if (i >= 0 && k > i) cands.push(t.slice(i, k + 1)); for (const c of cands) { try { return names(JSON.parse(c)); } catch { /* next */ } } return null; };
       const attempts = []; let got = [];
       for (const [method, args] of [['file', ['--file', probe]], ['command', ['--command', sql]]]) {
-        const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--json', ...args, '-c', 'wrangler.json'], undefined, `schema-probe-${method}`);
+        const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--json', ...args, '-c', 'wrangler.json'], undefined, `${label}-${method}`);
         const rows = r.ok ? parse(r.out) : null; const found = rows ? want.filter((t) => rows.includes(t)) : [];
         attempts.push({ method, subprocess_ok: r.ok, reason: r.reason || null, parsed: rows !== null, tables_found: found.length, output_tail_redacted: redact(r.out || '', []).slice(-500) });
         if (found.length === want.length) { got = found; break; }
       }
-      R.lastProbe = { want: want.length, attempts };
-      if (got.length !== want.length) { const last = attempts[attempts.length - 1]; const anyOk = attempts.some((a) => a.subprocess_ok);
+      R.lastProbe = { want: want.length, attempts }; return { got, attempts, anyOk: attempts.some((a) => a.subprocess_ok), anyParsed: attempts.some((a) => a.parsed) };
+    },
+    /** All five base tables must be present => the base schema need not be applied again (requirement NOT relaxed). */
+    schemaPresent() {
+      const want = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']; const { got, attempts, anyOk, anyParsed } = R.readTables(want, 'schema-probe');
+      if (got.length !== want.length) { const last = attempts[attempts.length - 1];
         if (!anyOk) throw new Fail(`could not read ${TARGET.dbName} (${last.reason}); a redacted diagnostic was saved in ${diagDir}`);
-        if (!attempts.some((a) => a.parsed)) throw new Fail('schema probe returned output that could not be parsed — refusing to guess');
+        if (!anyParsed) throw new Fail('schema probe returned output that could not be parsed — refusing to guess');
         throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${Math.max(...attempts.map((a) => a.tables_found))}/${want.length} tables) — use the 'all' step, not 'resume'`); }
       log(`schema already present in ${TARGET.dbName} (${got.length}/${want.length} tables) — not re-applied`);
+    },
+    /** Additive migration 0047 (device pairing tables) applied ONLY to the target database, ONLY if its tables are absent. The file is hash-checked with the rest of the bundle. */
+    migratePairing() {
+      need(); const want = ['bula_pairing', 'bula_devices', 'bula_pair_failures']; const first = R.readTables(want, 'pairing-probe');
+      if (first.got.length === want.length) { log(`device-pairing tables already present in ${TARGET.dbName} — migration 0047 not applied`); return; }
+      if (!first.anyOk || !first.anyParsed) throw new Fail(`could not determine whether the pairing tables exist (a redacted diagnostic was saved in ${diagDir}); not applying anything`);
+      const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--file', 'migration_0047.sql', '-c', 'wrangler.json'], undefined, 'migrate-0047'); if (!r.ok) throw new Fail(`migration 0047 failed (${r.reason})\n${r.out.slice(-800)}`);
+      const again = R.readTables(want, 'pairing-verify'); if (again.got.length !== want.length) throw new Fail('migration 0047 ran but the pairing tables are not all present; stopping');
+      log(`migration 0047 (device pairing tables) applied to ${TARGET.dbName} ONLY`);
     },
     /** Read-only environment diagnostic (no deploy, no writes to Cloudflare). EVERY required check must pass, otherwise the step fails (non-zero exit). */
     diagnose() {
@@ -100,13 +112,20 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
       const who = wr(['whoami'], undefined, 'whoami'); const wl = who.ok ? redact(who.out).split('\n').filter((l) => /logged in|account|oauth|scopes|not authenticated/i.test(l)).join(' | ').slice(0, 300) : `FAILED (${who.reason})`; info.whoami = wl;
       if (!who.ok || !/logged in/i.test(who.out) || /not authenticated/i.test(who.out)) failures.push('whoami');
       let probe = 'ok'; try { R.schemaPresent(); } catch (e) { probe = e.message.split('\n')[0]; failures.push('schema_probe'); } info.schema_probe = probe; info.schema_probe_attempts = R.lastProbe ? R.lastProbe.attempts : [];
+      try { const t = R.readTables(['bula_pairing', 'bula_devices', 'bula_pair_failures'], 'pairing-probe'); info.pairing_tables = `${t.got.length}/3 present${t.got.length < 3 ? ' (resume applies migration 0047 once)' : ''}`; } catch (e) { info.pairing_tables = 'unknown'; }
       info.ok = failures.length === 0; info.failed_checks = failures;
       fs.mkdirSync(diagDir, { recursive: true, mode: 0o700 }); const f = path.join(diagDir, `environment-${Date.now()}.json`); fs.writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), platform: process.platform, ...info }, null, 2), { mode: 0o600 }); log('diagnostic saved:', f); log(JSON.stringify(info, null, 2));
       if (failures.length) throw new Fail(`diagnosis found failed required check(s): ${failures.join(', ')} (details in ${f})`);
     },
+    /** Recovery: print a fresh ONE-TIME connect code for the existing phone guest (staff-issued; 10 minutes, single use). Needs a passing deploy; touches no schema. */
+    pair() {
+      need(); R.prepare(); const st = load(STATE, {}); if (!st.url) throw new Fail('deploy first');
+      const r = runProc(spawn, node, [path.join(B, 'hosted_acceptance.mjs')], { env: { ...process.env, BASE: st.url, SECRETS_FILE: SEC, OUT_DIR: home, MODE: 'pair' } }); log((r.out || '').split('\n').filter((l) => /CONNECT CODE|no phone-meta|pairing code failed/.test(l)).join('\n'));
+      if (!r.ok) throw new Fail(`could not create a connect code (${r.reason})`);
+    },
     deploy(flagsOff = false) {
       const { meta } = need(); const s = R.prepare(); const p = wr(['secret', 'put', 'MARAU_ADMIN_TEST_TOKEN', '-c', 'wrangler.json'], s.admin + '\n'); if (!p.ok) throw new Fail(`secret put failed (${p.reason})\n${p.out.slice(-600).split(s.admin).join('***')}`);
-      const vars = [`BULA_BUILD:${meta.commit.slice(0, 12)}`, `BULA_COMMIT:${meta.commit}`]; if (flagsOff) for (const f of ['BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_SYNTHETIC_TEST']) vars.push(`${f}:off`);
+      const vars = [`BULA_BUILD:${meta.commit.slice(0, 12)}`, `BULA_COMMIT:${meta.commit}`]; if (flagsOff) for (const f of ['BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_SYNTHETIC_TEST', 'BULA_DEVICE_PAIRING']) vars.push(`${f}:off`);
       const d = wr(['deploy', '-c', 'wrangler.json', ...vars.flatMap((x) => ['--var', x])]); if (!d.ok) throw new Fail(`deploy failed (${d.reason})\n${d.out.slice(-800).split(s.admin).join('***')}`);
       const m = /https:\/\/marau-bula-acceptance\.[\w-]+\.workers\.dev/.exec(d.out); if (!m) throw new Fail('deploy output did not contain the workers.dev URL'); const st = load(STATE, {}); st.url = m[0]; st.deployed = { commit: meta.commit, at: new Date().toISOString(), flagsOff }; save(STATE, st); log('URL', st.url);
     },
@@ -139,14 +158,14 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
 /** Returns the process exit code (0 only on full success). */
 export async function main(argv, deps = {}) {
   const [bundle, step = 'all'] = argv; const err = deps.err || console.error;
-  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|prepare|schema|deploy|accept|phone|lockdown|resume|all>'); return 2; }
+  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|diagnose|prepare|schema|migrate|deploy|accept|phone|pair|lockdown|resume|all>'); return 2; }
   const R = makeRunner({ B: path.resolve(bundle), ...deps });
   try {
     R.verify();                                                    // BEFORE anything else, for every step
     if (step === 'verify') return 0;
-    if (step === 'all') { R.prepare(); R.schema(); R.deploy(false); R.accept(); R.phone(); return 0; }
-    if (step === 'resume') { R.prepare(); R.schemaPresent(); R.deploy(false); R.accept(); R.phone(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
-    const one = { diagnose: R.diagnose, prepare: R.prepare, schema: R.schema, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
+    if (step === 'all') { R.prepare(); R.schema(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); return 0; }
+    if (step === 'resume') { R.prepare(); R.schemaPresent(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
+    const one = { diagnose: R.diagnose, prepare: R.prepare, schema: R.schema, migrate: R.migratePairing, pair: R.pair, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
     if (!one) { err('unknown step'); return 2; } one(); return 0;
   } catch (e) { err(e instanceof Fail ? `STOPPED: ${e.message}` : `STOPPED (unexpected): ${e && e.message}`); return 1; }
 }

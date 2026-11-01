@@ -12,7 +12,7 @@ export const CSV_COLUMNS = ['offer_id', 'title', 'operator_id', 'service_date', 
 export const BASIS_UNIT = Object.freeze({ person: 'seat', party: 'party', vehicle: 'vehicle' });
 export const ROLE_POLICY = Object.freeze({
   import: ['ceo', 'ops', 'editor'], edit: ['ceo', 'ops', 'editor'], approve: ['ceo', 'approver'], withdraw: ['ceo', 'approver', 'ops'],
-  confirm: ['ceo', 'ops'], cancel: ['ceo', 'ops'], refundCredit: ['ceo'], grantCredit: ['ceo'], publish: ['ceo', 'ops'], contracts: ['ceo'], staffAdmin: [] /* admin credential only */,
+  confirm: ['ceo', 'ops'], cancel: ['ceo', 'ops'], refundCredit: ['ceo'], grantCredit: ['ceo'], issuePairing: ['ceo', 'ops'], publish: ['ceo', 'ops'], contracts: ['ceo'], staffAdmin: [] /* admin credential only */,
 });
 const audit = (db, at, actor, action, subject, detail = null) => db.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(at, `${actor.staffId}(${actor.role})`, action, subject, detail);
 const ASSERT = (db) => [db.prepare('INSERT INTO bula_assert(ok) SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END'), db.prepare('DELETE FROM bula_assert')];

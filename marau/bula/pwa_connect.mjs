@@ -1,0 +1,30 @@
+// LOCAL installed-app simulation (Playwright, 390x844, SEPARATE browser contexts = separate storage, like Safari vs the iOS Home Screen app) against bula/dev_server.mjs.
+// install -> open -> connect with a one-time code -> same FJ$ wallet + withdrawn request -> close completely (new context from saved storage) -> reopen. Not a physical device.
+import { createRequire } from 'node:module'; const require = createRequire('/opt/npm-tools/'); const { chromium, devices } = require('playwright');
+const [link, outDir] = process.argv.slice(2); const base = new URL(link).origin; const b = await chromium.launch(); const errs = []; const results = [];
+const ok = (n, p, d = '') => { results.push(p); console.log(p ? 'PASS' : 'FAIL', n, d); };
+const standalone = (ctx) => ctx.addInitScript(() => { Object.defineProperty(navigator, 'standalone', { get: () => true }); });
+const dev = { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } };
+// --- Safari-like context: has the private link
+const A = await b.newContext(dev); const a = await A.newPage(); a.on('pageerror', (e) => errs.push(String(e))); await a.goto(link); await a.waitForSelector('.card');
+const wallet = async (p) => (await p.locator('#wallet').textContent()).match(/FJ\$[\d.]+/)[0]; const w0 = await wallet(a); ok('Safari shows the welcome credit', /FJ\$\d+\.\d\d/.test(w0), w0);
+await a.locator('.card', { hasText: 'Island Day Cruise' }).getByRole('button', { name: /details/i }).click(); await a.waitForSelector('.panel .row.total'); await a.getByRole('button', { name: 'Send request' }).click(); await a.waitForSelector('text=Request sent'); await a.getByRole('button', { name: /View my bookings/ }).click();
+await a.locator('#v-mine .card', { hasText: 'Island Day Cruise' }).getByRole('button', { name: /Withdraw request/ }).click(); await a.getByRole('button', { name: 'Yes, withdraw' }).click(); await a.waitForSelector('#v-mine .chip:text-is("Released")'); ok('a withdrawn request exists in Safari', true);
+await a.getByRole('tab', { name: 'Connect app' }).click(); await a.getByRole('button', { name: 'Get connect code' }).click(); await a.waitForSelector('#v-app .msg'); const code = (await a.locator('#v-app .msg').first().textContent()).trim(); ok('Safari shows a one-time code XXXX-XXXX', /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(code), '(code not logged in evidence)'); await a.screenshot({ path: `${outDir}/i1-safari-connect-code.png` });
+// --- installed app: separate storage, opens the manifest start_url (no token anywhere)
+const man = await (await fetch(base + '/bula/manifest.webmanifest')).text(); ok('manifest start_url is /bula and carries no credential', /"start_url":"\/bula"/.test(man) && !/tok|dev_/i.test(man));
+const B = await b.newContext(dev); await standalone(B); const p = await B.newPage(); p.on('pageerror', (e) => errs.push(String(e))); await p.goto(base + '/bula');
+await p.waitForSelector('#pc'); ok('installed app with no link shows the Connect screen (not a dead end)', /Home Screen app/.test(await p.locator('#v-offers').textContent())); await p.screenshot({ path: `${outDir}/i2-app-connect-screen.png` });
+await p.fill('#pc', 'ZZZZ-ZZZZ'); await p.getByRole('button', { name: 'Connect', exact: true }).click(); await p.waitForSelector('#v-offers .msg.bad:has-text("not valid")'); ok('a wrong code is refused with a clear message', true);
+await p.fill('#pc', code.toLowerCase()); await p.getByRole('button', { name: 'Connect', exact: true }).click(); await p.waitForSelector('#wallet:not([hidden])'); const w1 = await wallet(p); ok('connected: SAME wallet as Safari', w1 === w0, `${w1} vs ${w0}`); await p.screenshot({ path: `${outDir}/i3-app-connected-offers.png` });
+await p.getByRole('tab', { name: 'My bookings' }).click(); await p.waitForSelector('#v-mine .chip:text-is("Released")'); ok('connected: the withdrawn request is visible, once', (await p.locator('#v-mine .card').count()) === 1); await p.screenshot({ path: `${outDir}/i4-app-my-bookings.png` });
+const keys = await p.evaluate(() => ({ dev: !!localStorage.getItem('marau_dev'), tok: !!localStorage.getItem('marau_tok') })); ok('the app stored its OWN device key and no guest link token', keys.dev && !keys.tok, JSON.stringify(keys));
+// --- close completely, reopen from saved storage
+const state = await B.storageState(); await B.close(); const B2 = await b.newContext({ ...dev, storageState: state }); await standalone(B2); const q = await B2.newPage(); q.on('pageerror', (e) => errs.push(String(e))); await q.goto(base + '/bula'); await q.waitForSelector('#wallet:not([hidden])'); ok('closed completely and reopened: still connected, same wallet', (await wallet(q)) === w0);
+await q.getByRole('tab', { name: 'My bookings' }).click(); await q.waitForSelector('#v-mine .chip:text-is("Released")'); ok('reopened: withdrawn request still there, once', (await q.locator('#v-mine .card').count()) === 1);
+// --- a reused code does nothing
+const C = await b.newContext(dev); const r = await C.newPage(); await r.goto(base + '/bula'); await r.waitForSelector('#pc'); await r.fill('#pc', code); await r.getByRole('button', { name: 'Connect', exact: true }).click(); await r.waitForSelector('#v-offers .msg.bad:has-text("not valid")'); ok('a used code cannot connect a second device', true); await C.close();
+// --- revocation from Safari ends the app connection
+await a.getByRole('tab', { name: 'Connect app' }).click(); await a.waitForSelector('#v-app .card button:has-text("Disconnect")'); await a.getByRole('button', { name: 'Disconnect' }).first().click(); await a.waitForTimeout(600);
+await q.reload(); await q.waitForSelector('#pc'); ok('disconnecting in Safari ends the installed app access with a clear message', /connection has ended/.test(await q.locator('#v-offers').textContent())); await q.screenshot({ path: `${outDir}/i5-app-disconnected.png` });
+await a.reload(); await a.waitForSelector('#wallet:not([hidden])'); ok('Safari itself is unaffected after the app was disconnected', (await wallet(a)) === w0); ok('no page errors', errs.length === 0, JSON.stringify(errs)); await b.close(); process.exit(results.every(Boolean) ? 0 : 1);

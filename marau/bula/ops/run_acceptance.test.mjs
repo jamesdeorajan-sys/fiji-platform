@@ -10,20 +10,21 @@ const GOOD_CFG = () => ({ name: TARGET.worker, main: 'worker.js', compatibility_
   vars: { BULA_SYNTHETIC_TEST: 'on', BULA_CHECKOUT_ENABLED: 'on', BULA_CREDITS_ENABLED: 'on', BULA_EDITION_PUBLISH_ENABLED: 'on', BULA_FAULT_HARNESS: 'on', BULA_OUTBOX_ENABLED: 'off', BULA_EMAIL_SEND_ENABLED: 'off', BULA_POLICY_VERSION: 'p', BULA_BUILD: 'unset', BULA_COMMIT: 'unset' } });
 const h = (s) => crypto.createHash('sha256').update(s).digest('hex');
 function mkBundle(over = {}) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bula-b-')); const files = { 'worker.js': 'export default {}', 'schema.sql': 'CREATE TABLE t(x);', 'hosted_acceptance.mjs': '// stub', 'wrangler.json': JSON.stringify(over.cfg || GOOD_CFG()) };
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bula-b-')); const files = { 'worker.js': 'export default {}', 'schema.sql': 'CREATE TABLE t(x);', 'hosted_acceptance.mjs': '// stub', 'migration_0047.sql': 'CREATE TABLE IF NOT EXISTS bula_devices(x);', 'wrangler.json': JSON.stringify(over.cfg || GOOD_CFG()) };
   for (const [f, c] of Object.entries(files)) fs.writeFileSync(path.join(d, f), c);
   const sums = Object.fromEntries(Object.entries(files).map(([f, c]) => [f, h(c)])); fs.writeFileSync(path.join(d, 'BUNDLE.json'), JSON.stringify({ commit: COMMIT, sha256: { ...sums, ...(over.sums || {}) } })); return d;
 }
 /** fake spawn: records every call; behaviour per call is chosen by `plan(callInfo)` */
+const ALLT = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions', 'bula_pairing', 'bula_devices', 'bula_pair_failures'];
+let H_STATE = { present: () => ALLT };
 function harness({ plan = () => ({}), evidence = (home) => ({ commit: COMMIT, failed: 0, results: [{ name: 'a', pass: true }] }) } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bula-h-')); const calls = []; const logs = []; const errs = [];
   const spawn = (cmd, args, opts = {}) => {
     const kind = cmd === 'npx' ? `wrangler:${args[2]}${args[3] === 'put' ? '-put' : ''}` : cmd === 'npm' ? 'npm' : (args[0] === '-e' ? 'qr' : (opts.env && opts.env.MODE === 'phone' ? 'phone' : 'accept'));
     calls.push({ kind, cmd, args, input: opts.input, shell: opts.shell }); const p = plan({ kind, calls }) || {}; if (p.result) return p.result;
-    if (kind === 'wrangler:d1' && args.some((a) => /probe\.sql/.test(a))) return { status: 0, stdout: JSON.stringify([{ results: (opts.__tables || ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']).map((n) => ({ name: n })), success: true }]), stderr: '' };
+    if (kind === 'wrangler:d1' && (args.some((a) => /probe\.sql/.test(a)) || args.includes('--command'))) { const sql = args.includes('--command') ? args[args.indexOf('--command') + 1] : fs.readFileSync(path.join(home, 'probe.sql'), 'utf8'); const wantN = [...sql.matchAll(/'(\w+)'/g)].map((m) => m[1]).filter((n) => n !== 'table'); const present = H_STATE.present(); return { status: 0, stdout: JSON.stringify([{ results: wantN.filter((n) => present.includes(n)).map((n) => ({ name: n })), success: true }]), stderr: '' }; }
     if (args.includes('--version')) return { status: 0, stdout: '1.2.3\n', stderr: '' };
     if (kind === 'wrangler:whoami') return { status: 0, stdout: 'You are logged in with an OAuth Token, associated with the email a@b.co\n', stderr: '' };
-    if (kind === 'wrangler:d1' && args.includes('--command')) return { status: 0, stdout: JSON.stringify([{ results: ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'].map((n) => ({ name: n })), success: true }]), stderr: '' };
     if (kind === 'wrangler:deploy') return { status: 0, stdout: 'Deployed https://marau-bula-acceptance.example.workers.dev', stderr: '' };
     if (kind === 'accept') { const ev = evidence(home); if (ev) fs.writeFileSync(path.join(home, 'evidence.json'), JSON.stringify(ev)); return { status: 0, stdout: 'ok', stderr: '' }; }
     if (kind === 'phone') { fs.writeFileSync(path.join(home, 'phone-link.txt'), 'https://x/bula#tok=SECRET'); return { status: 0, stdout: 'phone ready', stderr: '' }; }
@@ -37,7 +38,7 @@ const cloud = (calls) => calls.filter((c) => c.kind.startsWith('wrangler'));
 
 test('HAPPY PATH: verify → secrets → schema → deploy → acceptance → phone → QR; exit 0; secrets only via stdin; QR after acceptance', async () => {
   const H = harness(); const code = await run(mkBundle(), H); assert.equal(code, 0, H.errs.join('|'));
-  assert.deepEqual(H.calls.map((c) => c.kind), ['wrangler:d1', 'wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr']);
+  assert.deepEqual(H.calls.map((c) => c.kind), ['wrangler:d1', 'wrangler:d1', 'wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr']);
   const sec = JSON.parse(fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8')); const put = H.calls.find((c) => c.kind === 'wrangler:secret-put');
   assert.equal(put.input.trim(), sec.admin); assert.ok(!JSON.stringify(H.calls.map((c) => c.args)).includes(sec.admin), 'admin secret must never be in argv'); assert.ok(!H.logs.join('\n').includes(sec.admin));
   assert.ok(fs.existsSync(path.join(H.home, 'phone-qr.png'))); assert.match(sec.admin, /^[0-9a-f]{64}$/);
@@ -151,4 +152,16 @@ test('DIAGNOSE passes (exit 0, ok:true) only when every check passes; node.exe i
   const nodeCall = H.calls.find((c) => c.args[0] === '--version' && c.cmd !== 'npm' && c.cmd !== 'npx'); assert.equal(nodeCall.shell, false);
   const cmdProbe = H.calls.find((c) => c.args.includes('--command')); assert.ok(cmdProbe.args.some((a) => /^".*sqlite_master.*"$/.test(a)), 'SQL is quoted for cmd.exe');
   const H3 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 0, stdout: JSON.stringify([{ results: [{ name: 'bula_offers' }], success: true }]), stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H3, 'diagnose'), 0, 'partial (1/5) must fail');
+});
+
+test('MIGRATION 0047 (pairing tables): applied ONLY when absent, only the 0047 file, then verified; schema.sql never re-run on resume; unreadable probe or tampered file → nothing applied', async () => {
+  const base = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']; let applied = false;
+  H_STATE = { present: () => (applied ? ALLT : base) };
+  const H = harness({ plan: ({ kind, calls }) => { const c = calls[calls.length - 1]; if (kind === 'wrangler:d1' && c.args.includes('migration_0047.sql')) applied = true; return {}; } });
+  assert.equal(await run(mkBundle(), H, 'resume'), 0, H.errs.join('|')); const mig = H.calls.filter((c) => c.args.includes('migration_0047.sql')); assert.equal(mig.length, 1); assert.ok(mig[0].args.includes('--remote')); assert.ok(!H.calls.some((c) => c.args.includes('schema.sql')));
+  assert.ok(mig[0].args.includes('bula-acceptance-synthetic-1'), 'target database only'); assert.ok(H.calls.indexOf(mig[0]) < H.calls.findIndex((c) => c.kind === 'wrangler:deploy'), 'migrated before deploy');
+  H_STATE = { present: () => ALLT }; const H2 = harness(); assert.equal(await run(mkBundle(), H2, 'resume'), 0); assert.ok(!H2.calls.some((c) => c.args.includes('migration_0047.sql')), 'already present: not applied');
+  H_STATE = { present: () => base }; const H3 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' && calls[calls.length - 1].args.includes('migration_0047.sql') ? { result: { status: 1, stdout: '', stderr: 'boom' } } : {}) }); assert.notEqual(await run(mkBundle(), H3, 'resume'), 0); assert.ok(!H3.calls.some((c) => c.kind === 'wrangler:deploy'), 'failed migration → no deploy');
+  H_STATE = { present: () => base }; const H4 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' && calls[calls.length - 1].args.some((a) => /probe\.sql|--command/.test(a)) && calls.length >= 2 ? { result: { status: 3221226505, stdout: '', stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H4, 'resume'), 0); assert.ok(!H4.calls.some((c) => c.args.includes('migration_0047.sql') || c.kind === 'wrangler:deploy'), 'cannot tell if tables exist → apply nothing');
+  H_STATE = { present: () => ALLT }; const B = mkBundle(); fs.appendFileSync(path.join(B, 'migration_0047.sql'), '\nDROP TABLE guest_sessions;'); const H5 = harness(); assert.notEqual(await run(B, H5, 'resume'), 0); assert.equal(cloud(H5.calls).length, 0, 'tampered migration → no Cloudflare call'); assert.match(H5.errs.join('\n'), /hash mismatch: migration_0047\.sql/);
 });

@@ -26,7 +26,7 @@ const mine = async (env, tok) => (await (await call(env, 'GET', '/preview/bula/h
 const wal = async (env, tok) => (await (await call(env, 'GET', '/preview/bula/offers', { tok, admin: false })).json()).wallet;
 const grant = (env, st, r, b = {}) => call(env, 'POST', '/preview/admin/bula/credits/grant', { staff: st, body: { booking_ref: r, ...b } });
 const remaining = async (env, id = 'ISLAND') => (await env.DB.prepare('SELECT remaining n FROM bula_offers WHERE offer_id=?').bind(id).first()).n;
-const island = (env, o = {}) => offer(env, { offer_id: 'ISLAND', title: 'Demonstration: Island Day Cruise with Lunch', operator_id: 'op_demo', service_date: ymdString(fijiYmd(NOW + 24 * H)), service_start_utc: NOW + 24 * H, booking_cutoff_utc: NOW + 20 * H, capacity_total: 8, remaining: 8, credit_restore_hours_before: 2, inventory_restore_hours_before: 2, ...o });
+const island = (env, o = {}) => offer(env, { offer_id: 'ISLAND', title: 'Demonstration: Island Day Cruise with Lunch', operator_id: 'op_demo', capacity_total: 8, remaining: 8, credit_restore_hours_before: 2, inventory_restore_hours_before: 2, ...o });
 const post = (env, p, tok, b) => call(env, 'POST', p, { tok, admin: false, body: b });
 const rb = (idem, extra = {}) => ({ offer_id: 'ISLAND', version: 1, qty: 1, idem_key: idem, ...extra });
 
@@ -69,7 +69,7 @@ test('cancellation restores credit AND capacity exactly once: withdraw a request
   const acct = await env.DB.prepare('SELECT granted_cents g, available_cents a, reserved_cents r, redeemed_cents d FROM bula_credit_accounts').first(); assert.equal(acct.g, 50000); assert.equal(acct.a + acct.r + acct.d, 50000, 'ledger invariant');
 });
 test('fixtures stay out of the guest catalogue (operator op_acc) yet remain bookable by id; demonstration offers are shown; badge reads “Subject to team confirmation”', async () => {
-  const env = mk(); await island(env); await offer(env, { offer_id: 'ACCFIX', title: 'ACC synthetic fixture', operator_id: 'op_acc', service_date: ymdString(fijiYmd(NOW + 24 * H)), service_start_utc: NOW + 24 * H, booking_cutoff_utc: NOW + 20 * H });
+  const env = mk(); await island(env); await offer(env, { offer_id: 'ACCFIX', title: 'ACC synthetic fixture', operator_id: 'op_acc' });
   const A = await guest(env); const cards = (await (await call(env, 'GET', '/preview/bula/offers', { tok: A, admin: false })).json()).cards;
   assert.deepEqual(cards.map((c) => c.offerId), ['ISLAND']); assert.match(cards[0].title, /^Demonstration:/);
   assert.equal((await post(env, '/preview/bula/reserve', A, { offer_id: 'ACCFIX', version: 1, qty: 1, idem_key: 'fx' })).status, 201, 'automated tests can still book a hidden fixture by id');

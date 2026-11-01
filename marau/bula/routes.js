@@ -13,6 +13,7 @@ import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './
 import { reconcileAll } from './recovery.js';
 import { GUEST_UI, STAFF_UI } from './ui.js';
 import { withSqlFault } from './fault.js';
+import { sha256hex, issuePairingCode, redeemPairingCode, sessionForDevice, listDevices, revokeDevice } from './devices.js';
 
 const H = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const out = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: H });
@@ -75,8 +76,23 @@ async function bulaRouteInner(request, env, pathname, method) {
 
     /* ------------------------------------------ guest ------------------------------------------------ */
     if (pathname.startsWith('/preview/bula/')) {
-      const s = await guestFromRequest(request, env); if (!s) return out({ error: 'unauthorized' }, 401);
+      if (method === 'POST' && pathname === '/preview/bula/pair/redeem') {   // the installed app has no credential yet: a one-time code is its only way in. Generic failures + per-source limit (see devices.js).
+        if (!cfg.devicePairingEnabled) return out({ error: 'device pairing is not enabled' }, 403);
+        const b = await body(request); if (typeof b.code !== 'string' || b.code.length > 40) return out({ error: 'invalid_or_expired_code' }, 400);
+        const ipHash = await sha256hex('ip:' + (request.headers.get('cf-connecting-ip') || 'local'));
+        const r = await redeemPairingCode(env.DB, cfg, { code: b.code, label: b.label, ipHash, nowMs });
+        return r.ok ? out({ ok: true, deviceToken: r.deviceToken, deviceId: r.deviceId, expiresAt: r.expiresAt }, 201) : out({ error: r.code }, r.status);
+      }
+      let s = await guestFromRequest(request, env); let deviceId = null;
+      if (!s && cfg.devicePairingEnabled) { const t = bearer(request); const d = t ? await sessionForDevice(env.DB, t, nowMs) : null; if (d) { s = d; deviceId = d.__device_id; } }
+      if (!s) return out({ error: 'unauthorized' }, 401);
       const party = await partyKeyForSession(env.DB, s.session_id);
+      if (pathname === '/preview/bula/pair' || pathname === '/preview/bula/devices' || /^\/preview\/bula\/devices\/[\w-]+\/revoke$/.test(pathname)) {
+        if (!cfg.devicePairingEnabled) return out({ error: 'device pairing is not enabled' }, 403);
+        if (method === 'POST' && pathname === '/preview/bula/pair') { await body(request); const r = await issuePairingCode(env.DB, cfg, { sessionId: s.session_id, issuedBy: `guest:${s.session_id}`, nowMs }); return out(r.ok ? { ok: true, code: r.code, expiresAt: r.expiresAt, serverNowUtc: nowMs } : r, r.ok ? 201 : 409); }
+        if (method === 'GET' && pathname === '/preview/bula/devices') return out({ devices: await listDevices(env.DB, s.session_id, nowMs, deviceId), thisDeviceId: deviceId });
+        const dm = /^\/preview\/bula\/devices\/([\w-]+)\/revoke$/.exec(pathname); if (method === 'POST' && dm) { await body(request); const r = await revokeDevice(env.DB, s.session_id, dm[1], nowMs, `guest:${s.session_id}`); return out(r, r.ok ? 200 : 404); }
+      }
       if (method === 'GET' && pathname === '/preview/bula/offers') {
         if (cfg.editionPublishEnabled) await runPublisher(env.DB, cfg, nowMs, 'lazy-guest');
         const ed = await listEdition(env.DB, cfg, nowMs, party); const bal = cfg.creditsEnabled ? await balance(env.DB, party) : null;
@@ -129,6 +145,12 @@ async function bulaRouteInner(request, env, pathname, method) {
       return out({ ok: true });
     }
     const actor = await staffFromRequest(request, env); if (!actor) return out({ error: 'unauthorized' }, 401);
+    if (method === 'POST' && pathname === '/preview/admin/bula/pairing') {   // recovery: staff issue a one-time connect code for an existing guest (never a credential); audited
+      requireRole(actor, ROLE_POLICY.issuePairing); if (!cfg.devicePairingEnabled) return out({ error: 'device pairing is not enabled' }, 403);
+      const b = await body(request); if (!isStr(b.booking_ref, 120)) return out({ error: 'booking_ref is required' }, 400);
+      const g = await env.DB.prepare('SELECT guest_session_id sid FROM marau_test_bookings WHERE client_booking_ref = ? AND parent_booking_id IS NULL').bind(b.booking_ref).first(); if (!g) return out({ error: 'unknown booking' }, 404);
+      const r = await issuePairingCode(env.DB, cfg, { sessionId: g.sid, issuedBy: `staff:${actor.staffId}`, nowMs }); return out(r.ok ? { ok: true, code: r.code, expiresAt: r.expiresAt } : r, r.ok ? 201 : 409);
+    }
     if (method === 'GET' && pathname === '/preview/admin/bula/me') return out({ staffId: actor.staffId, role: actor.role });
     if (method === 'GET' && pathname === '/preview/admin/bula/offers') { const { results } = await env.DB.prepare('SELECT offer_id, version, status, title, service_date, price_cents, max_credit_cents, capacity_unit, capacity_total, remaining, booking_cutoff_utc, created_by, approved_by, instant_confirm FROM bula_offers ORDER BY service_date, offer_id').all(); return out({ offers: results }); }
     if (method === 'GET' && pathname === '/preview/admin/bula/queue') {

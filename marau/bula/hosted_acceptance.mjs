@@ -24,6 +24,12 @@ const wallet = async (t) => (await api('GET', '/preview/bula/offers', { tok: t }
 const stat = async (t, id) => { const o = await wallet(t); const adm = (await api('GET', '/preview/admin/bula/offers', { staff: T.ceo })).d; const c = ((adm && adm.offers) || []).find((x) => x.offer_id === id); return { remaining: c ? c.remaining : null, avail: o.wallet ? o.wallet.availableCents : null, reserved: o.wallet ? o.wallet.reservedCents : null }; };
 const myHolds = async (t) => (await api('GET', '/preview/bula/holds', { tok: t })).d.holds;
 
+// ---- MODE=pair: RECOVERY. A staff-issued ONE-TIME connect code (never a credential) for the existing phone guest, to type into the installed Home Screen app. Expires in 10 minutes, works once. ----
+if (process.env.MODE === 'pair') {
+  let meta; try { meta = JSON.parse(fs.readFileSync(path.join(OUT, 'phone-meta.json'), 'utf8')); } catch { console.error('no phone-meta.json: run the phone step first'); process.exit(1); }
+  const r = await api('POST', '/preview/admin/bula/pairing', { staff: T.ops, body: { booking_ref: meta.ref } });
+  if (r.s !== 201 || !r.d.code) { console.error('pairing code failed', r.s, JSON.stringify(r.d || {}).slice(0, 160)); process.exit(1); }
+  console.log(`CONNECT CODE for the installed app (one use, 10 minutes): ${r.d.code}`); process.exit(0); }
 // ---- MODE=phone: ONE fresh synthetic phone guest + a once-only FJ$500 promotional grant + clearly labelled DEMONSTRATION offers. Acceptance fault-test fixtures (operator op_acc) are hidden from the guest catalogue by BULA_CATALOGUE_HIDDEN_OPERATORS. Link is written to a LOCAL file only. ----
 if (process.env.MODE === 'phone') {
   const tok = await guest(1); const ref = `${run}-g1`;
@@ -31,7 +37,8 @@ if (process.env.MODE === 'phone') {
   const gr2 = await api('POST', '/preview/admin/bula/credits/grant', { staff: T.ceo, body: { booking_ref: ref } });                  // once-only: the second call must change nothing
   const prior = (await api('GET', '/preview/admin/bula/offers', { staff: T.ceo })).d?.offers || [];
   let withdrawn = 0; for (const o of prior) if (/-DEMO-/.test(o.offer_id) && ['approved', 'published'].includes(o.status)) { const w = await api('POST', `/preview/admin/bula/offers/${o.offer_id}/withdraw`, { staff: T.ops, body: {} }); if (w.s === 200) withdrawn++; }   // earlier demo sets never pile up in the catalogue
-  const sun = fj(now + 6 * H), sunCut = fj(now + 4 * H), t1 = fj(now + 24 * H), t2 = fj(now + 24 * H);
+  const t1 = fj(now + 24 * H); const nowF = fj(now); const sunDate = nowF.time < '14:30' ? nowF.date : t1.date;   // Sunset Sail departs 17:30 Fiji time (cutoff 15:30): today if still bookable, otherwise tomorrow
+  const sun = { date: sunDate, time: '17:30' }, sunCut = { date: sunDate, time: '15:30' };
   const demo = [
     [`${run}-DEMO-ISLAND`, 'Demonstration: Island Day Cruise with Lunch', t1.date, '09:00', '150.00', '25', '8', `${t1.date} 07:00`, 'Boat transfer and buffet lunch', 'Drinks', 'Free cancellation up to 2 hours before departure (credit returned)', '2', '120'],
     [`${run}-DEMO-KAVA`, 'Demonstration: Village Visit and Kava Ceremony', t1.date, '14:00', '80.00', '10', '12', `${t1.date} 12:00`, 'Guide and village welcome', 'Lunch', 'Free cancellation up to 2 hours before the visit (credit returned)', '2', '60'],
@@ -44,7 +51,7 @@ if (process.env.MODE === 'phone') {
   const view = (await api('GET', '/preview/bula/offers', { tok })).d; const titles = (view.cards || []).map((c) => c.title); const island = (view.cards || []).find((c) => /Island Day/.test(c.title));
   const good = gr.s === 201 && gr2.s === 200 && gr2.d.alreadyGranted === true && view.wallet && view.wallet.availableCents === 50000 && ok === 3 && titles.length >= 1 && titles.every((t) => /^Demonstration:/.test(t)) && !(view.cards || []).some((c) => /ACC|SYNTHETIC/i.test(c.title)) && (!island || (island.unitPriceCents === 15000 && island.creditCents === 2500 && island.netPayableCents === 12500));
   if (!good) { console.error('phone setup FAILED', JSON.stringify({ grant: [gr.s, gr2.s], wallet: view.wallet, approved: ok, titles })); process.exit(1); }
-  const link = `${BASE}/bula#tok=${tok}`; fs.writeFileSync(path.join(OUT, 'phone-link.txt'), link + '\n', { mode: 0o600 });
+  const link = `${BASE}/bula#tok=${tok}`; fs.writeFileSync(path.join(OUT, 'phone-link.txt'), link + '\n', { mode: 0o600 }); fs.writeFileSync(path.join(OUT, 'phone-meta.json'), JSON.stringify({ ref, run, at: new Date().toISOString() }), { mode: 0o600 });
   console.log(`phone setup OK: guest granted FJ$500 once (replay changed nothing); ${ok} demonstration offers approved (${withdrawn} earlier demo offers withdrawn); catalogue now shows only: ${titles.join(' | ') || '(tomorrow offers appear at 6 pm Fiji time)'}; Island Day Cruise = FJ$150, credit FJ$25, you pay FJ$125 -> FJ$475 credit remaining after a request; link in phone-link.txt (local only)`); process.exit(0); }
 // ---- setup: offers, publish, schedule-test offer (left approved; ONLY the cron may publish it) ----
 for (const [id, cap] of [[`${run}-RACE`, 3], [`${run}-FAULT`, 6], [`${run}-ONE`, 2]]) { const r = await mkOffer(id, cap); rec(`offer ${id} import+approve (ops imports, a second person approves)`, r.imp.s < 300 && r.app.s === 200, { imp: r.imp.s, app: r.app.s, err: r.imp.d && r.imp.d.errors }); }
@@ -76,6 +83,18 @@ rec('ownership: another guest cannot cancel/release the hold', (await api('POST'
   let xn = 0, xclean = true; for (let k = 0; k < 30; k++) { const r = await api('POST', `/preview/admin/bula/holds/${hid}/cancel`, { staff: T.ops, body: { evidence_note: 'guest asked' }, h: fault(k) }); if (r.h.get('x-bula-fault-injected') !== 'yes') break; xn++; if (r.s < 400 || (await myHolds(t)).find((h) => h.holdId === hid).state !== 'confirmed') xclean = false; }
   rec('cancel: SQL failure at every position leaves the booking confirmed (no partial credit/stock restore)', xclean && xn >= 2, { positions: xn });
   const c3 = await Promise.all([1, 2, 3].map(() => api('POST', `/preview/admin/bula/holds/${hid}/cancel`, { staff: T.ops, body: { evidence_note: 'x' } }))); const after = await stat(t, `${run}-FAULT`); rec('cancel: 3 parallel -> exactly one effective cancellation (remaining restored once)', c3.filter((r) => r.s === 200 && r.d && !r.d.replay).length <= 1 && (await myHolds(t)).find((h) => h.holdId === hid).state === 'cancelled', { statuses: c3.map((r) => r.s), remaining_before: before.remaining, remaining_after: after.remaining }); }
+// ---- 3b. installed-app connection: one-time code -> separate device key for the SAME guest; single use; revocation; no second guest ----
+{ const g = toks[10]; const w0 = await wallet(g); const pr = await api('POST', '/preview/bula/pair', { tok: g, body: {} }); const code = pr.d && pr.d.code;
+  rec('pairing: guest gets a one-time code (8 chars, ~10 min)', pr.s === 201 && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(code || '') && pr.d.expiresAt - pr.d.serverNowUtc === 600000, { s: pr.s });
+  const rd = await fetch(BASE + '/preview/bula/pair/redeem', { method: 'POST', headers: J, body: JSON.stringify({ code, label: 'acceptance device' }) }); const rj = await rd.json(); const dev = rj.deviceToken;
+  rec('pairing: unauthenticated redeem returns a distinct device key (not the guest token)', rd.status === 201 && /^dev_[0-9a-f]{64}$/.test(dev || '') && dev !== g, { s: rd.status });
+  const wd = await wallet(dev); rec('pairing: device key sees the SAME guest (same wallet, same holds)', JSON.stringify(wd.wallet) === JSON.stringify(w0.wallet) && JSON.stringify((await myHolds(dev)).map((h) => h.holdId)) === JSON.stringify((await myHolds(g)).map((h) => h.holdId)), { wallet: wd.wallet && wd.wallet.availableCents });
+  const again = await fetch(BASE + '/preview/bula/pair/redeem', { method: 'POST', headers: J, body: JSON.stringify({ code }) }); const bad = await fetch(BASE + '/preview/bula/pair/redeem', { method: 'POST', headers: J, body: JSON.stringify({ code: 'ZZZZ-ZZZZ' }) });
+  rec('pairing: a used code and a wrong code both fail generically (400)', again.status === 400 && bad.status === 400 && (await again.json()).error === (await bad.json()).error, { used: again.status, wrong: bad.status });
+  rec('pairing: device key is not staff/admin authority', (await api('GET', '/preview/admin/bula/queue', { tok: dev })).s === 401 && (await api('GET', '/preview/admin/bula/me', { tok: dev, staff: T.ceo })).s === 401, {});
+  const dl = (await api('GET', '/preview/bula/devices', { tok: g })).d; const did = dl && dl.devices && dl.devices[0] && dl.devices[0].deviceId; rec('pairing: device list shows the device without any key', !!did && !JSON.stringify(dl).includes('dev_'), { n: dl && dl.devices && dl.devices.length });
+  rec('pairing: revoking the device stops it at once; the guest link still works', (await api('POST', `/preview/bula/devices/${did}/revoke`, { tok: g, body: {} })).s === 200 && (await api('GET', '/preview/bula/offers', { tok: dev })).s === 401 && (await api('GET', '/preview/bula/offers', { tok: g })).s === 200, {});
+}
 // ---- 4. cutoff ----
 if (!SKIP) { const co = await mkOffer(`${run}-CUT`, 2, { startInMs: 2 * H, cutoffInMs: 2 * M }); await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const pre = await api('POST', '/preview/bula/reserve', { tok: toks[5], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'pre' } });
   const cutMs = Date.parse(fj(now + 2 * M).date + 'T00:00:00Z'); void cutMs; await wait(3.2 * M); const post = await api('POST', '/preview/bula/reserve', { tok: toks[6], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'post' } });
