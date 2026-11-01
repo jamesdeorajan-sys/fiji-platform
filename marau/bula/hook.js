@@ -2,7 +2,7 @@
  * NOTE: the booking read here is the Marau SYNTHETIC booking table through real Worker code — it is not a live NAT saved-booking
  * integration. A live source would supply `deps.sourceSnapshot` from the read-only nadi_booking_reader. */
 import { loadConfig } from './config.js';
-import { dispatch, reconcileAmbiguous, liveSenderDisabled } from './outbox_d1.js';
+import { dispatch, reconcileAmbiguous, liveSenderDisabled, createAuditCaptureSender } from './outbox_d1.js';
 import { processSavedBooking, reconcileAll } from './recovery.js';
 import { runPublisher } from './offers_d1.js';
 import { sweepExpired, expireGrants } from './inventory_credit.js';
@@ -18,7 +18,7 @@ export async function bulaOnSavedBooking(env, clientBookingRef, nowMs = Date.now
 }
 export async function bulaRunOutbox(env, nowMs = Date.now()) {
   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
-  const sender = env.BULA_CAPTURE_SENDER || liveSenderDisabled;     // there is no live sender in this candidate
+  const sender = env.BULA_CAPTURE_SENDER || (cfg.emailCaptureEnabled ? createAuditCaptureSender(env.DB) : liveSenderDisabled);     // there is no live sender in this candidate
   let repaired = { jobs: 0, grants: 0, snapshots: 0 }; try { repaired = await reconcileAll(env.DB, cfg, nowMs, { sourceSnapshot: sourceSnapshotDep(env, cfg, nowMs) }); } catch (e) { console.error('[bula] reconcile failed; dispatch continues'); }
   const resolved = await reconcileAmbiguous(env.DB, sender, nowMs);
   const stats = await dispatch(env.DB, cfg, sender, { workerId: `w-${nowMs}`, nowMs });

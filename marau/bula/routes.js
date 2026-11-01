@@ -13,7 +13,7 @@ import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './
 import { reconcileAll } from './recovery.js';
 import { GUEST_UI, STAFF_UI } from './ui.js';
 import { withSqlFault } from './fault.js';
-import { holdView, presentHolds, buildTrip, buildQueue, claimHold, unclaimHold, mayDecide } from './trip.js';
+import { holdView, presentHolds, buildTrip, buildQueue, sourceSyncState, capturedFor, claimHold, unclaimHold, mayDecide } from './trip.js';
 import { sha256hex, issuePairingCode, redeemPairingCode, sessionForDevice, listDevices, revokeDevice } from './devices.js';
 
 const H = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -194,6 +194,14 @@ async function bulaRouteInner(request, env, pathname, method) {
       const g = await grantWelcome(env.DB, cfg, { partyKey, actor: `staff:${actor.staffId}`, source: 'staff-promotional-grant', nowMs, extra: [env.DB.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(nowMs, `${actor.staffId}(${actor.role})`, 'credit_granted', partyKey, String(cfg.welcomeCents))] });
       const bal = await balance(env.DB, partyKey); return out({ ok: true, granted: g.granted, alreadyGranted: !g.granted, grantedCents: g.grantedCents, availableCents: bal.available }, g.granted ? 201 : 200);
     }
+    if (method === 'POST' && pathname === '/preview/admin/bula/outbox/cutover') {   // ACTIVATION GATE: only bookings saved AFTER this instant are ever repaired/replayed. Set once; never moved earlier or overwritten. CEO only; audited.
+      requireRole(actor, ['ceo']); await body(request); const iso = new Date(nowMs).toISOString();
+      const r = await env.DB.prepare("INSERT OR IGNORE INTO bula_settings (key, value, updated_at) VALUES ('outbox_cutover_iso', ?, ?)").bind(iso, nowMs).run();
+      if (r.meta.changes === 1) await env.DB.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(nowMs, `${actor.staffId}(${actor.role})`, 'outbox_cutover_set', 'outbox_cutover_iso', iso).run();
+      const cur = await env.DB.prepare("SELECT value FROM bula_settings WHERE key = 'outbox_cutover_iso'").first(); return out({ ok: true, set: r.meta.changes === 1, cutover: cur.value }, r.meta.changes === 1 ? 201 : 200);
+    }
+    const sm = /^\/preview\/admin\/bula\/source-sync\/([\w.-]{1,120})(\/captured)?$/.exec(pathname);
+    if (method === 'GET' && sm) { requireRole(actor, ['ceo']); return out(sm[2] ? { captured: await capturedFor(env.DB, sm[1]) } : await sourceSyncState(env.DB, sm[1])); }
     if (method === 'POST' && pathname === '/preview/admin/bula/publish') { requireRole(actor, ROLE_POLICY.publish); await body(request); return out(await runPublisher(env.DB, cfg, nowMs, `manual:${actor.staffId}`)); }
     if (method === 'GET' && pathname === '/preview/admin/bula/audit') { requireRole(actor, ['ceo']); const { results } = await env.DB.prepare('SELECT * FROM bula_audit ORDER BY seq DESC LIMIT 100').all(); return out({ audit: results }); }
     return out({ error: 'not found' }, 404);

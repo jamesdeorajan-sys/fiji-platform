@@ -29,7 +29,8 @@ export async function reconcileMissing(db, cfg, nowMs) {
   if (!cut) return 0;
   // a booking with FEWER than the two expected jobs (none, or only one after a partial failure) gets the missing ones; inserts are idempotent
   const { results } = await db.prepare(`SELECT b.* FROM marau_test_bookings b WHERE b.created_at >= ? AND b.parent_booking_id IS NULL
-      AND (SELECT COUNT(*) FROM bula_outbox o WHERE o.source_event_key = 'saved-booking:' || b.client_booking_ref) < 2`).bind(cut.value).all();
+      AND (b.source_sync_owned IS NOT 1 OR ? = 1)   -- source-mirrored rows are repaired ONLY while BULA_SOURCE_SYNC is on
+      AND (SELECT COUNT(*) FROM bula_outbox o WHERE o.source_event_key = 'saved-booking:' || b.client_booking_ref) < 2`).bind(cut.value, cfg.sourceSyncEnabled ? 1 : 0).all();
   for (const b of results) await enqueueSavedBooking(db, cfg, b, nowMs);
   return results.length;
 }
@@ -141,5 +142,13 @@ export function createCaptureSender({ failTimes = 0, ambiguousTimes = 0, ambiguo
       sent.push(m); return { id: `cap-${sent.length}` };
     },
     async lookup(key) { const i = sent.findIndex((x) => x.idempotencyKey === key); return i >= 0 ? { id: `cap-${i + 1}` } : null; } };
+}
+/** HOSTED CAPTURE ONLY (BULA_EMAIL_CAPTURE=on): records what WOULD be sent as an audit row, keyed by the job's idempotency key (a repeat is a no-op). Nothing leaves the Worker; there is no network call. */
+export function createAuditCaptureSender(db, nowFn = Date.now) {
+  return { async send(m) {
+    const ex = await db.prepare("SELECT seq FROM bula_audit WHERE action = 'email_captured' AND subject = ?").bind(m.idempotencyKey).first(); if (ex) return { id: `cap-${ex.seq}` };
+    const r = await db.prepare("INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)").bind(nowFn(), 'capture-sender', 'email_captured', m.idempotencyKey, JSON.stringify({ to: m.to, subject: m.subject, text: m.text })).run();
+    return { id: `cap-${r.meta.last_row_id}` }; },
+    async lookup(key) { const ex = await db.prepare("SELECT seq FROM bula_audit WHERE action = 'email_captured' AND subject = ?").bind(key).first(); return ex ? { id: `cap-${ex.seq}` } : null; } };
 }
 export const liveSenderDisabled = { async send() { throw new Error('LIVE_SENDER_DISABLED'); } };

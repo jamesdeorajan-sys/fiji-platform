@@ -114,3 +114,24 @@ export async function buildQueue(db, nowMs) {
   const lift = async (rows) => { const v = await presentHolds(db, rows, { forStaff: true }); for (let i = 0; i < v.length; i++) v[i].transfer = await ctx(rows[i]); return v; };
   return { requests: await lift(held), confirmed: await lift(conf), closed: await lift(closed) };
 }
+
+/** Read-only diagnostics for hosted acceptance (CEO only): what the adapter produced for one source booking. No contact details; tokens never included. */
+export async function sourceSyncState(db, ref) {
+  const link = await db.prepare('SELECT guest_session_id, marau_booking_id FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(ref).first();
+  if (!link) return { linked: false };
+  const b = await db.prepare('SELECT client_booking_ref FROM marau_test_bookings WHERE id = ?').bind(link.marau_booking_id).first(); const cref = b && b.client_booking_ref;
+  const snap = cref ? await db.prepare('SELECT version, source_kind, provenance_json, availability_json, flight_number, total_minor, currency FROM bula_booking_snapshots WHERE booking_ref = ?').bind(cref).first() : null;
+  const { results: jobs } = await db.prepare('SELECT recipient_kind k, state FROM bula_outbox WHERE booking_ref = ? ORDER BY k').bind(cref || '').all();
+  const n = async (sql, ...a) => (await db.prepare(sql).bind(...a).first()).n;
+  return { linked: true, guestSessions: await n('SELECT COUNT(*) n FROM marau_real_booking_links WHERE source_booking_ref = ?', ref), mirrorRows: await n('SELECT COUNT(*) n FROM marau_test_bookings WHERE source_booking_ref = ? AND parent_booking_id IS NULL', ref),
+    welcomeGrants: await n("SELECT COUNT(*) n FROM bula_credit_ledger WHERE type = 'granted' AND party_key = ?", `trip:${cref}`), jobs: jobs.map((j) => `${j.k}:${j.state}`),
+    captured: await n("SELECT COUNT(*) n FROM bula_audit WHERE action = 'email_captured' AND subject LIKE ?", `saved-booking:${cref}|%`),
+    snapshot: snap ? { version: snap.version, sourceKind: snap.source_kind, provenance: JSON.parse(snap.provenance_json), availability: JSON.parse(snap.availability_json), flightNumber: snap.flight_number, totalMinor: snap.total_minor, currency: snap.currency } : null };
+}
+/** Captured would-be emails for one source booking (CEO only; acceptance reads the guest's private link out of the guest copy, in memory, never into evidence). */
+export async function capturedFor(db, ref) {
+  const link = await db.prepare('SELECT marau_booking_id FROM marau_real_booking_links WHERE source_booking_ref = ?').bind(ref).first(); if (!link) return [];
+  const b = await db.prepare('SELECT client_booking_ref FROM marau_test_bookings WHERE id = ?').bind(link.marau_booking_id).first();
+  const { results } = await db.prepare("SELECT subject, detail FROM bula_audit WHERE action = 'email_captured' AND subject LIKE ? ORDER BY seq").bind(`saved-booking:${b.client_booking_ref}|%`).all();
+  return results.map((r) => ({ jobKey: r.subject, ...JSON.parse(r.detail) }));
+}

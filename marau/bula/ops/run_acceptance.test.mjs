@@ -17,16 +17,17 @@ function mkBundle(over = {}) {
 /** fake spawn: records every call; behaviour per call is chosen by `plan(callInfo)` */
 const ALLT = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions', 'bula_pairing', 'bula_devices', 'bula_pair_failures'];
 let H_STATE = { present: () => ALLT };
-function harness({ plan = () => ({}), evidence = (home) => ({ commit: COMMIT, failed: 0, results: [{ name: 'a', pass: true }] }) } = {}) {
+function harness({ plan = () => ({}), evidence = (home) => ({ commit: COMMIT, failed: 0, results: [{ name: 'a', pass: true }] }), sourceEvidence = () => ({ commit: COMMIT, failed: 0, results: [{ name: 's', pass: true }] }) } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bula-h-')); const calls = []; const logs = []; const errs = [];
   const spawn = (cmd, args, opts = {}) => {
-    const kind = cmd === 'npx' ? `wrangler:${args[2]}${args[3] === 'put' ? '-put' : ''}` : cmd === 'npm' ? 'npm' : (args[0] === '-e' ? 'qr' : (opts.env && opts.env.MODE === 'phone' ? 'phone' : 'accept'));
+    const kind = cmd === 'npx' ? `wrangler:${args[2]}${args[3] === 'put' ? '-put' : ''}` : cmd === 'npm' ? 'npm' : (args[0] === '-e' ? 'qr' : (opts.env && opts.env.MODE === 'phone' ? 'phone' : opts.env && opts.env.MODE === 'source' ? 'source' : 'accept'));
     calls.push({ kind, cmd, args, input: opts.input, shell: opts.shell }); const p = plan({ kind, calls }) || {}; if (p.result) return p.result;
     if (kind === 'wrangler:d1' && (args.some((a) => /probe\.sql/.test(a)) || args.includes('--command'))) { const sql = args.includes('--command') ? args[args.indexOf('--command') + 1] : fs.readFileSync(path.join(home, 'probe.sql'), 'utf8'); const wantN = [...sql.matchAll(/'(\w+)'/g)].map((m) => m[1]).filter((n) => n !== 'table'); const present = H_STATE.present(); return { status: 0, stdout: JSON.stringify([{ results: wantN.filter((n) => present.includes(n)).map((n) => ({ name: n })), success: true }]), stderr: '' }; }
     if (args.includes('--version')) return { status: 0, stdout: '1.2.3\n', stderr: '' };
     if (kind === 'wrangler:whoami') return { status: 0, stdout: 'You are logged in with an OAuth Token, associated with the email a@b.co\n', stderr: '' };
     if (kind === 'wrangler:deploy') return { status: 0, stdout: 'Deployed https://marau-bula-acceptance.example.workers.dev', stderr: '' };
     if (kind === 'accept') { const ev = evidence(home); if (ev) fs.writeFileSync(path.join(home, 'evidence.json'), JSON.stringify(ev)); return { status: 0, stdout: 'ok', stderr: '' }; }
+    if (kind === 'source') { const ev = sourceEvidence(home); if (ev) fs.writeFileSync(path.join(home, 'evidence-source.json'), JSON.stringify(ev)); return { status: 0, stdout: 'ok', stderr: '' }; }
     if (kind === 'phone') { fs.writeFileSync(path.join(home, 'phone-link.txt'), 'https://x/bula#tok=SECRET'); return { status: 0, stdout: 'phone ready', stderr: '' }; }
     if (kind === 'qr') { fs.writeFileSync(path.join(home, 'phone-qr.png'), 'png'); return { status: 0, stdout: '', stderr: '' }; }
     return { status: 0, stdout: '', stderr: '' };
@@ -38,7 +39,7 @@ const cloud = (calls) => calls.filter((c) => c.kind.startsWith('wrangler'));
 
 test('HAPPY PATH: verify → secrets → schema → deploy → acceptance → phone → QR; exit 0; secrets only via stdin; QR after acceptance', async () => {
   const H = harness(); const code = await run(mkBundle(), H); assert.equal(code, 0, H.errs.join('|'));
-  assert.deepEqual(H.calls.map((c) => c.kind), ['wrangler:d1', 'wrangler:d1', 'wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr']);
+  assert.deepEqual(H.calls.map((c) => c.kind), ['wrangler:d1', 'wrangler:d1', 'wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr', 'wrangler:secret-put', 'wrangler:deploy', 'source', 'wrangler:secret-put', 'wrangler:deploy']);
   const sec = JSON.parse(fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8')); const put = H.calls.find((c) => c.kind === 'wrangler:secret-put');
   assert.equal(put.input.trim(), sec.admin); assert.ok(!JSON.stringify(H.calls.map((c) => c.args)).includes(sec.admin), 'admin secret must never be in argv'); assert.ok(!H.logs.join('\n').includes(sec.admin));
   assert.ok(fs.existsSync(path.join(H.home, 'phone-qr.png'))); assert.match(sec.admin, /^[0-9a-f]{64}$/);
@@ -100,7 +101,7 @@ test('RESUME: does NOT re-apply the schema; probes the target DB read-only, rede
   const H = harness(); fs.writeFileSync(path.join(H.home, 'evidence.json'), JSON.stringify({ commit: 'b'.repeat(40), failed: 1, results: [{ pass: false }] }));
   const code = await run(mkBundle(), H, 'resume'); assert.equal(code, 0, H.errs.join('|'));
   assert.ok(!H.calls.some((c) => c.args.includes('schema.sql')), 'schema.sql must not be executed'); assert.ok(H.calls.some((c) => c.args.some((a) => /probe\.sql/.test(a)) && c.args.includes('--remote')));
-  assert.deepEqual(H.calls.map((c) => c.kind).filter((k) => k !== 'wrangler:d1'), ['wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr']);
+  assert.deepEqual(H.calls.map((c) => c.kind).filter((k) => k !== 'wrangler:d1'), ['wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr', 'wrangler:secret-put', 'wrangler:deploy', 'source', 'wrangler:secret-put', 'wrangler:deploy']);
   const kept = fs.readdirSync(H.home).filter((f) => f.startsWith('evidence.json.stale-')); assert.equal(kept.length, 1); assert.equal(JSON.parse(fs.readFileSync(path.join(H.home, kept[0]), 'utf8')).failed, 1);
 });
 test('RESUME refuses (nothing deployed) when the schema is absent or the probe fails; resume with failing acceptance exits non-zero with no QR', async () => {
@@ -164,4 +165,27 @@ test('MIGRATION 0047 (pairing tables): applied ONLY when absent, only the 0047 f
   H_STATE = { present: () => base }; const H3 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' && calls[calls.length - 1].args.includes('migration_0047.sql') ? { result: { status: 1, stdout: '', stderr: 'boom' } } : {}) }); assert.notEqual(await run(mkBundle(), H3, 'resume'), 0); assert.ok(!H3.calls.some((c) => c.kind === 'wrangler:deploy'), 'failed migration → no deploy');
   H_STATE = { present: () => base }; const H4 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' && calls[calls.length - 1].args.some((a) => /probe\.sql|--command/.test(a)) && calls.length >= 2 ? { result: { status: 3221226505, stdout: '', stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H4, 'resume'), 0); assert.ok(!H4.calls.some((c) => c.args.includes('migration_0047.sql') || c.kind === 'wrangler:deploy'), 'cannot tell if tables exist → apply nothing');
   H_STATE = { present: () => ALLT }; const B = mkBundle(); fs.appendFileSync(path.join(B, 'migration_0047.sql'), '\nDROP TABLE guest_sessions;'); const H5 = harness(); assert.notEqual(await run(B, H5, 'resume'), 0); assert.equal(cloud(H5.calls).length, 0, 'tampered migration → no Cloudflare call'); assert.match(H5.errs.join('\n'), /hash mismatch: migration_0047\.sql/);
+});
+
+test('SOURCE step: deploys the extra flags for that step only, runs MODE=source, and ALWAYS redeploys the base flags (also when the checks fail)', async () => {
+  for (const [label, sev, want] of [['pass', () => ({ commit: COMMIT, failed: 0, results: [{ pass: true }] }), 0], ['failing checks', () => ({ commit: COMMIT, failed: 1, results: [{ pass: false }] }), 1], ['no evidence', () => null, 1], ['other commit', () => ({ commit: 'b'.repeat(40), failed: 0, results: [{ pass: true }] }), 1]]) {
+    const H = harness({ sourceEvidence: sev }); fs.writeFileSync(path.join(H.home, 'evidence.json'), JSON.stringify({ commit: COMMIT, failed: 0, results: [{ pass: true }] }));
+    const code = await run(mkBundle(), H, 'source'); assert.equal(code, want, label + H.errs.join('|'));
+    const dep = H.calls.filter((c) => c.kind === 'wrangler:deploy'); assert.equal(dep.length, 2, label); const v = (c) => c.args.filter((a, i) => c.args[i - 1] === '--var');
+    for (const f of ['BULA_OUTBOX_ENABLED:on', 'BULA_SOURCE_SYNC:on', 'BULA_EMAIL_CAPTURE:on']) assert.ok(v(dep[0]).includes(f), `${label} step deploy has ${f}`);
+    assert.ok(!v(dep[1]).some((x) => /:on$/.test(x)), `${label}: restore deploy turns nothing on`); assert.ok(!v(dep[0]).some((x) => /EMAIL_SEND/.test(x)), 'email sending is never touched');
+    assert.equal(H.calls.filter((c) => c.kind === 'source').length, 1);
+  }
+});
+test('SOURCE step refuses to run without passing base evidence for this commit; nothing is deployed', async () => {
+  const H = harness(); assert.notEqual(await run(mkBundle(), H, 'source'), 0); assert.equal(H.calls.filter((c) => c.kind.startsWith('wrangler')).length, 0); assert.match(H.errs.join('\n'), /no passing hosted-acceptance evidence/);
+});
+test('a failed RESTORE is reported loudly and points to lockdown; lockdown turns every Bula flag off (incl. outbox, source sync, capture)', async () => {
+  let n = 0; const H = harness({ plan: ({ kind }) => (kind === 'wrangler:deploy' && ++n === 2 ? { result: { status: 1, stdout: 'boom', stderr: '' } } : {}) }); fs.writeFileSync(path.join(H.home, 'evidence.json'), JSON.stringify({ commit: COMMIT, failed: 0, results: [{ pass: true }] }));
+  assert.notEqual(await run(mkBundle(), H, 'source'), 0); assert.match(H.errs.join('\n'), /RESTORE OF BASE FLAGS FAILED[\s\S]*lockdown/);
+  const L = harness(); assert.equal(await run(mkBundle(), L, 'lockdown'), 0); const d = L.calls.find((c) => c.kind === 'wrangler:deploy'); const vars = d.args.filter((a, i) => d.args[i - 1] === '--var');
+  for (const f of ['BULA_OUTBOX_ENABLED', 'BULA_SOURCE_SYNC', 'BULA_EMAIL_CAPTURE', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_DEVICE_PAIRING']) assert.ok(vars.includes(`${f}:off`), f);
+});
+test('a bundle whose wrangler.json turns source sync or capture on is refused', async () => {
+  for (const k of ['BULA_SOURCE_SYNC', 'BULA_EMAIL_CAPTURE']) { const cfg = GOOD_CFG(); cfg.vars[k] = 'on'; assert.notEqual(await run(mkBundle({ cfg }), harness(), 'verify'), 0, k); }
 });

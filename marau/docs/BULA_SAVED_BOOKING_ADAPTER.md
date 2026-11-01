@@ -28,3 +28,20 @@ Guest/team receipts printed the pickup time as an object; receipts now quote the
 
 ## Rollback
 Set `BULA_SOURCE_SYNC=off` (adapter inert, no redeploy of code needed beyond var) or `lockdown`; redeploy the previous bundle (`5ec3f91`). No migrations were added; nothing to undo in D1.
+
+## Switches: what each one stops
+| Switch | Stops | Does NOT stop |
+|---|---|---|
+| `BULA_SOURCE_SYNC` off | The adapter after a sync; **and** the sweep's repair of source-mirrored bookings (snapshot, receipt jobs, welcome grant). Source rows are excluded in `reconcileMissing` and `reconcileAll`, so nothing is created or repaired for them. Turning it back on resumes the repair (bookings saved after the cutover). | Receipt jobs already queued (they belong to the outbox); ordinary Marau form bookings; the sync mirror itself. |
+| `BULA_OUTBOX_ENABLED` off | Everything in the outbox: enqueue (form bookings and adapter), the sweep (`reconcileAll`), ambiguous-send resolution and dispatch. The adapter returns `outbox_disabled`. | The sync mirror; guest/staff screens; holds, credit, publishing. |
+| `BULA_EMAIL_CAPTURE` off (default) | Capture. With the outbox on and capture off the only sender is the disabled live sender: jobs fail with `LIVE_SENDER_DISABLED`, nothing is sent. | — |
+| `BULA_EMAIL_SEND_ENABLED` | Reserved for a future live provider. No live sender exists, so it has no effect today. The runner refuses a bundle where it is not `off`. | — |
+| `BULA_CREDITS_ENABLED` off | Welcome grants (adapter and sweep) and credit use. | Receipts/snapshots. |
+| `BULA_CHECKOUT_ENABLED` off | Reserve/confirm/cancel and the expiry sweep. | — |
+| `BULA_EDITION_PUBLISH_ENABLED` off | The 6 pm publish (cron and guest lazy publish). | — |
+| Cron triggers | The `*/15` and `0 6` crons run `bulaScheduled`: publish, expiry, credit-expiry, outbox sweep+dispatch — each behind its own flag above. Removing the triggers stops all of them. | Request-time work (the adapter after a sync). |
+
+**Activation gate — outbox cutover.** Only bookings saved after `bula_settings.outbox_cutover_iso` are ever swept or replayed; with no cutover the sweep does nothing. The CEO sets it once (`POST /preview/admin/bula/outbox/cutover`; never moved or overwritten; audited). It is never set automatically.
+
+## Hosted `source` step
+`run_acceptance.mjs <bundle> source` (also the last part of `resume`/`all`): needs passing base evidence for the commit; redeploys the SAME isolated Worker with outbox + source sync + email **capture** on; runs `MODE=source`; **always** redeploys the base flags afterwards (a failed restore says to run `lockdown`). Evidence: `~/.bula-acceptance/evidence-source.json` (names and pass/fail only; no tokens, addresses or message text). The fault harness fails the Nth source read of one sync request only when `BULA_FAULT_HARNESS=on` and the admin key is sent.

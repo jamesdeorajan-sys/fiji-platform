@@ -1,7 +1,8 @@
 // SYNTHETIC. Saved-booking adapter: NAT/FijiDash-shaped fixtures -> real-booking sync -> Bula snapshot + receipt jobs + welcome grant. Real Worker. Run from marau/.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkEnv, syncCreated, syncStatus, call, one, count, tokenFor, cutover, natBooking } from './m3_helpers.mjs';
+import { mkEnv, syncCreated, syncStatus, call, one, count, tokenFor, cutover, natBooking, staff, offer, ADMIN as ADMINK } from './m3_helpers.mjs';
+import worker from '../worker/worker.js';
 import { bulaRunOutbox } from './hook.js';
 import { createCaptureSender } from './outbox_d1.js';
 
@@ -74,4 +75,38 @@ test('optional contract fields flow through only when the source supplies them (
   const env = mkEnv(); await syncCreated(env, 51, { passengers: 3, flight_number: null });
   const s = await env.DB.prepare('SELECT * FROM bula_booking_snapshots').first(); const av = JSON.parse(s.availability_json);
   assert.equal(s.passengers, 3); assert.equal(av.passengers, 'source'); assert.equal(av.flight_number, 'not_in_source'); assert.equal(s.flight_number, null); assert.equal(av.luggage, 'not_in_source'); assert.equal(av.discount_minor, 'not_in_source');
+});
+
+test('SWITCH-OFF: with BULA_SOURCE_SYNC off the sweep neither repairs nor creates anything for source-mirrored bookings; ordinary form bookings are still repaired', async () => {
+  const env = mkEnv({ BULA_SOURCE_SYNC: undefined }); await cutover(env); await syncCreated(env, 61);   // mirrored while the adapter is off -> nothing from Bula
+  const form = await one(await call(env, 'POST', '/preview/bookings', { admin: false, body: (await import('../test/fixtures.mjs')).synthGuest({ leg_type: 'arrival' }) }));   // a Marau form booking: outbox flag on -> hook enqueues
+  assert.equal(form.status, 201); const before = await totals(env);
+  await env.DB.prepare('DELETE FROM bula_outbox').run(); await env.DB.prepare('DELETE FROM bula_credit_ledger').run(); await env.DB.prepare('DELETE FROM bula_credit_accounts').run();   // simulate a crash that lost the form booking's Bula work
+  await bulaRunOutbox({ ...env, BULA_CAPTURE_SENDER: createCaptureSender() }, Date.now()); const t = await totals(env);
+  assert.equal(await count(env, 'bula_outbox', "booking_ref LIKE 'REAL-SYNC-%'"), 0, 'no jobs for the source row'); assert.equal(await count(env, 'bula_booking_snapshots', "booking_ref LIKE 'REAL-SYNC-%'"), 0, 'no snapshot for the source row');
+  assert.ok(await count(env, 'bula_outbox', "booking_ref NOT LIKE 'REAL-SYNC-%'") >= 2, 'the form booking IS repaired'); assert.equal(await count(env, 'bula_credit_ledger', "party_key LIKE 'trip:REAL-SYNC-%'"), 0);
+  const on = { ...env, BULA_SOURCE_SYNC: 'on' }; await bulaRunOutbox({ ...on, BULA_CAPTURE_SENDER: createCaptureSender(), BULA_SOURCE_READER: env.__reader }, Date.now());
+  assert.ok(await count(env, 'bula_outbox', "booking_ref LIKE 'REAL-SYNC-%'") >= 2, 'switching it back on resumes the repair');
+});
+
+test('HOSTED CAPTURE: BULA_EMAIL_CAPTURE records would-be emails once each (audit rows), the live sender stays disabled, and only the CEO can read them', async () => {
+  const env = mkEnv({ BULA_EMAIL_CAPTURE: 'on' }); await offer(env); await syncCreated(env, 71, { guest_email: 'cap@example.test' });
+  await call(env, 'POST', '/preview/bula/outbox/run', { body: {} }); await call(env, 'POST', '/preview/bula/outbox/run', { body: {} });
+  assert.equal(await count(env, 'bula_audit', "action = 'email_captured'"), 2); const ceo = await staff(env, 'james', 'ceo'), ops = await staff(env, 'ana', 'ops');
+  const cap = await one(await call(env, 'GET', '/preview/admin/bula/source-sync/71/captured', { staff: ceo })); assert.equal(cap.data.captured.length, 2); assert.ok(cap.data.captured.some((m) => /#tok=/.test(m.text)));
+  assert.equal((await call(env, 'GET', '/preview/admin/bula/source-sync/71/captured', { staff: ops })).status, 403);
+  const st = (await one(await call(env, 'GET', '/preview/admin/bula/source-sync/71', { staff: ceo }))).data; assert.deepEqual([st.guestSessions, st.mirrorRows, st.welcomeGrants, st.captured, st.snapshot.version], [1, 1, 1, 2, 1]);
+  const noCapture = mkEnv({}); await syncCreated(noCapture, 72); await call(noCapture, 'POST', '/preview/bula/outbox/run', { body: {} });
+  assert.equal(await count(noCapture, 'bula_audit', "action = 'email_captured'"), 0, 'capture off -> nothing captured; the live sender is disabled so jobs fail, never send');
+});
+
+test('CUTOVER route: CEO only, set once, never moved or overwritten; fault harness fails the Nth source read only with the harness flag AND admin key', async () => {
+  const env = mkEnv({ BULA_FAULT_HARNESS: 'on' }); const ceo = await staff(env, 'james', 'ceo'), ops = await staff(env, 'ana', 'ops');
+  assert.equal((await call(env, 'POST', '/preview/admin/bula/outbox/cutover', { staff: ops, body: {} })).status, 403);
+  const a = await one(await call(env, 'POST', '/preview/admin/bula/outbox/cutover', { staff: ceo, body: {} })); const b = await one(await call(env, 'POST', '/preview/admin/bula/outbox/cutover', { staff: ceo, body: {} }));
+  assert.deepEqual([a.status, a.data.set, b.status, b.data.set, a.data.cutover === b.data.cutover], [201, true, 200, false, true]);
+  const hdr = { 'x-bula-harness-key': ADMINK, 'x-bula-source-fail-on-call': '2' }; env.__store.set(81, natBooking(81));
+  const f = async (e, h, id = 81) => (await e.DB.prepare('SELECT 1').first(), worker.fetch(new Request(`http://marau.test/preview/admin/synthetic-source/${id}/sync-event`, { method: 'POST', headers: { authorization: `Bearer ${ADMINK}`, 'content-type': 'application/json', ...h }, body: JSON.stringify({ event_type: 'created', new_status: 'pending', source_event_id: 901, booking_id: id }) }), e));
+  const r = await f(env, hdr); assert.equal(r.status, 200); assert.equal(await count(env, 'bula_booking_snapshots'), 0, 'adapter read failed on call 2'); assert.equal(await count(env, 'bula_outbox'), 2);
+  const off = mkEnv({}); off.__store.set(82, natBooking(82)); const r2 = await f(off, { ...hdr }, 82); assert.equal(r2.status, 200); assert.equal(await count(off, 'bula_booking_snapshots'), 1, 'harness flag off -> header ignored');
 });

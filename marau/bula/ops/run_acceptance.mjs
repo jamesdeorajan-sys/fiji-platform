@@ -9,8 +9,8 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 export const TARGET = Object.freeze({ worker: 'marau-bula-acceptance', dbName: 'bula-acceptance-synthetic-1', dbId: '6c54341a-6c21-4314-b514-bb44ed5fa1b5', account: '595101df2c562b3c65595420d43f9fe1' });
 const HASHED = ['worker.js', 'schema.sql', 'wrangler.json', 'hosted_acceptance.mjs', 'migration_0047.sql'];
 const TOP_KEYS = new Set(['name', 'main', 'compatibility_date', 'account_id', 'workers_dev', 'd1_databases', 'triggers', 'vars']);
-const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING', 'BULA_SOURCE_SYNC']);
-const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS', 'BULA_CRON_ONLY_OPERATORS']);
+const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING', 'BULA_SOURCE_SYNC', 'BULA_EMAIL_CAPTURE']);
+const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS', 'BULA_CRON_ONLY_OPERATORS', 'BULA_STAFF_INBOX']);
 const OFF = (v) => v === 'off';
 
 export class Fail extends Error { constructor(msg) { super(msg); this.name = 'Fail'; } }
@@ -31,6 +31,7 @@ export function verifyBundle(B) {
   const cr = c.triggers; if (!cr || Object.keys(cr).join() !== 'crons' || JSON.stringify(cr.crons) !== JSON.stringify(['0 6 * * *', '*/15 * * * *'])) throw new Fail('triggers must be exactly the two expected crons and nothing else');
   const v = c.vars || {}; for (const [k, val] of Object.entries(v)) { if (!FLAG_VARS.has(k) && !OTHER_VARS.has(k)) throw new Fail(`unexpected var ${k}`); if (typeof val !== 'string') throw new Fail(`var ${k} must be a string`); if (/(secret|token|key|password)/i.test(k)) throw new Fail(`var ${k} looks like a secret`); }
   if (!OFF(v.BULA_EMAIL_SEND_ENABLED)) throw new Fail('BULA_EMAIL_SEND_ENABLED must be "off"'); if (!OFF(v.BULA_OUTBOX_ENABLED)) throw new Fail('BULA_OUTBOX_ENABLED must be "off"');
+  for (const k of ['BULA_SOURCE_SYNC', 'BULA_EMAIL_CAPTURE']) if (v[k] !== undefined && !OFF(v[k])) throw new Fail(`${k} must be "off" in the bundle (the source step turns it on for that step only)`);
   return { meta, config: c };
 }
 
@@ -123,11 +124,11 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
       const r = runProc(spawn, node, [path.join(B, 'hosted_acceptance.mjs')], { env: { ...process.env, BASE: st.url, SECRETS_FILE: SEC, OUT_DIR: home, MODE: 'pair' } }); log((r.out || '').split('\n').filter((l) => /CONNECT CODE|no phone-meta|pairing code failed/.test(l)).join('\n'));
       if (!r.ok) throw new Fail(`could not create a connect code (${r.reason})`);
     },
-    deploy(flagsOff = false) {
+    deploy(flagsOff = false, extraVars = []) {
       const { meta } = need(); const s = R.prepare(); const p = wr(['secret', 'put', 'MARAU_ADMIN_TEST_TOKEN', '-c', 'wrangler.json'], s.admin + '\n'); if (!p.ok) throw new Fail(`secret put failed (${p.reason})\n${p.out.slice(-600).split(s.admin).join('***')}`);
-      const vars = [`BULA_BUILD:${meta.commit.slice(0, 12)}`, `BULA_COMMIT:${meta.commit}`]; if (flagsOff) for (const f of ['BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_SYNTHETIC_TEST', 'BULA_DEVICE_PAIRING']) vars.push(`${f}:off`);
+      const vars = [`BULA_BUILD:${meta.commit.slice(0, 12)}`, `BULA_COMMIT:${meta.commit}`, ...extraVars]; if (flagsOff) for (const f of ['BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_SYNTHETIC_TEST', 'BULA_DEVICE_PAIRING', 'BULA_OUTBOX_ENABLED', 'BULA_SOURCE_SYNC', 'BULA_EMAIL_CAPTURE']) vars.push(`${f}:off`);
       const d = wr(['deploy', '-c', 'wrangler.json', ...vars.flatMap((x) => ['--var', x])]); if (!d.ok) throw new Fail(`deploy failed (${d.reason})\n${d.out.slice(-800).split(s.admin).join('***')}`);
-      const m = /https:\/\/marau-bula-acceptance\.[\w-]+\.workers\.dev/.exec(d.out); if (!m) throw new Fail('deploy output did not contain the workers.dev URL'); const st = load(STATE, {}); st.url = m[0]; st.deployed = { commit: meta.commit, at: new Date().toISOString(), flagsOff }; save(STATE, st); log('URL', st.url);
+      const m = /https:\/\/marau-bula-acceptance\.[\w-]+\.workers\.dev/.exec(d.out); if (!m) throw new Fail('deploy output did not contain the workers.dev URL'); const st = load(STATE, {}); st.url = m[0]; st.deployed = { commit: meta.commit, at: new Date().toISOString(), flagsOff, extra: extraVars.length ? extraVars : undefined }; save(STATE, st); log('URL', st.url);
     },
     /** runs the hosted checks; passes only if exit 0 AND a fresh evidence file for THIS commit shows zero failures. */
     accept() {
@@ -140,6 +141,23 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
       if (ev.failed !== 0 || ev.results.some((x) => !x.pass)) throw new Fail(`hosted acceptance reported ${ev.failed} failing check(s)`);
       if (ev.commit !== meta.commit && ev.commit !== meta.commit.slice(0, 12)) throw new Fail(`evidence is for commit ${ev.commit}, bundle is ${meta.commit}`);
       log(`hosted acceptance PASSED: ${ev.results.length}/${ev.results.length}; evidence: ${EVID}`); return ev;
+    },
+    /** Saved-booking adapter acceptance. The SAME isolated Worker is redeployed for this step ONLY with the outbox, source-sync and email-CAPTURE flags on (email sending stays off; capture writes audit rows and transmits nothing),
+     *  the synthetic-source checks run, and the base flags are ALWAYS restored afterwards (even on failure). Needs passing base evidence for this commit. */
+    source() {
+      const { meta } = need(); const s = R.prepare(); const base = load(EVID, null);
+      if (!base || base.failed !== 0 || !base.results || !base.results.length || (base.commit !== meta.commit && base.commit !== meta.commit.slice(0, 12))) throw new Fail('refusing to run the source step: no passing hosted-acceptance evidence for this commit');
+      const SEV = path.join(home, 'evidence-source.json'); if (fs.existsSync(SEV)) fs.renameSync(SEV, `${SEV}.stale-${Date.now()}`);
+      let failure = null;
+      try {
+        R.deploy(false, ['BULA_OUTBOX_ENABLED:on', 'BULA_SOURCE_SYNC:on', 'BULA_EMAIL_CAPTURE:on', 'BULA_STAFF_INBOX:team@example.invalid']); const st = load(STATE, {});
+        const r = runProc(spawn, node, [path.join(B, 'hosted_acceptance.mjs')], { env: { ...process.env, BASE: st.url, SECRETS_FILE: SEC, STATE_FILE: STATE, OUT_DIR: home, MODE: 'source' } });
+        log((r.out || '').split('\n').filter((l) => !/tok_|stf_|"access_token"/.test(l)).join('\n').split(s.admin).join('***'));
+        if (!r.ok) failure = `source acceptance FAILED (${r.reason})`;
+        else { const ev = load(SEV, null); if (!ev || !Array.isArray(ev.results) || !ev.results.length) failure = 'source acceptance wrote no evidence'; else if (ev.failed !== 0 || ev.results.some((x) => !x.pass)) failure = `source acceptance reported ${ev.failed} failing check(s)`; else if (ev.commit !== meta.commit && ev.commit !== meta.commit.slice(0, 12)) failure = `source evidence is for commit ${ev.commit}, bundle is ${meta.commit}`; else log(`source acceptance PASSED: ${ev.results.length}/${ev.results.length}; evidence: ${SEV}`); }
+      } catch (e) { failure = e && e.message ? e.message : String(e); }
+      try { R.deploy(false); log('base flags restored (outbox, source sync and email capture off)'); } catch (e) { throw new Fail(`${failure ? failure + ' AND ' : ''}RESTORE OF BASE FLAGS FAILED (${e.message}) — run the lockdown step now`); }
+      if (failure) throw new Fail(failure);
     },
     phone() {
       need(); const ev = load(EVID, null); const { meta } = need(); if (!ev || ev.failed !== 0 || !ev.results || !ev.results.length || (ev.commit !== meta.commit && ev.commit !== meta.commit.slice(0, 12))) throw new Fail('refusing to create a phone link: no passing hosted-acceptance evidence for this bundle');
@@ -158,14 +176,14 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
 /** Returns the process exit code (0 only on full success). */
 export async function main(argv, deps = {}) {
   const [bundle, step = 'all'] = argv; const err = deps.err || console.error;
-  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|diagnose|prepare|schema|migrate|deploy|accept|phone|pair|lockdown|resume|all>'); return 2; }
+  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|diagnose|prepare|schema|migrate|deploy|accept|phone|source|pair|lockdown|resume|all>'); return 2; }
   const R = makeRunner({ B: path.resolve(bundle), ...deps });
   try {
     R.verify();                                                    // BEFORE anything else, for every step
     if (step === 'verify') return 0;
-    if (step === 'all') { R.prepare(); R.schema(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); return 0; }
-    if (step === 'resume') { R.prepare(); R.schemaPresent(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
-    const one = { diagnose: R.diagnose, prepare: R.prepare, schema: R.schema, migrate: R.migratePairing, pair: R.pair, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
+    if (step === 'all') { R.prepare(); R.schema(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); R.source(); return 0; }
+    if (step === 'resume') { R.prepare(); R.schemaPresent(); R.migratePairing(); R.deploy(false); R.accept(); R.phone(); R.source(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
+    const one = { diagnose: R.diagnose, prepare: R.prepare, schema: R.schema, migrate: R.migratePairing, pair: R.pair, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, source: R.source, lockdown: () => R.deploy(true) }[step];
     if (!one) { err('unknown step'); return 2; } one(); return 0;
   } catch (e) { err(e instanceof Fail ? `STOPPED: ${e.message}` : `STOPPED (unexpected): ${e && e.message}`); return 1; }
 }

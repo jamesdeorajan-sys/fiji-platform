@@ -1936,6 +1936,17 @@ function withSourceReader(env) {
   try { return { ...env, BULA_SOURCE_READER: syncDeps(env).reader }; } catch { return env; }
 }
 
+// ACCEPTANCE FAULT HARNESS (off unless BULA_FAULT_HARNESS=on AND the request carries the admin credential in x-bula-harness-key): makes the Nth source read of THIS request fail,
+// to prove a source outage cannot fail a booking and that the sweep repairs it. Counts the sync's own read and the adapter's snapshot read together.
+function sourceFaultHarness(request, env, deps) {
+  try {
+    const n = Number(request.headers.get('x-bula-source-fail-on-call')); const key = request.headers.get('x-bula-harness-key') || '';
+    if (env.BULA_FAULT_HARNESS !== 'on' || !env.MARAU_ADMIN_TEST_TOKEN || key !== env.MARAU_ADMIN_TEST_TOKEN || !Number.isInteger(n) || n < 1) return deps;
+    let calls = 0; const inner = deps.reader; const reader = async (ref) => { calls += 1; if (calls === n) throw new Error('SOURCE_UNAVAILABLE_HARNESS'); return inner(ref); }; reader.provenance = inner.provenance;
+    return { ...deps, reader };
+  } catch { return deps; }
+}
+
 async function handleAdminSeedSyntheticSource(request, env) {
   let body;
   try {
@@ -1996,9 +2007,10 @@ async function handleAdminSyncEvent(request, env, sourceBookingRef) {
   } catch {
     return json({ error: 'invalid JSON body' }, 400);
   }
-  const result = await syncRealBookingEvent(env, sourceBookingRef, body, syncDeps(env));
+  const deps = sourceFaultHarness(request, env, syncDeps(env));
+  const result = await syncRealBookingEvent(env, sourceBookingRef, body, deps);
   // Bula Happiness (strict flag, default OFF): snapshot + receipt jobs + welcome grant for the mirrored booking. Replay-safe; can never alter the sync result.
-  if (result.ok) await bulaOnSourceSync(withSourceReader(env), sourceBookingRef);
+  if (result.ok) await bulaOnSourceSync({ ...env, BULA_SOURCE_READER: deps.reader }, sourceBookingRef);
 
   // Round 21 correction: the approved staff "Review and confirm"
   // workflow concerns the INITIAL TRANSFER RESERVATION, not only an
