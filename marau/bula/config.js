@@ -8,6 +8,7 @@ export function loadConfig(env = {}) {
     checkoutEnabled: on(env.BULA_CHECKOUT_ENABLED),
     editionPublishEnabled: on(env.BULA_EDITION_PUBLISH_ENABLED),
     devicePairingEnabled: on(env.BULA_DEVICE_PAIRING),     // connect an installed Home Screen app to an existing guest (strict flag)
+    sourceSyncEnabled: on(env.BULA_SOURCE_SYNC),          // saved-booking adapter for the real-booking sync mirror (strict flag; also needs the outbox flag). Separately switchable.
     syntheticTest: on(env.BULA_SYNTHETIC_TEST),           // fixtures/test balances only
     welcomeCents: Number.isInteger(+env.BULA_WELCOME_CENTS) && +env.BULA_WELCOME_CENTS > 0 ? +env.BULA_WELCOME_CENTS : 50000, // FJ$500 synthetic default
     creditTtlMs: Number.isInteger(+env.BULA_CREDIT_TTL_MS) && +env.BULA_CREDIT_TTL_MS > 0 ? +env.BULA_CREDIT_TTL_MS : null,

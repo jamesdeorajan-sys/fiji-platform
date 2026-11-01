@@ -30,6 +30,7 @@ import { normalizePickupDatetime, toFijiWallClockInputValue, formatFijiDateTime 
 import { selectDefaultBooking } from './booking_selection.js';
 import { bulaOnSavedBooking, bulaVersion, bulaWithBuild, bulaScheduled } from '../bula/hook.js';
 import { bulaRoute } from '../bula/routes.js';
+import { bulaOnSourceSync } from '../bula/source_adapter.js';
 import { ICON192_PNG_BASE64, ICON512_PNG_BASE64, ICON180_PNG_BASE64 } from './icon_assets.js';
 import { humanizeVehicleClassLabel } from './guest_display.js';
 import { syncRealBookingEvent, reconcileRealBooking } from './real_booking_sync.js';
@@ -1930,6 +1931,11 @@ function syncDeps(env) {
   return { createGuestSession, createSessionAndOfferLink, nowIso, normalizePickupDatetime, reader };
 }
 
+// Bula Happiness only: hands the SAME reader the sync already uses to the Bula modules (snapshot of the source read). Never throws.
+function withSourceReader(env) {
+  try { return { ...env, BULA_SOURCE_READER: syncDeps(env).reader }; } catch { return env; }
+}
+
 async function handleAdminSeedSyntheticSource(request, env) {
   let body;
   try {
@@ -1991,6 +1997,8 @@ async function handleAdminSyncEvent(request, env, sourceBookingRef) {
     return json({ error: 'invalid JSON body' }, 400);
   }
   const result = await syncRealBookingEvent(env, sourceBookingRef, body, syncDeps(env));
+  // Bula Happiness (strict flag, default OFF): snapshot + receipt jobs + welcome grant for the mirrored booking. Replay-safe; can never alter the sync result.
+  if (result.ok) await bulaOnSourceSync(withSourceReader(env), sourceBookingRef);
 
   // Round 21 correction: the approved staff "Review and confirm"
   // workflow concerns the INITIAL TRANSFER RESERVATION, not only an
@@ -2029,6 +2037,7 @@ async function handleAdminReconcile(request, env, sourceBookingRef) {
     body = {};
   }
   const result = await reconcileRealBooking(env, sourceBookingRef, { snapshotSequence: body.snapshot_sequence, deps: syncDeps(env) });
+  if (result.ok) await bulaOnSourceSync(withSourceReader(env), sourceBookingRef);
   return json({ ...result, demonstration_data: true }, result.ok ? 200 : 409);
 }
 
@@ -2583,7 +2592,7 @@ const experience = createExperienceOffers({
 
 export default {
   // Bula Happiness: scheduled entry (cron). Does nothing unless the BULA_* flags are ON; with no [triggers] configured it is never invoked.
-  async scheduled(event, env, ctx) { ctx.waitUntil(bulaScheduled(env).catch((e) => console.error('[bula] scheduled failed', e && e.message))); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(bulaScheduled(withSourceReader(env)).catch((e) => console.error('[bula] scheduled failed', e && e.message))); },
 
   // FIX (round 19, found while wiring the synthetic-source hosted-demo
   // harness): every route below is now `return await handleFoo(...)`,
@@ -2619,7 +2628,7 @@ export default {
       if (method === 'GET' && pathname === '/icon-512.png') return PNG_RESPONSE(ICON512_PNG_BASE64);
       if (method === 'GET' && pathname === '/icon-180.png') return PNG_RESPONSE(ICON180_PNG_BASE64);
 
-      if (pathname === '/bula' || pathname === '/bula/staff' || pathname === '/bula/manifest.webmanifest' || pathname.startsWith('/preview/bula/') || pathname.startsWith('/preview/admin/bula/')) { const br = await bulaRoute(request, env, pathname, method); if (br) return br; }
+      if (pathname === '/bula' || pathname === '/bula/staff' || pathname === '/bula/manifest.webmanifest' || pathname.startsWith('/preview/bula/') || pathname.startsWith('/preview/admin/bula/')) { const br = await bulaRoute(request, withSourceReader(env), pathname, method); if (br) return br; }
       if (method === 'POST' && pathname === '/preview/bookings') return await handleCreateBooking(request, env);
       if (method === 'GET' && pathname === '/preview/trip') return await handleGetTrip(request, env);
       if (method === 'POST' && pathname === '/preview/trip/revoke') return await handleRevokeTrip(request, env);

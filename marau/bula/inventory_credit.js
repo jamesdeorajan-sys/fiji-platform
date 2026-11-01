@@ -90,7 +90,7 @@ export async function reserve(db, cfg, { partyKey, idemKey, offerId, qty = 1, ex
 }
 
 /* ---- settle (failed checkout / timeout): give inventory + credit back exactly once ---------------------------- */
-export async function settle(db, holdId, newState, nowMs) {
+export async function settle(db, holdId, newState, nowMs, extra = []) {   // `extra` statements run in the SAME atomic batch, only for the caller whose guarded UPDATE actually took the hold
   const g = "hold_id = ? AND state = ? AND settled = 0";
   const sub = (col) => `(SELECT ${col} FROM bula_holds WHERE ${g})`;
   const ledgerType = newState === 'expired' ? 'expired_hold' : 'released';
@@ -99,13 +99,14 @@ export async function settle(db, holdId, newState, nowMs) {
     db.prepare(`UPDATE bula_offers SET remaining = remaining + ${sub('qty')}, updated_at = ? WHERE offer_id = ${sub('offer_id')}`).bind(holdId, newState, nowMs, holdId, newState),
     db.prepare(`UPDATE bula_credit_accounts SET available_cents = available_cents + ${sub('credit_cents')}, reserved_cents = reserved_cents - ${sub('credit_cents')}, updated_at = ? WHERE party_key = (SELECT party_key FROM bula_holds WHERE ${g} AND credit_cents > 0)`).bind(holdId, newState, holdId, newState, nowMs, holdId, newState),
     db.prepare(`INSERT OR IGNORE INTO bula_credit_ledger (party_key,type,amount_cents,hold_id,actor,source,policy_version,at) SELECT party_key, ?, credit_cents, hold_id, 'system', 'hold_settle', ?, ? FROM bula_holds WHERE ${g} AND credit_cents > 0`).bind(ledgerType, 'settle', nowMs, holdId, newState),
+    ...extra,
     db.prepare(`UPDATE bula_holds SET settled = 1 WHERE ${g}`).bind(holdId, newState),
   ]);
 }
-export async function releaseFailedCheckout(db, { holdId, partyKey, nowMs }) {
+export async function releaseFailedCheckout(db, { holdId, partyKey, nowMs, extra = [] }) {
   const h = await db.prepare('SELECT * FROM bula_holds WHERE hold_id = ?').bind(holdId).first();
   if (!h || h.party_key !== partyKey) return { ok: false, code: 'unknown_hold' };   // no cross-party probing
-  if (h.state === 'held') await settle(db, holdId, 'released', nowMs);
+  if (h.state === 'held') await settle(db, holdId, 'released', nowMs, extra);
   const n = await db.prepare('SELECT state FROM bula_holds WHERE hold_id = ?').bind(holdId).first();
   return { ok: n.state === 'released' || n.state === 'expired', state: n.state };
 }

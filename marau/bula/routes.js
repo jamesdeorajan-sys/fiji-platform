@@ -13,6 +13,7 @@ import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './
 import { reconcileAll } from './recovery.js';
 import { GUEST_UI, STAFF_UI } from './ui.js';
 import { withSqlFault } from './fault.js';
+import { holdView, presentHolds, buildTrip, buildQueue, claimHold, unclaimHold, mayDecide } from './trip.js';
 import { sha256hex, issuePairingCode, redeemPairingCode, sessionForDevice, listDevices, revokeDevice } from './devices.js';
 
 const H = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -42,14 +43,7 @@ export async function staffFromRequest(request, env) {
 const adminOnly = (request, env) => !!env.MARAU_ADMIN_TEST_TOKEN && ctEq(bearer(request) || '', env.MARAU_ADMIN_TEST_TOKEN);
 const isStr = (v, max = 400) => typeof v === 'string' && v.length > 0 && v.length <= max;
 
-function holdView(h) {
-  const s = JSON.parse(h.snapshot_json);
-  return { holdId: h.hold_id, state: h.state, title: s.title, serviceDate: s.serviceDate, serviceStartUtc: s.serviceStartUtc, qty: h.qty, capacityUnit: s.capacityUnit, pricingBasis: s.pricingBasis,
-    offerPriceCents: h.price_cents, creditCents: h.credit_cents, netPayableCents: h.net_cents, expiresAt: h.expires_at, cancellationTerms: s.cancellationTerms, instantConfirm: s.instantConfirm,
-    confirmedAt: h.confirmed_at, creditRestored: h.credit_restored == null ? null : !!h.credit_restored, inventoryRestored: h.inventory_restored == null ? null : !!h.inventory_restored,
-    message: { held: s.instantConfirm ? 'Reserving…' : 'Requested — not confirmed until our team confirms it.', confirmed: 'Confirmed.', released: 'Request withdrawn.', expired: 'Request expired — nothing was charged.', cancelled: 'Cancelled.' }[h.state] };
-}
-const codeStatus = (c) => ({ unknown_offer: 404, unknown_hold: 404, no_server_authority: 403, ROLE_NOT_PERMITTED: 403, STAFF_IDENTITY_REQUIRED: 401, DISABLED: 403, CREDITS_DISABLED: 403 }[c] || 409);
+const codeStatus = (c) => ({ already_claimed: 409, claimed_by_other: 409, unknown_offer: 404, unknown_hold: 404, no_server_authority: 403, ROLE_NOT_PERMITTED: 403, STAFF_IDENTITY_REQUIRED: 401, DISABLED: 403, CREDITS_DISABLED: 403 }[c] || 409);
 
 export async function bulaRoute(request, env0, pathname, method) {
   let env = env0; let faulted = null; const harness = env0.BULA_FAULT_HARNESS === 'on' && !!env0.MARAU_ADMIN_TEST_TOKEN && ctEq(request.headers.get('x-bula-harness-key') || '', env0.MARAU_ADMIN_TEST_TOKEN);   // second header: guest routes already use Authorization for the guest
@@ -98,8 +92,9 @@ async function bulaRouteInner(request, env, pathname, method) {
         const ed = await listEdition(env.DB, cfg, nowMs, party); const bal = cfg.creditsEnabled ? await balance(env.DB, party) : null;
         return out({ ...ed, checkoutEnabled: cfg.checkoutEnabled, wallet: bal && { availableCents: bal.available, reservedCents: bal.reserved, expiresAt: bal.expiresAt }, serverNowUtc: nowMs });
       }
+      if (method === 'GET' && pathname === '/preview/bula/trip') return out(await buildTrip(env.DB, cfg, s, nowMs));   // the authenticated guest's OWN saved trip; nothing is looked up from the request
       if (method === 'GET' && pathname === '/preview/bula/holds') {
-        const { results } = await env.DB.prepare('SELECT * FROM bula_holds WHERE party_key = ? ORDER BY created_at DESC LIMIT 50').bind(party).all(); return out({ holds: results.map(holdView) });
+        const { results } = await env.DB.prepare('SELECT * FROM bula_holds WHERE party_key = ? ORDER BY created_at DESC LIMIT 50').bind(party).all(); return out({ holds: await presentHolds(env.DB, results) });
       }
       if (method === 'POST' && pathname === '/preview/bula/reserve') {
         if (!cfg.checkoutEnabled) return out({ error: 'checkout is not enabled' }, 403);
@@ -115,7 +110,7 @@ async function bulaRouteInner(request, env, pathname, method) {
           const c = await confirmHold(env.DB, { holdId: r.holdId, partyKey: party, authority: issueConfirmationAuthority({ kind: 'operator_acceptance_contract', ref: contract.contract_id, verifiedBy: `contract:${contract.contract_id}` }), nowMs });
           state = c.ok ? 'confirmed' : state;
         }
-        const h = await env.DB.prepare('SELECT * FROM bula_holds WHERE hold_id = ?').bind(r.holdId).first(); return out({ ok: true, replay: !!r.replay, hold: holdView(h) }, r.replay ? 200 : 201);
+        const h = await env.DB.prepare('SELECT * FROM bula_holds WHERE hold_id = ?').bind(r.holdId).first(); return out({ ok: true, replay: !!r.replay, hold: (await presentHolds(env.DB, [h]))[0] }, r.replay ? 200 : 201);
       }
       const m = /^\/preview\/bula\/holds\/([\w-]+)\/(release|cancel)$/.exec(pathname);
       if (method === 'POST' && m) {
@@ -155,8 +150,7 @@ async function bulaRouteInner(request, env, pathname, method) {
     if (method === 'GET' && pathname === '/preview/admin/bula/offers') { const { results } = await env.DB.prepare('SELECT offer_id, version, status, title, service_date, price_cents, max_credit_cents, capacity_unit, capacity_total, remaining, booking_cutoff_utc, created_by, approved_by, instant_confirm FROM bula_offers ORDER BY service_date, offer_id').all(); return out({ offers: results }); }
     if (method === 'GET' && pathname === '/preview/admin/bula/queue') {
       requireRole(actor, ROLE_POLICY.confirm);
-      const { results } = await env.DB.prepare("SELECT * FROM bula_holds WHERE state = 'held' ORDER BY created_at").all(); const { results: conf } = await env.DB.prepare("SELECT * FROM bula_holds WHERE state = 'confirmed' ORDER BY confirmed_at DESC LIMIT 30").all();
-      return out({ requests: results.map((h) => ({ ...holdView(h), partyKey: h.party_key })), confirmed: conf.map((h) => ({ ...holdView(h), partyKey: h.party_key })), email: await staffQueue(env.DB) });
+      return out({ ...(await buildQueue(env.DB, nowMs)), email: await staffQueue(env.DB), me: { staffId: actor.staffId, role: actor.role } });
     }
     if (method === 'POST' && pathname === '/preview/admin/bula/contracts') {
       requireRole(actor, ROLE_POLICY.contracts); const b = await body(request);
@@ -172,15 +166,21 @@ async function bulaRouteInner(request, env, pathname, method) {
       const r = act === 'approve' ? await approveOffer(env.DB, id, actor, nowMs) : act === 'withdraw' ? await withdrawOffer(env.DB, id, actor, nowMs) : await editOffer(env.DB, id, b.patch, actor, nowMs);
       return out(r, r.ok ? 200 : r.code === 'invalid' ? 422 : 409);
     }
-    const hm = /^\/preview\/admin\/bula\/holds\/([\w-]+)\/(confirm|cancel|decline)$/.exec(pathname);
+    const hm = /^\/preview\/admin\/bula\/holds\/([\w-]+)\/(confirm|cancel|decline|claim|unclaim)$/.exec(pathname);
     if (method === 'POST' && hm) {
       requireRole(actor, ROLE_POLICY.confirm); const [, holdId, act] = hm; const b = await body(request);
       const h = await env.DB.prepare('SELECT * FROM bula_holds WHERE hold_id = ?').bind(holdId).first(); if (!h) return out({ code: 'unknown_hold' }, 404);
       const note = isStr(b.evidence_note, 300) ? b.evidence_note : null;
+      if (act === 'claim' || act === 'unclaim') { const r = act === 'claim' ? await claimHold(env.DB, { holdId, actor, nowMs }) : await unclaimHold(env.DB, { holdId, actor, nowMs }); return out(r, r.ok ? 200 : codeStatus(r.code)); }
+      if (act === 'confirm' || act === 'decline') { const g = await mayDecide(env.DB, holdId, actor); if (!g.ok) return out(g, 409); }   // someone else is handling this request
       if (act === 'confirm') { // authority = the verified staff session itself; the note is context, not authority
         const r = await confirmHold(env.DB, { holdId, partyKey: h.party_key, authority: issueConfirmationAuthority({ kind: 'staff_confirmation', ref: `${actor.staffId}:${note || 'no-note'}`, verifiedBy: actor.staffId }), bookingRef: null, nowMs }); return out(r, r.ok ? 200 : codeStatus(r.code));
       }
-      if (act === 'decline') { const r = await releaseFailedCheckout(env.DB, { holdId, partyKey: h.party_key, nowMs }); await env.DB.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(nowMs, `${actor.staffId}(${actor.role})`, 'hold_declined', holdId, note).run(); return out(r, r.ok ? 200 : codeStatus(r.code)); }
+      if (act === 'decline') {   // the attribution row is written in the SAME atomic batch that releases the hold and returns credit/inventory, and only by the call that actually released it
+        const who = `${actor.staffId}(${actor.role})`;
+        const r = await releaseFailedCheckout(env.DB, { holdId, partyKey: h.party_key, nowMs, extra: [env.DB.prepare("INSERT INTO bula_audit (at, actor, action, subject, detail) SELECT ?,?,'hold_declined',?,? WHERE EXISTS (SELECT 1 FROM bula_holds WHERE hold_id = ? AND state = 'released' AND settled = 0)").bind(nowMs, who, holdId, note || 'declined', holdId)] });
+        return out(r, r.ok ? 200 : codeStatus(r.code));
+      }
       if (!note) return out({ error: 'evidence_note is required to cancel on behalf of a guest' }, 400);
       const refund = b.refund_credit === true; if (refund) requireRole(actor, ROLE_POLICY.refundCredit);
       const r = await cancelHold(env.DB, { holdId, partyKey: h.party_key, authority: issueCancellationAuthority({ kind: b.operator_cancelled === true ? 'operator_cancel' : 'staff_cancel', ref: `${actor.staffId}:${note}`, verifiedBy: actor.staffId, refundCredit: refund }), nowMs });
