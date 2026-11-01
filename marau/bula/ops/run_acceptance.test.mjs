@@ -19,8 +19,11 @@ function harness({ plan = () => ({}), evidence = (home) => ({ commit: COMMIT, fa
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bula-h-')); const calls = []; const logs = []; const errs = [];
   const spawn = (cmd, args, opts = {}) => {
     const kind = cmd === 'npx' ? `wrangler:${args[2]}${args[3] === 'put' ? '-put' : ''}` : cmd === 'npm' ? 'npm' : (args[0] === '-e' ? 'qr' : (opts.env && opts.env.MODE === 'phone' ? 'phone' : 'accept'));
-    calls.push({ kind, cmd, args, input: opts.input }); const p = plan({ kind, calls }) || {}; if (p.result) return p.result;
+    calls.push({ kind, cmd, args, input: opts.input, shell: opts.shell }); const p = plan({ kind, calls }) || {}; if (p.result) return p.result;
     if (kind === 'wrangler:d1' && args.some((a) => /probe\.sql/.test(a))) return { status: 0, stdout: JSON.stringify([{ results: (opts.__tables || ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']).map((n) => ({ name: n })), success: true }]), stderr: '' };
+    if (args.includes('--version')) return { status: 0, stdout: '1.2.3\n', stderr: '' };
+    if (kind === 'wrangler:whoami') return { status: 0, stdout: 'You are logged in with an OAuth Token, associated with the email a@b.co\n', stderr: '' };
+    if (kind === 'wrangler:d1' && args.includes('--command')) return { status: 0, stdout: JSON.stringify([{ results: ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'].map((n) => ({ name: n })), success: true }]), stderr: '' };
     if (kind === 'wrangler:deploy') return { status: 0, stdout: 'Deployed https://marau-bula-acceptance.example.workers.dev', stderr: '' };
     if (kind === 'accept') { const ev = evidence(home); if (ev) fs.writeFileSync(path.join(home, 'evidence.json'), JSON.stringify(ev)); return { status: 0, stdout: 'ok', stderr: '' }; }
     if (kind === 'phone') { fs.writeFileSync(path.join(home, 'phone-link.txt'), 'https://x/bula#tok=SECRET'); return { status: 0, stdout: 'phone ready', stderr: '' }; }
@@ -110,7 +113,7 @@ test('CRASH 3221226505 (0xC0000409) at the schema probe: failure is reported, a 
   const H = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 3221226505, stdout: '', stderr: 'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) for james@example.com' } } : {}) });
   fs.writeFileSync(path.join(H.home, 'secrets.json'), JSON.stringify({ admin: 'a'.repeat(64), staff: { ceo: 'b'.repeat(64), ops: 'c'.repeat(64), approver: 'd'.repeat(64) } })); fs.writeFileSync(path.join(H.home, 'evidence.json'), '{"keep":1}'); const before = fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8');
   assert.notEqual(await run(mkBundle(), H, 'resume'), 0); assert.ok(!H.calls.some((c) => c.kind === 'wrangler:deploy' || c.kind === 'wrangler:secret-put'));
-  const d = fs.readdirSync(path.join(H.home, 'diagnostics')).filter((f) => f.startsWith('diag-')); assert.equal(d.length, 1); const j = JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', d[0]), 'utf8'));
+  const d = fs.readdirSync(path.join(H.home, 'diagnostics')).filter((f) => f.startsWith('diag-')); assert.equal(d.length, 2, 'one redacted diagnostic per probe method (file, command)'); const j = JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', d[0]), 'utf8'));
   assert.equal(j.exit_code, 3221226505); assert.equal(j.exit_code_hex, '0xC0000409'); assert.equal(j.wrangler_started, false); assert.equal(j.reached_cloudflare, false); assert.ok(!JSON.stringify(j).includes('james@example.com')); assert.ok(!JSON.stringify(j).includes('a'.repeat(64)));
   assert.equal(fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8'), before, 'secrets file byte-identical'); assert.equal(fs.readFileSync(path.join(H.home, 'evidence.json'), 'utf8'), '{"keep":1}', 'evidence untouched when the run stops before acceptance');
 });
@@ -127,4 +130,25 @@ test('Windows quoting: SQL/paths with spaces, quotes and parentheses survive cmd
 test('`diagnose` step: read-only environment report (versions, wrangler login state, schema probe), redacted, saved; no deploy or schema write', async () => {
   const H = harness({ plan: ({ kind, calls }) => ({}) }); assert.equal(await run(mkBundle(), H, 'diagnose'), 0, H.errs.join('|')); assert.ok(!H.calls.some((c) => ['wrangler:deploy', 'wrangler:secret-put'].includes(c.kind) || c.args.includes('schema.sql')));
   const f = fs.readdirSync(path.join(H.home, 'diagnostics')).find((n) => n.startsWith('environment-')); assert.ok(f); const j = JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', f), 'utf8')); assert.ok(j.node && j.schema_probe === 'ok');
+});
+
+const diagFile = (H) => JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', fs.readdirSync(path.join(H.home, 'diagnostics')).filter((n) => n.startsWith('environment-')).sort().pop()), 'utf8'));
+test('DIAGNOSE exits NON-ZERO when a required check fails: node check failing', async () => {
+  const H = harness({ plan: ({ kind, calls }) => (kind === 'accept' && calls[calls.length - 1].args[0] === '--version' ? { result: { status: 1, stdout: '', stderr: 'boom' } } : {}) });
+  assert.notEqual(await run(mkBundle(), H, 'diagnose'), 0); assert.match(H.errs.join('\n'), /STOPPED: diagnosis found failed required check.*node/); const j = diagFile(H); assert.equal(j.ok, false); assert.ok(j.failed_checks.includes('node')); assert.match(j.node, /^FAILED/);
+});
+test('DIAGNOSE exits non-zero when the schema probe sees 0/5 tables (both methods tried, raw redacted output kept), when not logged in, and never touches deploy/schema', async () => {
+  const empty = JSON.stringify([{ results: [], success: true }]);
+  const H = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 0, stdout: empty, stderr: '' } } : {}) });
+  assert.notEqual(await run(mkBundle(), H, 'diagnose'), 0); const j = diagFile(H); assert.deepEqual(j.failed_checks, ['schema_probe']); assert.equal(j.schema_probe_attempts.length, 2); assert.deepEqual(j.schema_probe_attempts.map((a) => a.method), ['file', 'command']); assert.ok(j.schema_probe_attempts.every((a) => a.parsed && a.tables_found === 0));
+  assert.ok(!H.calls.some((c) => ['wrangler:deploy', 'wrangler:secret-put'].includes(c.kind) || c.args.includes('schema.sql')));
+  const H2 = harness({ plan: ({ kind }) => (kind === 'wrangler:whoami' ? { result: { status: 0, stdout: 'You are not authenticated', stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H2, 'diagnose'), 0); assert.ok(diagFile(H2).failed_checks.includes('whoami'));
+});
+test('DIAGNOSE passes (exit 0, ok:true) only when every check passes; node.exe is launched WITHOUT a shell (its path has a space); file probe empty but --command probe complete still passes (requirement not relaxed: 5/5 needed)', async () => {
+  const empty = JSON.stringify([{ results: [], success: true }]);
+  const H = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' && calls[calls.length - 1].args.includes('--file') ? { result: { status: 0, stdout: empty, stderr: '' } } : {}) }); H.deps.win = true;
+  assert.equal(await run(mkBundle(), H, 'diagnose'), 0, H.errs.join('|')); const j = diagFile(H); assert.equal(j.ok, true); assert.deepEqual(j.failed_checks, []); assert.equal(j.schema_probe_attempts.length, 2);
+  const nodeCall = H.calls.find((c) => c.args[0] === '--version' && c.cmd !== 'npm' && c.cmd !== 'npx'); assert.equal(nodeCall.shell, false);
+  const cmdProbe = H.calls.find((c) => c.args.includes('--command')); assert.ok(cmdProbe.args.some((a) => /^".*sqlite_master.*"$/.test(a)), 'SQL is quoted for cmd.exe');
+  const H3 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 0, stdout: JSON.stringify([{ results: [{ name: 'bula_offers' }], success: true }]), stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H3, 'diagnose'), 0, 'partial (1/5) must fail');
 });

@@ -69,22 +69,40 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
     verify() { verified = verifyBundle(B); log(`bundle verified: commit ${verified.meta.commit} — targets only ${TARGET.worker} / ${TARGET.dbName}; email sending off; no routes`); },
     prepare() { need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const existing = load(SEC, null); const s = existing || { admin: rnd(), staff: { ceo: rnd(), ops: rnd(), approver: rnd() }, created: new Date().toISOString() }; if (!existing) save(SEC, s); log(existing ? 'existing secrets kept unchanged (not printed):' : 'secrets generated (not printed):', SEC); return s; },
     schema() { need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--file', 'schema.sql', '-c', 'wrangler.json']); if (!r.ok) throw new Fail(`schema step failed (${r.reason})\n${r.out.slice(-1200)}`); log(`schema applied to ${TARGET.dbName} ONLY`); },
-    /** Read-only probe of the TARGET database: all expected tables present => the schema need not be applied again. */
+    /** Read-only probe of the TARGET database: all expected tables present => the schema need not be applied again.
+     *  Method 1 passes the SQL in a file; if that output does not show every table, method 2 passes it with --command (properly quoted on Windows).
+     *  The requirement is NOT relaxed: all five tables must be seen. The redacted raw output of each attempt is kept in R.lastProbe for the diagnostic. */
     schemaPresent() {
       need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const probe = path.join(home, 'probe.sql'); const want = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'];
-      fs.writeFileSync(probe, `SELECT name FROM sqlite_master WHERE type='table' AND name IN (${want.map((n) => `'${n}'`).join(',')});\n`);   // SQL travels in a file: no spaces/quotes on the command line, same invocation shape as the proven schema step
-      const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--json', '--file', probe, '-c', 'wrangler.json'], undefined, 'schema-probe'); if (!r.ok) throw new Fail(`could not read ${TARGET.dbName} (${r.reason}); a redacted diagnostic was saved in ${diagDir}`);
-      const txt = r.out.replace(/\x1b\[[0-9;]*m/g, ''); let rows = null; for (const m of txt.matchAll(/\[\s*\{[\s\S]*\}\s*\]/g)) { try { const j = JSON.parse(m[0]); if (Array.isArray(j)) { rows = j.flatMap((x) => (x && x.results) || []); break; } } catch { /* try next */ } }
-      if (!rows) throw new Fail('schema probe returned output that could not be parsed — refusing to guess'); const got = want.filter((t) => rows.some((x) => x.name === t));
-      if (got.length !== want.length) throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${got.length}/${want.length} tables) — use the 'all' step, not 'resume'`); log(`schema already present in ${TARGET.dbName} (${got.length}/${want.length} tables) — not re-applied`);
+      const sql = `SELECT name FROM sqlite_master WHERE type='table' AND name IN (${want.map((n) => `'${n}'`).join(',')})`; fs.writeFileSync(probe, sql + ';\n');
+      const names = (j, acc = []) => { if (Array.isArray(j)) j.forEach((x) => names(x, acc)); else if (j && typeof j === 'object') { if (Array.isArray(j.results)) for (const r of j.results) if (r && typeof r.name === 'string') acc.push(r.name); for (const v of Object.values(j)) if (v && typeof v === 'object' && !Array.isArray(j.results)) names(v, acc); } return acc; };
+      const parse = (out) => { const t = out.replace(/\x1b\[[0-9;]*m/g, '').trim(); const cands = [t]; const i = t.indexOf('['), k = t.lastIndexOf(']'); if (i >= 0 && k > i) cands.push(t.slice(i, k + 1)); for (const c of cands) { try { return names(JSON.parse(c)); } catch { /* next */ } } return null; };
+      const attempts = []; let got = [];
+      for (const [method, args] of [['file', ['--file', probe]], ['command', ['--command', sql]]]) {
+        const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--json', ...args, '-c', 'wrangler.json'], undefined, `schema-probe-${method}`);
+        const rows = r.ok ? parse(r.out) : null; const found = rows ? want.filter((t) => rows.includes(t)) : [];
+        attempts.push({ method, subprocess_ok: r.ok, reason: r.reason || null, parsed: rows !== null, tables_found: found.length, output_tail_redacted: redact(r.out || '', []).slice(-500) });
+        if (found.length === want.length) { got = found; break; }
+      }
+      R.lastProbe = { want: want.length, attempts };
+      if (got.length !== want.length) { const last = attempts[attempts.length - 1]; const anyOk = attempts.some((a) => a.subprocess_ok);
+        if (!anyOk) throw new Fail(`could not read ${TARGET.dbName} (${last.reason}); a redacted diagnostic was saved in ${diagDir}`);
+        if (!attempts.some((a) => a.parsed)) throw new Fail('schema probe returned output that could not be parsed — refusing to guess');
+        throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${Math.max(...attempts.map((a) => a.tables_found))}/${want.length} tables) — use the 'all' step, not 'resume'`); }
+      log(`schema already present in ${TARGET.dbName} (${got.length}/${want.length} tables) — not re-applied`);
     },
-    /** Read-only environment diagnostic (no deploy, no writes to Cloudflare): versions + wrangler login state + the schema probe. Output is redacted and saved under diagnostics/. */
+    /** Read-only environment diagnostic (no deploy, no writes to Cloudflare). EVERY required check must pass, otherwise the step fails (non-zero exit). */
     diagnose() {
-      need(); const info = {}; const v = (k, cmd, args) => { const r = runProc(spawn, cmd, args, { shell: win }); info[k] = r.ok ? redact(r.out).trim().slice(0, 120) : `FAILED (${r.reason})`; };
-      v('node', node, ['--version']); v('npm', 'npm', ['--version']); v('npx_wrangler', 'npx', ['--yes', 'wrangler@3', '--version']);
-      const who = wr(['whoami'], undefined, 'whoami'); info.whoami = who.ok ? redact(who.out).split('\n').filter((l) => /logged in|account|oauth|scopes|not authenticated/i.test(l)).join(' | ').slice(0, 300) : `FAILED (${who.reason})`;
-      let probe = 'ok'; try { R.schemaPresent(); } catch (e) { probe = e.message.split('\n')[0]; } info.schema_probe = probe;
+      need(); const info = {}; const failures = [];
+      const v = (k, cmd, args, shell) => { const r = runProc(spawn, cmd, args, { shell }); info[k] = r.ok ? redact(r.out).trim().slice(0, 120) : `FAILED (${r.reason})`; if (!r.ok || !String(r.out).trim()) failures.push(k); };
+      v('node', node, ['--version'], false);                       // node.exe is launched directly: its install path contains a space, which cmd.exe would split
+      v('npm', 'npm', ['--version'], win); v('npx_wrangler', 'npx', ['--yes', 'wrangler@3', '--version'], win);
+      const who = wr(['whoami'], undefined, 'whoami'); const wl = who.ok ? redact(who.out).split('\n').filter((l) => /logged in|account|oauth|scopes|not authenticated/i.test(l)).join(' | ').slice(0, 300) : `FAILED (${who.reason})`; info.whoami = wl;
+      if (!who.ok || !/logged in/i.test(who.out) || /not authenticated/i.test(who.out)) failures.push('whoami');
+      let probe = 'ok'; try { R.schemaPresent(); } catch (e) { probe = e.message.split('\n')[0]; failures.push('schema_probe'); } info.schema_probe = probe; info.schema_probe_attempts = R.lastProbe ? R.lastProbe.attempts : [];
+      info.ok = failures.length === 0; info.failed_checks = failures;
       fs.mkdirSync(diagDir, { recursive: true, mode: 0o700 }); const f = path.join(diagDir, `environment-${Date.now()}.json`); fs.writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), platform: process.platform, ...info }, null, 2), { mode: 0o600 }); log('diagnostic saved:', f); log(JSON.stringify(info, null, 2));
+      if (failures.length) throw new Fail(`diagnosis found failed required check(s): ${failures.join(', ')} (details in ${f})`);
     },
     deploy(flagsOff = false) {
       const { meta } = need(); const s = R.prepare(); const p = wr(['secret', 'put', 'MARAU_ADMIN_TEST_TOKEN', '-c', 'wrangler.json'], s.admin + '\n'); if (!p.ok) throw new Fail(`secret put failed (${p.reason})\n${p.out.slice(-600).split(s.admin).join('***')}`);
