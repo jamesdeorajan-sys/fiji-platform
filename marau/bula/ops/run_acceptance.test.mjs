@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto';
-import { main, verifyBundle, runProc, TARGET } from './run_acceptance.mjs';
+import { main, verifyBundle, runProc, TARGET, quoteWin, diagnose, redact } from './run_acceptance.mjs';
 
 const COMMIT = 'a'.repeat(40);
 const GOOD_CFG = () => ({ name: TARGET.worker, main: 'worker.js', compatibility_date: '2026-07-19', account_id: TARGET.account, workers_dev: true,
@@ -20,7 +20,7 @@ function harness({ plan = () => ({}), evidence = (home) => ({ commit: COMMIT, fa
   const spawn = (cmd, args, opts = {}) => {
     const kind = cmd === 'npx' ? `wrangler:${args[2]}${args[3] === 'put' ? '-put' : ''}` : cmd === 'npm' ? 'npm' : (args[0] === '-e' ? 'qr' : (opts.env && opts.env.MODE === 'phone' ? 'phone' : 'accept'));
     calls.push({ kind, cmd, args, input: opts.input }); const p = plan({ kind, calls }) || {}; if (p.result) return p.result;
-    if (kind === 'wrangler:d1' && args.includes('--command')) return { status: 0, stdout: (opts.__tables || ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']).map((n) => `"name": "${n}"`).join(','), stderr: '' };
+    if (kind === 'wrangler:d1' && args.some((a) => /probe\.sql/.test(a))) return { status: 0, stdout: JSON.stringify([{ results: (opts.__tables || ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions']).map((n) => ({ name: n })), success: true }]), stderr: '' };
     if (kind === 'wrangler:deploy') return { status: 0, stdout: 'Deployed https://marau-bula-acceptance.example.workers.dev', stderr: '' };
     if (kind === 'accept') { const ev = evidence(home); if (ev) fs.writeFileSync(path.join(home, 'evidence.json'), JSON.stringify(ev)); return { status: 0, stdout: 'ok', stderr: '' }; }
     if (kind === 'phone') { fs.writeFileSync(path.join(home, 'phone-link.txt'), 'https://x/bula#tok=SECRET'); return { status: 0, stdout: 'phone ready', stderr: '' }; }
@@ -95,13 +95,36 @@ test('phone step alone refuses without passing evidence for this bundle', async 
 test('RESUME: does NOT re-apply the schema; probes the target DB read-only, redeploys, re-runs acceptance, preserves the earlier failed evidence, QR only after a pass', async () => {
   const H = harness(); fs.writeFileSync(path.join(H.home, 'evidence.json'), JSON.stringify({ commit: 'b'.repeat(40), failed: 1, results: [{ pass: false }] }));
   const code = await run(mkBundle(), H, 'resume'); assert.equal(code, 0, H.errs.join('|'));
-  assert.ok(!H.calls.some((c) => c.kind === 'wrangler:d1' && c.args.includes('--file')), 'schema.sql must not be executed'); assert.ok(H.calls.some((c) => c.args.includes('--command') && c.args.includes('--remote')));
+  assert.ok(!H.calls.some((c) => c.args.includes('schema.sql')), 'schema.sql must not be executed'); assert.ok(H.calls.some((c) => c.args.some((a) => /probe\.sql/.test(a)) && c.args.includes('--remote')));
   assert.deepEqual(H.calls.map((c) => c.kind).filter((k) => k !== 'wrangler:d1'), ['wrangler:secret-put', 'wrangler:deploy', 'accept', 'phone', 'npm', 'qr']);
   const kept = fs.readdirSync(H.home).filter((f) => f.startsWith('evidence.json.stale-')); assert.equal(kept.length, 1); assert.equal(JSON.parse(fs.readFileSync(path.join(H.home, kept[0]), 'utf8')).failed, 1);
 });
 test('RESUME refuses (nothing deployed) when the schema is absent or the probe fails; resume with failing acceptance exits non-zero with no QR', async () => {
-  const H1 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 0, stdout: '"name": "bula_offers"', stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H1, 'resume'), 0); assert.ok(!H1.calls.some((c) => c.kind === 'wrangler:deploy'));
+  const H1 = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 0, stdout: JSON.stringify([{ results: [{ name: 'bula_offers' }] }]), stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H1, 'resume'), 0); assert.ok(!H1.calls.some((c) => c.kind === 'wrangler:deploy'));
   const H2 = harness({ plan: ({ kind }) => (kind === 'wrangler:d1' ? { result: { status: null, signal: 'SIGINT' } } : {}) }); assert.notEqual(await run(mkBundle(), H2, 'resume'), 0); assert.ok(!H2.calls.some((c) => c.kind === 'wrangler:deploy'));
   const H3 = harness({ plan: ({ kind }) => (kind === 'accept' ? { result: { status: 1, stdout: 'FAIL', stderr: '' } } : {}) }); assert.notEqual(await run(mkBundle(), H3, 'resume'), 0); assert.ok(!H3.calls.some((c) => c.kind === 'qr' || c.kind === 'phone'));
   const d = mkBundle(); fs.appendFileSync(path.join(d, 'worker.js'), '//t'); const H4 = harness(); assert.notEqual(await run(d, H4, 'resume'), 0); assert.equal(H4.calls.length, 0);
+});
+
+test('CRASH 3221226505 (0xC0000409) at the schema probe: failure is reported, a REDACTED diagnostic is saved (hex code, wrangler_started, reached_cloudflare), nothing deploys, secrets+evidence untouched', async () => {
+  const H = harness({ plan: ({ kind, calls }) => (kind === 'wrangler:d1' ? { result: { status: 3221226505, stdout: '', stderr: 'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING) for james@example.com' } } : {}) });
+  fs.writeFileSync(path.join(H.home, 'secrets.json'), JSON.stringify({ admin: 'a'.repeat(64), staff: { ceo: 'b'.repeat(64), ops: 'c'.repeat(64), approver: 'd'.repeat(64) } })); fs.writeFileSync(path.join(H.home, 'evidence.json'), '{"keep":1}'); const before = fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8');
+  assert.notEqual(await run(mkBundle(), H, 'resume'), 0); assert.ok(!H.calls.some((c) => c.kind === 'wrangler:deploy' || c.kind === 'wrangler:secret-put'));
+  const d = fs.readdirSync(path.join(H.home, 'diagnostics')).filter((f) => f.startsWith('diag-')); assert.equal(d.length, 1); const j = JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', d[0]), 'utf8'));
+  assert.equal(j.exit_code, 3221226505); assert.equal(j.exit_code_hex, '0xC0000409'); assert.equal(j.wrangler_started, false); assert.equal(j.reached_cloudflare, false); assert.ok(!JSON.stringify(j).includes('james@example.com')); assert.ok(!JSON.stringify(j).includes('a'.repeat(64)));
+  assert.equal(fs.readFileSync(path.join(H.home, 'secrets.json'), 'utf8'), before, 'secrets file byte-identical'); assert.equal(fs.readFileSync(path.join(H.home, 'evidence.json'), 'utf8'), '{"keep":1}', 'evidence untouched when the run stops before acceptance');
+});
+test('existing secrets are never rewritten by any step (content AND mtime preserved)', async () => {
+  const H = harness(); const f = path.join(H.home, 'secrets.json'); fs.writeFileSync(f, JSON.stringify({ admin: 'a'.repeat(64), staff: { ceo: 'b'.repeat(64), ops: 'c'.repeat(64), approver: 'd'.repeat(64) } })); const old = new Date(Date.now() - 86400000); fs.utimesSync(f, old, old); const m0 = fs.statSync(f).mtimeMs;
+  assert.equal(await run(mkBundle(), H, 'resume'), 0); assert.equal(fs.statSync(f).mtimeMs, m0); assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).admin, 'a'.repeat(64));
+});
+test('Windows quoting: SQL/paths with spaces, quotes and parentheses survive cmd.exe splitting; plain tokens untouched; the probe passes SQL via a FILE (no spaces on the command line)', async () => {
+  assert.equal(quoteWin('wrangler.json'), 'wrangler.json'); assert.equal(quoteWin('--remote'), '--remote'); assert.equal(quoteWin('C:\\Users\\James\\.bula-acceptance\\probe.sql'), 'C:\\Users\\James\\.bula-acceptance\\probe.sql');
+  assert.equal(quoteWin("SELECT name FROM t WHERE x IN ('a','b')"), "\"SELECT name FROM t WHERE x IN ('a','b')\""); assert.equal(quoteWin('C:\\Users\\Jane Doe\\x.sql'), '"C:\\Users\\Jane Doe\\x.sql"'); assert.equal(quoteWin('say "hi"'), '"say \\"hi\\""');
+  const H = harness(); assert.equal(await run(mkBundle(), H, 'resume'), 0); const probe = H.calls.find((c) => c.args.some((a) => /probe\.sql/.test(a))); assert.ok(probe.args.every((a) => !/\s/.test(a) || a.length < 2)); assert.match(fs.readFileSync(path.join(H.home, 'probe.sql'), 'utf8'), /sqlite_master/);
+  assert.deepEqual(diagnose('x', { out: '', reason: 'exit code 5', code: 5 }).exit_code_hex, '0x5'); assert.equal(redact('Bearer abc.def and me@x.io'), 'Bearer *** and <email>');
+});
+test('`diagnose` step: read-only environment report (versions, wrangler login state, schema probe), redacted, saved; no deploy or schema write', async () => {
+  const H = harness({ plan: ({ kind, calls }) => ({}) }); assert.equal(await run(mkBundle(), H, 'diagnose'), 0, H.errs.join('|')); assert.ok(!H.calls.some((c) => ['wrangler:deploy', 'wrangler:secret-put'].includes(c.kind) || c.args.includes('schema.sql')));
+  const f = fs.readdirSync(path.join(H.home, 'diagnostics')).find((n) => n.startsWith('environment-')); assert.ok(f); const j = JSON.parse(fs.readFileSync(path.join(H.home, 'diagnostics', f), 'utf8')); assert.ok(j.node && j.schema_probe === 'ok');
 });

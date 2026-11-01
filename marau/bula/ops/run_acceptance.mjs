@@ -1,5 +1,5 @@
 // Hosted acceptance orchestrator for the ISOLATED synthetic candidate (Worker marau-bula-acceptance + D1 6c54341a-…). Run where `wrangler` is logged in (James's PC).
-//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | prepare | schema | deploy | accept | phone | lockdown | resume | all
+//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | diagnose | prepare | schema | deploy | accept | phone | lockdown | resume | all
 // Safety: NOTHING touches Cloudflare until (1) every bundle file matches BUNDLE.json sha256 and (2) the generated wrangler.json is proven to target ONLY the
 // acceptance Worker + database (allowlisted keys; no routes/zones/custom domains/other bindings; email sending off). Any subprocess launch error, signal
 // interruption, missing exit code or non-zero exit is a FAILURE. `all` exits non-zero on any failure and creates the phone QR only after acceptance passed.
@@ -34,6 +34,15 @@ export function verifyBundle(B) {
   return { meta, config: c };
 }
 
+/** Windows cmd.exe (needed to launch npx/npm) splits unquoted arguments on spaces: quote anything that is not a plain token. */
+export function quoteWin(a) { const x = String(a); return /^[A-Za-z0-9_@%+=:,./\\-]+$/.test(x) ? x : `"${x.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`; }
+/** Redacted diagnostic for a failed subprocess: what ran, how it ended, whether Wrangler started and whether it reached Cloudflare (from its own output). No secrets, no emails. */
+export function redact(t, secrets = []) { let o = String(t || ''); for (const x of secrets) if (x) o = o.split(x).join('***'); return o.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '<email>').replace(/\b[0-9a-f]{32,}\b/gi, '<hex>').replace(/Bearer\s+\S+/gi, 'Bearer ***').replace(/\x1b\[[0-9;]*m/g, ''); }
+export function diagnose(label, r, extra = {}) {
+  const out = String(r.out || ''); const code = typeof r.code === 'number' ? r.code : null;
+  return { label, at: new Date().toISOString(), reason: r.reason, exit_code: code, exit_code_hex: code === null ? null : '0x' + (code >>> 0).toString(16).toUpperCase(), signal: /interrupted by (\w+)/.exec(r.reason || '')?.[1] || null,
+    wrangler_started: /wrangler|⛅|Cloudflare/i.test(out), reached_cloudflare: /api\.cloudflare\.com|\[API|Executing on remote|Resource location|Uploaded|Deployed|Total Upload|Success/i.test(out), output_bytes: out.length,
+    output_tail_redacted: redact(out.slice(-1500), extra.secrets), node: process.version, platform: process.platform, ...(extra.info || {}) }; }
 /** Every subprocess goes through here: launch error / signal / missing code / non-zero => ok:false with a reason. */
 export function runProc(spawn, cmd, args, opts = {}) {
   let r; try { r = spawn(cmd, args, { encoding: 'utf8', ...opts }); } catch (e) { return { ok: false, reason: `launch error: ${e && e.message}`, out: '' }; }
@@ -51,18 +60,31 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
   const rnd = () => crypto.randomBytes(32).toString('hex');
   const load = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
   const save = (f, o) => fs.writeFileSync(f, JSON.stringify(o, null, 2), { mode: 0o600 });
-  const wr = (args, input) => runProc(spawn, 'npx', ['--yes', 'wrangler@3', ...args], { cwd: B, input, shell: win });
+  const q = (a) => (win ? quoteWin(a) : a);
+  const diagDir = path.join(home, 'diagnostics'); const keep = (label, r, extra) => { try { fs.mkdirSync(diagDir, { recursive: true, mode: 0o700 }); fs.writeFileSync(path.join(diagDir, `diag-${Date.now()}-${label.replace(/\W+/g, '_')}.json`), JSON.stringify(diagnose(label, r, extra), null, 2), { mode: 0o600 }); } catch { /* diagnostics are best-effort */ } };
+  const wr = (args, input, label = args.slice(0, 2).join('-')) => { const r = runProc(spawn, 'npx', ['--yes', 'wrangler@3', ...args.map(q)], { cwd: B, input, shell: win }); if (!r.ok) { const sec = load(SEC, null); keep(label, r, { secrets: sec ? [sec.admin, ...Object.values(sec.staff || {})] : [] }); } return r; };
   let verified = null;
   const need = () => { if (!verified) throw new Fail('bundle not verified'); return verified; };
   const R = {
     verify() { verified = verifyBundle(B); log(`bundle verified: commit ${verified.meta.commit} — targets only ${TARGET.worker} / ${TARGET.dbName}; email sending off; no routes`); },
-    prepare() { need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const s = load(SEC, null) || { admin: rnd(), staff: { ceo: rnd(), ops: rnd(), approver: rnd() }, created: new Date().toISOString() }; save(SEC, s); log('secrets ready (not printed):', SEC); return s; },
+    prepare() { need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const existing = load(SEC, null); const s = existing || { admin: rnd(), staff: { ceo: rnd(), ops: rnd(), approver: rnd() }, created: new Date().toISOString() }; if (!existing) save(SEC, s); log(existing ? 'existing secrets kept unchanged (not printed):' : 'secrets generated (not printed):', SEC); return s; },
     schema() { need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--file', 'schema.sql', '-c', 'wrangler.json']); if (!r.ok) throw new Fail(`schema step failed (${r.reason})\n${r.out.slice(-1200)}`); log(`schema applied to ${TARGET.dbName} ONLY`); },
     /** Read-only probe of the TARGET database: all expected tables present => the schema need not be applied again. */
     schemaPresent() {
-      need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--json', '--command', "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('bula_offers','bula_audit','bula_holds','marau_test_bookings','guest_sessions')", '-c', 'wrangler.json']);
-      if (!r.ok) throw new Fail(`could not read ${TARGET.dbName} (${r.reason})`); const got = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'].filter((t) => r.out.includes(`"${t}"`));
-      if (got.length !== 5) throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${got.length}/5 tables) — use the 'all' step, not 'resume'`); log(`schema already present in ${TARGET.dbName} — not re-applied`);
+      need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const probe = path.join(home, 'probe.sql'); const want = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'];
+      fs.writeFileSync(probe, `SELECT name FROM sqlite_master WHERE type='table' AND name IN (${want.map((n) => `'${n}'`).join(',')});\n`);   // SQL travels in a file: no spaces/quotes on the command line, same invocation shape as the proven schema step
+      const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--json', '--file', probe, '-c', 'wrangler.json'], undefined, 'schema-probe'); if (!r.ok) throw new Fail(`could not read ${TARGET.dbName} (${r.reason}); a redacted diagnostic was saved in ${diagDir}`);
+      const txt = r.out.replace(/\x1b\[[0-9;]*m/g, ''); let rows = null; for (const m of txt.matchAll(/\[\s*\{[\s\S]*\}\s*\]/g)) { try { const j = JSON.parse(m[0]); if (Array.isArray(j)) { rows = j.flatMap((x) => (x && x.results) || []); break; } } catch { /* try next */ } }
+      if (!rows) throw new Fail('schema probe returned output that could not be parsed — refusing to guess'); const got = want.filter((t) => rows.some((x) => x.name === t));
+      if (got.length !== want.length) throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${got.length}/${want.length} tables) — use the 'all' step, not 'resume'`); log(`schema already present in ${TARGET.dbName} (${got.length}/${want.length} tables) — not re-applied`);
+    },
+    /** Read-only environment diagnostic (no deploy, no writes to Cloudflare): versions + wrangler login state + the schema probe. Output is redacted and saved under diagnostics/. */
+    diagnose() {
+      need(); const info = {}; const v = (k, cmd, args) => { const r = runProc(spawn, cmd, args, { shell: win }); info[k] = r.ok ? redact(r.out).trim().slice(0, 120) : `FAILED (${r.reason})`; };
+      v('node', node, ['--version']); v('npm', 'npm', ['--version']); v('npx_wrangler', 'npx', ['--yes', 'wrangler@3', '--version']);
+      const who = wr(['whoami'], undefined, 'whoami'); info.whoami = who.ok ? redact(who.out).split('\n').filter((l) => /logged in|account|oauth|scopes|not authenticated/i.test(l)).join(' | ').slice(0, 300) : `FAILED (${who.reason})`;
+      let probe = 'ok'; try { R.schemaPresent(); } catch (e) { probe = e.message.split('\n')[0]; } info.schema_probe = probe;
+      fs.mkdirSync(diagDir, { recursive: true, mode: 0o700 }); const f = path.join(diagDir, `environment-${Date.now()}.json`); fs.writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), platform: process.platform, ...info }, null, 2), { mode: 0o600 }); log('diagnostic saved:', f); log(JSON.stringify(info, null, 2));
     },
     deploy(flagsOff = false) {
       const { meta } = need(); const s = R.prepare(); const p = wr(['secret', 'put', 'MARAU_ADMIN_TEST_TOKEN', '-c', 'wrangler.json'], s.admin + '\n'); if (!p.ok) throw new Fail(`secret put failed (${p.reason})\n${p.out.slice(-600).split(s.admin).join('***')}`);
@@ -106,7 +128,7 @@ export async function main(argv, deps = {}) {
     if (step === 'verify') return 0;
     if (step === 'all') { R.prepare(); R.schema(); R.deploy(false); R.accept(); R.phone(); return 0; }
     if (step === 'resume') { R.prepare(); R.schemaPresent(); R.deploy(false); R.accept(); R.phone(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
-    const one = { prepare: R.prepare, schema: R.schema, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
+    const one = { diagnose: R.diagnose, prepare: R.prepare, schema: R.schema, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
     if (!one) { err('unknown step'); return 2; } one(); return 0;
   } catch (e) { err(e instanceof Fail ? `STOPPED: ${e.message}` : `STOPPED (unexpected): ${e && e.message}`); return 1; }
 }
