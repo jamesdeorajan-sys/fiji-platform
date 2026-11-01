@@ -24,6 +24,7 @@ BULA_EDITION_PUBLISH_ENABLED = "on"
 BULA_FAULT_HARNESS = "on"
 BULA_DEVICE_PAIRING = "on"
 BULA_OUTBOX_ENABLED = "off"
+BULA_SOURCE_SYNC = "off"      # saved-booking adapter for the real-booking sync mirror; needs the outbox flag too; no live source exists
 BULA_EMAIL_SEND_ENABLED = "off"
 BULA_POLICY_VERSION = "synthetic-acceptance-1"
 BULA_CATALOGUE_HIDDEN_OPERATORS = "op_acc,op_acc_sched"

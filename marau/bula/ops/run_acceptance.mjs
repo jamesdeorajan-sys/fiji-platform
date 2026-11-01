@@ -9,7 +9,7 @@ import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'
 export const TARGET = Object.freeze({ worker: 'marau-bula-acceptance', dbName: 'bula-acceptance-synthetic-1', dbId: '6c54341a-6c21-4314-b514-bb44ed5fa1b5', account: '595101df2c562b3c65595420d43f9fe1' });
 const HASHED = ['worker.js', 'schema.sql', 'wrangler.json', 'hosted_acceptance.mjs', 'migration_0047.sql'];
 const TOP_KEYS = new Set(['name', 'main', 'compatibility_date', 'account_id', 'workers_dev', 'd1_databases', 'triggers', 'vars']);
-const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING']);
+const FLAG_VARS = new Set(['BULA_SYNTHETIC_TEST', 'BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_OUTBOX_ENABLED', 'BULA_EMAIL_SEND_ENABLED', 'BULA_DEVICE_PAIRING', 'BULA_SOURCE_SYNC']);
 const OTHER_VARS = new Set(['BULA_POLICY_VERSION', 'BULA_BUILD', 'BULA_COMMIT', 'BULA_CATALOGUE_HIDDEN_OPERATORS', 'BULA_CRON_ONLY_OPERATORS']);
 const OFF = (v) => v === 'off';
 
