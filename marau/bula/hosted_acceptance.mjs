@@ -23,6 +23,14 @@ const wallet = async (t) => (await api('GET', '/preview/bula/offers', { tok: t }
 const stat = async (t, id) => { const o = await wallet(t); const c = (o.cards || []).find((x) => x.offerId === id); return { remaining: c ? c.remaining : null, avail: o.wallet ? o.wallet.availableCents : null, reserved: o.wallet ? o.wallet.reservedCents : null }; };
 const myHolds = async (t) => (await api('GET', '/preview/bula/holds', { tok: t })).d.holds;
 
+// ---- MODE=phone: create ONE fresh synthetic guest + a today offer (published now) + a tomorrow offer (left approved: the 18:00 cron must release it); write the link to a LOCAL file only ----
+if (process.env.MODE === 'phone') {
+  const a = await mkOffer(`${run}-PHONE-TODAY`, 6); const t2 = fj(now + 24 * H); const co2 = fj(now + 20 * H);
+  const row = [`${run}-PHONE-TMRW`, 'SYNTHETIC Island Day Cruise (tomorrow)', 'op_acc', t2.date, '09:00', 'Denarau', 'person', '150.00', '25', 'seat', '8', `${t2.date} 07:00`, 'Lunch', '', '', 'Free cancel up to 24h before', '24', '24', 'vakaviti', '120', 'no', ''].join(','); void co2;
+  const i2 = await api('POST', '/preview/admin/bula/offers/import', { staff: T.ops, body: { csv: cols + '\n' + row } }); const a2 = i2.d && i2.d.created ? await api('POST', `/preview/admin/bula/offers/${run}-PHONE-TMRW/approve`, { staff: T.approver, body: {} }) : i2;
+  await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const tok = await guest(1);
+  const link = `${BASE}/bula#tok=${tok}`; fs.writeFileSync(path.join(OUT, 'phone-link.txt'), link + '\n', { mode: 0o600 });
+  console.log(`phone setup: today offer ${a.app.s === 200 ? 'ready' : 'FAILED'}, tomorrow offer ${a2.s === 200 ? 'approved (cron will release at 18:00 Fiji)' : 'FAILED'}; link written to phone-link.txt (local only)`); process.exit(0); }
 // ---- setup: offers, publish, schedule-test offer (left approved; ONLY the cron may publish it) ----
 for (const [id, cap] of [[`${run}-RACE`, 3], [`${run}-FAULT`, 6], [`${run}-ONE`, 2]]) { const r = await mkOffer(id, cap); rec(`offer ${id} import+approve (ops imports, a second person approves)`, r.imp.s < 300 && r.app.s === 200, { imp: r.imp.s, app: r.app.s, err: r.imp.d && r.imp.d.errors }); }
 rec('publish (ceo)', (await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} })).s === 200, {});

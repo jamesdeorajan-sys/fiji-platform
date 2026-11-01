@@ -23,7 +23,14 @@ function deploy(flagsOff = false) {
 async function accept() {
   const s = prepare(), st = load(STATE, {}); if (!st.url) { console.error('deploy first'); process.exit(1); }
   const r = spawnSync(process.execPath, [path.join(B, 'hosted_acceptance.mjs')], { encoding: 'utf8', env: { ...process.env, BASE: st.url, SECRETS_FILE: SEC, STATE_FILE: STATE, OUT_DIR: HOME } });
-  process.stdout.write(r.stdout.split('\n').filter((l) => !/tok_|stf_|"access_token"/.test(l)).join('\n')); process.stderr.write(r.stderr.slice(-600)); console.log('evidence file:', path.join(HOME, 'evidence.json')); process.exit(r.status || 0);
+  process.stdout.write(r.stdout.split('\n').filter((l) => !/tok_|stf_|"access_token"/.test(l)).join('\n')); process.stderr.write(r.stderr.slice(-600)); console.log('evidence file:', path.join(HOME, 'evidence.json')); if (step !== 'all') process.exit(r.status || 0); return r.status || 0;
 }
-const run = { prepare, schema, deploy: () => deploy(false), accept, lockdown: () => deploy(true) };
-if (step === 'all') { prepare(); schema(); deploy(false); await accept(); } else if (run[step]) await run[step](); else { console.error('unknown step'); process.exit(2); }
+function phone() {
+  const s = prepare(), st = load(STATE, {}); if (!st.url) { console.error('deploy first'); process.exit(1); }
+  const r = spawnSync(process.execPath, [path.join(B, 'hosted_acceptance.mjs')], { encoding: 'utf8', env: { ...process.env, BASE: st.url, SECRETS_FILE: SEC, OUT_DIR: HOME, MODE: 'phone' } }); process.stdout.write(r.stdout.split('\n').filter((l) => !/tok_/.test(l)).join('\n')); if (r.status) { process.stderr.write(r.stderr.slice(-500)); process.exit(1); }
+  const inst = spawnSync('npm', ['install', '--prefix', HOME, '--no-audit', '--no-fund', 'qrcode@1'], { encoding: 'utf8', shell: process.platform === 'win32' }); if (inst.status) { console.log('QR package unavailable; open phone-link.txt and send the link to your phone yourself'); return; }
+  const qr = path.join(HOME, 'node_modules', 'qrcode'); const code = `const Q=require(${JSON.stringify(qr)});const fs=require('fs');const u=fs.readFileSync(${JSON.stringify(path.join(HOME, 'phone-link.txt'))},'utf8').trim();Q.toFile(${JSON.stringify(path.join(HOME, 'phone-qr.png'))},u,{width:480},e=>{if(e)process.exit(1)})`;
+  const q = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8' }); console.log(q.status ? 'QR failed' : 'QR image: ' + path.join(HOME, 'phone-qr.png') + '  (open it and scan with the iPhone camera; do not share it)');
+}
+const run = { phone, prepare, schema, deploy: () => deploy(false), accept, lockdown: () => deploy(true) };
+if (step === 'all') { prepare(); schema(); deploy(false); await accept(); phone(); } else if (run[step]) await run[step](); else { console.error('unknown step'); process.exit(2); }
