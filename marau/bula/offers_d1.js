@@ -137,13 +137,17 @@ export async function withdrawOffer(db, offerId, actor, nowMs) {
 export async function runPublisher(db, cfg, nowMs, runId = `run-${nowMs}`) {
   if (!cfg.editionPublishEnabled) return { skipped: 'edition_publish_disabled' };
   const latest = latestVisibleServiceDate(nowMs);
+  // Publication is audited IN THE SAME BATCH as the state change: an audit row is written only when rows actually changed (changes() of the statement just before it),
+  // so a 15-minute no-op sweep leaves no noise and a change can never exist without its audit record. actor = the trigger (cron:<ms> | lazy-guest | manual:<staff>).
   const res = await db.batch([
     db.prepare("UPDATE bula_offers SET status = 'expired', updated_at = ? WHERE status IN ('approved','scheduled','published') AND booking_cutoff_utc <= ?").bind(nowMs, nowMs),
+    db.prepare("INSERT INTO bula_audit (at, actor, action, subject, detail) SELECT ?, ?, 'offers_expired', ?, (SELECT group_concat(offer_id) FROM bula_offers WHERE status = 'expired' AND updated_at = ?) WHERE changes() > 0").bind(nowMs, runId, latest, nowMs),
     db.prepare("UPDATE bula_offers SET status = 'published', published_at = ?, updated_at = ? WHERE status IN ('approved','scheduled') AND approved_by IS NOT NULL AND booking_cutoff_utc > ? AND service_date <= ?").bind(nowMs, nowMs, nowMs, latest),
+    db.prepare("INSERT INTO bula_audit (at, actor, action, subject, detail) SELECT ?, ?, 'edition_published', ?, (SELECT group_concat(offer_id) FROM bula_offers WHERE status = 'published' AND published_at = ?) WHERE changes() > 0").bind(nowMs, runId, latest, nowMs),
     db.prepare("UPDATE bula_offers SET status = 'scheduled', updated_at = ? WHERE status = 'approved' AND approved_by IS NOT NULL AND service_date > ?").bind(nowMs, latest),
     db.prepare("INSERT OR IGNORE INTO bula_editions (service_date, published_at, offer_count, run_id) SELECT ?, ?, COUNT(*), ? FROM bula_offers WHERE service_date = ? AND status = 'published' HAVING COUNT(*) > 0").bind(latest, nowMs, runId, latest),
   ]);
-  return { serviceDate: latest, expired: res[0].meta.changes, published: res[1].meta.changes, scheduled: res[2].meta.changes };
+  return { serviceDate: latest, expired: res[0].meta.changes, published: res[2].meta.changes, scheduled: res[4].meta.changes };
 }
 /** Guest cards, separated into "today" (still bookable, released yesterday evening) and "tomorrow" (released at 18:00). */
 export async function listEdition(db, cfg, nowMs, partyKey = null) {

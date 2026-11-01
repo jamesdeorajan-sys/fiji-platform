@@ -34,7 +34,6 @@ if (process.env.MODE === 'phone') {
 // ---- setup: offers, publish, schedule-test offer (left approved; ONLY the cron may publish it) ----
 for (const [id, cap] of [[`${run}-RACE`, 3], [`${run}-FAULT`, 6], [`${run}-ONE`, 2]]) { const r = await mkOffer(id, cap); rec(`offer ${id} import+approve (ops imports, a second person approves)`, r.imp.s < 300 && r.app.s === 200, { imp: r.imp.s, app: r.app.s, err: r.imp.d && r.imp.d.errors }); }
 rec('publish (ceo)', (await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} })).s === 200, {});
-const sched = await mkOffer(`${run}-SCHED`, 2); const schedState0 = (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === `${run}-SCHED`);
 const toks = await Promise.all(Array.from({ length: 12 }, (_, i) => guest(i)));
 // ---- 1. authentication ----
 rec('auth: admin credential alone is not a person; unknown staff token refused', (await api('GET', '/preview/admin/bula/me')).s === 401 && (await api('GET', '/preview/admin/bula/me', { staff: crypto.randomBytes(8).toString('hex') })).s === 401, {});
@@ -66,9 +65,16 @@ rec('ownership: another guest cannot cancel/release the hold', (await api('POST'
 if (!SKIP) { const co = await mkOffer(`${run}-CUT`, 2, { startInMs: 2 * H, cutoffInMs: 2 * M }); await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const pre = await api('POST', '/preview/bula/reserve', { tok: toks[5], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'pre' } });
   const cutMs = Date.parse(fj(now + 2 * M).date + 'T00:00:00Z'); void cutMs; await wait(3.2 * M); const post = await api('POST', '/preview/bula/reserve', { tok: toks[6], body: { offer_id: `${run}-CUT`, version: 1, qty: 1, idem_key: 'post' } });
   rec('cutoff: reserve accepted before the cutoff, refused after (server clock)', co.app.s === 200 && pre.s === 201 && post.d && post.d.code === 'past_cutoff', { pre: pre.s, post: post.d && post.d.code }); }
-// ---- 5. scheduler: the offer left 'approved' must be published by the cron alone ----
-rec('scheduler precondition: SCHED offer is approved and unpublished before the cron runs', schedState0 && schedState0.status === 'approved', { status: schedState0 && schedState0.status });
-if (!SKIP) { let st = 'approved'; const t0 = Date.now(); while (Date.now() - t0 < 17 * M) { st = (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === `${run}-SCHED`).status; if (st !== 'approved') break; await wait(30e3); }
-  rec('scheduler: cron (*/15) published the approved offer with no request calling the publisher', st === 'published', { status: st, waitedSec: Math.round((Date.now() - t0) / 1000) }); const audit = (await api('GET', '/preview/admin/bula/audit', { staff: T.ceo })).d; rec('scheduler: publish is audited as cron', JSON.stringify(audit).includes('cron'), {}); }
+// ---- 5. scheduler (LAST, in isolation): the offer is created and approved now, then ONLY admin reads are made — no guest request (the guest route can lazy-publish)
+// and no manual publish — until it is published. It passes only if the publication audit row names a cron trigger and this offer. (A 2026-11-01 run showed why: an offer
+// created earlier had been released ~1.5 s later by the guest route, not by the cron, and no audit row existed to tell the difference.) ----
+if (!SKIP) {
+  const id = `${run}-SCHED`; const mk = await mkOffer(id, 2); const readOffer = async () => (await api('GET', '/preview/admin/bula/offers', { staff: T.ops })).d.offers.find((o) => o.offer_id === id);
+  const pre = await readOffer(); rec('scheduler precondition (re-read immediately before waiting): offer approved and unpublished', mk.app.s === 200 && pre && pre.status === 'approved', { status: pre && pre.status });
+  let st = pre && pre.status; const t0 = Date.now(); while (Date.now() - t0 < 17 * M) { await wait(30e3); st = (await readOffer()).status; if (st !== 'approved' && st !== 'scheduled') break; }
+  const audit = (await api('GET', '/preview/admin/bula/audit', { staff: T.ceo })).d.audit || []; const row = audit.find((r) => r.action === 'edition_published' && String(r.detail || '').split(',').includes(id));
+  rec('scheduler: the approved offer was published with no guest or manual publish call in the window', st === 'published', { status: st, waitedSec: Math.round((Date.now() - t0) / 1000) });
+  rec('scheduler: publication audit row exists, names this offer, and its trigger is the cron', !!row && /^cron:\d+$/.test(row.actor), { actor: row ? (/^cron:\d+$/.test(row.actor) ? 'cron:<ms>' : row.actor) : null, found: !!row });
+}
 const verify = { run, base: new URL(BASE).host, commit: ver.commit, results: ev, failed: fails, finished: new Date().toISOString() };
 fs.writeFileSync(path.join(OUT, 'evidence.json'), JSON.stringify(verify, null, 2)); console.log(`SUMMARY ${ev.length - fails}/${ev.length} passed`); process.exit(fails ? 1 : 0);

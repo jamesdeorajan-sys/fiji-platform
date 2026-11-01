@@ -115,3 +115,13 @@ test('SOURCE CONTRACT (reader -> snapshot): optional passengers/luggage/add-ons/
   assert.deepEqual([future.passengers, future.luggage, future.add_ons, future.discount_minor, future.total_minor], [3, 5, 'child seat', 1000, 17000]);   // total is the source's saved total, not recomputed from the discount
   for (const bad of [{ passengers: 'three' }, { add_ons: { x: 1 } }, { discount_amount: 'ten' }]) await assert.rejects(() => rd(body(bad))('7'), /SOURCE_MALFORMED_FIELD_/);
 });
+test('PUBLICATION AUDIT: every publish is audited in the same batch with its trigger and the exact offer ids; no-op sweeps write nothing; a fault mid-batch rolls the publication back', async () => {
+  const on = schedEnv({ BULA_EDITION_PUBLISH_ENABLED: 'on', BULA_POLICY_VERSION: 'p1' }); await seedOffer(on.DB, { offer_id: 'A1', status: 'approved', approved_by: 'james' });
+  const t = FIJI('2026-11-02T18:00:00'); await bulaScheduled(on, t); await bulaScheduled(on, t + 900000); await bulaScheduled(on, t + 1800000);         // 3 sweeps, only the first changes anything
+  const rows = (await on.DB.prepare("SELECT actor, action, subject, detail FROM bula_audit WHERE action LIKE 'edition_%' OR action LIKE 'offers_%'").all()).results;
+  assert.equal(rows.length, 1); assert.deepEqual([rows[0].actor, rows[0].action, rows[0].detail], [`cron:${t}`, 'edition_published', 'A1']);
+  await seedOffer(on.DB, { offer_id: 'A2', status: 'approved', approved_by: 'james' }); await runPublisher(on.DB, C, t + 3600000, 'manual:ceo1'); const m = (await on.DB.prepare("SELECT actor, detail FROM bula_audit WHERE action='edition_published' ORDER BY seq DESC LIMIT 1").first()); assert.deepEqual([m.actor, m.detail], ['manual:ceo1', 'A2']);
+  const db = mem(); await seedOffer(db, { offer_id: 'F1', status: 'approved', approved_by: 'james' }); db.fault.after = 3;                             // crash after the publish UPDATE, before the audit row
+  await assert.rejects(() => runPublisher(db, C, FIJI('2026-11-02T19:00:00'), 'cron:x')); db.fault.after = null;
+  assert.equal((await db.prepare("SELECT status FROM bula_offers WHERE offer_id='F1'").first()).status, 'approved'); assert.equal((await db.prepare("SELECT COUNT(*) n FROM bula_audit").first()).n, 0);
+});

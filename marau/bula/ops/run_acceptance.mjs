@@ -1,5 +1,5 @@
 // Hosted acceptance orchestrator for the ISOLATED synthetic candidate (Worker marau-bula-acceptance + D1 6c54341a-…). Run where `wrangler` is logged in (James's PC).
-//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | prepare | schema | deploy | accept | phone | lockdown | all
+//   node run_acceptance.mjs <bundleDir> <step>      steps: verify | prepare | schema | deploy | accept | phone | lockdown | resume | all
 // Safety: NOTHING touches Cloudflare until (1) every bundle file matches BUNDLE.json sha256 and (2) the generated wrangler.json is proven to target ONLY the
 // acceptance Worker + database (allowlisted keys; no routes/zones/custom domains/other bindings; email sending off). Any subprocess launch error, signal
 // interruption, missing exit code or non-zero exit is a FAILURE. `all` exits non-zero on any failure and creates the phone QR only after acceptance passed.
@@ -58,6 +58,12 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
     verify() { verified = verifyBundle(B); log(`bundle verified: commit ${verified.meta.commit} — targets only ${TARGET.worker} / ${TARGET.dbName}; email sending off; no routes`); },
     prepare() { need(); fs.mkdirSync(home, { recursive: true, mode: 0o700 }); const s = load(SEC, null) || { admin: rnd(), staff: { ceo: rnd(), ops: rnd(), approver: rnd() }, created: new Date().toISOString() }; save(SEC, s); log('secrets ready (not printed):', SEC); return s; },
     schema() { need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--yes', '--file', 'schema.sql', '-c', 'wrangler.json']); if (!r.ok) throw new Fail(`schema step failed (${r.reason})\n${r.out.slice(-1200)}`); log(`schema applied to ${TARGET.dbName} ONLY`); },
+    /** Read-only probe of the TARGET database: all expected tables present => the schema need not be applied again. */
+    schemaPresent() {
+      need(); const r = wr(['d1', 'execute', TARGET.dbName, '--remote', '--json', '--command', "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('bula_offers','bula_audit','bula_holds','marau_test_bookings','guest_sessions')", '-c', 'wrangler.json']);
+      if (!r.ok) throw new Fail(`could not read ${TARGET.dbName} (${r.reason})`); const got = ['bula_offers', 'bula_audit', 'bula_holds', 'marau_test_bookings', 'guest_sessions'].filter((t) => r.out.includes(`"${t}"`));
+      if (got.length !== 5) throw new Fail(`schema not fully present in ${TARGET.dbName} (found ${got.length}/5 tables) — use the 'all' step, not 'resume'`); log(`schema already present in ${TARGET.dbName} — not re-applied`);
+    },
     deploy(flagsOff = false) {
       const { meta } = need(); const s = R.prepare(); const p = wr(['secret', 'put', 'MARAU_ADMIN_TEST_TOKEN', '-c', 'wrangler.json'], s.admin + '\n'); if (!p.ok) throw new Fail(`secret put failed (${p.reason})\n${p.out.slice(-600).split(s.admin).join('***')}`);
       const vars = [`BULA_BUILD:${meta.commit.slice(0, 12)}`, `BULA_COMMIT:${meta.commit}`]; if (flagsOff) for (const f of ['BULA_CHECKOUT_ENABLED', 'BULA_CREDITS_ENABLED', 'BULA_EDITION_PUBLISH_ENABLED', 'BULA_FAULT_HARNESS', 'BULA_SYNTHETIC_TEST']) vars.push(`${f}:off`);
@@ -93,12 +99,13 @@ export function makeRunner({ B, home = path.join(os.homedir(), '.bula-acceptance
 /** Returns the process exit code (0 only on full success). */
 export async function main(argv, deps = {}) {
   const [bundle, step = 'all'] = argv; const err = deps.err || console.error;
-  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|prepare|schema|deploy|accept|phone|lockdown|all>'); return 2; }
+  if (!bundle) { err('usage: node run_acceptance.mjs <bundleDir> <verify|prepare|schema|deploy|accept|phone|lockdown|resume|all>'); return 2; }
   const R = makeRunner({ B: path.resolve(bundle), ...deps });
   try {
     R.verify();                                                    // BEFORE anything else, for every step
     if (step === 'verify') return 0;
     if (step === 'all') { R.prepare(); R.schema(); R.deploy(false); R.accept(); R.phone(); return 0; }
+    if (step === 'resume') { R.prepare(); R.schemaPresent(); R.deploy(false); R.accept(); R.phone(); return 0; }   // schema NOT re-applied; previous evidence is kept (renamed) by accept()
     const one = { prepare: R.prepare, schema: R.schema, deploy: () => R.deploy(false), accept: R.accept, phone: R.phone, lockdown: () => R.deploy(true) }[step];
     if (!one) { err('unknown step'); return 2; } one(); return 0;
   } catch (e) { err(e instanceof Fail ? `STOPPED: ${e.message}` : `STOPPED (unexpected): ${e && e.message}`); return 1; }
