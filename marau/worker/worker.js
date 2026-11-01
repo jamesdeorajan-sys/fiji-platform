@@ -2619,7 +2619,7 @@ export default {
       if (method === 'GET' && pathname === '/icon-512.png') return PNG_RESPONSE(ICON512_PNG_BASE64);
       if (method === 'GET' && pathname === '/icon-180.png') return PNG_RESPONSE(ICON180_PNG_BASE64);
 
-      if (pathname === '/bula' || pathname === '/bula/staff' || pathname.startsWith('/preview/bula/') || pathname.startsWith('/preview/admin/bula/')) { const br = await bulaRoute(request, env, pathname, method); if (br) return br; }
+      if (pathname === '/bula' || pathname === '/bula/staff' || pathname === '/bula/manifest.webmanifest' || pathname.startsWith('/preview/bula/') || pathname.startsWith('/preview/admin/bula/')) { const br = await bulaRoute(request, env, pathname, method); if (br) return br; }
       if (method === 'POST' && pathname === '/preview/bookings') return await handleCreateBooking(request, env);
       if (method === 'GET' && pathname === '/preview/trip') return await handleGetTrip(request, env);
       if (method === 'POST' && pathname === '/preview/trip/revoke') return await handleRevokeTrip(request, env);

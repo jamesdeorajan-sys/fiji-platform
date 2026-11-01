@@ -87,9 +87,7 @@ export async function dispatch(db, cfg, sender, { workerId = 'w1', nowMs, limit 
     let credit = null;
     if (job.recipient_kind === 'guest' && cfg.creditsEnabled) {
       try { credit = await db.prepare('SELECT available_cents, expires_at FROM bula_credit_accounts WHERE party_key = ?').bind(`trip:${job.booking_ref}`).first(); } catch (e) { credit = null; }   // a credit-store fault must never block or crash the email
-      if (!credit && nowMs - job.created_at < (cfg.grantGraceMs ?? 900000)) {   // grant not there yet: wait briefly rather than send an email that omits (or later contradicts) the credit
-        await db.prepare("UPDATE bula_outbox SET state = 'queued', attempts = attempts - 1, lease_owner = NULL, updated_at = ? WHERE job_key = ?").bind(nowMs, job_key).run(); stats.deferred = (stats.deferred || 0) + 1; continue;
-      }
+      // The receipt is never delayed for a promotion: credit is mentioned only if it already exists; otherwise it appears in the trip page wallet once allocated (no second email).
     }
     const out = !b || !s ? { blocked: 'booking_or_session_missing' } : job.recipient_kind === 'guest' ? renderGuest(b, s, cfg, credit) : renderStaff(b, cfg);
     if (out.blocked) { await db.batch([db.prepare("UPDATE bula_outbox SET state = 'blocked', blocked_reason = ?, lease_owner = NULL, updated_at = ? WHERE job_key = ? AND lease_owner = ?").bind(out.blocked, nowMs, job_key, workerId), evt(db, job_key, nowMs, 'blocked', out.blocked)]); stats.blocked++; continue; }

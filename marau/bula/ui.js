@@ -25,7 +25,7 @@ var FIJI=new Intl.DateTimeFormat('en-FJ',{timeZone:'Pacific/Fiji',weekday:'short
 function fj(ms){return FIJI.format(new Date(ms))+' Fiji time'}
 function uuid(){return (crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random())}
 `;
-export const GUEST_UI = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>Bula Happiness — offers</title><link rel="manifest" href="/manifest.json"><style>${CSS}</style></head><body>
+export const GUEST_UI = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>Bula Happiness — offers</title><link rel="manifest" href="/bula/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a4f46"><style>${CSS}</style></head><body>
 <header><h1>Bula Happiness</h1><small>PREVIEW — synthetic test data, no real bookings or payments</small></header>
 <div id="wallet" class="wallet" hidden></div>
 <nav role="tablist"><button role="tab" id="t-offers" aria-selected="true">Offers</button><button role="tab" id="t-mine" aria-selected="false">My bookings</button></nav>
@@ -39,13 +39,15 @@ var STATE={offers:null,holds:null};
 function api(path,opt){opt=opt||{};var h={'authorization':'Bearer '+TOK};if(opt.body){h['content-type']='application/json'}return fetch(path,{method:opt.method||'GET',headers:h,body:opt.body?JSON.stringify(opt.body):undefined,cache:'no-store'}).then(function(r){return r.json().then(function(j){return {status:r.status,data:j}})})}
 function show(tab){$('v-offers').hidden=tab!=='offers';$('v-mine').hidden=tab!=='mine';$('t-offers').setAttribute('aria-selected',tab==='offers');$('t-mine').setAttribute('aria-selected',tab==='mine');if(tab==='mine')loadMine()}
 $('t-offers').onclick=function(){show('offers')};$('t-mine').onclick=function(){show('mine')};
-function noAccess(){var v=$('v-offers');v.textContent='';v.appendChild(el('div','msg bad','This page needs your private trip link. Open the link from your booking email.'))}
+function noAccess(){var v=$('v-offers');v.textContent='';v.appendChild(el('div','msg bad','This page needs your private trip link. Open the link from your booking email (in Safari or Chrome). If you added this page to your Home Screen and see this message, open the email link again.'))}
 function card(o){var c=el('div','card');c.appendChild(el('h3','',o.title));c.appendChild(el('div','mut',fj(o.serviceStartUtc)+' · '+o.pickupZones.split(',').join(', ')));
  var p=el('div','price');if(o.creditCents>0){p.appendChild(el('span','was',fjd(o.offerPriceCents)));}p.appendChild(el('span','net',fjd(o.netPayableCents)));if(o.creditCents>0)p.appendChild(el('span','credit','includes '+fjd(o.creditCents)+' welcome credit'));c.appendChild(p);
  c.appendChild(el('div','mut','Price is per '+(o.pricingBasis==='person'?'person':o.pricingBasis)+' · '+o.remaining+' '+o.capacityUnit+(o.remaining===1?'':'s')+' left · book by '+fj(o.bookingCutoffUtc)));
  c.appendChild(el('span','chip '+(o.instantConfirm?'ok':'wait'),o.instantConfirm?'Instant confirmation':'Request — confirmed by our team'));
  var b=el('button','btn','See details & reserve');b.onclick=function(){openSheet(o)};c.appendChild(b);return c}
-function loadOffers(){if(!TOK)return noAccess();api('/preview/bula/offers').then(function(r){if(r.status===401)return noAccess();var d=r.data;STATE.offers=d;var w=$('wallet');if(d.wallet){w.hidden=false;w.textContent='Welcome credit: '+fjd(d.wallet.availableCents)+' · promotional credit toward eligible offers, no cash value'}
+var RT=null;function schedule(d){if(RT)clearTimeout(RT);if(!d||!d.nextReleaseUtc||!d.serverNowUtc)return;var skew=d.serverNowUtc-Date.now();var delay=d.nextReleaseUtc-(Date.now()+skew)+2000;if(delay>0&&delay<2147000000)RT=setTimeout(loadOffers,delay)}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&TOK)loadOffers()});
+function loadOffers(){if(!TOK)return noAccess();api('/preview/bula/offers').then(function(r){if(r.status===401)return noAccess();var d=r.data;STATE.offers=d;schedule(d);var w=$('wallet');if(d.wallet){w.hidden=false;w.textContent='Welcome credit: '+fjd(d.wallet.availableCents)+' · promotional credit toward eligible offers, no cash value'}
  var v=$('v-offers');v.textContent='';if(d.empty){v.appendChild(el('div','msg',d.message));return}
  [['today','Today — still bookable'],['tomorrow','Tomorrow — released 6 pm Fiji time']].forEach(function(g){var list=d.cards.filter(function(c){return c.group===g[0]});if(!list.length)return;v.appendChild(el('h2','',g[1]));list.forEach(function(o){v.appendChild(card(o))})});
  v.appendChild(el('div','mut','Next release: '+fj(d.nextReleaseUtc)))})}

@@ -10,7 +10,7 @@ export class BulaError extends Error { constructor(code, detail) { super(code); 
 const isRollback = (e) => /bula_assert|CHECK constraint|UNIQUE constraint|FOREIGN KEY/i.test(String(e && e.message));
 const A = (db) => [db.prepare('INSERT INTO bula_assert(ok) SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END'), db.prepare('DELETE FROM bula_assert')];
 const newId = (p) => `${p}_${crypto.randomUUID()}`;
-const requireOn = (cfg, flag) => { if (!cfg[flag] && !cfg.syntheticTest) throw new BulaError('DISABLED', flag); };
+const requireOn = (cfg, flag) => { if (!cfg[flag]) throw new BulaError('DISABLED', flag); };
 
 /* ---- welcome grant: one per explicit party key; replay returns the original --------------------------------- */
 export async function grantWelcome(db, cfg, { partyKey, actor, source, nowMs, cents = cfg.welcomeCents }) {

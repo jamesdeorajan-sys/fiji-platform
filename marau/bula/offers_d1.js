@@ -135,7 +135,7 @@ export async function withdrawOffer(db, offerId, actor, nowMs) {
 }
 /** Idempotent publisher with catch-up. Safe every minute or after an outage. Never publishes unapproved or past-cutoff rows. */
 export async function runPublisher(db, cfg, nowMs, runId = `run-${nowMs}`) {
-  if (!cfg.editionPublishEnabled && !cfg.syntheticTest) return { skipped: 'edition_publish_disabled' };
+  if (!cfg.editionPublishEnabled) return { skipped: 'edition_publish_disabled' };
   const latest = latestVisibleServiceDate(nowMs);
   const res = await db.batch([
     db.prepare("UPDATE bula_offers SET status = 'expired', updated_at = ? WHERE status IN ('approved','scheduled','published') AND booking_cutoff_utc <= ?").bind(nowMs, nowMs),

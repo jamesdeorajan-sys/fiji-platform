@@ -1,41 +1,26 @@
-# Bula Happiness — hosted D1 acceptance plan (NEW isolated synthetic database)
+# Bula Happiness — hosted acceptance runbook (isolated synthetic candidate)
 
-**Status: NOT RUN. Nothing has been created, deployed or migrated.** Local SQLite evidence (node:sqlite) does not prove hosted D1 behaviour; this plan is how that gap is closed.
+Resources (the ONLY ones created/changed): D1 `bula-acceptance-synthetic-1` (id in `wrangler.bula.toml`) and Worker `marau-bula-acceptance` (workers.dev only; no routes, DNS or custom domains). Existing Marau previews and production are untouched.
 
-## What the hosted run must prove (and the local evidence that does not substitute)
-1. **Races**: 12 simultaneous guests on a 3-seat offer → exactly 3 holds, 9 `sold_out`, remaining never < 0 (local: multi-process SQLite only).
-2. **CHECK / `changes()` rollback**: a zero-row guarded UPDATE inside `db.batch()` rolls the whole batch back (the `bula_assert` pattern). D1's batch atomicity and `changes()` semantics must be observed, not assumed.
-3. **Fault recovery**: an interrupted request mid-reserve leaves no half hold; `sweepExpired` settles it exactly once.
-4. **Lease interruption**: outbox job left `sending` → `ambiguous`, never blind-resent (capture sender only; no live sender exists).
-5. **Cutoff / replay**: pre-cutover bookings are never enqueued; idempotent re-run of every sweep.
-6. **Cron**: `0 6 * * *` fires the publisher at 18:00 Fiji; `*/15` catch-up is idempotent.
-7. Cross-party and forged-staff refusals over real HTTPS.
+## Three different credentials — never confused
+1. **Cloudflare deployment credential**: the wrangler login (OAuth) already on James's PC, or the connected Cloudflare connector. A new API token is requested only if both prove insufficient. Cloudflare API tokens cannot be scoped to a Worker/database that does not exist yet; a token limited to *Workers Scripts:Edit + D1:Edit on this account* is the narrowest available, and is not requested at all unless needed.
+2. **App admin secret** `MARAU_ADMIN_TEST_TOKEN`: generated with `crypto.randomBytes(32)` by `bula/ops/run_acceptance.mjs`, stored at `~/.bula-acceptance/secrets.json` (mode 0600, outside any repo), pushed to Cloudflare through wrangler **stdin** (never argv/env/chat/GitHub).
+3. **Per-staff tokens** (ceo / ops / approver): random 256-bit, same file; they are bootstrapped through the admin secret and are the only way to act as a named person.
+The phone link/QR is written only to local files on James's PC; evidence output is redacted (no tokens, no addresses).
 
-`bula/hosted_acceptance.mjs` automates 1, 7 and the idempotency/credit/cancel checks (self-tested locally against `bula/dev_server.mjs`; 11/11 pass locally — **local only**). Items 2–5 need a hosted-only fault harness (a debug route that throws between batch statements, enabled only on this Worker) — not yet written; it is the next step once the database exists.
+## Run (one command, on the PC where wrangler is logged in)
+`node run_acceptance.mjs <bundleDir> all` = prepare secrets → apply ordered schema to the NEW database only → deploy → run `hosted_acceptance.mjs` → write `evidence.json`.
+Steps can be run singly: `prepare | schema | deploy | accept | lockdown`.
 
-## Provisioning permissions needed (James / Cloudflare account owner)
-Scoped to account `595101df…`, **new resources only**:
-- D1: *create* a database named `bula-acceptance-synthetic-1`, and edit (query/migrate) **that database only**.
-- Workers Scripts: *edit* for a **new** Worker `marau-bula-acceptance` (deploy, cron triggers, secrets). No routes, no custom domains, no zone/DNS access.
-- A fresh API token with exactly those two scopes, short-lived (≤7 days), not shared with any other preview. The connected Cloudflare tool in this session can list and query D1 but its create scope is unverified; if it cannot create, James runs the two commands below or grants the token.
-No KV/R2/Queues/Email Routing/Zero Trust are needed.
+## What the hosted run proves
+- **SQL-level rollback**: with `BULA_FAULT_HARNESS=on`, a request header (valid only with the harness key) replaces statement *k* of the D1 batch by SQL that genuinely fails, for **every** position of the reserve, confirm and cancel batches; stock, credit and holds must be unchanged. A JS throw is not used.
+- **Lost response** is separate: server commits, reply is replaced by 504, retry must replay.
+- 12-way race on 3 seats; 6-way idempotent retry; parallel cancels; ownership and forged-staff refusal; role enforcement; cutoff before/after; **cron** publishing an approved offer with no request calling the publisher (`*/15`). The 06:00 UTC (18:00 Fiji) firing itself is observed only on the next real 18:00 and is reported separately.
+- Independent DB-side verification through the Cloudflare connector (table/row counts, invariants).
+Not exercised hosted: outbox lease interruption (no provider/capture sender can exist in a deployed Worker; covered locally only) — stated, not claimed.
 
-## Commands (run only after approval; ordered)
-```
-wrangler d1 create bula-acceptance-synthetic-1          # paste the NEW id into wrangler.bula.toml
-# migrations in this exact order (shared engine 0001-0006, marau 0007-0043, bula 0044-0046):
-wrangler d1 migrations apply bula-acceptance-synthetic-1 --remote -c wrangler.bula.toml   # after pointing each migrations_dir in turn
-printf '%s' "$(openssl rand -hex 32)" | wrangler secret put MARAU_ADMIN_TEST_TOKEN -c wrangler.bula.toml
-wrangler deploy -c wrangler.bula.toml
-BASE=https://marau-bula-acceptance.<subdomain>.workers.dev ADMIN=<that secret> SERVICE_DATE=<Fiji date> BOOKING_CUTOFF="<date> HH:MM" node bula/hosted_acceptance.mjs
-```
-Migration numbering was checked: no remote branch holds Marau migrations ≥ 0044; `0044–0046` are proposed and unapplied anywhere.
+## Flags (acceptance configuration, exactly)
+ON: SYNTHETIC_TEST, CHECKOUT, CREDITS, EDITION_PUBLISH, FAULT_HARNESS. OFF: OUTBOX, EMAIL_SEND. `BULA_SYNTHETIC_TEST` no longer enables any feature by itself (tested: synthetic on + all feature flags off is inert, including `scheduled()`). `lockdown` redeploys with every feature flag and the harness OFF.
 
-## Hosted capture design (synthetic only, short-lived, redacted)
-- Guests: `@example.invalid` emails and `+1500555xxxx` numbers only; refs prefixed `acc…`; created by the script, never imported.
-- Email: capture sender only (no provider). Evidence output contains booking refs, states, counts and HTTP statuses — **no tokens, no addresses**.
-- Credentials: fresh random admin secret unique to this Worker; staff tokens `stf_<run>-<role>` generated per run; none reused from public history; the secret is deleted and the Worker/database removed (by James) after acceptance.
-- Flags: all OFF in `wrangler.bula.toml`; the run enables only the flags it needs via `wrangler deploy --var`, then returns them to OFF.
-
-## Not claimed
-Hosted D1 behaviour, real cron firing, or any physical-device behaviour. Only what the evidence file shows will be reported as hosted.
+## After acceptance
+Order: phone testing → evidence collected → `lockdown` (flags off, harness off) → rotate/revoke the secrets file → only then, with James's separate approval, scoped cleanup (delete Worker, then database). Nothing is torn down before then.

@@ -5,12 +5,12 @@ import path from 'node:path';
 import { createTestD1 } from '../test/d1_sqlite_shim.mjs';
 const args = process.argv.slice(2); const port = Number(args.find((a) => /^\d+$/.test(a)) || 8799);
 const clk = (args.find((a) => a.startsWith('--clock-fiji=')) || '').slice(13);
-if (clk) { const off = Date.parse(clk + ':00Z') - 12 * 3600e3 - Date.now(); const RD = Date; globalThis.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(RD.now() + off); } static now() { return RD.now() + off; } }; console.log(`SIMULATED CLOCK: ${clk} Fiji (offset ${Math.round(off / 60000)} min). Not real time.`); }
+if (clk) { const off = Date.parse(clk + (clk.length === 16 ? ':00' : '') + 'Z') - 12 * 3600e3 - Date.now(); const RD = Date; globalThis.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(RD.now() + off); } static now() { return RD.now() + off; } }; console.log(`SIMULATED CLOCK: ${clk} Fiji (offset ${Math.round(off / 60000)} min). Not real time.`); }
 const { default: worker } = await import('../worker/worker.js');
 const { synthGuest } = await import('../test/fixtures.mjs');
 const { fijiYmd, ymdString } = await import('./edition.js');
-const ADMIN = 'dev-admin-token-synthetic'; const root = process.cwd();
-const env = { DB: createTestD1({ migrationsDirs: [path.join(root, '..', 'smart-return-trigger-fill', 'migrations'), path.join(root, 'migrations'), path.join(root, 'bula', 'migrations')] }), MARAU_ADMIN_TEST_TOKEN: ADMIN, BULA_SYNTHETIC_TEST: 'on', BULA_CREDITS_ENABLED: 'on', BULA_CHECKOUT_ENABLED: 'on', BULA_EDITION_PUBLISH_ENABLED: 'on', BULA_OUTBOX_ENABLED: 'on', BULA_POLICY_VERSION: 'synthetic-dev', BULA_BUILD: 'dev-local', BULA_GUEST_ORIGIN: 'http://localhost:' + port };
+const ADMIN = process.env.DEV_ADMIN || 'dev-admin-token-synthetic'; const root = process.cwd();
+const env = { DB: createTestD1({ migrationsDirs: [path.join(root, '..', 'smart-return-trigger-fill', 'migrations'), path.join(root, 'migrations'), path.join(root, 'bula', 'migrations')] }), MARAU_ADMIN_TEST_TOKEN: ADMIN, BULA_SYNTHETIC_TEST: 'on', BULA_CREDITS_ENABLED: 'on', BULA_CHECKOUT_ENABLED: 'on', BULA_EDITION_PUBLISH_ENABLED: 'on', BULA_OUTBOX_ENABLED: 'on', BULA_POLICY_VERSION: 'synthetic-dev', BULA_BUILD: 'dev-local', BULA_COMMIT: 'abc1234', BULA_FAULT_HARNESS: 'on', BULA_GUEST_ORIGIN: 'http://localhost:' + port };
 const call = (m, p, { tok, staff, body } = {}) => worker.fetch(new Request('http://x' + p, { method: m, headers: { ...(tok ? { authorization: 'Bearer ' + tok } : { authorization: 'Bearer ' + ADMIN }), ...(staff ? { 'x-marau-staff-token': staff } : {}), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }), env);
 for (const [id, role] of [['james', 'ceo'], ['ana', 'ops'], ['ap', 'approver']]) await call('POST', '/preview/admin/bula/staff', { body: { token: 'dev-staff-' + id, staff_id: id, display_name: id, role } });
 const now = Date.now(); const H = 3600e3; const fj = (ms) => new Date(ms + 12 * H).toISOString().slice(0, 16).replace('T', ' ');

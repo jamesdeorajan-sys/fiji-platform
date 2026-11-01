@@ -12,6 +12,7 @@ import { importCsv, approveOffer, editOffer, withdrawOffer, runPublisher, listEd
 import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './outbox_d1.js';
 import { reconcileAll } from './recovery.js';
 import { GUEST_UI, STAFF_UI } from './ui.js';
+import { withSqlFault } from './fault.js';
 
 const H = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const out = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: H });
@@ -49,9 +50,22 @@ function holdView(h) {
 }
 const codeStatus = (c) => ({ unknown_offer: 404, unknown_hold: 404, no_server_authority: 403, ROLE_NOT_PERMITTED: 403, STAFF_IDENTITY_REQUIRED: 401, DISABLED: 403, CREDITS_DISABLED: 403 }[c] || 409);
 
-export async function bulaRoute(request, env, pathname, method) {
+export async function bulaRoute(request, env0, pathname, method) {
+  let env = env0; let faulted = null; const harness = env0.BULA_FAULT_HARNESS === 'on' && !!env0.MARAU_ADMIN_TEST_TOKEN && ctEq(request.headers.get('x-bula-harness-key') || '', env0.MARAU_ADMIN_TEST_TOKEN);   // second header: guest routes already use Authorization for the guest
+  const dropResponse = harness && request.headers.get('x-bula-drop-response') === 'on';
+  const fk = harness ? request.headers.get('x-bula-fault-statement') : null;
+  if (fk !== null && /^\d{1,2}$/.test(fk)) { env = { ...env0, DB: withSqlFault(env0.DB, Number(fk)) }; faulted = env.DB; }
+  const res = await bulaRouteInner(request, env, pathname, method);
+  if (!res) return res;
+  if (faulted) { const h = new Headers(res.headers); h.set('x-bula-fault-injected', faulted.__fault.injected ? 'yes' : 'no'); h.set('x-bula-batch-len', String(faulted.__fault.batchLen ?? '')); return new Response(res.body, { status: res.status, headers: h }); }
+  if (dropResponse) return new Response('response lost (simulated at app layer after commit)', { status: 504 });
+  return res;
+}
+async function bulaRouteInner(request, env, pathname, method) {
   const cfg = loadConfig(env); const nowMs = Date.now();
   try {
+    if (method === 'GET' && pathname === '/bula/manifest.webmanifest') return new Response(JSON.stringify({ id: '/bula', name: 'Bula Happiness', short_name: 'Bula', start_url: '/bula', scope: '/bula', display: 'standalone', background_color: '#f6f4ef', theme_color: '#0a4f46',
+      icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }] }), { headers: { 'content-type': 'application/manifest+json; charset=utf-8', 'cache-control': 'no-cache' } });   // static: never carries a token
     if (method === 'GET' && pathname === '/bula') return page(GUEST_UI);
     if (method === 'GET' && pathname === '/bula/staff') return page(STAFF_UI);
     if (!pathname.startsWith('/preview/bula/') && !pathname.startsWith('/preview/admin/bula/')) return null;
@@ -64,15 +78,15 @@ export async function bulaRoute(request, env, pathname, method) {
       const s = await guestFromRequest(request, env); if (!s) return out({ error: 'unauthorized' }, 401);
       const party = await partyKeyForSession(env.DB, s.session_id);
       if (method === 'GET' && pathname === '/preview/bula/offers') {
-        if (cfg.editionPublishEnabled || cfg.syntheticTest) await runPublisher(env.DB, cfg, nowMs, 'lazy-guest');
+        if (cfg.editionPublishEnabled) await runPublisher(env.DB, cfg, nowMs, 'lazy-guest');
         const ed = await listEdition(env.DB, cfg, nowMs, party); const bal = cfg.creditsEnabled ? await balance(env.DB, party) : null;
-        return out({ ...ed, checkoutEnabled: cfg.checkoutEnabled || cfg.syntheticTest, wallet: bal && { availableCents: bal.available, reservedCents: bal.reserved, expiresAt: bal.expiresAt }, serverNowUtc: nowMs });
+        return out({ ...ed, checkoutEnabled: cfg.checkoutEnabled, wallet: bal && { availableCents: bal.available, reservedCents: bal.reserved, expiresAt: bal.expiresAt }, serverNowUtc: nowMs });
       }
       if (method === 'GET' && pathname === '/preview/bula/holds') {
         const { results } = await env.DB.prepare('SELECT * FROM bula_holds WHERE party_key = ? ORDER BY created_at DESC LIMIT 50').bind(party).all(); return out({ holds: results.map(holdView) });
       }
       if (method === 'POST' && pathname === '/preview/bula/reserve') {
-        if (!(cfg.checkoutEnabled || cfg.syntheticTest)) return out({ error: 'checkout is not enabled' }, 403);
+        if (!cfg.checkoutEnabled) return out({ error: 'checkout is not enabled' }, 403);
         const b = await body(request);
         if (!isStr(b.offer_id, 100) || !isStr(b.idem_key, 100) || !Number.isInteger(b.version) || !Number.isInteger(b.qty) || (b.expected_net_cents !== undefined && !Number.isSafeInteger(b.expected_net_cents))) return out({ error: 'offer_id, version, qty, idem_key (and optional expected_net_cents) are required' }, 400);
         const o = await env.DB.prepare('SELECT * FROM bula_offers WHERE offer_id = ?').bind(b.offer_id).first();

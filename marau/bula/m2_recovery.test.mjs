@@ -39,17 +39,16 @@ for (const k of [1, 2]) test(`failure at job insert #${k}: booking saved; sweep 
   const c = await counts(real); assert.deepEqual([c.bookings, c.jobs, c.grants], [1, 2, 1]);
   assert.equal(new Set(env.BULA_CAPTURE_SENDER.sent.map((m) => m.to)).size, 2); assert.equal(env.BULA_CAPTURE_SENDER.sent.length, 2);
 });
-test('welcome-grant failure: booking and jobs survive; the guest email is DEFERRED (no promise of missing credit), then sent WITH the credit once the grant is repaired', async () => {
+test('welcome-grant failure: booking, jobs and the booking RECEIPT are immediate (no promise of missing credit); once repaired the grant exists exactly once and NO second email is sent', async () => {
   const { real, env } = mk({}, { failOn: { re: /bula_credit_(accounts|ledger)/i, when: () => true } }); await cutover(real);
   assert.equal((await save(env, 'SYN-G1')).status, 201); const c0 = await counts(real); assert.deepEqual([c0.bookings, c0.jobs, c0.grants], [1, 2, 0]);
-  const r1 = await bulaRunOutbox({ ...env, DB: new Proxy(env.DB, {}) }).catch((e) => ({ err: String(e) }));    // grant still failing inside the sweep: guest job deferred
+  await bulaRunOutbox(env);
   const guestMsgs = () => env.BULA_CAPTURE_SENDER.sent.filter((m) => /preview\.guest/.test(m.to));
-  assert.equal(guestMsgs().length, 0, 'guest email must wait while the credit is unresolved'); void r1;
-  const clean = { ...env, DB: real };
-  await bulaRunOutbox(clean); await bulaRunOutbox(clean);
-  assert.equal(await n(real, 'SELECT COUNT(*) n FROM bula_credit_ledger'), 1); assert.equal(guestMsgs().length, 1); assert.match(guestMsgs()[0].text, /Welcome promotional credit: FJ\$500\.00/);
+  assert.equal(guestMsgs().length, 1, 'receipt must not wait for the promotion'); assert.doesNotMatch(guestMsgs()[0].text, /Welcome promotional credit/);
+  const clean = { ...env, DB: real }; await bulaRunOutbox(clean); await bulaRunOutbox(clean);
+  assert.equal(await n(real, 'SELECT COUNT(*) n FROM bula_credit_ledger'), 1); assert.equal(guestMsgs().length, 1, 'no duplicate / contradicting later email');
 });
-test('grant never repaired within the grace window: the guest email goes out WITHOUT any credit promise', async () => {
+test('credits not live: the guest email carries no credit line', async () => {
   const { real, env } = mk({ BULA_CHECKOUT_ENABLED: 'off' }); await cutover(real);                              // credits shown in email only when checkout+credits are both live
   assert.equal((await save(env, 'SYN-G2')).status, 201); await bulaRunOutbox(env);
   const g = env.BULA_CAPTURE_SENDER.sent.find((m) => /preview\.guest/.test(m.to)); assert.ok(g); assert.doesNotMatch(g.text, /credit/i);
@@ -58,12 +57,4 @@ test('replay protection: bookings saved BEFORE the cutover are never enqueued or
   const { real, env } = mk({ BULA_OUTBOX_ENABLED: 'off' }); await save(env, 'SYN-OLD');
   await real.prepare("INSERT OR REPLACE INTO bula_settings (key, value, updated_at) VALUES ('outbox_cutover_iso', ?, 0)").bind(new Date(Date.now() + 60000).toISOString()).run();
   await bulaRunOutbox({ ...env, BULA_OUTBOX_ENABLED: 'on' }); assert.deepEqual(await counts(real), { bookings: 1, jobs: 0, grants: 0, snaps: 0 });
-});
-test('grant still broken AFTER the grace window: guest email is sent without any credit line (never promises a missing grant); the grant is still repaired later, once', async () => {
-  const { real, env } = mk({}, { failOn: { re: /bula_credit_(accounts|ledger)/i, when: () => true } }); await cutover(real);
-  await save(env, 'SYN-G3'); const later = Date.now() + 20 * 60000;
-  await bulaRunOutbox(env, later);
-  const g = env.BULA_CAPTURE_SENDER.sent.find((m) => /preview\.guest/.test(m.to)); assert.ok(g, 'sent after grace'); assert.doesNotMatch(g.text, /Welcome promotional credit/);
-  await bulaRunOutbox({ ...env, DB: real }, later + 1000); await bulaRunOutbox({ ...env, DB: real }, later + 2000);
-  assert.equal(await n(real, 'SELECT COUNT(*) n FROM bula_credit_ledger'), 1); assert.equal(env.BULA_CAPTURE_SENDER.sent.filter((m) => /preview\.guest/.test(m.to)).length, 1);   // no second email
 });
