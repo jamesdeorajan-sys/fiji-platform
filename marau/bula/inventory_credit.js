@@ -13,7 +13,7 @@ const newId = (p) => `${p}_${crypto.randomUUID()}`;
 const requireOn = (cfg, flag) => { if (!cfg[flag]) throw new BulaError('DISABLED', flag); };
 
 /* ---- welcome grant: one per explicit party key; replay returns the original --------------------------------- */
-export async function grantWelcome(db, cfg, { partyKey, actor, source, nowMs, cents = cfg.welcomeCents }) {
+export async function grantWelcome(db, cfg, { partyKey, actor, source, nowMs, cents = cfg.welcomeCents, extra = [] }) {
   if (!cfg.creditsEnabled) throw new BulaError('CREDITS_DISABLED');
   if (!partyKey || !actor || !source) throw new BulaError('BAD_REQUEST');
   if (!Number.isInteger(cents) || cents <= 0) throw new BulaError('BAD_AMOUNT');
@@ -24,6 +24,7 @@ export async function grantWelcome(db, cfg, { partyKey, actor, source, nowMs, ce
     await db.batch([
       db.prepare('INSERT INTO bula_credit_accounts (party_key, granted_cents, available_cents, reserved_cents, redeemed_cents, expired_cents, expires_at, policy_version, created_at, updated_at) VALUES (?,?,?,0,0,0,?,?,?,?)').bind(partyKey, cents, cents, expiresAt, cfg.policyVersion, nowMs, nowMs),
       db.prepare("INSERT INTO bula_credit_ledger (party_key,type,amount_cents,actor,source,policy_version,at) VALUES (?, 'granted', ?, ?, ?, ?, ?)").bind(partyKey, cents, actor, source, cfg.policyVersion, nowMs),
+      ...extra,   // e.g. the audit row: committed or rolled back together with the grant
     ]);
     return { granted: true, replay: false, grantedCents: cents };
   } catch (e) { if (isRollback(e)) return { granted: false, replay: true, grantedCents: cents }; throw e; }
@@ -52,6 +53,8 @@ export async function reserve(db, cfg, { partyKey, idemKey, offerId, qty = 1, ex
       if (ex.state === 'held' && nowMs >= ex.expires_at) await settle(db, ex.hold_id, 'expired', nowMs);
       return replayView(await db.prepare('SELECT * FROM bula_holds WHERE hold_id = ?').bind(ex.hold_id).first(), nowMs);
     }
+    const dup = await db.prepare("SELECT hold_id, state FROM bula_holds WHERE party_key = ? AND offer_id = ? AND state IN ('held','confirmed') ORDER BY created_at LIMIT 1").bind(partyKey, offerId).first();
+    if (dup) return { ok: false, code: 'already_requested', holdId: dup.hold_id, state: dup.state };   // one live request per guest per offer: a second tap/reopen can never take a second place
     const o = await db.prepare('SELECT * FROM bula_offers WHERE offer_id = ?').bind(offerId).first();
     if (!o) return { ok: false, code: 'unknown_offer' };
     if (o.status !== 'published') return { ok: false, code: 'not_published' };
@@ -72,6 +75,7 @@ export async function reserve(db, cfg, { partyKey, idemKey, offerId, qty = 1, ex
       creditRestoreHoursBefore: o.credit_restore_hours_before, inventoryRestoreHoursBefore: o.inventory_restore_hours_before,
       instantConfirm: !!o.instant_confirm, operatorContractId: o.operator_contract_id, policyVersion: cfg.policyVersion, inclusions: o.inclusions, exclusions: o.exclusions };
     const st = [
+      db.prepare("INSERT INTO bula_assert(ok) SELECT CASE WHEN EXISTS (SELECT 1 FROM bula_holds WHERE party_key = ? AND offer_id = ? AND state IN ('held','confirmed')) THEN 0 ELSE 1 END").bind(partyKey, offerId), db.prepare('DELETE FROM bula_assert'),   // race-safe form of the check above
       db.prepare("UPDATE bula_offers SET remaining = remaining - ?, updated_at = ? WHERE offer_id = ? AND version = ? AND status = 'published' AND remaining >= ? AND booking_cutoff_utc > ?").bind(qty, nowMs, offerId, expectedVersion, qty, nowMs), ...A(db),
     ];
     if (p.creditCents > 0) st.push(

@@ -52,10 +52,10 @@ test('replay after expiry/release/cancel reports the TRUE state, never a stale s
   assert.equal((await reserve(db, C, { ...base, idemKey: 'K2', nowMs: NOW + 2 })).code, 'hold_released'); await invariant(db);
 });
 test('partial / insufficient / zero balance, min-spend, zero stock, cutoff, unpublished', async () => {
-  const db = mem(); await seedOffer(db); await seedOffer(db, { offer_id: 'O2', min_spend_cents: 99999 }); await seedOffer(db, { offer_id: 'O3', remaining: 0 }); await seedOffer(db, { offer_id: 'O4', status: 'withdrawn' });
+  const db = mem(); await seedOffer(db); await seedOffer(db, { offer_id: 'O2', min_spend_cents: 99999 }); await seedOffer(db, { offer_id: 'O3', remaining: 0 }); await seedOffer(db, { offer_id: 'O4', status: 'withdrawn' }); await seedOffer(db, { offer_id: 'O5' });
   await grantWelcome(db, C, { partyKey: 'trip:P', cents: 1000, actor: 'a', source: 's', nowMs: NOW });
   const p = await reserve(db, C, { partyKey: 'trip:P', idemKey: '1', offerId: 'O1', expectedVersion: 1, nowMs: NOW }); assert.equal(p.creditCents, 1000); assert.equal(p.netPayableCents, 14000);
-  const z = await reserve(db, C, { partyKey: 'trip:P', idemKey: '2', offerId: 'O1', expectedVersion: 1, nowMs: NOW }); assert.equal(z.creditCents, 0); assert.equal(z.netPayableCents, 15000);
+  const z = await reserve(db, C, { partyKey: 'trip:P', idemKey: '2', offerId: 'O5', expectedVersion: 1, nowMs: NOW }); assert.equal(z.creditCents, 0); assert.equal(z.netPayableCents, 15000);
   const m = await reserve(db, C, { partyKey: 'trip:Q', idemKey: '3', offerId: 'O2', expectedVersion: 1, nowMs: NOW }); assert.equal(m.creditCents, 0);
   assert.equal((await reserve(db, C, { partyKey: 'trip:Q', idemKey: '4', offerId: 'O3', expectedVersion: 1, nowMs: NOW })).code, 'sold_out');
   assert.equal((await reserve(db, C, { partyKey: 'trip:Q', idemKey: '5', offerId: 'O4', expectedVersion: 1, nowMs: NOW })).code, 'not_published');
@@ -87,8 +87,8 @@ test('repeated confirmation callbacks do not double-debit; confirm after expiry 
   const db = mem(); await seedOffer(db); await grantWelcome(db, C, { partyKey: 'trip:A', actor: 'a', source: 's', nowMs: NOW });
   const r = await reserve(db, C, { partyKey: 'trip:A', idemKey: '1', offerId: 'O1', expectedVersion: 1, nowMs: NOW });
   for (let i = 0; i < 3; i++) await confirmHold(db, { holdId: r.holdId, partyKey: 'trip:A', authority: staffOk(), nowMs: NOW + 10 });
-  assert.equal((await balance(db, 'trip:A')).redeemed, 2500);
-  const r2 = await reserve(db, C, { partyKey: 'trip:A', idemKey: '2', offerId: 'O1', expectedVersion: 1, nowMs: NOW, ttlMs: 100 });
+  assert.equal((await balance(db, 'trip:A')).redeemed, 2500); await seedOffer(db, { offer_id: 'O9' });
+  const r2 = await reserve(db, C, { partyKey: 'trip:A', idemKey: '2', offerId: 'O9', expectedVersion: 1, nowMs: NOW, ttlMs: 100 });
   const late = await confirmHold(db, { holdId: r2.holdId, partyKey: 'trip:A', authority: staffOk(), nowMs: NOW + 9999 });
   assert.equal(late.code, 'hold_expired'); assert.equal(await stock(db), 9); assert.equal((await balance(db, 'trip:A')).reserved, 0); await invariant(db);
 });

@@ -12,7 +12,7 @@ export const CSV_COLUMNS = ['offer_id', 'title', 'operator_id', 'service_date', 
 export const BASIS_UNIT = Object.freeze({ person: 'seat', party: 'party', vehicle: 'vehicle' });
 export const ROLE_POLICY = Object.freeze({
   import: ['ceo', 'ops', 'editor'], edit: ['ceo', 'ops', 'editor'], approve: ['ceo', 'approver'], withdraw: ['ceo', 'approver', 'ops'],
-  confirm: ['ceo', 'ops'], cancel: ['ceo', 'ops'], refundCredit: ['ceo'], publish: ['ceo', 'ops'], contracts: ['ceo'], staffAdmin: [] /* admin credential only */,
+  confirm: ['ceo', 'ops'], cancel: ['ceo', 'ops'], refundCredit: ['ceo'], grantCredit: ['ceo'], publish: ['ceo', 'ops'], contracts: ['ceo'], staffAdmin: [] /* admin credential only */,
 });
 const audit = (db, at, actor, action, subject, detail = null) => db.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(at, `${actor.staffId}(${actor.role})`, action, subject, detail);
 const ASSERT = (db) => [db.prepare('INSERT INTO bula_assert(ok) SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END'), db.prepare('DELETE FROM bula_assert')];
@@ -152,7 +152,8 @@ export async function runPublisher(db, cfg, nowMs, runId = `run-${nowMs}`) {
 /** Guest cards, separated into "today" (still bookable, released yesterday evening) and "tomorrow" (released at 18:00). */
 export async function listEdition(db, cfg, nowMs, partyKey = null) {
   const latest = latestVisibleServiceDate(nowMs); const today = ymdString(fijiYmd(nowMs));
-  const { results } = await db.prepare("SELECT * FROM bula_offers WHERE status = 'published' AND remaining > 0 AND booking_cutoff_utc > ? AND service_date <= ? ORDER BY service_date, service_start_utc").bind(nowMs, latest).all();
+  const { results: all } = await db.prepare("SELECT * FROM bula_offers WHERE status = 'published' AND remaining > 0 AND booking_cutoff_utc > ? AND service_date <= ? ORDER BY service_date, service_start_utc").bind(nowMs, latest).all();
+  const results = all.filter((o) => !(cfg.hiddenOperators || []).includes(o.operator_id));
   const acct = partyKey && cfg.creditsEnabled ? await db.prepare('SELECT available_cents a, expires_at e FROM bula_credit_accounts WHERE party_key = ?').bind(partyKey).first() : null;
   const avail = acct && (acct.e == null || acct.e > nowMs) ? acct.a : 0;
   const cards = results.map((o) => ({ offerId: o.offer_id, version: o.version, title: o.title, serviceDate: o.service_date, group: o.service_date === today ? 'today' : 'tomorrow', serviceStartUtc: o.service_start_utc, pricingBasis: o.pricing_basis,

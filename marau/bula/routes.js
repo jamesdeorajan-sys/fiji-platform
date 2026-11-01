@@ -7,7 +7,7 @@
  *  - State-changing requests must be application/json (forces a CORS preflight for browsers). */
 import { loadConfig } from './config.js';
 import { issueStaffActor, issueConfirmationAuthority, issueCancellationAuthority, requireRole } from './authority.js';
-import { reserve, confirmHold, cancelHold, releaseFailedCheckout, balance, sweepExpired, expireGrants } from './inventory_credit.js';
+import { grantWelcome, reserve, confirmHold, cancelHold, releaseFailedCheckout, balance, sweepExpired, expireGrants } from './inventory_credit.js';
 import { importCsv, approveOffer, editOffer, withdrawOffer, runPublisher, listEdition, resolveContract, ROLE_POLICY } from './offers_d1.js';
 import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './outbox_d1.js';
 import { reconcileAll } from './recovery.js';
@@ -163,6 +163,14 @@ async function bulaRouteInner(request, env, pathname, method) {
       const refund = b.refund_credit === true; if (refund) requireRole(actor, ROLE_POLICY.refundCredit);
       const r = await cancelHold(env.DB, { holdId, partyKey: h.party_key, authority: issueCancellationAuthority({ kind: b.operator_cancelled === true ? 'operator_cancel' : 'staff_cancel', ref: `${actor.staffId}:${note}`, verifiedBy: actor.staffId, refundCredit: refund }), nowMs });
       return out(r, r.ok ? 200 : codeStatus(r.code));
+    }
+    if (method === 'POST' && pathname === '/preview/admin/bula/credits/grant') {   // CEO only. Amount is the CONFIGURED welcome amount (never from the request); once per guest party; audited atomically with the grant.
+      requireRole(actor, ROLE_POLICY.grantCredit); if (!cfg.creditsEnabled) return out({ error: 'credits are not enabled' }, 403);
+      const b = await body(request); if (!isStr(b.booking_ref, 120)) return out({ error: 'booking_ref is required' }, 400);
+      const bk = await env.DB.prepare('SELECT 1 x FROM marau_test_bookings WHERE client_booking_ref = ? AND parent_booking_id IS NULL').bind(b.booking_ref).first(); if (!bk) return out({ error: 'unknown booking' }, 404);
+      const partyKey = `trip:${b.booking_ref}`;
+      const g = await grantWelcome(env.DB, cfg, { partyKey, actor: `staff:${actor.staffId}`, source: 'staff-promotional-grant', nowMs, extra: [env.DB.prepare('INSERT INTO bula_audit (at, actor, action, subject, detail) VALUES (?,?,?,?,?)').bind(nowMs, `${actor.staffId}(${actor.role})`, 'credit_granted', partyKey, String(cfg.welcomeCents))] });
+      const bal = await balance(env.DB, partyKey); return out({ ok: true, granted: g.granted, alreadyGranted: !g.granted, grantedCents: g.grantedCents, availableCents: bal.available }, g.granted ? 201 : 200);
     }
     if (method === 'POST' && pathname === '/preview/admin/bula/publish') { requireRole(actor, ROLE_POLICY.publish); await body(request); return out(await runPublisher(env.DB, cfg, nowMs, `manual:${actor.staffId}`)); }
     if (method === 'GET' && pathname === '/preview/admin/bula/audit') { requireRole(actor, ['ceo']); const { results } = await env.DB.prepare('SELECT * FROM bula_audit ORDER BY seq DESC LIMIT 100').all(); return out({ audit: results }); }

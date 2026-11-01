@@ -21,17 +21,31 @@ const mkOffer = async (id, cap, { startInMs = 5 * H, cutoffInMs = 3 * H, restore
   const i = await api('POST', '/preview/admin/bula/offers/import', { staff: T.ops, body: { csv: cols + '\n' + row } }); const a = i.d && i.d.created ? await api('POST', `/preview/admin/bula/offers/${id}/approve`, { staff: T.approver, body: {} }) : i; return { imp: i, app: a }; };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const wallet = async (t) => (await api('GET', '/preview/bula/offers', { tok: t })).d;
-const stat = async (t, id) => { const o = await wallet(t); const c = (o.cards || []).find((x) => x.offerId === id); return { remaining: c ? c.remaining : null, avail: o.wallet ? o.wallet.availableCents : null, reserved: o.wallet ? o.wallet.reservedCents : null }; };
+const stat = async (t, id) => { const o = await wallet(t); const adm = (await api('GET', '/preview/admin/bula/offers', { staff: T.ceo })).d; const c = ((adm && adm.offers) || []).find((x) => x.offer_id === id); return { remaining: c ? c.remaining : null, avail: o.wallet ? o.wallet.availableCents : null, reserved: o.wallet ? o.wallet.reservedCents : null }; };
 const myHolds = async (t) => (await api('GET', '/preview/bula/holds', { tok: t })).d.holds;
 
-// ---- MODE=phone: create ONE fresh synthetic guest + a today offer (published now) + a tomorrow offer (left approved: the 18:00 cron must release it); write the link to a LOCAL file only ----
+// ---- MODE=phone: ONE fresh synthetic phone guest + a once-only FJ$500 promotional grant + clearly labelled DEMONSTRATION offers. Acceptance fault-test fixtures (operator op_acc) are hidden from the guest catalogue by BULA_CATALOGUE_HIDDEN_OPERATORS. Link is written to a LOCAL file only. ----
 if (process.env.MODE === 'phone') {
-  const a = await mkOffer(`${run}-PHONE-TODAY`, 6); const t2 = fj(now + 24 * H); const co2 = fj(now + 20 * H);
-  const row = [`${run}-PHONE-TMRW`, 'SYNTHETIC Island Day Cruise (tomorrow)', 'op_acc', t2.date, '09:00', 'Denarau', 'person', '150.00', '25', 'seat', '8', `${t2.date} 07:00`, 'Lunch', '', '', 'Free cancel up to 24h before', '24', '24', 'vakaviti', '120', 'no', ''].join(','); void co2;
-  const i2 = await api('POST', '/preview/admin/bula/offers/import', { staff: T.ops, body: { csv: cols + '\n' + row } }); const a2 = i2.d && i2.d.created ? await api('POST', `/preview/admin/bula/offers/${run}-PHONE-TMRW/approve`, { staff: T.approver, body: {} }) : i2;
-  await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} }); const tok = await guest(1);
+  const tok = await guest(1); const ref = `${run}-g1`;
+  const gr = await api('POST', '/preview/admin/bula/credits/grant', { staff: T.ceo, body: { booking_ref: ref } });
+  const gr2 = await api('POST', '/preview/admin/bula/credits/grant', { staff: T.ceo, body: { booking_ref: ref } });                  // once-only: the second call must change nothing
+  const prior = (await api('GET', '/preview/admin/bula/offers', { staff: T.ceo })).d?.offers || [];
+  let withdrawn = 0; for (const o of prior) if (/-DEMO-/.test(o.offer_id) && ['approved', 'published'].includes(o.status)) { const w = await api('POST', `/preview/admin/bula/offers/${o.offer_id}/withdraw`, { staff: T.ops, body: {} }); if (w.s === 200) withdrawn++; }   // earlier demo sets never pile up in the catalogue
+  const sun = fj(now + 6 * H), sunCut = fj(now + 4 * H), t1 = fj(now + 24 * H), t2 = fj(now + 24 * H);
+  const demo = [
+    [`${run}-DEMO-ISLAND`, 'Demonstration: Island Day Cruise with Lunch', t1.date, '09:00', '150.00', '25', '8', `${t1.date} 07:00`, 'Boat transfer and buffet lunch', 'Drinks', 'Free cancellation up to 2 hours before departure (credit returned)', '2', '120'],
+    [`${run}-DEMO-KAVA`, 'Demonstration: Village Visit and Kava Ceremony', t1.date, '14:00', '80.00', '10', '12', `${t1.date} 12:00`, 'Guide and village welcome', 'Lunch', 'Free cancellation up to 2 hours before the visit (credit returned)', '2', '60'],
+    [`${run}-DEMO-SUNSET`, 'Demonstration: Sunset Sail from Denarau', sun.date, sun.time, '95.00', '15', '10', `${sunCut.date} ${sunCut.time}`, 'Light snacks and one drink', '', 'Free cancellation up to 1 hour before departure (credit returned)', '1', '70'],
+  ];
+  let ok = 0; for (const [id, title, date, time, price, credit, cap, cutoff, incl, excl, terms, restore, payout] of demo) {
+    const row = [id, title, 'op_demo', date, time, 'Denarau', 'person', price, credit, 'seat', cap, cutoff, incl, excl, '', terms, restore, restore, 'vakaviti', payout, 'no', ''].join(',');
+    const i = await api('POST', '/preview/admin/bula/offers/import', { staff: T.ops, body: { csv: cols + '\n' + row } }); const a = i.d && i.d.created ? await api('POST', `/preview/admin/bula/offers/${id}/approve`, { staff: T.approver, body: {} }) : i; if (a.s === 200) ok++; }
+  await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} });
+  const view = (await api('GET', '/preview/bula/offers', { tok })).d; const titles = (view.cards || []).map((c) => c.title); const island = (view.cards || []).find((c) => /Island Day/.test(c.title));
+  const good = gr.s === 201 && gr2.s === 200 && gr2.d.alreadyGranted === true && view.wallet && view.wallet.availableCents === 50000 && ok === 3 && titles.length >= 1 && titles.every((t) => /^Demonstration:/.test(t)) && !(view.cards || []).some((c) => /ACC|SYNTHETIC/i.test(c.title)) && (!island || (island.unitPriceCents === 15000 && island.creditCents === 2500 && island.netPayableCents === 12500));
+  if (!good) { console.error('phone setup FAILED', JSON.stringify({ grant: [gr.s, gr2.s], wallet: view.wallet, approved: ok, titles })); process.exit(1); }
   const link = `${BASE}/bula#tok=${tok}`; fs.writeFileSync(path.join(OUT, 'phone-link.txt'), link + '\n', { mode: 0o600 });
-  console.log(`phone setup: today offer ${a.app.s === 200 ? 'ready' : 'FAILED'}, tomorrow offer ${a2.s === 200 ? 'approved (cron will release at 18:00 Fiji)' : 'FAILED'}; link written to phone-link.txt (local only)`); process.exit(0); }
+  console.log(`phone setup OK: guest granted FJ$500 once (replay changed nothing); ${ok} demonstration offers approved (${withdrawn} earlier demo offers withdrawn); catalogue now shows only: ${titles.join(' | ') || '(tomorrow offers appear at 6 pm Fiji time)'}; Island Day Cruise = FJ$150, credit FJ$25, you pay FJ$125 -> FJ$475 credit remaining after a request; link in phone-link.txt (local only)`); process.exit(0); }
 // ---- setup: offers, publish, schedule-test offer (left approved; ONLY the cron may publish it) ----
 for (const [id, cap] of [[`${run}-RACE`, 3], [`${run}-FAULT`, 6], [`${run}-ONE`, 2]]) { const r = await mkOffer(id, cap); rec(`offer ${id} import+approve (ops imports, a second person approves)`, r.imp.s < 300 && r.app.s === 200, { imp: r.imp.s, app: r.app.s, err: r.imp.d && r.imp.d.errors }); }
 rec('publish (ceo)', (await api('POST', '/preview/admin/bula/publish', { staff: T.ceo, body: {} })).s === 200, {});

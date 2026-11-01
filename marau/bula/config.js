@@ -12,6 +12,7 @@ export function loadConfig(env = {}) {
     creditTtlMs: Number.isInteger(+env.BULA_CREDIT_TTL_MS) && +env.BULA_CREDIT_TTL_MS > 0 ? +env.BULA_CREDIT_TTL_MS : null,
     requestHoldTtlMs: Number.isInteger(+env.BULA_REQUEST_HOLD_TTL_MS) && +env.BULA_REQUEST_HOLD_TTL_MS > 0 ? +env.BULA_REQUEST_HOLD_TTL_MS : 12 * 3600000,
     holdTtlMs: Number.isInteger(+env.BULA_HOLD_TTL_MS) && +env.BULA_HOLD_TTL_MS > 0 ? +env.BULA_HOLD_TTL_MS : 10 * 60000,
+    hiddenOperators: Object.freeze(String(env.BULA_CATALOGUE_HIDDEN_OPERATORS || '').split(',').map((x) => x.trim()).filter(Boolean)),   // operators whose offers are test fixtures: kept out of the GUEST catalogue (still bookable by id, so automated tests are unchanged)
     policyVersion: env.BULA_POLICY_VERSION || 'policy-unset',
     guestOrigin: env.BULA_GUEST_ORIGIN || '',             // https origin of the guest app
     staffInbox: env.BULA_STAFF_INBOX || '',               // receiving inbox for staff copies

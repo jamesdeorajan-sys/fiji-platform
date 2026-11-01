@@ -25,6 +25,7 @@ BULA_FAULT_HARNESS = "on"
 BULA_OUTBOX_ENABLED = "off"
 BULA_EMAIL_SEND_ENABLED = "off"
 BULA_POLICY_VERSION = "synthetic-acceptance-1"
+BULA_CATALOGUE_HIDDEN_OPERATORS = "op_acc"   # acceptance fault-test fixtures stay out of the guest catalogue (still bookable by id for the automated checks)
 BULA_BUILD = "unset"
 BULA_COMMIT = "unset"
 # Secret (set by run_acceptance.mjs via stdin, never in this file/argv/chat): MARAU_ADMIN_TEST_TOKEN
