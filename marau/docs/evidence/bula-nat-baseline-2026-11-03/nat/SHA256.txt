@@ -1,0 +1,9 @@
+04203dd3599e9e5cdbdd5d4b8686a65e00b4ea9a983c4dafa3e70ed6a5a69287  /tmp/s1/prod.js
+04203dd3599e9e5cdbdd5d4b8686a65e00b4ea9a983c4dafa3e70ed6a5a69287  /tmp/wrout/worker.js
+ae00bd7c238aafc763aabca7fecc8307e3ce8103df66b9e21932a08444ecc788  /tmp/wrout2/worker.js
+f42eca25b64d18c20d6b315df2de4cfd33264353889d41436d66684c135f68b2  /tmp/natbase/nadi-marketplace/worker/worker.js
+99c1aef2805636883d6f0e40aed1df204d0a857b
+ce2dfb88975eabd6b5763e515fb1639859ed8516
+ .../worker/source_read_discovery.test.mjs          | 146 +++++++++++++++++++++
+ nadi-marketplace/worker/worker.js                  |  68 ++++++++++
+ 2 files changed, 214 insertions(+)

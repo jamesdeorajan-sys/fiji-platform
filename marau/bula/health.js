@@ -12,6 +12,8 @@ export async function collectHealth(db, nowMs, { stuckMs = 30 * 60e3 } = {}) {
   add('MIRROR_WITHOUT_GUEST_SESSION', await n('SELECT COUNT(*) n FROM marau_real_booking_links l LEFT JOIN guest_sessions g ON g.session_id = l.guest_session_id WHERE g.session_id IS NULL'));
   add('MIRROR_WITHOUT_JOBS_OR_GRANT', await n(`SELECT COUNT(*) n FROM marau_real_booking_links l JOIN marau_test_bookings b ON b.id = l.marau_booking_id WHERE l.created_at < ? AND (NOT EXISTS (SELECT 1 FROM bula_outbox o WHERE o.booking_ref = b.client_booking_ref) OR NOT EXISTS (SELECT 1 FROM bula_credit_ledger c WHERE c.party_key = 'trip:' || b.client_booking_ref AND c.type = 'granted'))`, cut));
   add('SOURCE_ROWS_WITHOUT_SNAPSHOT', await n(`SELECT COUNT(*) n FROM marau_real_booking_links l JOIN marau_test_bookings b ON b.id = l.marau_booking_id WHERE l.created_at < ? AND NOT EXISTS (SELECT 1 FROM bula_booking_snapshots s WHERE s.booking_ref = b.client_booking_ref)`, cut));
+  add('SOURCE_BOOKING_REFUSED_NEEDS_STAFF', await n("SELECT COUNT(*) n FROM bula_source_refusals WHERE state = 'open'"));
+  add('SOURCE_DISCOVERY_FAILING', await n('SELECT COUNT(*) n FROM bula_source_discovery_state WHERE consecutive_failures >= 3'));
   // wallet invariants
   add('WALLET_BUCKETS_DONT_ADD_UP', await n('SELECT COUNT(*) n FROM bula_credit_accounts WHERE available_cents + reserved_cents + redeemed_cents + expired_cents != granted_cents'));
   add('WALLET_GRANT_LEDGER_MISMATCH', await n("SELECT COUNT(*) n FROM bula_credit_accounts a WHERE a.granted_cents != COALESCE((SELECT SUM(amount_cents) FROM bula_credit_ledger l WHERE l.party_key = a.party_key AND l.type = 'granted'), 0)"));

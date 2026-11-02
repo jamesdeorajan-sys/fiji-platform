@@ -1,0 +1,89 @@
+TAP version 13
+# [nadi] source recent read failed Error
+# (node:5244) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: AUTH is fail-closed: none / wrong / master ADMIN token / truncated / extended / unset or empty secret -> 401, no row data in the body
+ok 1 - AUTH is fail-closed: none / wrong / master ADMIN token / truncated / extended / unset or empty secret -> 401, no row data in the body
+  ---
+  ...
+# Subtest: an interactive admin LOGIN token (admin_login_tokens) cannot use either source route
+ok 2 - an interactive admin LOGIN token (admin_login_tokens) cannot use either source route
+  ---
+  ...
+# Subtest: CONTRACT: exactly the 20 whitelisted fields; never guest_name, notes, payment, IP, attribution, distance, fx
+ok 3 - CONTRACT: exactly the 20 whitelisted fields; never guest_name, notes, payment, IP, attribution, distance, fx
+  ---
+  ...
+# Subtest: LEGACY booking with missing email / client ref / flight: returned as NULL, never invented
+ok 4 - LEGACY booking with missing email / client ref / flight: returned as NULL, never invented
+  ---
+  ...
+# Subtest: 404 for unknown id; odd ids never reach the read; 10 repeated reads identical
+ok 5 - 404 for unknown id; odd ids never reach the read; 10 repeated reads identical
+  ---
+  ...
+# Subtest: STRICTLY READ-ONLY: every source request (valid, invalid, unauthorised, bad params) leaves the database byte-identical; write verbs are never served; no outbound call; no booking event
+ok 6 - STRICTLY READ-ONLY: every source request (valid, invalid, unauthorised, bad params) leaves the database byte-identical; write verbs are never served; no outbound call; no booking event
+  ---
+  ...
+# Subtest: NO SECRET OR GUEST DATA IN LOGS across ok / denied / error paths (both routes)
+ok 7 - NO SECRET OR GUEST DATA IN LOGS across ok / denied / error paths (both routes)
+  ---
+  ...
+# Subtest: DB unavailable -> 503 only AFTER auth passes (unauthenticated callers cannot probe)
+ok 8 - DB unavailable -> 503 only AFTER auth passes (unauthenticated callers cannot probe)
+  ---
+  ...
+# Subtest: DISCOVERY contract: items carry ONLY id / created_at / status (no email, phone, name, route, price); bootstrap without `after` returns no items and max_id
+ok 9 - DISCOVERY contract: items carry ONLY id / created_at / status (no email, phone, name, route, price); bootstrap without `after` returns no items and max_id
+  ---
+  ...
+# Subtest: DISCOVERY: new booking appears once; no new bookings -> empty, cursor unchanged; repeated polling is identical
+ok 10 - DISCOVERY: new booking appears once; no new bookings -> empty, cursor unchanged; repeated polling is identical
+  ---
+  ...
+# Subtest: DISCOVERY: SAME created_at for many bookings - deterministic order by id, paging with a small limit loses and repeats nothing
+ok 11 - DISCOVERY: SAME created_at for many bookings - deterministic order by id, paging with a small limit loses and repeats nothing
+  ---
+  ...
+# Subtest: DISCOVERY: OVERLAPPING polling windows are duplicate-safe for a client that de-duplicates by id, and never skip
+ok 12 - DISCOVERY: OVERLAPPING polling windows are duplicate-safe for a client that de-duplicates by id, and never skip
+  ---
+  ...
+# Subtest: DISCOVERY: bounded - limit 1..100 only (101 / 0 / -1 / 1.5 / abc / empty -> 400); at most 100 rows returned even with 150 present; bad `after` -> 400
+ok 13 - DISCOVERY: bounded - limit 1..100 only (101 / 0 / -1 / 1.5 / abc / empty -> 400); at most 100 rows returned even with 150 present; bad `after` -> 400
+  ---
+  ...
+# Subtest: DISCOVERY: query plan is a PRIMARY KEY range scan (no table scan, no new index needed); MAX(id) is a key lookup
+ok 14 - DISCOVERY: query plan is a PRIMARY KEY range scan (no table scan, no new index needed); MAX(id) is a key lookup
+  ---
+  ...
+# Subtest: DISCOVERY: invalid / missing / revoked (rotated or deleted) token -> 401; database failure -> 500 with a generic body; recovery on the next poll
+ok 15 - DISCOVERY: invalid / missing / revoked (rotated or deleted) token -> 401; database failure -> 500 with a generic body; recovery on the next poll
+  ---
+  ...
+# Subtest: DISCOVERY: a poller outage followed by recovery sees every booking exactly once (watermark client model)
+ok 16 - DISCOVERY: a poller outage followed by recovery sees every booking exactly once (watermark client model)
+  ---
+  ...
+# Subtest: DISCOVERY + READ: a discovered LEGACY booking without email is discoverable by id only, and the read returns email null (the consumer must refuse visibly, never invent)
+ok 17 - DISCOVERY + READ: a discovered LEGACY booking without email is discoverable by id only, and the read returns email null (the consumer must refuse visibly, never invent)
+  ---
+  ...
+# Subtest: END-TO-END with the REAL Bula reader (whitelist, type checks, provenance): round trip and one-way
+ok 18 - END-TO-END with the REAL Bula reader (whitelist, type checks, provenance): round trip and one-way
+  ---
+  ...
+# Subtest: REGRESSION (differential): for every existing route the PATCHED Worker answers byte-for-byte like the deployed production bundle
+ok 19 - REGRESSION (differential): for every existing route the PATCHED Worker answers byte-for-byte like the deployed production bundle
+  ---
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 783.746831

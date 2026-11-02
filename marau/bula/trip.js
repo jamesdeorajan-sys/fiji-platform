@@ -4,6 +4,7 @@
  *  - "Credit returned" is derived from the credit LEDGER (a restore row for that hold) - never from the hold's state alone.
  *  - A claim is an attributable, append-only audit fact. The claim insert is ONE guarded statement, so two staff claiming at once cannot both win. */
 import { fjd } from './money.js';
+import { refusalSummary } from './source_discovery.js';
 import { formatFijiDateTime } from '../worker/fiji_time.js';
 
 export function holdView(h) {
@@ -112,7 +113,7 @@ export async function buildQueue(db, nowMs) {
   const { results: closed } = await db.prepare("SELECT * FROM bula_holds WHERE state IN ('released','expired','cancelled') ORDER BY updated_at DESC LIMIT 30").all();
   const ctx = async (h) => { const m = /^trip:(.+)$/.exec(h.party_key); if (!m) return null; const b = await db.prepare('SELECT pickup_zone, destination_zone, pickup_datetime, status, source_booking_ref FROM marau_test_bookings WHERE client_booking_ref = ?').bind(m[1]).first(); return b ? { reference: b.source_booking_ref || m[1], from: b.pickup_zone, to: b.destination_zone, pickupFijiTime: when(b.pickup_datetime), status: b.status } : null; };
   const lift = async (rows) => { const v = await presentHolds(db, rows, { forStaff: true }); for (let i = 0; i < v.length; i++) v[i].transfer = await ctx(rows[i]); return v; };
-  return { requests: await lift(held), confirmed: await lift(conf), closed: await lift(closed) };
+  return { requests: await lift(held), confirmed: await lift(conf), closed: await lift(closed), sourceRefusals: await refusalSummary(db) };
 }
 
 /** Read-only diagnostics for hosted acceptance (CEO only): what the adapter produced for one source booking. No contact details; tokens never included. */

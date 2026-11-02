@@ -2604,7 +2604,7 @@ const experience = createExperienceOffers({
 
 export default {
   // Bula Happiness: scheduled entry (cron). Does nothing unless the BULA_* flags are ON; with no [triggers] configured it is never invoked.
-  async scheduled(event, env, ctx) { ctx.waitUntil(bulaScheduled(withSourceReader(env)).catch((e) => console.error('[bula] scheduled failed', e && e.message))); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(bulaScheduled(withSourceReader(env), Date.now(), { syncDeps: (() => { try { return syncDeps(env); } catch { return null; } })() }).catch((e) => console.error('[bula] scheduled failed', e && e.message))); },
 
   // FIX (round 19, found while wiring the synthetic-source hosted-demo
   // harness): every route below is now `return await handleFoo(...)`,

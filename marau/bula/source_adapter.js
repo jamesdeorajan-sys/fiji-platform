@@ -20,6 +20,7 @@
 import { loadConfig } from './config.js';
 import { processSavedBooking } from './recovery.js';
 import { snapshotFromSource, snapshotFromMarauRow } from './source_snapshot.js';
+import { fieldProvenance } from './source_fidelity.js';
 
 /** Snapshot builder used by BOTH the immediate path and the repair sweep. Source-owned rows are NEVER labelled as a Marau form:
  *  if the source cannot be read right now this throws, the step is recorded as failed, and the next sweep retries. */
@@ -31,7 +32,7 @@ export function sourceSnapshotDep(env, cfg, nowMs) {
     const src = await reader(b.source_booking_ref);
     if (!src) throw new Error('SOURCE_BOOKING_NOT_FOUND');
     const prov = reader.provenance || { kind: 'marau_synthetic_source', authenticated: false, read_only: true };
-    return snapshotFromSource(b.client_booking_ref, src, { ...prov, source_status: src.status ?? null }, nowMs);
+    return snapshotFromSource(b.client_booking_ref, src, { ...prov, source_status: src.status ?? null, fieldProvenance: fieldProvenance(src) }, nowMs);
   };
 }
 

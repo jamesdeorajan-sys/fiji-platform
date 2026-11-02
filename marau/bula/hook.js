@@ -7,6 +7,7 @@ import { processSavedBooking, reconcileAll } from './recovery.js';
 import { runPublisher } from './offers_d1.js';
 import { sweepExpired, expireGrants } from './inventory_credit.js';
 import { sourceSnapshotDep } from './source_adapter.js';
+import { pollSourceDiscovery } from './source_discovery.js';
 
 export async function bulaOnSavedBooking(env, clientBookingRef, nowMs = Date.now()) {
   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
@@ -25,8 +26,9 @@ export async function bulaRunOutbox(env, nowMs = Date.now()) {
   return { reconciled: repaired.jobs, repaired, resolved, ...stats };
 }
 /** Cloudflare cron entry. Everything is behind flags that default OFF; each step is idempotent and safe to repeat (catch-up after an outage). */
-export async function bulaScheduled(env, nowMs = Date.now()) {
+export async function bulaScheduled(env, nowMs = Date.now(), opts = {}) {
   const cfg = loadConfig(env); const r = {};
+  if (cfg.sourceDiscoveryEnabled) { try { r.discovery = await pollSourceDiscovery(env, opts.syncDeps, nowMs); } catch { r.discovery = { ok: false, error: 'POLL_FAILED' }; } }   // read-only against NAT; never blocks the rest
   if (cfg.editionPublishEnabled) r.publish = await runPublisher(env.DB, cfg, nowMs, `cron:${nowMs}`);
   if (cfg.checkoutEnabled) { r.holdsSettled = await sweepExpired(env.DB, nowMs); if (cfg.creditsEnabled) r.grantsExpired = await expireGrants(env.DB, nowMs); }
   if (cfg.outboxEnabled) r.outbox = await bulaRunOutbox(env, nowMs);

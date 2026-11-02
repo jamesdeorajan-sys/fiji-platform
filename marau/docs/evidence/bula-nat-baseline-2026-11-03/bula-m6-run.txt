@@ -1,0 +1,114 @@
+TAP version 13
+# (node:2866) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: DEFAULT OFF: with the flag unset the scheduled run makes no discovery call and creates nothing
+ok 1 - DEFAULT OFF: with the flag unset the scheduled run makes no discovery call and creates nothing
+  ---
+  duration_ms: 50.976957
+  type: 'test'
+  ...
+# Subtest: BOOTSTRAP: first poll only records the watermark (max id); existing history is NOT mirrored
+ok 2 - BOOTSTRAP: first poll only records the watermark (max id); existing history is NOT mirrored
+  ---
+  duration_ms: 74.386849
+  type: 'test'
+  ...
+# Subtest: NEW BOOKING: discovered, mirrored through the existing idempotent path, one guest journey, snapshot carries field provenance; poll is GET-only, redirect-manual, bodyless
+ok 3 - NEW BOOKING: discovered, mirrored through the existing idempotent path, one guest journey, snapshot carries field provenance; poll is GET-only, redirect-manual, bodyless
+  ---
+  duration_ms: 66.765927
+  type: 'test'
+  ...
+# Subtest: MULTIPLE bookings with the SAME timestamp: all mirrored exactly once, in id order
+ok 4 - MULTIPLE bookings with the SAME timestamp: all mirrored exactly once, in id order
+  ---
+  duration_ms: 59.931408
+  type: 'test'
+  ...
+# Subtest: REPEATED polling and OVERLAPPING windows create no duplicate session, mirror row, grant or job; no new bookings -> nothing changes
+ok 5 - REPEATED polling and OVERLAPPING windows create no duplicate session, mirror row, grant or job; no new bookings -> nothing changes
+  ---
+  duration_ms: 65.519867
+  type: 'test'
+  ...
+# Subtest: DUPLICATE source results (the same id twice in one response) are collapsed
+ok 6 - DUPLICATE source results (the same id twice in one response) are collapsed
+  ---
+  duration_ms: 56.407202
+  type: 'test'
+  ...
+# Subtest: AUTH FAILURES fail closed and recover: wrong / missing / revoked token -> no mirror, watermark unchanged, failure counted with a CODE only; then recovery picks up everything
+ok 7 - AUTH FAILURES fail closed and recover: wrong / missing / revoked token -> no mirror, watermark unchanged, failure counted with a CODE only; then recovery picks up everything
+  ---
+  duration_ms: 71.136559
+  type: 'test'
+  ...
+# Subtest: NAT OUTAGE then Bula recovery: bookings saved while NAT discovery/db is down are all mirrored exactly once afterwards
+ok 8 - NAT OUTAGE then Bula recovery: bookings saved while NAT discovery/db is down are all mirrored exactly once afterwards
+  ---
+  duration_ms: 64.429862
+  type: 'test'
+  ...
+# Subtest: MALFORMED discovery response fails closed (nothing mirrored, watermark unchanged)
+ok 9 - MALFORMED discovery response fails closed (nothing mirrored, watermark unchanged)
+  ---
+  duration_ms: 43.933538
+  type: 'test'
+  ...
+# Subtest: TRANSIENT single-booking read failure: the watermark does NOT pass the failed booking; later bookings are not lost; recovery mirrors it
+ok 10 - TRANSIENT single-booking read failure: the watermark does NOT pass the failed booking; later bookings are not lost; recovery mirrors it
+  ---
+  duration_ms: 68.58787
+  type: 'test'
+  ...
+# Subtest: PERSISTENT read failure cannot block discovery forever (attempt cap) and stays staff-visible
+ok 11 - PERSISTENT read failure cannot block discovery forever (attempt cap) and stays staff-visible
+  ---
+  duration_ms: 53.669027
+  type: 'test'
+  ...
+# Subtest: LEGACY booking WITHOUT EMAIL: counted, staff-visible refusal with the reason, NO guest journey, NO invented email, NOTHING sent; the next booking is unaffected
+ok 12 - LEGACY booking WITHOUT EMAIL: counted, staff-visible refusal with the reason, NO guest journey, NO invented email, NOTHING sent; the next booking is unaffected
+  ---
+  duration_ms: 61.862189
+  type: 'test'
+  ...
+# Subtest: MISSING-EMAIL VISIBILITY: staff queue shows the count and item (no contact data); health raises an alert; staff can mark it handled with a note (audited); guests cannot
+ok 13 - MISSING-EMAIL VISIBILITY: staff queue shows the count and item (no contact data); health raises an alert; staff can mark it handled with a note (audited); guests cannot
+  ---
+  duration_ms: 49.278416
+  type: 'test'
+  ...
+# Subtest: MISSING QUOTED AMOUNT is also a visible refusal, never a guessed price
+ok 14 - MISSING QUOTED AMOUNT is also a visible refusal, never a guessed price
+  ---
+  duration_ms: 41.510269
+  type: 'test'
+  ...
+# Subtest: SOURCE FIDELITY: labels never infer - missing flight / client ref / dates stay SOURCE_MISSING; passengers, luggage, add-ons, discount are NOT_APPLICABLE; a supplied value is SOURCE_CONFIRMED
+ok 15 - SOURCE FIDELITY: labels never infer - missing flight / client ref / dates stay SOURCE_MISSING; passengers, luggage, add-ons, discount are NOT_APPLICABLE; a supplied value is SOURCE_CONFIRMED
+  ---
+  duration_ms: 0.326624
+  type: 'test'
+  ...
+# Subtest: SOURCE FIDELITY end to end: a booking with no flight is stored with a NULL flight (not a default) and labelled SOURCE_MISSING
+ok 16 - SOURCE FIDELITY end to end: a booking with no flight is stored with a NULL flight (not a default) and labelled SOURCE_MISSING
+  ---
+  duration_ms: 43.677779
+  type: 'test'
+  ...
+# Subtest: NO SECRETS in logs or stored state across success and failure polls
+ok 17 - NO SECRETS in logs or stored state across success and failure polls
+  ---
+  duration_ms: 53.670753
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1096.192043

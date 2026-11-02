@@ -1,0 +1,86 @@
+diff --git a/nadi-marketplace/worker/worker.js b/nadi-marketplace/worker/worker.js
+index 705d602..1b70292 100644
+--- a/nadi-marketplace/worker/worker.js
++++ b/nadi-marketplace/worker/worker.js
+@@ -443,6 +443,17 @@ export default {
+       return handleAdminListBookings(request, env, url);
+     }
+ 
++    // ── Bula/Marau source integration (READ-ONLY, own credential SOURCE_READ_TOKEN; the master admin token and admin
++    // login tokens are NOT accepted here). Discovery returns only {id, created_at, status}; the single read returns the minimal
++    // mirror contract. Neither route writes, notifies, or touches the booking/save path. ──
++    if (request.method === 'GET' && url.pathname === '/admin/bookings/recent') {
++      return handleSourceRecentBookings(request, env, url);
++    }
++    const sourceReadMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)$/);
++    if (request.method === 'GET' && sourceReadMatch) {
++      return handleSourceReadBooking(request, env, Number(sourceReadMatch[1]));
++    }
++
+     // ── Milestone 19: per-booking event history, for admin-bookings.html's
+     // expand-a-row view ──
+     const bookingEventsMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/events$/);
+@@ -1123,6 +1134,63 @@ async function handleAdminListDrivers(request, env, url) {
+ // Read-only for now (matches the ask) - a real driver_name JOIN is
+ // included since "who's this assigned to" is exactly the kind of context
+ // that motivated this page, at no real added cost over the base query.
++// Dedicated read-only credential for the Bula/Marau mirror. Fail closed: no token presented, or SOURCE_READ_TOKEN unset/empty -> refused.
++// Deliberately does NOT call requireAdmin(): the master ADMIN_TOKEN and interactive admin-login tokens must not open this surface.
++function requireSourceRead(request, env) {
++  const auth = request.headers.get('Authorization') || '';
++  const token = auth.replace(/^Bearer\s+/i, '').trim();
++  return !!token && typeof env.SOURCE_READ_TOKEN === 'string' && env.SOURCE_READ_TOKEN.length > 0 && timingSafeEqual(token, env.SOURCE_READ_TOKEN);
++}
++
++// Read-only single-booking read for the Marau mirror: exactly the fields a mirror needs to represent a trip faithfully. A round trip is ONE
++// row (return_* on the same row, one quoted amount, no separate return amount). No guest name, notes, payment, IP, or attribution columns.
++async function handleSourceReadBooking(request, env, bookingId) {
++  if (!requireSourceRead(request, env)) return json({ error: 'Unauthorized.' }, 401);
++  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
++  let row;
++  try {
++    row = await env.DB.prepare(
++      `SELECT id, client_booking_ref, status, assigned_driver_id, guest_phone, guest_email, pickup_zone, destination_zone, vehicle_type,
++              quoted_currency, quoted_amount, settlement_amount_fjd, commission_base_fjd,
++              pickup_date, pickup_time, return_date, return_time, return_pickup_location, flight_number, created_at
++       FROM bookings WHERE id = ?`
++    ).bind(bookingId).first();
++  } catch (err) {
++    console.error('[nadi] source booking read failed', err && err.name);
++    return json({ ok: false, error: 'Read failed.' }, 500);
++  }
++  if (!row) return json({ ok: false, error: 'Booking not found.' }, 404);
++  return json({ ok: true, booking: row }, 200);
++}
++
++// Read-only discovery of recent bookings for the Bula poller. Cursor = bookings.id (INTEGER PRIMARY KEY, the rowid): a unique, strictly
++// increasing key, so ordering is deterministic even when many rows share a created_at, and the query is a primary-key range scan (no new index).
++// Returns ONLY id / created_at / status: no email, phone, name, route or price. `after` omitted -> no items, just max_id (cursor bootstrap).
++// limit 1..100 (default 50). Callers should re-poll from (watermark - small overlap); the mirror is idempotent per booking id.
++async function handleSourceRecentBookings(request, env, url) {
++  if (!requireSourceRead(request, env)) return json({ error: 'Unauthorized.' }, 401);
++  if (!env.DB) return json({ ok: false, error: 'Database not available.' }, 503);
++  const rawAfter = url.searchParams.get('after');
++  const rawLimit = url.searchParams.get('limit');
++  const after = rawAfter === null ? null : (/^\d{1,15}$/.test(rawAfter) ? Number(rawAfter) : NaN);
++  const limit = rawLimit === null ? 50 : (/^\d{1,3}$/.test(rawLimit) ? Number(rawLimit) : NaN);
++  if (Number.isNaN(after) || Number.isNaN(limit) || limit < 1 || limit > 100) return json({ ok: false, error: 'Bad cursor or limit.' }, 400);
++  try {
++    const maxRow = await env.DB.prepare(`SELECT MAX(id) AS max_id FROM bookings`).first();
++    const maxId = maxRow && maxRow.max_id != null ? Number(maxRow.max_id) : 0;
++    let items = [];
++    if (after !== null) {
++      const res = await env.DB.prepare(`SELECT id, created_at, status FROM bookings WHERE id > ? ORDER BY id ASC LIMIT ?`).bind(after, limit).all();
++      items = (res.results || []).map((r) => ({ id: Number(r.id), created_at: r.created_at, status: r.status }));
++    }
++    const nextAfter = items.length ? items[items.length - 1].id : (after === null ? maxId : after);
++    return json({ ok: true, items, next_after: nextAfter, max_id: maxId, has_more: maxId > nextAfter, server_time: new Date().toISOString() }, 200);
++  } catch (err) {
++    console.error('[nadi] source recent read failed', err && err.name);
++    return json({ ok: false, error: 'Read failed.' }, 500);
++  }
++}
++
+ async function handleAdminListBookings(request, env, url) {
+   if (!(await requireAdmin(request, env))) return json({ error: 'Unauthorized.' }, 401);
+   if (!env.DB) return json({ bookings: [] }, 503);

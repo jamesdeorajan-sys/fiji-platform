@@ -13,6 +13,7 @@ import { staffQueue, dispatch, liveSenderDisabled, reconcileAmbiguous } from './
 import { reconcileAll } from './recovery.js';
 import { GUEST_UI, STAFF_UI } from './ui.js';
 import { withSqlFault } from './fault.js';
+import { resolveRefusal } from './source_discovery.js';
 import { holdView, presentHolds, buildTrip, buildQueue, sourceSyncState, capturedFor, claimHold, unclaimHold, mayDecide } from './trip.js';
 import { sha256hex, issuePairingCode, redeemPairingCode, sessionForDevice, listDevices, revokeDevice } from './devices.js';
 
@@ -152,6 +153,7 @@ async function bulaRouteInner(request, env, pathname, method) {
       requireRole(actor, ROLE_POLICY.confirm);
       return out({ ...(await buildQueue(env.DB, nowMs)), email: await staffQueue(env.DB), me: { staffId: actor.staffId, role: actor.role } });
     }
+    { const m = method === 'POST' && /^\/preview\/admin\/bula\/source-refusals\/(\d{1,12})\/resolve$/.exec(pathname); if (m) { requireRole(actor, ROLE_POLICY.confirm); const b = await body(request); const r = await resolveRefusal(env.DB, m[1], actor, b && b.note, nowMs); return out(r, r.ok ? 200 : 409); } }
     if (method === 'POST' && pathname === '/preview/admin/bula/contracts') {
       requireRole(actor, ROLE_POLICY.contracts); const b = await body(request);
       if (!isStr(b.contract_id, 80) || !isStr(b.operator_id, 80) || !Number.isSafeInteger(b.valid_from) || !Number.isSafeInteger(b.valid_to) || b.valid_to <= b.valid_from) return out({ error: 'contract_id, operator_id, valid_from, valid_to required' }, 400);
