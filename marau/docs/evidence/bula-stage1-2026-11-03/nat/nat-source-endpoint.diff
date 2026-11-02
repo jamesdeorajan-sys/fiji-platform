@@ -1,0 +1,43 @@
+--- prod.js	2026-11-03 09:01:26.056616192 +1100
++++ prod_patched.js	2026-11-03 09:01:26.074526463 +1100
+@@ -944,6 +944,10 @@
+     if (request.method === "GET" && url.pathname === "/admin/bookings") {
+       return handleAdminListBookings(request, env, url);
+     }
++    const sourceReadMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)$/);
++    if (request.method === "GET" && sourceReadMatch) {
++      return handleSourceReadBooking(request, env, Number(sourceReadMatch[1]));
++    }
+     const bookingEventsMatch = url.pathname.match(/^\/admin\/bookings\/(\d+)\/events$/);
+     if (request.method === "GET" && bookingEventsMatch) {
+       return handleAdminListBookingEvents(request, env, Number(bookingEventsMatch[1]));
+@@ -1428,6 +1432,29 @@
+   return json({ status, drivers }, 200);
+ }
+ __name(handleAdminListDrivers, "handleAdminListDrivers");
++async function handleSourceReadBooking(request, env, bookingId) {
++  const auth = request.headers.get("Authorization") || "";
++  const token = auth.replace(/^Bearer\s+/i, "").trim();
++  if (!token || !env.SOURCE_READ_TOKEN || !timingSafeEqual(token, env.SOURCE_READ_TOKEN)) {
++    return json({ error: "Unauthorized." }, 401);
++  }
++  if (!env.DB) return json({ ok: false, error: "Database not available." }, 503);
++  let row;
++  try {
++    row = await env.DB.prepare(
++      `SELECT id, client_booking_ref, status, assigned_driver_id, guest_phone, guest_email, pickup_zone, destination_zone, vehicle_type,
++              quoted_currency, quoted_amount, settlement_amount_fjd, commission_base_fjd,
++              pickup_date, pickup_time, return_date, return_time, return_pickup_location, flight_number, created_at
++       FROM bookings WHERE id = ?`
++    ).bind(bookingId).first();
++  } catch (err) {
++    console.error("[nadi] source booking read failed", err && err.name);
++    return json({ ok: false, error: "Read failed." }, 500);
++  }
++  if (!row) return json({ ok: false, error: "Booking not found." }, 404);
++  return json({ ok: true, booking: row }, 200);
++}
++__name(handleSourceReadBooking, "handleSourceReadBooking");
+ async function handleAdminListBookings(request, env, url) {
+   if (!await requireAdmin(request, env)) return json({ error: "Unauthorized." }, 401);
+   if (!env.DB) return json({ bookings: [] }, 503);

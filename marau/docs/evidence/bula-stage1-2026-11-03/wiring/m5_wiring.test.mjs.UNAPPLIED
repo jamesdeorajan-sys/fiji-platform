@@ -1,0 +1,18 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import { mkEnv, syncCreated, cutover } from './m3_helpers.mjs'; import { bulaRunOutbox } from './hook.js';
+const CEO = 'ceo-test@example.test';
+const cfgEnv = (o = {}) => ({ BULA_EMAIL_SEND_ENABLED: 'on', BULA_EMAIL_ENDPOINT: 'https://mail.provider.test/v1/send', BULA_EMAIL_API_KEY: 'sk_test_synthetic_key_000000', BULA_EMAIL_FROM: 'Bula <noreply@example.test>', BULA_EMAIL_TEST_ALLOWLIST: `${CEO},team@example.test`, ...o });
+const withFetch = async (script, fn) => { const calls = []; const orig = globalThis.fetch; globalThis.fetch = async (u, i) => { calls.push([String(u), i]); return new Response(JSON.stringify({ id: 'm' + calls.length }), { status: 200 }); }; try { await fn(calls); } finally { globalThis.fetch = orig; } };
+test('flag OFF (default): no provider call even with every provider variable present', async () => { await withFetch(null, async (calls) => { const env = mkEnv({ ...cfgEnv({ BULA_EMAIL_SEND_ENABLED: undefined }) }); await cutover(env); await syncCreated(env, 6001, { guest_email: CEO }); await bulaRunOutbox(env, Date.now()); assert.equal(calls.length, 0); }); });
+test('flag ON + test allow-list: only allow-listed recipients are sent, once, through the real hook', async () => { await withFetch(null, async (calls) => { const env = mkEnv(cfgEnv()); await cutover(env); await syncCreated(env, 6002, { guest_email: CEO }); await bulaRunOutbox(env, Date.now()); await bulaRunOutbox(env, Date.now() + 1000); assert.equal(calls.length, 2); }); });
+test('flag ON but misconfigured (no key / http endpoint / no allow-list): fails closed - nothing sent, jobs stay retryable/failed, no crash', async () => { for (const bad of [{ BULA_EMAIL_API_KEY: undefined }, { BULA_EMAIL_ENDPOINT: 'http://x.test' }, { BULA_EMAIL_TEST_ALLOWLIST: '' }]) await withFetch(null, async (calls) => { const env = mkEnv(cfgEnv(bad)); await cutover(env); await syncCreated(env, 6003, { guest_email: CEO }); const r = await bulaRunOutbox(env, Date.now()); assert.equal(calls.length, 0); assert.equal(r.accepted, 0); }); });
+test('guest NOT on allow-list while flag ON: never sent', async () => { await withFetch(null, async (calls) => { const env = mkEnv(cfgEnv()); await cutover(env); await syncCreated(env, 6004, { guest_email: 'real.guest@example.test' }); await bulaRunOutbox(env, Date.now()); assert.ok(calls.every(([, i]) => !JSON.parse(i.body).to.some((t) => /real.guest@/.test(t))), 'guest copy never sent (the allow-listed staff copy legitimately quotes the booking)'); }); });
+import { bulaScheduled } from './hook.js';
+test('cron health: clean data -> no [bula][ALERT]; corrupted capacity -> one ALERT line with code+count only; flags all OFF -> check does not run', async () => {
+  const lines = []; const o = console.error; console.error = (...a) => lines.push(a.map(String).join(' '));
+  try { const env = mkEnv(); await bulaScheduled(env, Date.now()); assert.equal(lines.filter((l) => l.includes('[bula][ALERT]')).length, 0);
+    const { offer } = await import('./m3_helpers.mjs'); await offer(env); await env.DB.prepare('UPDATE bula_offers SET remaining = remaining - 1').run(); const r = await bulaScheduled(env, Date.now());
+    const al = lines.filter((l) => l.includes('[bula][ALERT]')); assert.equal(al.length, 1); assert.match(al[0], /CAPACITY_MISMATCH/); assert.equal(r.health.alerts, 1);
+    const off = mkEnv({ BULA_OUTBOX_ENABLED: undefined, BULA_CHECKOUT_ENABLED: undefined, BULA_CREDITS_ENABLED: undefined, BULA_SOURCE_SYNC: undefined }); const r2 = await bulaScheduled(off, Date.now()); assert.equal(r2.health, undefined);
+  } finally { console.error = o; }
+});

@@ -1,0 +1,5 @@
+Deployed Cloudflare Worker `nadi-dispatch-api` (read-only code fetch via the Cloudflare connector, 2026-11-03). The bundle itself is NOT committed (public repo); hashes only.
+deployed bundle (worker.js part)   sha256 04203dd3599e9e5cdbdd5d4b8686a65e00b4ea9a983c4dafa3e70ed6a5a69287   (4652 lines)
+bundle + proposed additive patch   sha256 2800099466ae3144eaa22b390239a369be80abf85a13e8a9365a96c108e1d8bc   (+27 lines, 0 removed)
+nat-source-endpoint.diff           sha256 f2882eea07207df13f09177430a1b5e9303ac395726d43b916fc4b5885203fef
+nat_source_read.test.mjs           sha256 67510cd9b6f375326877792bd640cdfccd6cb83078f9baafefb488d39737f578

@@ -1,0 +1,14 @@
+ok 1 - PRODUCTION BUNDLE has no single-booking route today (the endpoint is genuinely new)
+ok 2 - AUTH is fail-closed: none / wrong / ADMIN token / unset SOURCE_READ_TOKEN / empty bearer all 401, and no row data in the body
+ok 3 - an interactive admin LOGIN token (admin_login_tokens) cannot use the source route
+ok 4 - CONTRACT: exactly the 20 whitelisted fields; never guest_name, notes, payment, IP, attribution, distance, fx
+ok 5 - 404 for unknown id; non-numeric / negative / decimal / path-extended ids never reach the read; 10 repeated reads identical
+ok 6 - STRICTLY READ-ONLY: reads (valid, invalid, unauthorised) change no table; write verbs are never served; no event, notification, WhatsApp or network call
+ok 7 - NO SECRET OR GUEST DATA IN LOGS: across ok/denied/error paths nothing is written to console containing a token, email or phone
+ok 8 - DB unavailable -> 503 only AFTER auth passes (unauthenticated callers cannot probe)
+ok 9 - END-TO-END CONTRACT with the REAL Bula reader (whitelist, type checks, provenance): round trip and one-way, via the patched Worker
+ok 10 - REGRESSION (differential): for every existing route the PATCHED Worker answers byte-for-byte like the deployed one
+ok 11 - BUNDLE DIFF is purely additive: 0 removed lines; the only added code is the route + handler; every other byte of the deployed bundle is unchanged
+# tests 11
+# pass 11
+# fail 0

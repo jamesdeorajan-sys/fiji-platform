@@ -1,0 +1,40 @@
+--- /home/claude/bula-wt/marau/bula/hook.js	2026-11-02 01:59:11.757513128 +1100
++++ bula/hook.js	2026-11-03 09:08:24.156789191 +1100
+@@ -7,6 +7,18 @@
+ import { runPublisher } from './offers_d1.js';
+ import { sweepExpired, expireGrants } from './inventory_credit.js';
+ import { sourceSnapshotDep } from './source_adapter.js';
++import { createHttpEmailSender } from './email_provider.js';
++import { collectHealth } from './health.js';
++
++/** Live provider sender, only when BULA_EMAIL_SEND_ENABLED is on. Any configuration fault -> the disabled sender (fail closed) + one alert line with the CODE only. */
++export function selectSender(env, cfg) {
++  if (env.BULA_CAPTURE_SENDER) return env.BULA_CAPTURE_SENDER;
++  if (cfg.emailSendEnabled) {
++    try { return createHttpEmailSender({ endpoint: env.BULA_EMAIL_ENDPOINT, apiKey: env.BULA_EMAIL_API_KEY, from: env.BULA_EMAIL_FROM, mode: env.BULA_EMAIL_MODE === 'live' ? 'live' : 'test', allowRecipients: String(env.BULA_EMAIL_TEST_ALLOWLIST || '').split(',').map((x) => x.trim()).filter(Boolean), log: (e) => console.error('[bula][email]', JSON.stringify(e)) }); }
++    catch (e) { console.error('[bula][ALERT] email sender misconfigured:', e && e.message); return liveSenderDisabled; }
++  }
++  return cfg.emailCaptureEnabled ? createAuditCaptureSender(env.DB) : liveSenderDisabled;
++}
+ 
+ export async function bulaOnSavedBooking(env, clientBookingRef, nowMs = Date.now()) {
+   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
+@@ -18,7 +30,7 @@
+ }
+ export async function bulaRunOutbox(env, nowMs = Date.now()) {
+   const cfg = loadConfig(env); if (!cfg.outboxEnabled) return { skipped: 'outbox_disabled' };
+-  const sender = env.BULA_CAPTURE_SENDER || (cfg.emailCaptureEnabled ? createAuditCaptureSender(env.DB) : liveSenderDisabled);     // there is no live sender in this candidate
++  const sender = selectSender(env, cfg);
+   let repaired = { jobs: 0, grants: 0, snapshots: 0 }; try { repaired = await reconcileAll(env.DB, cfg, nowMs, { sourceSnapshot: sourceSnapshotDep(env, cfg, nowMs) }); } catch (e) { console.error('[bula] reconcile failed; dispatch continues'); }
+   const resolved = await reconcileAmbiguous(env.DB, sender, nowMs);
+   const stats = await dispatch(env.DB, cfg, sender, { workerId: `w-${nowMs}`, nowMs });
+@@ -30,6 +42,9 @@
+   if (cfg.editionPublishEnabled) r.publish = await runPublisher(env.DB, cfg, nowMs, `cron:${nowMs}`);
+   if (cfg.checkoutEnabled) { r.holdsSettled = await sweepExpired(env.DB, nowMs); if (cfg.creditsEnabled) r.grantsExpired = await expireGrants(env.DB, nowMs); }
+   if (cfg.outboxEnabled) r.outbox = await bulaRunOutbox(env, nowMs);
++  if (cfg.outboxEnabled || cfg.checkoutEnabled || cfg.creditsEnabled) {   // minimal monitoring: invariant + failure check; one [bula][ALERT] log line per alert (codes and counts only)
++    try { const h = await collectHealth(env.DB, nowMs); for (const a of h.alerts) console.error('[bula][ALERT]', JSON.stringify(a)); r.health = { ok: h.ok, alerts: h.alerts.length }; } catch (e) { console.error('[bula][ALERT] health check failed:', e && e.message); }
++  }
+   return r;
+ }
+ /** Non-sensitive build metadata (names/ids only). BULA_BUILD / BULA_COMMIT are set at deploy time. */
