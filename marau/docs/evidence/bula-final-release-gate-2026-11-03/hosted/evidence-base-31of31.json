@@ -1,0 +1,245 @@
+{
+  "run": "accmvxz22p2",
+  "base": "marau-bula-acceptance.helpronline.workers.dev",
+  "commit": "1343f866bac354ec2c90509fdc490391c6729a27",
+  "results": [
+    {
+      "name": "deployed build identifies itself",
+      "pass": true,
+      "detail": {
+        "build": "1343f866bac3",
+        "commit": "1343f866bac354ec2c90509fdc490391c6729a27",
+        "schema": "marau-0043+bula-0046"
+      }
+    },
+    {
+      "name": "offer accmvxz22p2-RACE import+approve (ops imports, a second person approves)",
+      "pass": true,
+      "detail": {
+        "imp": 201,
+        "app": 200,
+        "err": []
+      }
+    },
+    {
+      "name": "offer accmvxz22p2-FAULT import+approve (ops imports, a second person approves)",
+      "pass": true,
+      "detail": {
+        "imp": 201,
+        "app": 200,
+        "err": []
+      }
+    },
+    {
+      "name": "offer accmvxz22p2-ONE import+approve (ops imports, a second person approves)",
+      "pass": true,
+      "detail": {
+        "imp": 201,
+        "app": 200,
+        "err": []
+      }
+    },
+    {
+      "name": "publish (ceo)",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "auth: admin credential alone is not a person; unknown staff token refused",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "auth: guest bearer on a staff route refused; no bearer on guest route refused",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "auth: role enforced (ops cannot approve; approver cannot import)",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "auth: body-supplied identity ignored",
+      "pass": true,
+      "detail": {
+        "s": 404
+      }
+    },
+    {
+      "name": "race: 12 simultaneous guests / 3 seats -> exactly 3 holds, 9 sold_out",
+      "pass": true,
+      "detail": {
+        "won": 3,
+        "lost": 9,
+        "other": []
+      }
+    },
+    {
+      "name": "idempotency: 6 parallel identical requests -> one hold",
+      "pass": true,
+      "detail": {
+        "statuses": [
+          201,
+          200,
+          200,
+          200,
+          200,
+          200
+        ]
+      }
+    },
+    {
+      "name": "ownership: another guest cannot cancel/release the hold",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "reserve fault harness: positions 0..5 injected; position 6 beyond batch (committed normally)",
+      "pass": true,
+      "detail": {
+        "positions": 6,
+        "batchLen": "6"
+      }
+    },
+    {
+      "name": "reserve: a real SQL failure at every statement position leaves stock, credit and holds exactly unchanged",
+      "pass": true,
+      "detail": {
+        "positions": 6
+      }
+    },
+    {
+      "name": "reserve: same idempotency key afterwards yields one hold (replay, not duplicate)",
+      "pass": true,
+      "detail": {
+        "s": 200
+      }
+    },
+    {
+      "name": "confirm: SQL failure at every position leaves the hold unconfirmed",
+      "pass": true,
+      "detail": {
+        "positions": 5
+      }
+    },
+    {
+      "name": "lost response: commit stands; retry replays and does not double-confirm",
+      "pass": true,
+      "detail": {
+        "lost": 504,
+        "state": "confirmed",
+        "replay": true
+      }
+    },
+    {
+      "name": "cancel: SQL failure at every position leaves the booking confirmed (no partial credit/stock restore)",
+      "pass": true,
+      "detail": {
+        "positions": 2
+      }
+    },
+    {
+      "name": "cancel: 3 parallel -> exactly one effective cancellation (remaining restored once)",
+      "pass": true,
+      "detail": {
+        "statuses": [
+          200,
+          200,
+          200
+        ],
+        "remaining_before": 6,
+        "remaining_after": 6
+      }
+    },
+    {
+      "name": "pairing: guest gets a one-time code (8 chars, ~10 min)",
+      "pass": true,
+      "detail": {
+        "s": 201
+      }
+    },
+    {
+      "name": "pairing: unauthenticated redeem returns a distinct device key (not the guest token)",
+      "pass": true,
+      "detail": {
+        "s": 201
+      }
+    },
+    {
+      "name": "pairing: device key sees the SAME guest (same wallet, same holds)",
+      "pass": true,
+      "detail": {
+        "wallet": 0
+      }
+    },
+    {
+      "name": "pairing: a used code and a wrong code both fail generically (400)",
+      "pass": true,
+      "detail": {
+        "used": 400,
+        "wrong": 400
+      }
+    },
+    {
+      "name": "pairing: device key is not staff/admin authority",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "pairing: device list shows the device without any key",
+      "pass": true,
+      "detail": {
+        "n": 1
+      }
+    },
+    {
+      "name": "pairing: revoking the device stops it at once; the guest link still works",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "cutoff: reserve accepted before the cutoff, refused after (server clock)",
+      "pass": true,
+      "detail": {
+        "pre": 201,
+        "post": "past_cutoff",
+        "status": "published",
+        "remaining": 1
+      }
+    },
+    {
+      "name": "scheduler precondition (re-read immediately before waiting): offer approved and unpublished",
+      "pass": true,
+      "detail": {
+        "status": "approved"
+      }
+    },
+    {
+      "name": "scheduler isolation: guest reads and a manual publish do NOT publish the cron-only offer",
+      "pass": true,
+      "detail": {
+        "status": "approved"
+      }
+    },
+    {
+      "name": "scheduler: the approved offer was published, and no guest/manual publication names it",
+      "pass": true,
+      "detail": {
+        "status": "published",
+        "nonCronActors": [],
+        "waitedSec": 724
+      }
+    },
+    {
+      "name": "scheduler: publication audit row exists, names this offer, and its trigger is the cron",
+      "pass": true,
+      "detail": {
+        "actor": "cron:<ms>",
+        "found": true
+      }
+    }
+  ],
+  "failed": 0,
+  "finished": "2026-11-01T15:30:55.239Z"
+}

@@ -1,0 +1,19 @@
+# 5–6. Cutover control and rollback (read-only; nothing executed)
+
+```
+CURRENT MODE: ISOLATED SYNTHETIC ACCEPTANCE ONLY. Worker `marau-bula-acceptance` / D1 `bula-acceptance-synthetic-1` (workers.dev, no routes/custom domains). No production Bula/Marau Worker or D1 exists (Cloudflare connector listing: only the isolated acceptance Worker/D1, older Marau preview Workers, and the production NAT Workers, all untouched). Committed defaults: BULA_OUTBOX_ENABLED=off, BULA_SOURCE_SYNC=off, BULA_EMAIL_CAPTURE=off, BULA_EMAIL_SEND_ENABLED=off. The hosted acceptance Worker's state file records flagsOff=false (acceptance flags on, synthetic data) — it is isolated and is not production.
+ACTIVATION STATE: OFF. `bula_settings.outbox_cutover_iso` is never written automatically; the sweep does nothing without it. NADI_SOURCE_BASE_URL / NADI_SOURCE_ADMIN_TOKEN are set nowhere, so the real source reader is not constructed. There is no live email sender in this code.
+ACTIVATION MECHANISM: three independent CEO-controlled layers, all required: (1) Worker config BULA_OUTBOX_ENABLED=on AND BULA_SOURCE_SYNC=on; (2) secrets NADI_SOURCE_BASE_URL + NADI_SOURCE_ADMIN_TOKEN; (3) CEO-only `POST /preview/admin/bula/outbox/cutover` (set once, never moved/overwritten, audited as outbox_cutover_set). None of these has been performed anywhere; layers (1)-(3) cannot be done today because no production deployment or source endpoint exists.
+EXPECTED CHANGE IF ACTIVATED: every NEW source booking saved after the cutover instant creates (idempotently) one guest session + private link, one source snapshot, one FJ$500 welcome grant, and 2 receipt jobs — which in this build are CAPTURED in the audit log only (nothing is transmitted; no live sender exists). Bookings saved before the cutover are never back-filled or messaged. Existing NAT/FijiDash behaviour is unchanged; Bula failure cannot block a booking (tested).
+ROLLBACK MECHANISM: set BULA_SOURCE_SYNC and BULA_OUTBOX_ENABLED to off (config redeploy; the runner's `lockdown` step does this for the acceptance Worker) — adapter, sweep and dispatch stop immediately; or redeploy the baseline bundle 5ec3f91 (below). Data already written is append-only ledger/audit and is retained.
+```
+
+Verified by tests (this gate): all-flags-off sync writes nothing Bula (m4 SWITCH SAFETY); SOURCE_SYNC off stops adapter and sweep repair for source rows; cutover route CEO-only, set once, not movable (`m3_source_adapter`).
+
+## Rollback proof (NOT executed)
+- Known-good rollback artifact: **commit `5ec3f91cec81d33d84fc7b45f3e1d6eb91e3b563`**, bundle `bula-5ec3f91` (sandbox `/mnt/user-data/outputs/bula-5ec3f91`; PC `C:\Users\James\Downloads\bula-acceptance`).
+- Exists and usable: all six bundle files recomputed against its `BUNDLE.json` — all match (worker.js `5f668a6c…0f9c`). It previously passed hosted acceptance on the PC.
+- Schema: `schema.sql` is byte-identical in both bundles (`6231f0ca…4c31e`) and no migration was added after 5ec3f91, so rolling back needs **no schema change**.
+- Procedure: (1) on the PC in the baseline folder `node run_acceptance.mjs verify`; (2) redeploy the baseline Worker to the same isolated Worker name using the runner (hash- and target-guarded); or immediately `lockdown` to turn every Bula flag off; (3) re-run `accept`.
+- Affected: Worker code and flag vars only. NOT affected: D1 contents (guests, ledgers, holds, audit, the cutover row), NAT/FijiDash, DNS, other Workers. Not undone by rollback: rows already written (by design; they are idempotent and append-only), and the baseline lacks the saved-booking adapter/My trip/queue, so those surfaces disappear until redeploy.
+- Production rollback target: none exists yet; once a production Worker exists the same two actions apply, and the pre-activation state is "flags off".

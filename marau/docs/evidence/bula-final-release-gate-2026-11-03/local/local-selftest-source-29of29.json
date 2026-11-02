@@ -1,0 +1,247 @@
+{
+  "run": "accmvzshu0z",
+  "mode": "source",
+  "base": "localhost:8791",
+  "commit": "abc1234",
+  "results": [
+    {
+      "name": "deployed build identifies itself",
+      "pass": true,
+      "detail": {
+        "build": "selftest",
+        "commit": "abc1234",
+        "schema": "marau-0043+bula-0046"
+      }
+    },
+    {
+      "name": "source mode: deployed build identifies itself",
+      "pass": true,
+      "detail": {
+        "commit": "abc1234"
+      }
+    },
+    {
+      "name": "activation gate: cutover set once by the CEO (repeat does not move it)",
+      "pass": true,
+      "detail": {
+        "s": 201
+      }
+    },
+    {
+      "name": "adapter: a saved synthetic transfer is mirrored (created once)",
+      "pass": true,
+      "detail": {
+        "s": 200
+      }
+    },
+    {
+      "name": "adapter: ONE guest, ONE mirror row, ONE welcome grant, TWO receipt jobs, snapshot v1 with source provenance (synthetic source, read-only)",
+      "pass": true,
+      "detail": {
+        "st": {
+          "g": 1,
+          "m": 1,
+          "w": 1,
+          "j": [
+            "guest:queued",
+            "staff:queued"
+          ],
+          "v": 1
+        }
+      }
+    },
+    {
+      "name": "adapter: details the source does not carry stay unavailable (flight, passengers, luggage, add-ons, discount)",
+      "pass": true,
+      "detail": {
+        "availability": {
+          "currency": "source",
+          "total_minor": "source",
+          "flight_number": "not_in_source",
+          "passengers": "not_in_source",
+          "luggage": "not_in_source",
+          "add_ons": "not_in_source",
+          "discount_minor": "not_in_source"
+        }
+      }
+    },
+    {
+      "name": "replay: 3 repeated events + reconcile + 2 outbox sweeps + a status event create no second guest, mirror row, grant, job or snapshot version",
+      "pass": true,
+      "detail": {
+        "g": 1,
+        "m": 1,
+        "w": 1,
+        "j": 2,
+        "v": 1
+      }
+    },
+    {
+      "name": "receipts: exactly one guest and one team copy CAPTURED (never transmitted); both jobs show accepted; only synthetic example.invalid addresses",
+      "pass": true,
+      "detail": {
+        "n": 2,
+        "jobs": [
+          "guest:accepted",
+          "staff:accepted"
+        ]
+      }
+    },
+    {
+      "name": "receipts: guest copy says NOT confirmed yet, names route and the source reference, carries a private link, shows no unavailable details, no \"[object\"",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "receipts: team copy asks staff to confirm or decline",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "private trip: the receipt's own link opens the guest's trip (reference matches the receipt; transfer shown as not yet confirmed or confirmed per the source)",
+      "pass": true,
+      "detail": {
+        "s": 200
+      }
+    },
+    {
+      "name": "isolation: a second saved transfer gets its own guest, its own wallet; each token sees only its own trip",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "isolation: a request parameter cannot reach another guest; no token and a wrong token are refused (401); a guest token is not staff authority",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "isolation: guest responses carry no contact details, staff names or credentials",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "source outage: the snapshot read fails, yet the transfer is saved, the guest exists, the grant and both jobs exist; NO snapshot is invented (and never labelled a form)",
+      "pass": true,
+      "detail": {
+        "s": 200,
+        "snap": null
+      }
+    },
+    {
+      "name": "source recovery: the next sweep adds the snapshot from the SOURCE (provenance recorded); nothing duplicated",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "source recovery: the guest's receipts were still captured and the private link works",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "activity offer imported, approved, published",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "second ops staff identity created for the claim race",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "requests: three guests request the activity (not confirmed; FJ$25 credit each reserved)",
+      "pass": true,
+      "detail": {
+        "s": [
+          201,
+          201,
+          201
+        ]
+      }
+    },
+    {
+      "name": "staff queue shows the request with the guest's transfer, unclaimed, and no contact details",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "competing claims: two staff claim the same request at once -> exactly one wins; the other is told who has it",
+      "pass": true,
+      "detail": {
+        "s": [
+          200,
+          409
+        ]
+      }
+    },
+    {
+      "name": "authorisation: the other staff member cannot confirm, decline or release it (409); approver role cannot act at all (403); nothing changed; guest sees \"being reviewed\" without any staff name",
+      "pass": true,
+      "detail": {
+        "s": [
+          409,
+          409,
+          409
+        ]
+      }
+    },
+    {
+      "name": "confirmation: the claimant confirms; the guest sees Confirmed in My trip AND My bookings; the TRANSFER status is unaffected",
+      "pass": true,
+      "detail": {
+        "s": 200
+      }
+    },
+    {
+      "name": "decline x3 in parallel: credit and capacity are restored EXACTLY ONCE (wallet back to FJ$500, one seat back), one attribution row",
+      "pass": true,
+      "detail": {
+        "before": {
+          "remaining": 0,
+          "avail": 47500,
+          "reserved": 2500
+        },
+        "after": {
+          "remaining": 1,
+          "avail": 50000,
+          "reserved": 0
+        },
+        "audit": 1
+      }
+    },
+    {
+      "name": "declined request reads \"Declined\" with \"credit returned\" proven by the ledger; never \"Released\"",
+      "pass": true,
+      "detail": {
+        "chip": "Declined"
+      }
+    },
+    {
+      "name": "guest withdrawal x2: restored exactly once; reads \"Withdrawn\", credit returned shown only because the ledger proves it",
+      "pass": true,
+      "detail": {
+        "before": {
+          "remaining": 1,
+          "avail": 47500,
+          "reserved": 2500
+        },
+        "after": {
+          "remaining": 2,
+          "avail": 50000,
+          "reserved": 0
+        }
+      }
+    },
+    {
+      "name": "staff queue: closed requests show who declined and the proven credit line",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "name": "no real email: every captured address is synthetic; every job was accepted by the CAPTURE sender; captures = 2 per booking, once each",
+      "pass": true,
+      "detail": {}
+    }
+  ],
+  "failed": 0,
+  "finished": "2026-11-02T21:47:20.317Z"
+}

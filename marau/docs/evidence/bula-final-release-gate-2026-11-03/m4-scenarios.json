@@ -1,0 +1,401 @@
+{
+  "candidate": "1343f866bac354ec2c90509fdc490391c6729a27",
+  "synthetic": true,
+  "steps": [
+    {
+      "scenario": "lifecycle-decline",
+      "step": "1 SOURCE TRUTH: synthetic NAT booking 3001 read from the (read-only) source; DERIVED: 1 guest, 1 link, 1 grant",
+      "result": {
+        "accounts": [
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          },
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "ISLAND",
+            "t": 8,
+            "r": 8
+          }
+        ],
+        "guests": 2,
+        "links": 2,
+        "holds": 0,
+        "grants": 2,
+        "jobs": 4
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "2 itinerary: from/to/date/time/flight come from the SOURCE row; status mirrors source status (pending); nothing invented",
+      "result": {
+        "ref": "3001",
+        "status": "pending",
+        "unavailable": null
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "3 FJ$500 welcome credit (derived)",
+      "result": {
+        "availableCents": 50000
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "4 offer displayed to the guest",
+      "result": {
+        "offers": 1
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "5 request: credit reserved ONCE (-FJ$25.00), capacity reserved ONCE (8 -> 7)",
+      "result": {
+        "accounts": [
+          {
+            "granted": 50000,
+            "available": 47500,
+            "reserved": 2500,
+            "redeemed": 0
+          },
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "ISLAND",
+            "t": 8,
+            "r": 7
+          }
+        ],
+        "guests": 2,
+        "links": 2,
+        "holds": 1,
+        "grants": 2,
+        "jobs": 4
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "5b repeated request (same idem key; and a 2nd key for the same offer)",
+      "result": {
+        "sameKeyStatus": 200,
+        "secondKeyStatus": 409,
+        "holds": 1,
+        "remaining": 7
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "6 staff queue shows the request",
+      "result": {
+        "queued": 1
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "7 attributable authorised action: claim by ana(ops)",
+      "result": {
+        "accounts": [
+          {
+            "granted": 50000,
+            "available": 47500,
+            "reserved": 2500,
+            "redeemed": 0
+          },
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "ISLAND",
+            "t": 8,
+            "r": 7
+          }
+        ],
+        "guests": 2,
+        "links": 2,
+        "holds": 1,
+        "grants": 2,
+        "jobs": 4
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "8 decline: guest sees Declined + credit/capacity returned (proved from ledger)",
+      "result": {
+        "accounts": [
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          },
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "ISLAND",
+            "t": 8,
+            "r": 8
+          }
+        ],
+        "guests": 2,
+        "links": 2,
+        "holds": 1,
+        "grants": 2,
+        "jobs": 4
+      }
+    },
+    {
+      "scenario": "lifecycle-decline",
+      "step": "9 replay: repeated decline + repeated withdrawal restore nothing more",
+      "result": {
+        "before": {
+          "granted": 50000,
+          "available": 50000,
+          "reserved": 0,
+          "redeemed": 0
+        },
+        "after": {
+          "granted": 50000,
+          "available": 50000,
+          "reserved": 0,
+          "redeemed": 0
+        },
+        "remaining": 8
+      }
+    },
+    {
+      "scenario": "lifecycle-confirm",
+      "step": "confirm + replay + source status change",
+      "result": {
+        "attributedTo": "ana:operator ref OP-1",
+        "afterReplayIdentical": true,
+        "transferStatusFollowsSource": true
+      }
+    },
+    {
+      "scenario": "duplicate-source",
+      "step": "3x duplicate created event + 3x updated event + 3x scheduled sweep + 3x outbox run",
+      "result": {
+        "state": {
+          "accounts": [
+            {
+              "granted": 50000,
+              "available": 50000,
+              "reserved": 0,
+              "redeemed": 0
+            }
+          ],
+          "offers": [],
+          "guests": 1,
+          "links": 1,
+          "holds": 0,
+          "grants": 1,
+          "jobs": 2
+        },
+        "captured": 2
+      }
+    },
+    {
+      "scenario": "source-outage",
+      "step": "source DOWN during sync",
+      "result": {
+        "syncStatus": 409,
+        "guests": 0,
+        "grants": 0,
+        "snapshots": 0
+      }
+    },
+    {
+      "scenario": "source-outage",
+      "step": "source RECOVERED + 3 sweeps",
+      "result": {
+        "accounts": [
+          {
+            "granted": 50000,
+            "available": 50000,
+            "reserved": 0,
+            "redeemed": 0
+          }
+        ],
+        "offers": [],
+        "guests": 1,
+        "links": 1,
+        "holds": 0,
+        "grants": 1,
+        "jobs": 2
+      }
+    },
+    {
+      "scenario": "tokens",
+      "step": "refusals",
+      "result": {
+        "wrong": 401,
+        "none": 401,
+        "wrongReserve": 401,
+        "otherGuestWithdraw": 404,
+        "revoked": 401,
+        "revokedReserve": 401
+      }
+    },
+    {
+      "scenario": "staff-authz",
+      "step": "authz + race",
+      "result": {
+        "noStaff": 401,
+        "adminOnlyNoStaff": 401,
+        "badStaffToken": 401,
+        "approverRoleConfirm": 403,
+        "approverRoleDecline": 403,
+        "guestTokenOnStaffRoute": 401,
+        "loserConfirm": 409,
+        "loserDecline": 409,
+        "claimStatuses": [
+          200,
+          409
+        ],
+        "declineStatuses": [
+          200,
+          200
+        ],
+        "final": {
+          "granted": 50000,
+          "available": 50000,
+          "reserved": 0,
+          "redeemed": 0
+        }
+      }
+    },
+    {
+      "scenario": "concurrency",
+      "step": "three concurrent requests, capacity 1",
+      "result": {
+        "statuses": [
+          201,
+          409,
+          409
+        ],
+        "remaining": 0,
+        "liveHolds": 1
+      }
+    },
+    {
+      "scenario": "capture-failure",
+      "step": "send fails once",
+      "result": {
+        "jobs": 2,
+        "delivered": 2,
+        "jobStates": [
+          {
+            "state": "accepted",
+            "n": 2
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "capture-failure",
+      "step": "send fails twice",
+      "result": {
+        "jobs": 2,
+        "delivered": 2,
+        "jobStates": [
+          {
+            "state": "accepted",
+            "n": 2
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "capture-failure",
+      "step": "ambiguous (sent, no ack)",
+      "result": {
+        "jobs": 2,
+        "delivered": 2,
+        "jobStates": [
+          {
+            "state": "accepted",
+            "n": 2
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "capture-failure",
+      "step": "ambiguous (not sent)",
+      "result": {
+        "jobs": 2,
+        "delivered": 2,
+        "jobStates": [
+          {
+            "state": "accepted",
+            "n": 2
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "missing-fields",
+      "step": "optional fields absent: accepted, rendered as unavailable",
+      "result": {
+        "guests": 1,
+        "grants": 1,
+        "unavailable": null
+      }
+    },
+    {
+      "scenario": "missing-fields",
+      "step": "required fields absent: refused fail-closed, nothing written",
+      "result": {
+        "noEmail": {
+          "status": 409,
+          "reason": "MISSING_GUEST_CONTACT"
+        },
+        "noPhone": {
+          "status": 409,
+          "reason": "MISSING_GUEST_CONTACT"
+        },
+        "noPrice": {
+          "status": 409,
+          "reason": "MISSING_QUOTED_AMOUNT"
+        }
+      }
+    },
+    {
+      "scenario": "cutover-off",
+      "step": "flags off",
+      "result": {
+        "jobs": 0,
+        "grants": 0,
+        "snaps": 0,
+        "cutover": 0
+      }
+    }
+  ]
+}
