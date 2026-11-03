@@ -40,7 +40,7 @@ function bookingFacts(b, cfg) {
   const miss = [];
   if (!b.pickup_datetime) miss.push('pickup'); if (!b.pickup_zone || !b.destination_zone) miss.push('route');
   if (!(Number.isFinite(b.quoted_amount))) miss.push('amount');
-  const currency = b.source_currency || cfg.defaultCurrency; if (!currency) miss.push('currency');
+  const currency = b.source_sync_owned === 1 ? b.source_currency : (b.source_currency || cfg.defaultCurrency); if (!currency) miss.push('currency');   // a booking mirrored from the source NEVER gets a defaulted currency
   return { miss, currency, when: fijiWhen(b.pickup_datetime) };
 }
 const line = (label, v) => (v === undefined || v === null || v === '' ? null : `${label}: ${v}`);

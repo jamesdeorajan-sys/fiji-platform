@@ -1,0 +1,90 @@
+{
+  "viewport": "390x844",
+  "results": [
+    {
+      "name": "guests can request (API)",
+      "ok": true,
+      "note": "201/201/201"
+    },
+    {
+      "name": "missing fields are shown as missing (5 rows)",
+      "ok": true,
+      "note": "5"
+    },
+    {
+      "name": "no invented flight/passengers values",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "quoted total shows source currency",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "a supplied flight IS shown",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "staff queue shows the no-email booking (count 1)",
+      "ok": true,
+      "note": "Bula staff | ops1 · ops | Requests | Offers | Email | BOOKINGS NEEDING STAFF ATTENTION (1) | NAT booking 4 | No guest journey created: the booking has no usable guest contact (missing:guest_email). Nothing was sent. Contact the guest by other means if appropriate. · first seen just now | Mark handled | REQUESTS AWAIT"
+    },
+    {
+      "name": "no contact details in staff queue",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "staff confirmation: one hold confirmed",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "staff decline: one hold released",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "Mark handled requires a note (nothing happens without one)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "Mark handled with a note resolves + audits",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "refusal section gone after handling",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "guest withdrawal released the hold",
+      "ok": true,
+      "note": "[\"confirmed\",\"released\",\"released\"]"
+    },
+    {
+      "name": "wallet/capacity invariants clean",
+      "ok": true,
+      "note": "[]"
+    },
+    {
+      "name": "guest isolation: guest 3 sees only its own trip",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "name": "no email sent / nothing outbound",
+      "ok": true,
+      "note": ""
+    }
+  ]
+}

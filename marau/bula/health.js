@@ -13,6 +13,7 @@ export async function collectHealth(db, nowMs, { stuckMs = 30 * 60e3 } = {}) {
   add('MIRROR_WITHOUT_JOBS_OR_GRANT', await n(`SELECT COUNT(*) n FROM marau_real_booking_links l JOIN marau_test_bookings b ON b.id = l.marau_booking_id WHERE l.created_at < ? AND (NOT EXISTS (SELECT 1 FROM bula_outbox o WHERE o.booking_ref = b.client_booking_ref) OR NOT EXISTS (SELECT 1 FROM bula_credit_ledger c WHERE c.party_key = 'trip:' || b.client_booking_ref AND c.type = 'granted'))`, cut));
   add('SOURCE_ROWS_WITHOUT_SNAPSHOT', await n(`SELECT COUNT(*) n FROM marau_real_booking_links l JOIN marau_test_bookings b ON b.id = l.marau_booking_id WHERE l.created_at < ? AND NOT EXISTS (SELECT 1 FROM bula_booking_snapshots s WHERE s.booking_ref = b.client_booking_ref)`, cut));
   add('SOURCE_BOOKING_REFUSED_NEEDS_STAFF', await n("SELECT COUNT(*) n FROM bula_source_refusals WHERE state = 'open'"));
+  add('SOURCE_BOOKING_PARKED_RETRYING', await n("SELECT COUNT(*) n FROM bula_source_refusals WHERE state = 'open' AND attempts >= 10 AND reason IN ('SOURCE_READ_FAILED','BOOKING_CLAIM_CONTENDED','UNEXPECTED_ERROR','SOURCE_BOOKING_NOT_FOUND')"));
   add('SOURCE_DISCOVERY_FAILING', await n('SELECT COUNT(*) n FROM bula_source_discovery_state WHERE consecutive_failures >= 3'));
   // wallet invariants
   add('WALLET_BUCKETS_DONT_ADD_UP', await n('SELECT COUNT(*) n FROM bula_credit_accounts WHERE available_cents + reserved_cents + redeemed_cents + expired_cents != granted_cents'));

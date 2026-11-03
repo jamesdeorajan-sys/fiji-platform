@@ -54,8 +54,8 @@ export function renderGuestEmail(job, { privateTripUrl, supportWhatsapp }) {
     confirmed ? 'Bula! Your transfer is confirmed.' : 'Bula! We have received your booking. It is not confirmed until our team confirms it.',
     `Ref: ${b.bookingRef}`, `Pickup: ${b.pickupFijiLocal} (Fiji time)`, `Route: ${b.from} -> ${b.to}`,
     `Price saved: ${b.currency} ${(b.priceCents / 100).toFixed(2)}`,
-    `Passengers: ${b.passengers}${b.luggage != null ? ', luggage: ' + b.luggage : ''}`,
+    b.passengers != null ? `Passengers: ${b.passengers}${b.luggage != null ? ', luggage: ' + b.luggage : ''}` : null,
     `Your private trip page: ${privateTripUrl}`, `Need help? Bula Happiness support: ${supportWhatsapp || '(support number to be verified)'}`,
   ];
-  return { to: b.guestEmail, subject: confirmed ? `Booking confirmed ${b.bookingRef}` : `Booking received ${b.bookingRef}`, text: lines.join('\n') };
+  return { to: b.guestEmail, subject: confirmed ? `Booking confirmed ${b.bookingRef}` : `Booking received ${b.bookingRef}`, text: lines.filter((x) => x !== null).join('\n') };
 }
