@@ -1,0 +1,80 @@
+{
+  "label": "before",
+  "taken_at": "2026-11-03T06:07:03.355Z",
+  "workers": {
+    "nadi-dispatch-api": {
+      "modified_on": "2026-10-30T01:00:00Z",
+      "etag": "e1"
+    },
+    "fiji-chat-widget": {
+      "modified_on": "2026-10-01T00:00:00Z",
+      "etag": "e2"
+    },
+    "driver-v2-gate15-isolated": {
+      "modified_on": "2026-11-03T00:00:00Z",
+      "etag": "iso0"
+    }
+  },
+  "prod_workers": {
+    "nadi-dispatch-api": {
+      "bindings": [
+        {
+          "name": "DB",
+          "type": "d1"
+        }
+      ],
+      "schedules": [
+        "*/5 * * * *"
+      ],
+      "secrets": [
+        "API_KEY"
+      ],
+      "deployments": [
+        {
+          "id": "d1",
+          "created_on": "2026-10-30"
+        }
+      ]
+    }
+  },
+  "d1": {
+    "nadi-marketplace-db": {
+      "uuid": "0ec1cd84-fcda-4f7f-8337-0fb70fe1a512",
+      "created_at": "2026-01-01",
+      "version": "production"
+    },
+    "driver-v2-gate15-isolated-20261103": {
+      "uuid": "fe5eba69-b654-40cb-bf80-4b9a37c03f0c",
+      "created_at": "2026-11-03",
+      "version": "production"
+    }
+  },
+  "zone_routes": [
+    {
+      "zone": "nadiairporttransfers.com",
+      "pattern": "nadiairporttransfers.com/*",
+      "script": "nadi-dispatch-api"
+    }
+  ],
+  "domains": [
+    {
+      "hostname": "api.example.test",
+      "service": "nadi-dispatch-api",
+      "environment": "production"
+    }
+  ],
+  "isolated": {
+    "worker": "driver-v2-gate15-isolated",
+    "bindings": [],
+    "workers_dev_enabled": false,
+    "schedules": [],
+    "secrets": [],
+    "d1": {
+      "name": "driver-v2-gate15-isolated-20261103",
+      "uuid": "fe5eba69-b654-40cb-bf80-4b9a37c03f0c"
+    }
+  },
+  "ok": true,
+  "missing": [],
+  "isolated_shell_version": "shell-v1"
+}

@@ -1,82 +1,82 @@
-# Driver PWA v2 — Gate 1.5 isolated Cloudflare proof: runbook
+# Driver PWA v2 — Gate 1.5 isolated Cloudflare proof: runbook (revision 2 — operational hardening)
 
 **Status: PACKAGE PREPARED AND LOCALLY VALIDATED. NOT DEPLOYED. NOT ATTACHED. Nothing in this file has been run against Cloudflare.**
-Everything below the line "REQUIRES EXPLICIT GO" must wait for James / ChatGPT review of the package.
-Gate 2 (first real notification to driver ID 1) remains **HOLD** and is not part of this package.
+Everything under "REQUIRES EXPLICIT GO" waits for the final GO review. Gate 2 (first real notification to driver ID 1) remains **HOLD** and is not part of this package.
 
-Resources (already created, empty / zero-binding): D1 `driver-v2-gate15-isolated-20261103`, Worker `driver-v2-gate15-isolated`.
-Never touched by this package: `nadi-dispatch-api`, `nadi-marketplace-db`, NAT, FijiDash, Bula, any booking, any production secret or route.
+Isolated resources (already exist, empty / zero-binding): D1 `driver-v2-gate15-isolated-20261103` = UUID `fe5eba69-b654-40cb-bf80-4b9a37c03f0c`; Worker `driver-v2-gate15-isolated`.
+Never touched: `nadi-dispatch-api`, `nadi-marketplace-db` (`0ec1cd84-fcda-4f7f-8337-0fb70fe1a512`), NAT, FijiDash, Bula, any booking, any production secret/route/schedule.
 
-## 0. What the package is
-| Piece | File |
-|---|---|
-| Worker config (one D1 binding, no routes/crons/vars/services, workers.dev off) | `wrangler.toml` |
-| Worker entry (runtime isolation checks → HTTP surface of the Gate 1 service) | `src/worker.js` (+ unchanged `../src/service.js`, `../src/http.js`) |
-| Isolation guards (deny-list, host allow-list, DB identity marker, foreign-table refusal) | `src/safety.js` |
-| Capture-only adapters (rows, never messages) | `src/d1_capture.js` |
-| Test-control surface (closed unless the isolated Worker has its own token secret; synthetic rows only) | `src/control.js` |
-| Schema (Gate 1 fixture + identity/capture/probe tables), SHA-256 recorded | `schema/gate15_d1_schema.sql`, `.sha256` (built by `scripts/build_schema.mjs`) |
-| Teardown SQL | `schema/gate15_teardown.sql` |
-| Build-time safety assertion | `scripts/assert_package_safe.mjs` |
-| Real-HTTP proof runner (D1 primitives, boundaries, PII, audit atomicity, races) | `scripts/gate15_proof.mjs` |
-| Read-only Cloudflare evidence + before/after production-untouched diff | `scripts/collect_remote_evidence.sh`, `scripts/diff_production_snapshots.mjs` |
-| One-command local validation (loopback workerd, local SQLite D1) | `scripts/run_local_validation.sh` |
+## 0. The one command (after GO)
+```
+export CLOUDFLARE_ACCOUNT_ID=…  CLOUDFLARE_API_TOKEN=…  GATE15_ACCOUNT_SUBDOMAIN=<account workers.dev subdomain>
+node cloudflare/orchestrator/run_remote.mjs            # writes evidence/gate15/remote-<UTC timestamp>/ ; exit 0 only on PASS
+```
+`run_remote.mjs` is the **only** supported way to run the remote proof. It is a thin launcher over `orchestrator.mjs` + `cloudflare_driver.mjs` (both locally rehearsed and unit-tested with a fake cloud). The isolated D1 name/UUID are **pinned in code** (`src/safety.js`, `wrangler.toml`, and enforced by `assert_package_safe.mjs`); there is no flag, argument or environment variable that supplies a database id (`GATE15_D1_ID`, `D1_DATABASE_ID`, … are refused outright).
+Token scope needed: Workers Scripts:Edit (isolated worker only is not expressible in Cloudflare scopes, so the code guards every mutating call against the pinned worker path), D1:Edit, Account Settings:Read, Zone:Read (routes), Workers Routes:Read.
 
-## 1. Local validation (safe now; touches no Cloudflare account)
+## 1. State machine (exact order)
+| # | Step | Mutates? | If it fails |
+|---|---|---|---|
+| 1 | **preflight** — package safety assertion (UUID pin, deny-list, schema hash), credentials present, no identity overrides | no | `STOPPED_NO_MUTATION` |
+| 2 | **BEFORE snapshot** (read-only): all Workers `modified_on/etag`; `nadi-dispatch-api` bindings, cron schedules, secret **names**, deployments; every zone's Worker routes (NAT/FijiDash/customer); Worker custom domains; all D1 identities; isolated Worker state + its shell version id. Any single read failing, or an unknown shell version id, or a non-pristine isolated Worker → STOP | no | `STOPPED_NO_MUTATION` — **no remote mutation** |
+| 3 | **isolated D1 identity** — two independent lookups (by pinned name, by pinned UUID) must each return exactly `driver-v2-gate15-isolated-20261103` / `fe5eba69-b654-40cb-bf80-4b9a37c03f0c`; production name/UUID refused explicitly; mismatch, duplicate, case-variant → STOP | no | `STOPPED_NO_MUTATION` |
+| — | ---- mutation begins; from here teardown is mandatory ---- | | |
+| 4 | apply isolated schema (`d1 execute <pinned name> --remote`) + marker check | isolated D1 | failure path |
+| 5 | create isolated `GATE15_CONTROL_TOKEN` (random, piped on stdin, never in argv/logs) | isolated Worker | failure path |
+| 6 | deploy isolated Worker (`--name` pinned) | isolated Worker | failure path |
+| 7 | enable workers.dev **for the isolated Worker only** | isolated Worker | failure path |
+| 8 | functional proof (identity, D1 primitives, boundaries, PII, audit atomicity, busy rule, staff collisions) | isolated D1 | failure path |
+| 9 | **STAGE A**: 10 contested races → checkpoint | isolated D1 | failure path |
+| 10 | **STAGE B**: 50 more races → same checkpoint | isolated D1 | failure path |
+| 11 | **STAGE C**: 200 more races → same checkpoint (only if A and B fully green) | isolated D1 | failure path |
+| 12 | final invariant/readback | no | failure path |
+| 13 | after evidence → teardown (§3) → post-teardown snapshot → production diff | see §3 | — |
+
+**Checkpoint (identical at every stage; assertions are never weakened between stages):** global invariants over the whole isolated DB (no double accept, no orphan assignment, complete audit trail, one active trip per driver); per race: exactly one server-confirmed winner, losers 409, exactly one `DRIVER_ASSIGNED` event, exactly one ACCEPTED offer, every losing offer SUPERSEDED; zero real sends; zero wallet/commission change; zero non-placeholder phones; zero non-synthetic bookings.
+
+**Failure path (any failure after step 3):** capture failure evidence → remaining stress stages recorded `SKIPPED` (never run) → teardown immediately → post-teardown snapshot → production diff → verdict `FAILED/HOLD`. The proof Worker is never left exposed because a test failed.
+
+## 2. Verdicts
+* `PASS` — every stage green **and** teardown complete **and** before/after diff proves production untouched **and** the isolated Worker is back to its zero-binding shell.
+* `FAILED/HOLD` — a proof stage failed (or a mutation step failed); cleanup completed; production proven untouched.
+* `HOLD / INVESTIGATE` — any unexplained production difference, or teardown/restoration incomplete, or no comparison possible. Takes precedence over `FAILED/HOLD`. Never PASS.
+* `STOPPED_NO_MUTATION` — failed before step 4; nothing was changed anywhere.
+
+## 3. Teardown (exact order, best-effort per step, every step recorded, never deletes the D1 or the Worker)
+1. disable workers.dev for `driver-v2-gate15-isolated`
+2. delete `GATE15_CONTROL_TOKEN` from that Worker
+3. re-verify the isolated D1 identity again, then remove all Gate 1.5 schema/data (`gate15_teardown.sql`) and confirm zero user tables
+4. restore the Worker to its original zero-binding shell (`wrangler rollback <shell version id captured in the BEFORE snapshot>`)
+5. verify no schedule, no custom domain, no route points at the isolated Worker
+6. collect final resource evidence (post-teardown snapshot, same shape as BEFORE)
+7. compare production before/after
+
+## 4. What the diff proves (and what it cannot)
+Compared, must be identical: every Worker other than the isolated one (`modified_on`, `etag`; includes `nadi-dispatch-api`); `nadi-dispatch-api` bindings, schedules, secret names, deployments; every D1 other than the isolated one (identity, incl. `nadi-marketplace-db`); the complete set of zone routes (NAT, FijiDash, customer) and Worker custom domains; none may reference the isolated Worker. Isolated side must be quiescent: workers.dev off, no secrets, no bindings, no schedules, D1 identity unchanged.
+**Disclosure:** *customer bookings* are proven untouched only indirectly (the code path never has a binding to, or a credential for, the production D1; `nadi-marketplace-db` identity and `nadi-dispatch-api` deployment are unchanged). Counting rows in production D1 would itself be production access, which this plan forbids.
+
+## 5. Evidence (per stage, independent — separates an infrastructure limit from a correctness failure)
+`00-preflight` · `01-before-snapshot` · `02-d1-identity` · `10-functional` · `11-stage-A-10-races` · `12-stage-B-50-races` · `13-stage-C-200-races` · `20-final-invariant` · `21-after-evidence` (or `21-failure-evidence`) · `30-teardown` · `31-post-teardown-snapshot` · `32-production-diff` · `99-verdict` (all `.json`). Each proof stage file records checks, latency, status/code histograms. A stage that fails on HTTP 429/5xx/D1 limit errors is an **infrastructure limit**; a failed invariant/assertion with healthy responses is a **correctness failure**.
+
+## 6. Local validation (safe now; touches no Cloudflare account)
 ```
 cd driver-v2
-node cloudflare/scripts/build_schema.mjs                 # prints the schema SHA-256
-node cloudflare/scripts/assert_package_safe.mjs          # must print "ok": true
-bash cloudflare/scripts/run_local_validation.sh 200      # suites + 200 real-HTTP races on local workerd
+node cloudflare/scripts/assert_package_safe.mjs                    # "ok": true
+bash cloudflare/scripts/run_local_validation.sh                    # unit + suites + staged proof on local workerd
+node cloudflare/orchestrator/rehearse_local.mjs happy             # full orchestration, 10→50→200, fake cloud + local workerd
+node cloudflare/orchestrator/rehearse_local.mjs inject-B          # deliberately corrupts local DB before stage B: must stop, skip C, tear down, FAILED/HOLD
 ```
-`wrangler dev --local` runs the real Worker bundle in workerd against a local SQLite-backed D1 on 127.0.0.1. It is a strong packaging/behaviour check, **not** a substitute for the remote proof (see "What local cannot prove").
+(`WRANGLER_BIN=/path/to/wrangler` avoids `npx`.) The rehearsals use the real orchestrator and real driver logic, with the Cloudflare API replaced by an in-memory fake and every `--remote` wrangler command translated to its local equivalent.
 
-## 2. Safety rules enforced (build-time and runtime)
-* Build time (`assert_package_safe.mjs`, exit 1 on any violation): Worker name must equal `driver-v2-gate15-isolated`; exactly one D1 binding named `DB` with `database_name = driver-v2-gate15-isolated-20261103`; production names (`nadi-marketplace-db`, `nadi-dispatch-api`, `vakaviti-kb`, `marau-stage1-test-db`, `fiji-chat-widget`, `vakaviti-monitor`), the known production D1 id, and production hostnames are refused anywhere outside the deny-list; no routes, crons, vars, services, KV/R2/queues/AI bindings; `workers_dev=false`; no `fetch(`/sockets/email/messaging-provider/`scheduled`/cron code in the Worker or the core service; schema hash must match the recorded value.
-* Runtime (every request, before any query): environment may contain only `DB` (+ the isolated control token); hostname must be `localhost` or `driver-v2-gate15-isolated.<account>.workers.dev` (all production hostnames refused); the bound database must contain the identity marker row and **only** the expected tables — a production database fails here and the Worker answers `503 ISOLATION_ASSERTION_FAILED` without reading anything else.
-* Configuration cannot carry a production database id/name: the only accepted values are the isolated name and a UUID that is not on the deny-list (and the marker check backs this up at runtime).
-* Notifications are rows in `gate15_capture` whose `CHECK (suppressed = 1)` and `CHECK (real_send = 0)` make a recorded real send impossible; there is no network client in the bundle (global `fetch` is replaced by a thrower; the build scan forbids network constructs).
+## 7. Safety rules enforced (unchanged from rev 1, plus)
+* Build time: Worker name, single D1 binding `DB`, `database_name` **and `database_id` must equal the pinned values** (placeholder or any other UUID refused), production names/ids/hosts refused, no routes/crons/vars/services/KV/R2/queues/AI, `workers_dev=false`, no network/messaging/scheduler code, schema hash.
+* Runtime (each request): env only `DB` (+ isolated control token); host `localhost` or `driver-v2-gate15-isolated.<acct>.workers.dev`; identity-marker row and exact table allow-list in the bound DB (a production DB fails closed with 503).
+* Orchestration: every wrangler argv and every mutating API path is checked against the pinned names before it is issued; deleting the D1 or the Worker is not expressible; secret values never appear in argv or logs.
 
-## ===== REQUIRES EXPLICIT GO (James / ChatGPT) — do not run before =====
+## 8. What local validation cannot prove (UNKNOWN until the remote run)
+Real D1 semantics under load and per-invocation query limits (plan-dependent); true multi-isolate concurrency (locally one workerd process); remote clock/latency vs the ±3 s boundary margins; workers.dev routing/TLS; `wrangler rollback` behaviour when restoring the shell on the real account; exact Cloudflare API response shapes consumed by the snapshot module (written to the documented schema, exercised only against the fake).
 
-## 3. Pre-flight snapshot (read-only)
-```
-CLOUDFLARE_ACCOUNT_ID=…  CLOUDFLARE_API_TOKEN=<read-scoped>  bash cloudflare/scripts/collect_remote_evidence.sh before
-```
-Confirms: isolated D1 name→id, Worker bindings (expect none), workers.dev disabled, no schedules, no custom domains, no zone routes; records `modified_on` of all Workers and identity of all D1 databases (metadata only).
+## ===== REQUIRES EXPLICIT GO — do not run before =====
+Run §0 exactly once. If the verdict is anything but `PASS`, do not re-run; read `99-verdict.json` and `32-production-diff.json` first. Deleting the isolated D1/Worker is a separate decision for James.
 
-## 4. Attach and deploy (exact steps)
-1. Copy `wrangler.toml` to a working copy and replace the `database_id` placeholder with the id returned by step 3 for `driver-v2-gate15-isolated-20261103` (nothing else). Run `node cloudflare/scripts/assert_package_safe.mjs <that package root>` again — it must still pass (it refuses the production id).
-2. Apply the schema to the isolated D1 only: `wrangler d1 execute driver-v2-gate15-isolated-20261103 --remote --file cloudflare/schema/gate15_d1_schema.sql`. Then verify the hash: `node -e` / `sha256sum cloudflare/schema/gate15_d1_schema.sql` equals `gate15_d1_schema.sha256`, and `wrangler d1 execute … --remote --command "SELECT marker FROM gate15_identity"` returns `driver-v2-gate15-isolated-20261103`.
-3. Create the proof-window control secret **on the isolated Worker only**: `wrangler secret put GATE15_CONTROL_TOKEN --name driver-v2-gate15-isolated` (random value; keep it out of logs/chat).
-4. `wrangler deploy` from the working copy (`--name driver-v2-gate15-isolated` is already in the file).
-5. Turn on the workers.dev URL for **this Worker only** for the proof window (Worker → Settings → Domains & Routes → workers.dev, or `POST /accounts/{id}/workers/scripts/driver-v2-gate15-isolated/subdomain {"enabled":true}`). No custom domain, no route.
-
-## 5. Run the proof
-```
-GATE15_BASE_URL=https://driver-v2-gate15-isolated.<account-subdomain>.workers.dev  GATE15_CONTROL_TOKEN=<token>  GATE15_RACES=200  GATE15_TARGET=remote-isolated \
-  node cloudflare/scripts/gate15_proof.mjs
-```
-The runner refuses any other host. Output: `evidence/gate15/remote-isolated-results.json` (identity, D1 primitives, duplicate/replayed/stale/expired accepts, 57/63/117/123/177/183 s boundaries on the real clock, human fallback, PII exclusion, audit atomicity via fault-injected triggers, busy-driver rule, staff-assignment/cancel collisions, 200 contested races of 6 concurrent HTTP requests each, global invariants, zero-send, wallet, phone and synthetic-data assertions).
-Resource note: ≈ 2,000 requests, each doing ≈ 5–40 D1 statements. If the account's plan caps D1 queries per invocation (free plan: 50), the control calls (`new-booking`, `free-drivers`) are the heaviest — reduce `GATE15_RACES` rather than weakening any assertion.
-
-## 6. Evidence + production-untouched assertion
-```
-… collect_remote_evidence.sh after
-node cloudflare/scripts/diff_production_snapshots.mjs evidence/gate15/remote     # exit 0 and "production_untouched": true required
-```
-
-## 7. Teardown / rollback (returns everything to the pre-proof state)
-1. Disable workers.dev for the isolated Worker (reverse of 4.5).
-2. `wrangler secret delete GATE15_CONTROL_TOKEN --name driver-v2-gate15-isolated`.
-3. Empty the isolated D1: `wrangler d1 execute driver-v2-gate15-isolated-20261103 --remote --file cloudflare/schema/gate15_teardown.sql` (drops every Gate 1.5 object; verify `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` shows no user tables).
-4. Return the Worker to its zero-binding shell: `wrangler versions list --name driver-v2-gate15-isolated`, then `wrangler rollback <shell-version-id> --name driver-v2-gate15-isolated` (or redeploy the original empty shell).
-5. Re-run `collect_remote_evidence.sh after` and `diff_production_snapshots.mjs` to show only the isolated resources ever changed.
-6. Deleting the D1 / Worker entirely is a separate, optional decision for James; this package never deletes either.
-Nothing in teardown touches `nadi-dispatch-api`, `nadi-marketplace-db`, NAT, FijiDash, Bula or any booking.
-
-## What local validation cannot prove (still UNKNOWN until step 5 runs remotely)
-* Real Cloudflare D1 semantics under load (batch transaction behaviour across isolates/colos, latency, per-invocation query limits).
-* True multi-isolate concurrency: locally the 6 simultaneous HTTP requests of a race reach one workerd process; remotely they may land on different isolates/locations.
-* Remote clock/latency effects on the ±3 s boundary margins (exact-millisecond boundaries are proven in the deterministic suite).
-* workers.dev routing/TLS, secret handling, observability, and plan limits.
+*Superseded (kept, not deleted):* `scripts/collect_remote_evidence.sh`, `scripts/diff_production_snapshots.mjs` — replaced by `orchestrator/snapshot.mjs` + `orchestrator/diff.mjs`.

@@ -1,0 +1,13 @@
+{
+  "production_untouched": true,
+  "isolated_quiescent": true,
+  "clean": true,
+  "problems": [],
+  "checked": {
+    "workers": 2,
+    "production_workers_detailed": 1,
+    "d1": 1,
+    "zone_routes": 1,
+    "domains": 1
+  }
+}

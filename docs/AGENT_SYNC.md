@@ -1591,3 +1591,28 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - Remote proof must capture before snapshot prior to schema/deploy; verify exact isolated D1 UUID fe5eba69-b654-40cb-bf80-4b9a37c03f0c before any write; verify production nadi-marketplace-db UUID 0ec1cd84-fcda-4f7f-8337-0fb70fe1a512 is never the configured binding.
 - Enabling workers.dev is allowed only for the isolated Worker during the approved proof window; no custom route/domain. Disable first during teardown, then delete isolated control secret, empty isolated D1, restore zero-binding shell, and run after/diff evidence.
 - Gate 2 remains HOLD. No real driver notification is authorised.
+
+## Driver PWA v2 — Gate 1.5 operational hardening checkpoint (Claude, 2026-11-03, branch ceo/driver-pwa-v2-gate1-isolated)
+
+Scope: ONLY the hardening items from the 16:58 CEO instruction. No redesign. NOTHING was run against Cloudflare (no remote schema, no D1 attach, no secret, no deploy, no workers.dev, no WhatsApp, no Gate 2).
+
+What changed (all under driver-v2/, plus this append):
+1. Staged concurrency: gate15_proof.mjs now has phases functional | race | checkpoint | all. Orchestrator runs A=10 -> checkpoint -> B=50 -> checkpoint -> C=200 -> checkpoint -> final readback. Same assertions at every stage; first failed stage stops everything (C is never run if A or B failed).
+2. Exact D1 identity: name driver-v2-gate15-isolated-20261103 + UUID fe5eba69-b654-40cb-bf80-4b9a37c03f0c pinned in src/safety.js, wrangler.toml (database_id) and assert_package_safe.mjs (placeholder / any other UUID refused). Orchestrator does two independent lookups (by name, by UUID), refuses nadi-marketplace-db and 0ec1cd84-... explicitly, refuses GATE15_D1_* / D1_DATABASE_ID style overrides, and re-verifies before the teardown write.
+3. BEFORE snapshot precedes every mutation (orchestrator/snapshot.mjs, read-only; includes shell version id). Any failed read => STOPPED_NO_MUTATION with zero mutating calls (unit-tested per read).
+4. Automatic failure path: preflight -> before snapshot -> identity -> schema -> secret -> deploy -> workers.dev -> functional -> 10 -> 50 -> 200 -> final -> evidence -> teardown -> post-teardown snapshot -> production diff. Failure after mutation: failure evidence -> skip remaining stages -> teardown -> diff -> FAILED/HOLD.
+5. Teardown in the mandated 7-step order (workers.dev off, delete GATE15_CONTROL_TOKEN, drop schema/data, rollback to zero-binding shell, verify no schedule/route/domain, final evidence, compare). Continues past a failed step; never deletes the D1 or Worker (not expressible: guarded by assertMutationPathSafe / assertCommandSafe).
+6. Production-untouched diff (orchestrator/diff.mjs): all other Workers, nadi-dispatch-api bindings/schedules/secret names/deployments, all other D1 identities, every zone route and custom domain. Any difference => HOLD / INVESTIGATE (takes precedence over FAILED/HOLD). Disclosure: customer bookings are proven untouched only indirectly (no production D1 query is permitted).
+7. workers.dev only on driver-v2-gate15-isolated, only between steps 7 and teardown step 1; the mutation guard rejects any POST/DELETE not under the pinned Worker path.
+8. Per-stage evidence files 00..99 (see RUNBOOK section 5).
+
+Local revalidation (all green):
+- Orchestrator unit tests (fake cloud, command-capture): 26/26 - incl. before-snapshot failure => no mutation; identity mismatch (wrong uuid, production uuid, production name) => no write; override env => refused; failure in A, B, C, functional and each mutation step => stops, tears down, FAILED/HOLD; teardown order; teardown continues past failure; five production-mutation kinds => HOLD / INVESTIGATE; no argv/API call ever names a production identifier.
+- Package safety suite 25/25. Gate 1 38/38. Stress 4/4. Gate 1.5 policy 12/12.
+- Local Worker proof (workerd + local SQLite, staged A/B/C): 61/61 checks, 0 violations, teardown leaves 0 user tables (evidence/gate15/run_local_validation.txt).
+- Orchestration rehearsal HAPPY (real orchestrator + real driver logic, fake cloud, local workerd): PASS, 10->50->200, teardown 7/7, production diff clean, isolated resources restored (evidence/gate15/rehearsal-happy/).
+- Orchestration rehearsal INJECTED FAILURE (non-synthetic booking inserted into the local DB before stage B): stage B failed its checkpoint, stage C SKIPPED (never ran), failure evidence captured, teardown 7/7 executed, verdict FAILED/HOLD (evidence/gate15/rehearsal-inject-B/).
+
+Still UNPROVEN until the remote run (unchanged): real D1 semantics/limits, true multi-isolate concurrency, remote clock vs +-3 s margins, wrangler rollback on the real account, and the real Cloudflare API response shapes consumed by snapshot.mjs (written to the documented schema, exercised only against the fake).
+
+Gate 2 remains HOLD. Awaiting final GO review.

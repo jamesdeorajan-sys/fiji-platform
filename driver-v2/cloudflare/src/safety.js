@@ -3,6 +3,7 @@
 export const ISOLATED = Object.freeze({
   WORKER_NAME: 'driver-v2-gate15-isolated',
   D1_NAME: 'driver-v2-gate15-isolated-20261103',
+  D1_UUID: 'fe5eba69-b654-40cb-bf80-4b9a37c03f0c',      // CEO-supplied exact identity of the isolated D1; the ONLY accepted database_id
   MARKER: 'driver-v2-gate15-isolated-20261103',
   BINDING: 'DB',
   ALLOWED_ENV_KEYS: Object.freeze(['DB', 'GATE15_CONTROL_TOKEN']),

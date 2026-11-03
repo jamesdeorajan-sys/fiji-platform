@@ -1,0 +1,78 @@
+{
+  "scenario": "happy",
+  "verdict": "PASS",
+  "reason": "all stages green, teardown complete, production untouched",
+  "duration_s": 69,
+  "stages": {
+    "functional_proof": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 43
+    },
+    "stage_A_10_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "stage_B_50_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "stage_C_200_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "final_invariant_readback": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 8
+    }
+  },
+  "teardown_order": [
+    "1_disable_workers_dev",
+    "2_delete_control_secret",
+    "3_remove_gate15_schema_and_data",
+    "4_restore_zero_binding_shell",
+    "5_verify_no_schedule_route_domain",
+    "6_final_resource_evidence",
+    "7_compare_production_before_after"
+  ],
+  "teardown_all_ok": true,
+  "production_untouched": true,
+  "diff_clean": true,
+  "injected": false,
+  "local_commands": [
+    "d1 execute",
+    "d1 execute",
+    "secret put",
+    "deploy --name",
+    "d1 execute",
+    "d1 execute",
+    "rollback shell-v1"
+  ],
+  "steps": [
+    "ok preflight",
+    "ok before_snapshot",
+    "ok isolated_d1_identity",
+    "ok apply_isolated_schema",
+    "ok create_isolated_control_secret",
+    "ok deploy_isolated_worker",
+    "ok enable_workers_dev_isolated_only",
+    "ok functional_proof",
+    "ok stage_A_10_races",
+    "ok stage_B_50_races",
+    "ok stage_C_200_races",
+    "ok final_invariant_readback",
+    "ok after_evidence",
+    "ok teardown_1_disable_workers_dev",
+    "ok teardown_2_delete_control_secret",
+    "ok teardown_3_remove_gate15_schema_and_data",
+    "ok teardown_4_restore_zero_binding_shell",
+    "ok teardown_5_verify_no_schedule_route_domain",
+    "ok teardown_6_final_resource_evidence",
+    "ok teardown_7_compare_production_before_after",
+    "PASS verdict"
+  ]
+}

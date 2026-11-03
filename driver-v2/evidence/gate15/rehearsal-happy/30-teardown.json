@@ -1,0 +1,44 @@
+{
+  "steps": [
+    {
+      "step": "1_disable_workers_dev",
+      "ok": true
+    },
+    {
+      "step": "2_delete_control_secret",
+      "ok": true
+    },
+    {
+      "step": "3_remove_gate15_schema_and_data",
+      "ok": true,
+      "user_tables": 0
+    },
+    {
+      "step": "4_restore_zero_binding_shell",
+      "ok": true
+    },
+    {
+      "step": "5_verify_no_schedule_route_domain",
+      "ok": true,
+      "problems": []
+    },
+    {
+      "step": "6_final_resource_evidence",
+      "ok": true
+    },
+    {
+      "step": "7_compare_production_before_after",
+      "ok": true
+    }
+  ],
+  "all_ok": true,
+  "order": [
+    "1_disable_workers_dev",
+    "2_delete_control_secret",
+    "3_remove_gate15_schema_and_data",
+    "4_restore_zero_binding_shell",
+    "5_verify_no_schedule_route_domain",
+    "6_final_resource_evidence",
+    "7_compare_production_before_after"
+  ]
+}

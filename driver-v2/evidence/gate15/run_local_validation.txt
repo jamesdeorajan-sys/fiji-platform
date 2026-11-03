@@ -1,8 +1,12 @@
+== 0. orchestrator unit tests (fake cloud; no network)
+# tests 26
+# pass 26
+# fail 0
 == 1. package safety assertion
    PASS
 == 2. isolation negative controls
-# tests 23
-# pass 23
+# tests 25
+# pass 25
 # fail 0
 == 3. deterministic Gate 1 + 1.5 suites
 # tests 54
@@ -11,10 +15,10 @@
 # skipped 0
 == 4. local D1 schema (LOCAL sqlite, not Cloudflare)
 == 5. start local workerd on 127.0.0.1:8787
-== 6. real-HTTP proof (200 contested races)
-PASS zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings
+== 6. real-HTTP staged proof (functional, then A=10, B=50, C=200 with a checkpoint after each; stops at the first failed stage)
+PASS [checkpoint C] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings
 
-45/45 checks passed -> /home/claude/dpwa-wt/driver-v2/evidence/gate15/local-workerd-results.json
+61/61 checks passed -> /home/claude/dpwa-wt/driver-v2/evidence/gate15/local-workerd-results.json
 == 7. teardown script returns the local D1 to empty
         "user_tables": 0
 DONE

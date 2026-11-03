@@ -13,4 +13,4 @@ preview_urls = false
 [[d1_databases]]
 binding = "DB"
 database_name = "driver-v2-gate15-isolated-20261103"
-database_id = "SET_AT_DEPLOY_TO_ID_OF_driver-v2-gate15-isolated-20261103_ONLY"
+database_id = "fe5eba69-b654-40cb-bf80-4b9a37c03f0c"

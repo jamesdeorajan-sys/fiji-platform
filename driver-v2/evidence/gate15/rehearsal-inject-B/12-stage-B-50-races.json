@@ -1,0 +1,63 @@
+{
+  "ok": false,
+  "exit_code": 1,
+  "checks_failed": 2,
+  "checks_total": 10,
+  "failed_checks": [
+    "[checkpoint B] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)",
+    "[checkpoint B] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings"
+  ],
+  "stages": [
+    {
+      "stage": "B",
+      "races": 50,
+      "completed": 50,
+      "violations": 0,
+      "http_requests": 300,
+      "winners_by_driver": {
+        "1": 20,
+        "2": 11,
+        "3": 19
+      },
+      "status_histogram": {
+        "200": 100,
+        "409": 200
+      },
+      "code_histogram": {
+        "ASSIGNED": 100,
+        "ASSIGNMENT_ALREADY_TAKEN": 200
+      },
+      "failed": true
+    }
+  ],
+  "summary": {
+    "ok": false,
+    "violations": [
+      "non-synthetic booking present"
+    ],
+    "counts": {
+      "bookings": 80,
+      "offers": 206,
+      "events": 1646,
+      "capture_rows": 351,
+      "wallet_transactions": 0,
+      "drivers": 6
+    },
+    "capture_by_kind": {
+      "ADMIN_DRIVER_ASSIGNED": 72,
+      "DRIVER_OFFER": 206,
+      "GUEST_DRIVER_ASSIGNED": 72,
+      "STAFF_FALLBACK": 1
+    },
+    "real_sends": 0,
+    "wallet_changed": false,
+    "wallet_transactions": 0,
+    "non_placeholder_phones": 0,
+    "non_synthetic_bookings": 1
+  },
+  "latency_ms": {
+    "p50": 56,
+    "p95": 85,
+    "max": 159
+  }
+}

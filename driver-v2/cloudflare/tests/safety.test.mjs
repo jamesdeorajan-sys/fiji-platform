@@ -20,6 +20,8 @@ test('the package as shipped passes the safety assertion', async () => { const r
 
 await refuses('production D1 name nadi-marketplace-db', (r) => edit(r, 'wrangler.toml', (s) => s.replace('driver-v2-gate15-isolated-20261103"\ndatabase_id', 'nadi-marketplace-db"\ndatabase_id')), 'nadi-marketplace-db');
 await refuses('production D1 id', (r) => edit(r, 'wrangler.toml', (s) => s.replace(/database_id = ".*"/, 'database_id = "0ec1cd84-fcda-4f7f-8337-0fb70fe1a512"')), 'production D1 id refused');
+await refuses('an arbitrary (non-pinned) UUID', (r) => edit(r, 'wrangler.toml', (s) => s.replace(/database_id = ".*"/, 'database_id = "11111111-2222-3333-4444-555555555555"')), 'must be exactly the isolated D1 UUID');
+await refuses('the old deploy-time placeholder (UUID is now pinned in the package)', (r) => edit(r, 'wrangler.toml', (s) => s.replace(/database_id = ".*"/, 'database_id = "SET_AT_DEPLOY_X"')), 'must be exactly the isolated D1 UUID');
 await refuses('production worker identity nadi-dispatch-api', (r) => edit(r, 'wrangler.toml', (s) => s.replace('name = "driver-v2-gate15-isolated"', 'name = "nadi-dispatch-api"')), 'production worker identity refused');
 await refuses('a route', (r) => edit(r, 'wrangler.toml', (s) => `route = "example.com/*"\n${s}`), 'forbidden top-level key: route');
 await refuses('routes table', (r) => edit(r, 'wrangler.toml', (s) => `${s}\n[[routes]]\npattern = "x.example/*"\n`), 'forbidden wrangler section');

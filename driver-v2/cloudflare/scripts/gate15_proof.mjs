@@ -1,13 +1,18 @@
 // Gate 1.5 proof runner. Drives the isolated Worker over REAL HTTP (genuinely concurrent requests) and reads the database back through the control surface.
 // Targets: a local workerd (wrangler dev --local) for package validation, or - only after explicit CEO GO - the isolated Worker on workers.dev.
 // It refuses to run against any host that is not localhost or driver-v2-gate15-isolated.*.workers.dev.
-//   env: GATE15_BASE_URL  GATE15_CONTROL_TOKEN  [GATE15_RACES=200]  [GATE15_TARGET=local-workerd|remote-isolated]  [GATE15_OUT=<file>]  [GATE15_COMMIT=<sha>]
+//   env: GATE15_BASE_URL  GATE15_CONTROL_TOKEN  [GATE15_TARGET=local-workerd|remote-isolated]  [GATE15_OUT=<file>]  [GATE15_COMMIT=<sha>]
+//        GATE15_PHASE = functional | race | checkpoint | all (default all)   (checkpoint = identity checks + ONE DB-wide invariant/readback, no new races)
+//          functional : identity, D1 primitives, seed, duplicate/replayed/stale/expired accepts, boundaries, fallback, PII, busy rule, staff collisions, audit atomicity, decline, then a CHECKPOINT
+//          race       : ONE contested-race stage (GATE15_RACES=N, GATE15_STAGE=label) against the already-seeded database, then the same CHECKPOINT (the orchestrator runs A=10, B=50, C=200)
+//          all        : functional, then stages A=10 -> B=50 -> C=200, stopping at the first stage with any failed assertion (assertions are identical at every stage)
 import fs from 'node:fs'; import path from 'node:path'; import { execSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { assertHostAllowed } from '../src/safety.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BASE = (process.env.GATE15_BASE_URL || '').replace(/\/$/, ''); const TOKEN = process.env.GATE15_CONTROL_TOKEN || '';
-const TARGET = process.env.GATE15_TARGET || 'local-workerd'; const RACES = Number(process.env.GATE15_RACES || 200);
+const TARGET = process.env.GATE15_TARGET || 'local-workerd'; const PHASE = process.env.GATE15_PHASE || 'all'; const RACES = Number(process.env.GATE15_RACES || 10); const STAGE = process.env.GATE15_STAGE || 'race';
+if (!['functional', 'race', 'checkpoint', 'all'].includes(PHASE)) { console.error('bad GATE15_PHASE'); process.exit(2); }
 if (!BASE || !TOKEN) { console.error('GATE15_BASE_URL and GATE15_CONTROL_TOKEN are required'); process.exit(2); }
 assertHostAllowed(new URL(BASE).hostname);                                              // client-side refusal of any non-isolated host
 const OUT = process.env.GATE15_OUT || path.join(here, '..', '..', 'evidence', 'gate15', `${TARGET}-results.json`);
@@ -23,7 +28,7 @@ async function http(method, p, { headers = {}, body } = {}) {
   const text = await r.text(); lat.push(performance.now() - s); let j; try { j = JSON.parse(text); } catch { j = { raw: text.slice(0, 200) }; } return { status: r.status, body: j, text };
 }
 const ctl = (op, body, method = 'POST') => http(method, `/__gate15/${op}`, { headers: { 'x-gate15-control': TOKEN }, body: method === 'POST' ? (body || {}) : undefined });
-let tokens = {};
+let tokens = {}; const stageResults = []; let lastSum = null;
 const drv = (d, method, p, body) => http(method, p, { headers: { authorization: `Bearer ${tokens[d]}` }, body });
 const accept = (d, offerId) => drv(d, 'POST', `/api/offers/${offerId}/accept`, {});
 const nb = async (backdate = 0) => { const r = await ctl('new-booking', { backdate_s: backdate }); if (!r.body.ok) throw new Error('new-booking failed ' + JSON.stringify(r.body)); return r.body; };
@@ -38,8 +43,11 @@ try {
   check('resource identity: Worker serves only after the identity marker matches driver-v2-gate15-isolated-20261103', id.ok && id.identity_row?.marker === 'driver-v2-gate15-isolated-20261103' && id.identity_row?.worker_name === 'driver-v2-gate15-isolated', id.identity_row);
   check('Worker environment exposes ONLY the isolated DB binding (+ the isolated control token)', JSON.stringify(id.env_keys.filter((k) => k !== 'GATE15_CONTROL_TOKEN')) === JSON.stringify(['DB']), id.env_keys);
   check('database holds exactly the isolated fixture tables (no foreign/production tables)', JSON.stringify(id.tables.filter((t) => !t.startsWith('sqlite_') && !t.startsWith('_cf_') && !t.startsWith('d1_'))) === JSON.stringify([...id.expected_tables].sort()), id.tables);
+  if (PHASE === 'race' || PHASE === 'checkpoint') tokens = (await ctl('tokens')).body.tokens || {};
+  const unauthR = await http('POST', '/__gate15/reset'); check('control surface is closed without the isolated token (404)', unauthR.status === 404, unauthR.status);
+
+  if (PHASE === 'functional' || PHASE === 'all') {                                         // ===== FUNCTIONAL PHASE =====
   await ctl('reset');                                                                  // isolated, synthetic-only data
-  const unauth = await http('POST', '/__gate15/reset'); check('control surface is closed without the isolated token (404)', unauth.status === 404, unauth.status);
 
   // ---------- D1 primitives ----------
   const probe = (await ctl('probe')).body;
@@ -126,10 +134,14 @@ try {
   check('decline is durable and replay-safe (uses json_extract guard): 200 DRIVER_DECLINED, replay=true, exactly one DRIVER_DECISION event, booking intact', d1.body.code === 'DRIVER_DECLINED' && d2.body.replay === true && rb.events.DRIVER_DECISION === 1 && rb.booking.status === 'pending', { d1: d1.body, d2: d2.body, rb: rb.events });
   await accept(2, offerOf(b, 2).offer_id); await free();
 
-  // ---------- REAL concurrent HTTP races ----------
-  console.log(`\n== ${RACES} contested races over real concurrent HTTP ==`);
-  const race = { seed: SEED, requested: RACES, completed: 0, contested: 0, http_requests: 0, status_histogram: {}, code_histogram: {}, winners_by_driver: {}, violations: [], max_in_flight: 0 };
-  for (let i = 0; i < RACES; i++) {
+  }                                                                                  // ===== end FUNCTIONAL PHASE =====
+
+  // One contested-race stage. Assertions are identical at every stage (never weakened between A, B and C).
+  async function raceStage(label, n) {
+    console.log(`\n== stage ${label}: ${n} contested races over real concurrent HTTP ==`);
+    await free();
+  const race = { seed: SEED, requested: n, completed: 0, contested: 0, http_requests: 0, status_histogram: {}, code_histogram: {}, winners_by_driver: {}, violations: [], max_in_flight: 0 };
+  for (let i = 0; i < n; i++) {
     await free(); const r = await nb(125); const open = r.offers.filter((o) => o.state === 'OFFERED'); if (open.length >= 2) race.contested++;
     const taps = []; for (const o of open) { taps.push(o, o); }                                   // each driver double-taps
     for (let k = taps.length - 1; k > 0; k--) { const j = Math.floor(rnd() * (k + 1)); [taps[k], taps[j]] = [taps[j], taps[k]]; }   // seeded random ARRIVAL order, so winners are not decided by who is issued first
@@ -148,22 +160,35 @@ try {
     if (v.length) race.violations.push({ race: i, booking: r.booking_id, v }); else race.winners_by_driver[w] = (race.winners_by_driver[w] || 0) + 1;
     race.completed++;
   }
-  check(`real concurrent HTTP races: ${RACES} contested races, exactly one server-confirmed winner each, losers 409, one assignment event, one ACCEPTED offer, others SUPERSEDED`, race.completed === RACES && race.violations.length === 0 && race.contested === RACES, race);
-  check('races were genuinely contested across drivers (>=2 distinct winners)', Object.keys(race.winners_by_driver).length >= 2, race.winners_by_driver);
-  await free();
+  check(`[stage ${label}] real concurrent HTTP races: ${n} contested races, exactly one server-confirmed winner each, losers 409, one assignment event, one ACCEPTED offer, others SUPERSEDED`, race.completed === n && race.violations.length === 0 && race.contested === n, race);
+  check(`[stage ${label}] races were genuinely contested across drivers (>=2 distinct winners)`, Object.keys(race.winners_by_driver).length >= 2, race.winners_by_driver);
+    await free();
+    stageResults.push({ stage: label, races: n, completed: race.completed, violations: race.violations.length, http_requests: race.http_requests, winners_by_driver: race.winners_by_driver, status_histogram: race.status_histogram, code_histogram: race.code_histogram });
+  }
 
-  // ---------- zero-side-effect / invariants ----------
+  // Invariant / readback checkpoint: DB-wide, identical at every stage.
+  async function checkpoint(label) {
   const sum = (await ctl('summary', null, 'GET')).body;
-  check('global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)', sum.ok && sum.violations.length === 0, sum.violations);
-  check('zero real sends: every captured intent is suppressed (schema CHECK forbids otherwise); no WhatsApp/email/guest/admin send', sum.real_sends === 0 && Object.keys(sum.capture_by_kind).every((k) => ['DRIVER_OFFER', 'GUEST_DRIVER_ASSIGNED', 'ADMIN_DRIVER_ASSIGNED', 'STAFF_FALLBACK'].includes(k)), sum.capture_by_kind);
-  check('zero wallet/commission effects', sum.wallet_changed === false && sum.wallet_transactions === 0, sum);
-  check('zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings', sum.non_placeholder_phones === 0 && sum.non_synthetic_bookings === 0, sum);
-  var summary = sum;
+  check(`[checkpoint ${label}] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)`, sum.ok && sum.violations.length === 0, sum.violations);
+  check(`[checkpoint ${label}] zero real sends: every captured intent is suppressed (schema CHECK forbids otherwise); no WhatsApp/email/guest/admin send`, sum.real_sends === 0 && Object.keys(sum.capture_by_kind).every((k) => ['DRIVER_OFFER', 'GUEST_DRIVER_ASSIGNED', 'ADMIN_DRIVER_ASSIGNED', 'STAFF_FALLBACK'].includes(k)), sum.capture_by_kind);
+  check(`[checkpoint ${label}] zero wallet/commission effects`, sum.wallet_changed === false && sum.wallet_transactions === 0, sum);
+  check(`[checkpoint ${label}] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings`, sum.non_placeholder_phones === 0 && sum.non_synthetic_bookings === 0, sum);
+    lastSum = sum; return sum;
+  }
+
+  if (PHASE === 'functional' || PHASE === 'all') await checkpoint('functional'); if (PHASE === 'checkpoint') await checkpoint(STAGE);
+  const plan = PHASE === 'functional' || PHASE === 'checkpoint' ? [] : PHASE === 'race' ? [[STAGE, RACES]] : [['A', 10], ['B', 50], ['C', 200]];
+  for (const [label, n] of plan) {
+    const before = failed; await raceStage(label, n); await checkpoint(label);
+    if (failed > before) { console.log(`STAGE ${label} FAILED - stopping all further stress testing`); stageResults[stageResults.length - 1].failed = true; break; }
+  }
+  var summary = lastSum;
+
 } catch (e) { check('proof run completed without an unexpected exception', false, String(e.stack || e).slice(0, 500)); }
 
 lat.sort((a, b) => a - b); const pct = (p) => Math.round(lat[Math.min(lat.length - 1, Math.floor(p * lat.length))] || 0);
 let commit = process.env.GATE15_COMMIT || ''; try { commit ||= execSync('git rev-parse HEAD', { cwd: here }).toString().trim(); } catch { /* not a git checkout */ }
 const result = { target: TARGET, host: new URL(BASE).hostname, commit_sha: commit, schema_sha256: fs.readFileSync(path.join(here, '..', 'schema', 'gate15_d1_schema.sha256'), 'utf8').split(/\s+/)[0],
-  started_at: new Date(t0).toISOString(), duration_s: Math.round((Date.now() - t0) / 1000), checks_total: checks.length, checks_failed: failed, http_requests_total: lat.length, latency_ms: { p50: pct(0.5), p95: pct(0.95), max: pct(1) }, summary: typeof summary === 'undefined' ? null : summary, checks };
+  started_at: new Date(t0).toISOString(), duration_s: Math.round((Date.now() - t0) / 1000), checks_total: checks.length, checks_failed: failed, http_requests_total: lat.length, phase: PHASE, stages: stageResults, latency_ms: { p50: pct(0.5), p95: pct(0.95), max: pct(1) }, summary: typeof summary === 'undefined' ? null : summary, checks };
 fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(result, null, 2) + '\n');
 console.log(`\n${checks.length - failed}/${checks.length} checks passed -> ${OUT}`); process.exit(failed ? 1 : 0);

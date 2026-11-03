@@ -56,6 +56,7 @@ export async function handleControl(request, env, service) {
     await exec(`INSERT OR REPLACE INTO gate15_meta (k, v) VALUES ('delivery_mode', 'DELIVERED')`);
     return json({ ok: true, drivers: n, tokens });
   }
+  if (op === 'tokens') { const t = {}; for (const r of await all(`SELECT driver_id, token FROM driver_sessions ORDER BY driver_id`)) t[r.driver_id] = r.token; return json({ ok: true, tokens: t }); }
   if (op === 'delivery-mode') { await exec(`INSERT OR REPLACE INTO gate15_meta (k, v) VALUES ('delivery_mode', ?)`, ['DELIVERED', 'NO_RECEIPT', 'PROVIDER_ERROR'].includes(body.mode) ? body.mode : 'DELIVERED'); return json({ ok: true }); }
   if (op === 'fault') {                                                                                      // audit-atomicity probe: make the critical DRIVER_ASSIGNED audit insert fail inside the real batch
     await exec(`DROP TRIGGER IF EXISTS gate15_fault_assign`);

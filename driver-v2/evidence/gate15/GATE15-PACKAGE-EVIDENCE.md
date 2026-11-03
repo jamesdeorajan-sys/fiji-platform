@@ -56,3 +56,7 @@ No Cloudflare API call, no `wrangler login`, no remote D1 access, no deploy, no 
 * **D1 plan limits** (queries per invocation, writes) unknown; 200 races ≈ 2,000 requests; `GATE15_RACES` is adjustable without weakening assertions.
 * **Control token**: the proof needs one isolated-Worker secret (`GATE15_CONTROL_TOKEN`); creating it is part of the approval-gated deploy steps and it is deleted at teardown.
 * Carried from Gate 1: synthetic competitor drivers 2..N (placeholders), simulated PWA photo capture, no real WhatsApp adapter, no R2, no staff fallback console.
+
+
+## Hardening addendum (operational hardening, no redesign)
+Staged 10/50/200 orchestration, pinned D1 UUID, BEFORE-snapshot gate, ordered teardown, production diff: see `../../cloudflare/RUNBOOK.md` (rev 2), `rehearsal-happy/`, `rehearsal-inject-B/`, `run_local_validation.txt`, and the AGENT_SYNC hardening checkpoint. Orchestrator unit tests: 26/26. Nothing executed remotely.

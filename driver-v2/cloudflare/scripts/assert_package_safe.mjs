@@ -39,7 +39,7 @@ export async function assertPackageSafe(root = path.join(here, '..')) {
     if (kv.database_name !== ISOLATED.D1_NAME) fail.push(`D1 database_name must be exactly ${ISOLATED.D1_NAME} (got ${kv.database_name})`);
     if (PRODUCTION_DENYLIST.names.includes(kv.database_name)) fail.push(`production D1 name refused: ${kv.database_name}`);
     if (PRODUCTION_DENYLIST.d1_ids.includes(String(kv.database_id).toLowerCase())) fail.push(`production D1 id refused: ${kv.database_id}`);
-    if (!/^(SET_AT_DEPLOY_[A-Za-z0-9_\-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(String(kv.database_id))) fail.push('database_id must be the deploy-time placeholder or a UUID');
+    if (String(kv.database_id).toLowerCase() !== ISOLATED.D1_UUID) fail.push(`database_id must be exactly the isolated D1 UUID ${ISOLATED.D1_UUID} (got ${kv.database_id}); no other value is accepted`);
     for (const k of Object.keys(kv)) if (!['binding', 'database_name', 'database_id', 'migrations_dir'].includes(k)) fail.push(`unexpected key on D1 binding: ${k}`);
   }
   // ---- source scan: production identifiers may appear ONLY in the deny-list definition; no network / messaging / scheduler code anywhere ----

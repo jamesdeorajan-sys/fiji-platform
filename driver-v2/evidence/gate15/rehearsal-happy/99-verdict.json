@@ -1,0 +1,198 @@
+{
+  "verdict": "PASS",
+  "reason": "all stages green, teardown complete, production untouched",
+  "mutation_began": true,
+  "stages": {
+    "functional_proof": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 43
+    },
+    "stage_A_10_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "stage_B_50_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "stage_C_200_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "final_invariant_readback": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 8
+    }
+  },
+  "teardown": {
+    "steps": [
+      {
+        "step": "1_disable_workers_dev",
+        "ok": true
+      },
+      {
+        "step": "2_delete_control_secret",
+        "ok": true
+      },
+      {
+        "step": "3_remove_gate15_schema_and_data",
+        "ok": true,
+        "user_tables": 0
+      },
+      {
+        "step": "4_restore_zero_binding_shell",
+        "ok": true
+      },
+      {
+        "step": "5_verify_no_schedule_route_domain",
+        "ok": true,
+        "problems": []
+      },
+      {
+        "step": "6_final_resource_evidence",
+        "ok": true
+      },
+      {
+        "step": "7_compare_production_before_after",
+        "ok": true
+      }
+    ],
+    "all_ok": true,
+    "order": [
+      "1_disable_workers_dev",
+      "2_delete_control_secret",
+      "3_remove_gate15_schema_and_data",
+      "4_restore_zero_binding_shell",
+      "5_verify_no_schedule_route_domain",
+      "6_final_resource_evidence",
+      "7_compare_production_before_after"
+    ]
+  },
+  "diff": {
+    "production_untouched": true,
+    "isolated_quiescent": true,
+    "clean": true,
+    "problems": [],
+    "checked": {
+      "workers": 2,
+      "production_workers_detailed": 1,
+      "d1": 1,
+      "zone_routes": 1,
+      "domains": 1
+    }
+  },
+  "steps": [
+    {
+      "name": "preflight",
+      "status": "ok",
+      "at": "2026-11-03T06:07:03.353Z"
+    },
+    {
+      "name": "before_snapshot",
+      "status": "ok",
+      "at": "2026-11-03T06:07:03.356Z"
+    },
+    {
+      "name": "isolated_d1_identity",
+      "status": "ok",
+      "at": "2026-11-03T06:07:03.356Z"
+    },
+    {
+      "name": "apply_isolated_schema",
+      "status": "ok",
+      "at": "2026-11-03T06:07:06.556Z"
+    },
+    {
+      "name": "create_isolated_control_secret",
+      "status": "ok",
+      "at": "2026-11-03T06:07:06.556Z"
+    },
+    {
+      "name": "deploy_isolated_worker",
+      "status": "ok",
+      "at": "2026-11-03T06:07:08.669Z"
+    },
+    {
+      "name": "enable_workers_dev_isolated_only",
+      "status": "ok",
+      "at": "2026-11-03T06:07:08.669Z"
+    },
+    {
+      "name": "functional_proof",
+      "status": "ok",
+      "at": "2026-11-03T06:07:11.799Z"
+    },
+    {
+      "name": "stage_A_10_races",
+      "status": "ok",
+      "at": "2026-11-03T06:07:14.181Z"
+    },
+    {
+      "name": "stage_B_50_races",
+      "status": "ok",
+      "at": "2026-11-03T06:07:24.992Z"
+    },
+    {
+      "name": "stage_C_200_races",
+      "status": "ok",
+      "at": "2026-11-03T06:08:09.027Z"
+    },
+    {
+      "name": "final_invariant_readback",
+      "status": "ok",
+      "at": "2026-11-03T06:08:09.215Z"
+    },
+    {
+      "name": "after_evidence",
+      "status": "ok",
+      "at": "2026-11-03T06:08:09.215Z"
+    },
+    {
+      "name": "teardown_1_disable_workers_dev",
+      "status": "ok",
+      "at": "2026-11-03T06:08:09.216Z"
+    },
+    {
+      "name": "teardown_2_delete_control_secret",
+      "status": "ok",
+      "at": "2026-11-03T06:08:09.216Z"
+    },
+    {
+      "name": "teardown_3_remove_gate15_schema_and_data",
+      "status": "ok",
+      "at": "2026-11-03T06:08:12.635Z"
+    },
+    {
+      "name": "teardown_4_restore_zero_binding_shell",
+      "status": "ok",
+      "at": "2026-11-03T06:08:12.636Z"
+    },
+    {
+      "name": "teardown_5_verify_no_schedule_route_domain",
+      "status": "ok",
+      "at": "2026-11-03T06:08:12.636Z"
+    },
+    {
+      "name": "teardown_6_final_resource_evidence",
+      "status": "ok",
+      "at": "2026-11-03T06:08:12.636Z"
+    },
+    {
+      "name": "teardown_7_compare_production_before_after",
+      "status": "ok",
+      "at": "2026-11-03T06:08:12.637Z"
+    },
+    {
+      "name": "verdict",
+      "status": "PASS",
+      "at": "2026-11-03T06:08:12.637Z",
+      "reason": "all stages green, teardown complete, production untouched"
+    }
+  ],
+  "failure": null
+}

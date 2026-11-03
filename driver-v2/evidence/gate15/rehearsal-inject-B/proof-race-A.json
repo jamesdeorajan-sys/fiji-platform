@@ -1,0 +1,212 @@
+{
+  "target": "remote-isolated",
+  "host": "127.0.0.1",
+  "commit_sha": "82bdfb26cc503b08f991fe35e58c9fad62cebf6f",
+  "schema_sha256": "e4b34d1de73235c78a5d0c9011642d3b42221a962365c4b76e4dea80dc9204c2",
+  "started_at": "2026-11-03T06:06:36.896Z",
+  "duration_s": 3,
+  "checks_total": 10,
+  "checks_failed": 0,
+  "http_requests_total": 96,
+  "phase": "race",
+  "stages": [
+    {
+      "stage": "A",
+      "races": 10,
+      "completed": 10,
+      "violations": 0,
+      "http_requests": 60,
+      "winners_by_driver": {
+        "1": 5,
+        "2": 1,
+        "3": 4
+      },
+      "status_histogram": {
+        "200": 20,
+        "409": 40
+      },
+      "code_histogram": {
+        "ASSIGNED": 20,
+        "ASSIGNMENT_ALREADY_TAKEN": 40
+      }
+    }
+  ],
+  "latency_ms": {
+    "p50": 60,
+    "p95": 88,
+    "max": 107
+  },
+  "summary": {
+    "ok": true,
+    "violations": [],
+    "counts": {
+      "bookings": 29,
+      "offers": 56,
+      "events": 496,
+      "capture_rows": 101,
+      "wallet_transactions": 0,
+      "drivers": 6
+    },
+    "capture_by_kind": {
+      "ADMIN_DRIVER_ASSIGNED": 22,
+      "DRIVER_OFFER": 56,
+      "GUEST_DRIVER_ASSIGNED": 22,
+      "STAFF_FALLBACK": 1
+    },
+    "real_sends": 0,
+    "wallet_changed": false,
+    "wallet_transactions": 0,
+    "non_placeholder_phones": 0,
+    "non_synthetic_bookings": 0
+  },
+  "checks": [
+    {
+      "name": "resource identity: Worker serves only after the identity marker matches driver-v2-gate15-isolated-20261103",
+      "pass": true,
+      "detail": {
+        "marker": "driver-v2-gate15-isolated-20261103",
+        "worker_name": "driver-v2-gate15-isolated"
+      }
+    },
+    {
+      "name": "Worker environment exposes ONLY the isolated DB binding (+ the isolated control token)",
+      "pass": true,
+      "detail": [
+        "DB",
+        "GATE15_CONTROL_TOKEN"
+      ]
+    },
+    {
+      "name": "database holds exactly the isolated fixture tables (no foreign/production tables)",
+      "pass": true,
+      "detail": [
+        "_cf_METADATA",
+        "booking_events",
+        "bookings",
+        "dispatch_escalations",
+        "dispatch_runs",
+        "driver_broadcast_attempts",
+        "driver_evidence",
+        "driver_offers",
+        "driver_sessions",
+        "drivers",
+        "gate15_capture",
+        "gate15_identity",
+        "gate15_meta",
+        "gate15_probe",
+        "sqlite_sequence",
+        "wallet_transactions",
+        "wallets"
+      ]
+    },
+    {
+      "name": "control surface is closed without the isolated token (404)",
+      "pass": true,
+      "detail": 404
+    },
+    {
+      "name": "[stage A] real concurrent HTTP races: 10 contested races, exactly one server-confirmed winner each, losers 409, one assignment event, one ACCEPTED offer, others SUPERSEDED",
+      "pass": true,
+      "detail": {
+        "seed": 20261103,
+        "requested": 10,
+        "completed": 10,
+        "contested": 10,
+        "http_requests": 60,
+        "status_histogram": {
+          "200": 20,
+          "409": 40
+        },
+        "code_histogram": {
+          "ASSIGNED": 20,
+          "ASSIGNMENT_ALREADY_TAKEN": 40
+        },
+        "winners_by_driver": {
+          "1": 5,
+          "2": 1,
+          "3": 4
+        },
+        "violations": [],
+        "max_in_flight": 6
+      }
+    },
+    {
+      "name": "[stage A] races were genuinely contested across drivers (>=2 distinct winners)",
+      "pass": true,
+      "detail": {
+        "1": 5,
+        "2": 1,
+        "3": 4
+      }
+    },
+    {
+      "name": "[checkpoint A] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "[checkpoint A] zero real sends: every captured intent is suppressed (schema CHECK forbids otherwise); no WhatsApp/email/guest/admin send",
+      "pass": true,
+      "detail": {
+        "ADMIN_DRIVER_ASSIGNED": 22,
+        "DRIVER_OFFER": 56,
+        "GUEST_DRIVER_ASSIGNED": 22,
+        "STAFF_FALLBACK": 1
+      }
+    },
+    {
+      "name": "[checkpoint A] zero wallet/commission effects",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "violations": [],
+        "counts": {
+          "bookings": 29,
+          "offers": 56,
+          "events": 496,
+          "capture_rows": 101,
+          "wallet_transactions": 0,
+          "drivers": 6
+        },
+        "capture_by_kind": {
+          "ADMIN_DRIVER_ASSIGNED": 22,
+          "DRIVER_OFFER": 56,
+          "GUEST_DRIVER_ASSIGNED": 22,
+          "STAFF_FALLBACK": 1
+        },
+        "real_sends": 0,
+        "wallet_changed": false,
+        "wallet_transactions": 0,
+        "non_placeholder_phones": 0,
+        "non_synthetic_bookings": 0
+      }
+    },
+    {
+      "name": "[checkpoint A] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "violations": [],
+        "counts": {
+          "bookings": 29,
+          "offers": 56,
+          "events": 496,
+          "capture_rows": 101,
+          "wallet_transactions": 0,
+          "drivers": 6
+        },
+        "capture_by_kind": {
+          "ADMIN_DRIVER_ASSIGNED": 22,
+          "DRIVER_OFFER": 56,
+          "GUEST_DRIVER_ASSIGNED": 22,
+          "STAFF_FALLBACK": 1
+        },
+        "real_sends": 0,
+        "wallet_changed": false,
+        "wallet_transactions": 0,
+        "non_placeholder_phones": 0,
+        "non_synthetic_bookings": 0
+      }
+    }
+  ]
+}

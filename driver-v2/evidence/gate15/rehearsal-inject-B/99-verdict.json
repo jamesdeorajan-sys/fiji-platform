@@ -1,0 +1,191 @@
+{
+  "verdict": "FAILED/HOLD",
+  "reason": "stage_B_50_races: assertions failed in stage_B_50_races: [checkpoint B] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver) | [checkpoint B] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero n",
+  "mutation_began": true,
+  "stages": {
+    "functional_proof": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 43
+    },
+    "stage_A_10_races": {
+      "ok": true,
+      "checks_failed": 0,
+      "checks_total": 10
+    },
+    "stage_B_50_races": {
+      "ok": false,
+      "checks_failed": 2,
+      "checks_total": 10
+    },
+    "stage_C": {
+      "skipped": true
+    }
+  },
+  "teardown": {
+    "steps": [
+      {
+        "step": "1_disable_workers_dev",
+        "ok": true
+      },
+      {
+        "step": "2_delete_control_secret",
+        "ok": true
+      },
+      {
+        "step": "3_remove_gate15_schema_and_data",
+        "ok": true,
+        "user_tables": 0
+      },
+      {
+        "step": "4_restore_zero_binding_shell",
+        "ok": true
+      },
+      {
+        "step": "5_verify_no_schedule_route_domain",
+        "ok": true,
+        "problems": []
+      },
+      {
+        "step": "6_final_resource_evidence",
+        "ok": true
+      },
+      {
+        "step": "7_compare_production_before_after",
+        "ok": true
+      }
+    ],
+    "all_ok": true,
+    "order": [
+      "1_disable_workers_dev",
+      "2_delete_control_secret",
+      "3_remove_gate15_schema_and_data",
+      "4_restore_zero_binding_shell",
+      "5_verify_no_schedule_route_domain",
+      "6_final_resource_evidence",
+      "7_compare_production_before_after"
+    ]
+  },
+  "diff": {
+    "production_untouched": true,
+    "isolated_quiescent": true,
+    "clean": true,
+    "problems": [],
+    "checked": {
+      "workers": 2,
+      "production_workers_detailed": 1,
+      "d1": 1,
+      "zone_routes": 1,
+      "domains": 1
+    }
+  },
+  "steps": [
+    {
+      "name": "preflight",
+      "status": "ok",
+      "at": "2026-11-03T06:06:28.010Z"
+    },
+    {
+      "name": "before_snapshot",
+      "status": "ok",
+      "at": "2026-11-03T06:06:28.015Z"
+    },
+    {
+      "name": "isolated_d1_identity",
+      "status": "ok",
+      "at": "2026-11-03T06:06:28.015Z"
+    },
+    {
+      "name": "apply_isolated_schema",
+      "status": "ok",
+      "at": "2026-11-03T06:06:31.316Z"
+    },
+    {
+      "name": "create_isolated_control_secret",
+      "status": "ok",
+      "at": "2026-11-03T06:06:31.317Z"
+    },
+    {
+      "name": "deploy_isolated_worker",
+      "status": "ok",
+      "at": "2026-11-03T06:06:33.433Z"
+    },
+    {
+      "name": "enable_workers_dev_isolated_only",
+      "status": "ok",
+      "at": "2026-11-03T06:06:33.433Z"
+    },
+    {
+      "name": "functional_proof",
+      "status": "ok",
+      "at": "2026-11-03T06:06:36.854Z"
+    },
+    {
+      "name": "stage_A_10_races",
+      "status": "ok",
+      "at": "2026-11-03T06:06:39.424Z"
+    },
+    {
+      "name": "stage_B_50_races",
+      "status": "FAILED",
+      "at": "2026-11-03T06:06:51.890Z",
+      "message": "assertions failed in stage_B_50_races: [checkpoint B] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver) | [checkpoint B] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero n"
+    },
+    {
+      "name": "stage_C_200_races",
+      "status": "SKIPPED",
+      "at": "2026-11-03T06:06:51.890Z",
+      "reason": "earlier failure at stage_B_50_races"
+    },
+    {
+      "name": "failure_evidence",
+      "status": "ok",
+      "at": "2026-11-03T06:06:51.891Z"
+    },
+    {
+      "name": "teardown_1_disable_workers_dev",
+      "status": "ok",
+      "at": "2026-11-03T06:06:51.891Z"
+    },
+    {
+      "name": "teardown_2_delete_control_secret",
+      "status": "ok",
+      "at": "2026-11-03T06:06:51.891Z"
+    },
+    {
+      "name": "teardown_3_remove_gate15_schema_and_data",
+      "status": "ok",
+      "at": "2026-11-03T06:06:55.292Z"
+    },
+    {
+      "name": "teardown_4_restore_zero_binding_shell",
+      "status": "ok",
+      "at": "2026-11-03T06:06:55.293Z"
+    },
+    {
+      "name": "teardown_5_verify_no_schedule_route_domain",
+      "status": "ok",
+      "at": "2026-11-03T06:06:55.293Z"
+    },
+    {
+      "name": "teardown_6_final_resource_evidence",
+      "status": "ok",
+      "at": "2026-11-03T06:06:55.293Z"
+    },
+    {
+      "name": "teardown_7_compare_production_before_after",
+      "status": "ok",
+      "at": "2026-11-03T06:06:55.294Z"
+    },
+    {
+      "name": "verdict",
+      "status": "FAILED/HOLD",
+      "at": "2026-11-03T06:06:55.295Z",
+      "reason": "stage_B_50_races: assertions failed in stage_B_50_races: [checkpoint B] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver) | [checkpoint B] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero n"
+    }
+  ],
+  "failure": {
+    "at": "stage_B_50_races",
+    "message": "assertions failed in stage_B_50_races: [checkpoint B] global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver) | [checkpoint B] zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero n"
+  }
+}
