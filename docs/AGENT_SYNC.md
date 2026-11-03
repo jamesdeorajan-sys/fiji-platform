@@ -1460,3 +1460,19 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - **Critical atomicity target:** ACCEPT should produce a coherent result across offer decision + booking assignment + required booking event. Gate 1 tests must prove no observable state where two drivers win, an expired offer assigns, or assignment succeeds without its required critical audit event.
 - **Evidence storage remains separate:** pickup/drop-off photos should use object storage plus metadata/reference records, not binary data or URLs stuffed into bookings. Review capture likewise remains a separate review record/consent/publishing lifecycle.
 - **Migration status:** DESIGN ONLY / TESTED_NOT_LIVE until an isolated implementation and migration test exist. No production D1 migration is authorized by this checkpoint.
+
+
+### Driver PWA v2 adaptive 3-minute dispatch - CEO decision 2026-11-03
+- **CEO correction accepted:** a hard 60-second expiry is too brittle for drivers on slow/variable mobile data. **60 seconds is now a fast-response KPI/priority window, not the point at which the system abandons the driver or booking.**
+- **Automated dispatch envelope:** up to 180 seconds before mandatory human fallback.
+  - **0-60s PRIORITY:** best-ranked eligible driver receives the first offer. Target is acceptance within 60s.
+  - **60-120s CONNECTIVITY_GRACE:** if there is evidence of delivery/view/session activity but no confirmed decision, preserve a reasonable opportunity to complete the action. If there is no evidence of reachability, prepare/escalate toward another eligible driver rather than waiting blindly.
+  - **120-180s ESCALATED_DISPATCH:** broaden to the next eligible driver(s) under the same atomic first-accept-wins booking assignment invariant. Multiple outstanding offers must never mean multiple assignments.
+  - **>=180s HUMAN_FALLBACK_REQUIRED:** automated dispatch stops being relied upon; create a staff-visible escalation and preserve the existing WhatsApp/human fulfilment path. The customer booking itself is not cancelled or lost.
+- **Server is authoritative:** phone/PWA clocks are display aids only. The server decides whether an offer is still actionable and whether assignment is still available. A delayed/stale client cannot overwrite a winner.
+- **Slow-network accept behaviour:** when a driver taps Accept, the client immediately enters a local CONFIRMING state and submits a replay-safe/idempotent decision. Safe retries must not create a second assignment. The UI must not say the driver has the job until the server confirms the atomic assignment.
+- **Late response rule:** an Accept reaching the server after its actionable offer window may be refused as OFFER_EXPIRED or ASSIGNMENT_ALREADY_TAKEN. It must never silently claim an already-reassigned booking.
+- **Offer contract update:** retain offered_at/expires_at/viewed_at/decision_at, and add/derive dispatch_phase (PRIORITY, CONNECTIVITY_GRACE, ESCALATED) plus stable reason/outcome codes. Do not treat WhatsApp delivery status alone as proof the driver saw the offer.
+- **Metrics required before tuning:** offer-to-delivery latency, delivery-to-view latency where observable, view-to-decision latency, accept latency percentiles, decline rate, timeout rate, assignment conflict rate, human-fallback rate and acceptance by dispatch phase. Tune windows from measured Fiji driver behaviour rather than assumptions.
+- **Gate 1 test additions:** delayed network responses around 59/60, 119/120 and 179/180 seconds; Accept POST started before boundary but received after it; duplicated/retried Accept; view with lost connection; reconnect; competing drivers in escalated phase; human fallback at 180s; late original-driver accept after another driver wins.
+- **Classification:** DESIGN / TESTED_NOT_LIVE until isolated implementation proves these rules. No production dispatch timer, message, schema migration or booking behaviour changed by this decision.
