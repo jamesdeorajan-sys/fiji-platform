@@ -1558,3 +1558,17 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - **UNKNOWN / needs CEO decision before Gate 2:** should a driver with an active trip receive new offers (contract silent; currently not excluded); confirm that delivery receipt / view / session activity all count as reachability evidence and that unreachable offers end at offered_at+120 s (reachable at the 180 s envelope); synthetic competitor drivers 2..N exist only in the throw-away DB (driver 1 is the only real-test identity, placeholder number only).
 - **Not proven:** real D1 semantics (atomic batch, partial unique index, INSERT OR IGNORE...SELECT, json_extract) - needs an isolated D1 database; real multi-isolate concurrency; real devices/networks/camera/WhatsApp deep link; real object storage; staff console for the human-fallback queue.
 - **Next gate:** CEO review of Gate 1 evidence. Do not start Gate 2 (first real driver notification) without separate explicit GO.
+
+
+### CEO review of Driver PWA v2 Gate 1 evidence - policy closure / next proof gate
+- **Gate 1 evidence reviewed against the repository:** PASS for the isolated synthetic scope. Classification remains **TESTED_NOT_LIVE** because real D1 and true multi-isolate concurrency are still UNKNOWN.
+- **Busy-driver decision:** for immediate/realtime dispatch, a driver with an active assigned trip is NOT ELIGIBLE for a new immediate offer. This avoids divided attention, accidental overlapping commitments and unsafe PWA interaction while transporting a guest. Future scheduled-job eligibility may later be allowed only with an explicit configurable availability/buffer rule; it is not part of the first launch.
+- **Reachability decision:** separate transport reachability from human engagement.
+  - DELIVERY_RECEIPT = provider/device transport evidence only; never means the driver saw the offer.
+  - OFFER_VIEWED or authenticated active PWA/session activity = driver engagement evidence.
+  - At 120s, if there is no driver engagement, dispatch may broaden to the next eligible driver even if the original notification was delivered.
+  - The original driver's offer may remain actionable within the overall 180s server-authoritative envelope if it has not been explicitly declined/superseded and the booking remains unassigned. First valid server-confirmed assignment wins.
+  - At >=180s unresolved = HUMAN_FALLBACK_REQUIRED; booking remains valid.
+- **Next proof gate is Gate 1.5, not Gate 2:** prove the already-built logic against a NEW ISOLATED non-production Cloudflare D1 database and an isolated test Worker/harness capable of real concurrent requests. No production D1 binding, production Worker route, production hostname, real booking, real phone, WhatsApp send, secret mutation on production, wallet/commission effect or NAT/FD traffic change.
+- **Gate 1.5 required proof:** D1 batch rollback/atomicity; partial unique indexes; INSERT OR IGNORE...SELECT behavior; json_extract usage; duplicate/replayed accepts; >=2 genuinely concurrent HTTP accepts through separate requests with exactly one winner; expiry boundaries under server time; audit-event atomicity; no PII pre-assignment; no external sends; 180s fallback; clean teardown/rollback instructions.
+- **Gate 2 remains HOLD.** The first intentional real notification to driver ID 1 is not authorised by this checkpoint.
