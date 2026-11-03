@@ -23,6 +23,8 @@ export function checkInvariants(w) {
   }
   // I6: unassigned bookings are never completed/cancelled by dispatch
   for (const r of db.q(`SELECT id, status FROM bookings WHERE assigned_driver_id IS NULL AND status <> 'pending'`)) v.push(`I6 unassigned booking ${r.id} has status ${r.status}`);
+  // I10 (Gate 1.5): a driver never holds more than one ACTIVE (accepted/en_route) trip, and never holds an open offer on a booking while on one
+  for (const r of db.q(`SELECT assigned_driver_id d, COUNT(*) n FROM bookings WHERE assigned_driver_id IS NOT NULL AND status IN ('accepted','en_route') GROUP BY assigned_driver_id HAVING n > 1`)) v.push(`I10 driver ${r.d} has ${r.n} active trips`);
   // I7: financial state untouched
   if (w.walletChecksum() !== w._walletBaseline) v.push('I7 wallet / commission state changed');
   if (db.q1(`SELECT COUNT(*) n FROM wallet_transactions`).n) v.push('I7 wallet_transactions rows exist');

@@ -147,19 +147,20 @@ test('G10 60–120 s CONNECTIVITY_GRACE: delivered-but-unconfirmed, viewed-late/
   assert.equal((await w.service.accept({ driverId: 1, offerId: o.offer_id })).code, CODE.ASSIGNED); finish(w);
 });
 
-test('G11 120–180 s ESCALATED_DISPATCH: unreachable offers expire, next eligible drivers are offered, first valid server-confirmed accept wins', async () => {
+test('G11 120–180 s ESCALATED_DISPATCH: with no engagement dispatch broadens, originals stay actionable, first valid server-confirmed accept wins', async () => {
   const w = await makeWorld({ drivers: 5, deliveryMode: NO_RECEIPT });
   const { b, o } = await begin(w);
   w.clock.advance(S(61)); await w.service.sweep(b);               // d2 introduced
   w.clock.advance(S(65)); const sw = await w.service.sweep(b);   // t=126 s
   assert.equal(sw.phase, PHASE.ESCALATED_DISPATCH);
-  assert.equal(w.db.q1(`SELECT state s FROM driver_offers WHERE offer_id=?`, o.offer_id).s, 'TIMED_OUT', 'unreachable PRIORITY offer expired');
-  assert.ok(w.db.q1(`SELECT COUNT(*) n FROM driver_offers WHERE booking_id=? AND state IN ('OFFERED','VIEWED')`, b).n >= 1, 'escalated offers outstanding');
+  assert.equal(w.db.q1(`SELECT state s FROM driver_offers WHERE offer_id=?`, o.offer_id).s, 'OFFERED', 'original offer stays open inside the 180 s envelope');
+  assert.equal(w.db.q1(`SELECT COUNT(*) n FROM driver_offers WHERE booking_id=? AND state IN ('OFFERED','VIEWED')`, b).n, 3, 'broadened to 1 + fanout open offers');
   const open = w.db.q(`SELECT driver_id, offer_id FROM driver_offers WHERE booking_id=? AND state IN ('OFFERED','VIEWED') ORDER BY driver_id`, b);
   const results = await Promise.all(open.map((x) => w.service.accept({ driverId: x.driver_id, offerId: x.offer_id })));
   assert.equal(results.filter((r) => r.code === CODE.ASSIGNED).length, 1);
   assert.ok(results.every((r) => r.code === CODE.ASSIGNED || r.code === CODE.ASSIGNMENT_ALREADY_TAKEN));
-  assert.equal((await w.service.accept({ driverId: 1, offerId: o.offer_id })).code, CODE.ASSIGNMENT_ALREADY_TAKEN, 'late original driver cannot claim');
+  const winner = w.db.q1(`SELECT assigned_driver_id d FROM bookings WHERE id=?`, b).d;
+  for (const x of open.filter((y) => y.driver_id !== winner)) assert.equal((await w.service.accept({ driverId: x.driver_id, offerId: x.offer_id })).code, CODE.ASSIGNMENT_ALREADY_TAKEN, 'late driver (original or broadened) cannot claim');
   finish(w);
 });
 
@@ -182,8 +183,9 @@ test('G13 server time is authoritative at 59/60, 119/120 and 179/180 s boundarie
   assert.equal(phaseAt(179_999), PHASE.ESCALATED_DISPATCH); assert.equal(phaseAt(180_000), PHASE.HUMAN_FALLBACK_REQUIRED);
   const at = async (ms, mode) => { const w = await makeWorld({ drivers: 1, deliveryMode: mode }); const { o } = await begin(w); w.clock.advance(ms); return (await w.service.accept({ driverId: 1, offerId: o.offer_id })).code; };
   assert.equal(await at(59_999, NO_RECEIPT), CODE.ASSIGNED); assert.equal(await at(60_000, NO_RECEIPT), CODE.ASSIGNED);      // 60 s is not expiry
-  assert.equal(await at(119_999, NO_RECEIPT), CODE.ASSIGNED); assert.equal(await at(120_000, NO_RECEIPT), CODE.OFFER_EXPIRED); // unreachable offers end at 120
-  assert.equal(await at(179_999, undefined), CODE.ASSIGNED); assert.equal(await at(180_000, undefined), CODE.OFFER_EXPIRED);  // reachable offers end at the 180 s envelope
+  assert.equal(await at(119_999, NO_RECEIPT), CODE.ASSIGNED); assert.equal(await at(120_000, NO_RECEIPT), CODE.ASSIGNED);   // 120 s broadens dispatch; it does NOT kill the original offer
+  assert.equal(await at(179_999, NO_RECEIPT), CODE.ASSIGNED); assert.equal(await at(180_000, NO_RECEIPT), CODE.OFFER_EXPIRED);  // the 180 s envelope is the only expiry
+  assert.equal(await at(179_999, undefined), CODE.ASSIGNED); assert.equal(await at(180_000, undefined), CODE.OFFER_EXPIRED);
 });
 
 // ───────────── C. Acceptance / race / replay ─────────────
@@ -202,6 +204,7 @@ test('G15 two simultaneous eligible drivers cannot both win (50 interleaved tria
   const w = await makeWorld({ drivers: 3, deliveryMode: NO_RECEIPT, chaos: randomChaos(8) });
   const winners = new Set();
   for (let i = 0; i < 50; i++) {
+    await w.freeDrivers();
     const { b, o } = await begin(w); w.clock.advance(S(61)); await w.service.sweep(b);
     const o2 = w.offerFor(b, 2);
     const [a, c] = await Promise.all([w.service.accept({ driverId: 1, offerId: o.offer_id }), w.service.accept({ driverId: 2, offerId: o2.offer_id })]);
@@ -250,7 +253,7 @@ test('G16b first-wins also holds against changes made OUTSIDE the offer flow: ma
 
 test('G17 an expired offer cannot assign', async () => {
   const w = await makeWorld({ deliveryMode: NO_RECEIPT });
-  const { b, o } = await begin(w); w.clock.advance(S(125));
+  const { b, o } = await begin(w); w.clock.advance(S(185));
   assert.equal((await w.service.accept({ driverId: 1, offerId: o.offer_id })).code, CODE.OFFER_EXPIRED);
   assert.equal(w.db.q1(`SELECT assigned_driver_id d FROM bookings WHERE id=?`, b).d, null);
   finish(w);
@@ -259,9 +262,9 @@ test('G17 an expired offer cannot assign', async () => {
 test('G18 Accept started client-side before a boundary but arriving after it follows the SERVER clock (client timestamp ignored)', async () => {
   const w = await makeWorld({ deliveryMode: NO_RECEIPT });
   const { o } = await begin(w);
-  w.clock.advance(S(119.5));                       // driver taps here (client believes: still inside 120 s)
+  w.clock.advance(S(179.5));                       // driver taps here (client believes: still inside 180 s)
   const tappedAt = w.clock.now();
-  w.clock.advance(S(1));                           // slow link: request lands at 120.5 s server time
+  w.clock.advance(S(1));                           // slow link: request lands at 180.5 s server time
   const r = await handle(new Request('http://isolated.test/api/offers/' + o.offer_id + '/accept', { method: 'POST',
     headers: { authorization: `Bearer ${w.tok(1)}`, 'x-client-sent-at': new Date(tappedAt).toISOString(), 'content-type': 'application/json' }, body: JSON.stringify({ client_sent_at: tappedAt }) }), { service: w.service });
   assert.equal((await r.json()).code, CODE.OFFER_EXPIRED); assert.equal(r.status, 410);
@@ -327,7 +330,7 @@ test('G23 offline driver, explicit decline and provider notification failure are
   w = await makeWorld({ drivers: 2, deliveryMode: () => 'PROVIDER_ERROR' }); ({ b, o } = await begin(w));
   const att = w.db.q1(`SELECT status, provider_reason_code r FROM driver_broadcast_attempts WHERE booking_id=?`, b);
   assert.deepEqual([att.status, att.r], ['FAILED', CODE.NOTIFICATION_PROVIDER_ERROR]);
-  assert.equal(o.state, 'OFFERED'); assert.equal(w.db.q1(`SELECT reach_evidence_at x FROM driver_offers WHERE offer_id=?`, o.offer_id).x, null, 'failed delivery is not reachability evidence');
+  assert.equal(o.state, 'OFFERED'); assert.equal(w.db.q1(`SELECT delivery_receipt_at x FROM driver_offers WHERE offer_id=?`, o.offer_id).x, null, 'failed delivery is not even transport evidence');
   const d = await diagnose(w.db, b);
   assert.deepEqual([d.first_missing_or_failed_boundary, d.reason_code, d.retry_state], ['DRIVER_NOTIFICATION_DELIVERED', CODE.NOTIFICATION_PROVIDER_ERROR, 'RETRYABLE']);
 });
@@ -385,7 +388,7 @@ test('G27 reason codes are stable machine-readable values independent of UI pros
   const note = (r) => { seen.add(r.code); assert.ok(codes.has(r.code), `unknown code ${r.code}`); assert.equal(r.message, undefined); assert.equal(r.error, undefined); return r; };
   const { b, o } = await begin(w);
   note(await w.service.decline({ driverId: 1, offerId: o.offer_id })); note(await w.service.accept({ driverId: 1, offerId: o.offer_id }));
-  note(await w.service.accept({ driverId: 3, offerId: 'ofr_nope' })); w.clock.advance(S(130)); note(await w.service.accept({ driverId: 2, offerId: w.offerFor(b, 2).offer_id }));
+  note(await w.service.accept({ driverId: 3, offerId: 'ofr_nope' })); w.clock.advance(S(190)); note(await w.service.accept({ driverId: 2, offerId: w.offerFor(b, 2).offer_id }));
   const bb = await begin(w, 1); note(await w.service.accept({ driverId: 1, offerId: bb.o.offer_id })); note(await w.service.advanceTrip({ driverId: 1, bookingId: bb.b, stage: 'COMPLETED' }));
   note(await w.service.advanceTrip({ driverId: 3, bookingId: bb.b, stage: 'EN_ROUTE_PICKUP' }));
   for (const c of [CODE.DRIVER_DECLINED, CODE.INVALID_TRANSITION, CODE.OFFER_NOT_FOUND, CODE.OFFER_EXPIRED, CODE.ASSIGNED, CODE.NOT_ASSIGNED_DRIVER]) assert.ok(seen.has(c), `code ${c} not exercised`);

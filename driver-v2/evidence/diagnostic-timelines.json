@@ -19,7 +19,7 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_dc1b366acb1c09da0ccea86997f6496d",
+        "offer_id": "ofr_ad26f7fe6f967345c469b5238d564c78",
         "attempt_no": 1,
         "status": "DELIVERED",
         "reason_code": null
@@ -48,7 +48,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -57,7 +57,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -66,7 +66,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_DELIVERED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -75,7 +75,7 @@
         "t_plus_s": 7,
         "event": "OFFER_VIEWED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "driver:1",
         "reason_code": null,
         "phase": null
@@ -84,7 +84,7 @@
         "t_plus_s": 12,
         "event": "DRIVER_DECISION",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -93,7 +93,7 @@
         "t_plus_s": 12,
         "event": "ASSIGNMENT_CLAIM",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -102,7 +102,7 @@
         "t_plus_s": 12,
         "event": "ASSIGNMENT_PERSISTED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -111,7 +111,7 @@
         "t_plus_s": 12,
         "event": "DRIVER_ASSIGNED",
         "driver": 1,
-        "offer": "ofr_dc1b…",
+        "offer": "ofr_ad26…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -144,14 +144,14 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_dde7bb6683b1084f581014f2dc865334",
+        "offer_id": "ofr_c2b33654b64a1ba388e7246bf75a4e91",
         "attempt_no": 1,
         "status": "DELIVERED",
         "reason_code": null
       },
       {
         "driver_id": 2,
-        "offer_id": "ofr_7e723810dd038ed26116a76b01cd6064",
+        "offer_id": "ofr_980159d0b102d182609802773e2c17e2",
         "attempt_no": 1,
         "status": "DELIVERED",
         "reason_code": null
@@ -180,7 +180,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_dde7…",
+        "offer": "ofr_c2b3…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -189,7 +189,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_dde7…",
+        "offer": "ofr_c2b3…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -198,7 +198,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_DELIVERED",
         "driver": 1,
-        "offer": "ofr_dde7…",
+        "offer": "ofr_c2b3…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -207,7 +207,7 @@
         "t_plus_s": 9,
         "event": "DRIVER_DECISION",
         "driver": 1,
-        "offer": "ofr_dde7…",
+        "offer": "ofr_c2b3…",
         "actor": "driver:1",
         "reason_code": "DRIVER_DECLINED",
         "phase": null
@@ -216,7 +216,7 @@
         "t_plus_s": 9,
         "event": "OFFER_CREATED",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -225,7 +225,7 @@
         "t_plus_s": 9,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -234,7 +234,7 @@
         "t_plus_s": 9,
         "event": "DRIVER_NOTIFICATION_DELIVERED",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -243,7 +243,7 @@
         "t_plus_s": 23,
         "event": "DRIVER_DECISION",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "driver:2",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -252,7 +252,7 @@
         "t_plus_s": 23,
         "event": "ASSIGNMENT_CLAIM",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "driver:2",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -261,7 +261,7 @@
         "t_plus_s": 23,
         "event": "ASSIGNMENT_PERSISTED",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "driver:2",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -270,7 +270,7 @@
         "t_plus_s": 23,
         "event": "DRIVER_ASSIGNED",
         "driver": 2,
-        "offer": "ofr_7e72…",
+        "offer": "ofr_9801…",
         "actor": "driver:2",
         "reason_code": "ASSIGNED",
         "phase": "PRIORITY"
@@ -297,7 +297,7 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_95a5180e9625c0674bfe9d7ff780a700",
+        "offer_id": "ofr_a404f3067db1bd23374052df705b4893",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
@@ -326,7 +326,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -335,7 +335,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -362,7 +362,7 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_95a5180e9625c0674bfe9d7ff780a700",
+        "offer_id": "ofr_a404f3067db1bd23374052df705b4893",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
@@ -391,7 +391,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -400,7 +400,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -409,7 +409,7 @@
         "t_plus_s": 95,
         "event": "OFFER_VIEWED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "driver:1",
         "reason_code": null,
         "phase": null
@@ -418,7 +418,7 @@
         "t_plus_s": 98,
         "event": "DRIVER_DECISION",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -427,7 +427,7 @@
         "t_plus_s": 98,
         "event": "ASSIGNMENT_CLAIM",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -436,7 +436,7 @@
         "t_plus_s": 98,
         "event": "ASSIGNMENT_PERSISTED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -445,7 +445,7 @@
         "t_plus_s": 98,
         "event": "DRIVER_ASSIGNED",
         "driver": 1,
-        "offer": "ofr_95a5…",
+        "offer": "ofr_a404…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -478,14 +478,14 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_87f7c4a5ef28828eba9bdda4d076d36f",
+        "offer_id": "ofr_a46664cdb420f46fb1a00249ec8ad6bf",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
       },
       {
         "driver_id": 2,
-        "offer_id": "ofr_0dcb6b85299d7489257d76790a15476f",
+        "offer_id": "ofr_8bbf53fdded8681c020fea0c074543c0",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
@@ -514,7 +514,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -523,7 +523,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -532,7 +532,7 @@
         "t_plus_s": 62,
         "event": "OFFER_CREATED",
         "driver": 2,
-        "offer": "ofr_0dcb…",
+        "offer": "ofr_8bbf…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "CONNECTIVITY_GRACE"
@@ -541,7 +541,7 @@
         "t_plus_s": 62,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 2,
-        "offer": "ofr_0dcb…",
+        "offer": "ofr_8bbf…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -550,7 +550,7 @@
         "t_plus_s": 65,
         "event": "DRIVER_DECISION",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -559,7 +559,7 @@
         "t_plus_s": 65,
         "event": "ASSIGNMENT_CLAIM",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -568,7 +568,7 @@
         "t_plus_s": 65,
         "event": "ASSIGNMENT_PERSISTED",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -577,7 +577,7 @@
         "t_plus_s": 65,
         "event": "DRIVER_ASSIGNED",
         "driver": 1,
-        "offer": "ofr_87f7…",
+        "offer": "ofr_a466…",
         "actor": "driver:1",
         "reason_code": "ASSIGNED",
         "phase": "CONNECTIVITY_GRACE"
@@ -610,14 +610,14 @@
     "delivery_attempts": [
       {
         "driver_id": 1,
-        "offer_id": "ofr_bbc32449044ec8196e6ea4185c84920f",
+        "offer_id": "ofr_c18028441ec599c062bbbbd0b231b0ae",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
       },
       {
         "driver_id": 2,
-        "offer_id": "ofr_c2b0e08e312364d7647d1b6822cfc2bd",
+        "offer_id": "ofr_db8912111b5a0083791a2db3e35418d9",
         "attempt_no": 1,
         "status": "SUPPRESSED_CAPTURED",
         "reason_code": null
@@ -646,7 +646,7 @@
         "t_plus_s": 0,
         "event": "OFFER_CREATED",
         "driver": 1,
-        "offer": "ofr_bbc3…",
+        "offer": "ofr_c180…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "PRIORITY"
@@ -655,7 +655,7 @@
         "t_plus_s": 0,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 1,
-        "offer": "ofr_bbc3…",
+        "offer": "ofr_c180…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
@@ -664,7 +664,7 @@
         "t_plus_s": 61,
         "event": "OFFER_CREATED",
         "driver": 2,
-        "offer": "ofr_c2b0…",
+        "offer": "ofr_db89…",
         "actor": "system:dispatch",
         "reason_code": null,
         "phase": "CONNECTIVITY_GRACE"
@@ -673,19 +673,10 @@
         "t_plus_s": 61,
         "event": "DRIVER_NOTIFICATION_ATTEMPTED",
         "driver": 2,
-        "offer": "ofr_c2b0…",
+        "offer": "ofr_db89…",
         "actor": "system:notifier",
         "reason_code": null,
         "phase": null
-      },
-      {
-        "t_plus_s": 121,
-        "event": "OFFERS_TIMED_OUT",
-        "driver": null,
-        "offer": null,
-        "actor": "system:dispatch",
-        "reason_code": "OFFER_EXPIRED",
-        "phase": "ESCALATED_DISPATCH"
       },
       {
         "t_plus_s": 181,

@@ -1,6 +1,7 @@
 // Capture / no-send adapters for Gate 1. There is NO real messaging or object-storage adapter in this module by design:
 // every outbound intent is recorded, nothing leaves the process. Guest / admin / driver WhatsApp and email are always suppressed.
-import crypto from 'node:crypto';
+import { opaqueId, defaultIds } from './ids.js';
+export { opaqueId, defaultIds };
 
 export class CaptureNotifier {
   // deliveryMode(driverId) => 'DELIVERED' | 'NO_RECEIPT' | 'PROVIDER_ERROR'
@@ -27,5 +28,3 @@ export class CaptureEvidenceStore {
   }
 }
 
-export const opaqueId = (prefix) => `${prefix}_${crypto.randomBytes(16).toString('hex')}`;
-export const defaultIds = { offer: () => opaqueId('ofr'), evidence: () => opaqueId('evd') };

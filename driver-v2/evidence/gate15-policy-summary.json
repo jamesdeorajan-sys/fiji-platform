@@ -1,0 +1,17 @@
+{
+  "seed": 20261103,
+  "stats": {
+    "bookings": 100,
+    "assigned": 40,
+    "human_fallback": 0,
+    "offers_to_busy_drivers": 0,
+    "accepts_by_busy_drivers_rejected": 72,
+    "busy_accept_wins": 0,
+    "double_assignments": 0,
+    "max_active_trips_per_driver": 1,
+    "completed": 40
+  },
+  "unexpected_network_attempts": 0,
+  "real_sends": 0,
+  "wallet_changed": false
+}

@@ -84,8 +84,9 @@ CREATE TABLE driver_offers (
   offered_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,             -- hard bound = dispatch deadline (run start + 180 s)
   viewed_at TEXT,
-  reach_evidence_at TEXT,               -- first proof the driver's device was reachable (delivery / view / session)
-  reach_evidence_source TEXT,
+  delivery_receipt_at TEXT,             -- TRANSPORT evidence only (provider/device delivery). NEVER proof the driver saw or engaged with the offer.
+  engaged_at TEXT,                      -- ENGAGEMENT evidence: driver viewed the offer, or authenticated PWA/session activity while it was open
+  engagement_source TEXT CHECK (engagement_source IN ('VIEW','SESSION')),
   decision_at TEXT,
   decision_reason_code TEXT,
   created_at TEXT NOT NULL,

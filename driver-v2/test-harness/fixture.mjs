@@ -38,7 +38,18 @@ export async function makeWorld({ drivers = 3, chaos = null, deliveryMode, confi
   const walletChecksum = () => JSON.stringify([db.q('SELECT * FROM wallets ORDER BY driver_id'), db.q('SELECT * FROM wallet_transactions ORDER BY id')]);
   const tok = (id) => `tok-gate1-driver-${id}`;
   const offerFor = (bookingId, driverId) => db.q1(`SELECT * FROM driver_offers WHERE booking_id = ? AND driver_id = ?`, bookingId, driverId);
-  const w = { db, clock, notifier, evidenceStore, service, newBooking, walletChecksum, tok, offerFor, iso, canary: CANARY };
+  // Drives every active trip to COMPLETED through the REAL service (all audit events, evidence refs, invariants intact) so the busy-aware
+  // dispatcher can offer to those drivers again. Used between races; the busy rule itself is covered by G40-G44.
+  const freeDrivers = async () => {
+    for (const r of db.q(`SELECT id, assigned_driver_id d FROM bookings WHERE status IN ('accepted','en_route') AND assigned_driver_id IS NOT NULL ORDER BY id`)) {
+      const stages = ['EN_ROUTE_PICKUP', 'ARRIVED_PICKUP', 'PICKUP_VALIDATED', 'PASSENGER_ONBOARD', 'EN_ROUTE_DESTINATION', 'ARRIVED_DESTINATION', 'COMPLETED'];
+      for (const s of stages) {
+        if (s === 'PICKUP_VALIDATED') await service.submitEvidence({ driverId: r.d, bookingId: r.id, kind: 'PICKUP', clientEvidenceId: `free-${r.id}`, sha256: 'b'.repeat(64), bytes: 1 });
+        await service.advanceTrip({ driverId: r.d, bookingId: r.id, stage: s });
+      }
+    }
+  };
+  const w = { db, clock, notifier, evidenceStore, service, newBooking, walletChecksum, tok, offerFor, iso, canary: CANARY, freeDrivers };
   w._walletBaseline = walletChecksum();
   return w;
 }

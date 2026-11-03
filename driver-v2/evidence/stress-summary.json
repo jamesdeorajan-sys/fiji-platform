@@ -25,17 +25,16 @@
     "races": 200,
     "races_with_multiple_open_offers": 200,
     "winners_by_driver": {
-      "1": 72,
-      "2": 65,
-      "3": 44,
-      "4": 16,
-      "5": 3
+      "1": 73,
+      "2": 82,
+      "3": 43,
+      "4": 2
     },
     "double_assignments": 0,
     "forbidden_pii_exposures": 0,
     "duplicate_escalations": 0,
     "unexpected_network_attempts": 0,
-    "db_batches": 3232,
+    "db_batches": 4773,
     "db_rollbacks": 0,
     "fallback_bookings": 100
   },

@@ -91,6 +91,7 @@ test('G38 concurrency / race stress: simultaneous accepts, repeated + concurrent
   const w = await makeWorld({ drivers: 5, deliveryMode: NO_RECEIPT, chaos: randomChaos(10) });
   const N = 200; const winners = new Map(); let racesWithMultipleOpen = 0; let pii = 0;
   for (let i = 0; i < N; i++) {
+    await w.freeDrivers();
     const b = await w.newBooking(); await w.service.startDispatch(b);
     w.clock.advance(S(61 + Math.floor(rnd() * 70)));                       // somewhere 61..130 s: grace or escalated
     await Promise.all([w.service.sweep(b), w.service.sweep(b), w.service.sweep(b)]);          // concurrent repeated sweeps must converge

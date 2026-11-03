@@ -11,11 +11,12 @@
 // read-then-write pre-checks (those exist only to choose a precise reason code).
 import {
   WINDOW, PHASE, OFFER_STATE, CODE, LIFECYCLE, COARSE_STATUS, TEST_DRIVER_ID,
-  SYNTHETIC_BOOKING_ID_FLOOR, SYNTHETIC_REF_PREFIX,
+  SYNTHETIC_BOOKING_ID_FLOOR, SYNTHETIC_REF_PREFIX, ACTIVE_TRIP_STATUSES,
 } from './constants.js';
-import { defaultIds } from './adapters.js';
+import { defaultIds } from './ids.js';
 
 const OPEN = `('OFFERED','VIEWED')`;
+const ACTIVE_SQL = `(${ACTIVE_TRIP_STATUSES.map((s) => `'${s}'`).join(',')})`;   // coarse states meaning "occupied with a guest"
 const iso = (ms) => new Date(ms).toISOString();
 const ms = (s) => Date.parse(s);
 const LIFECYCLE_SQL = `(${LIFECYCLE.map((s) => `'${s}'`).join(',')})`;
@@ -113,20 +114,23 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     await db.prepare(`INSERT INTO driver_broadcast_attempts (booking_id, driver_id, offer_id, attempt_no, channel, status, provider_reason_code, created_at) VALUES (?,?,?,?,?,?,?,?)`)
       .bind(booking.id, driverId, offerId, attemptNo, 'whatsapp', status, reason, iso(t)).run();
     if (status === 'DELIVERED') {
-      await markReach(offerId, 'DELIVERY');
+      await markDelivery(offerId);
       await logOptional({ bookingId: booking.id, type: 'DRIVER_NOTIFICATION_DELIVERED', actor: 'system:notifier', meta: { offer_id: offerId, driver_id: driverId } });
     } else if (status === 'FAILED') {
       await logOptional({ bookingId: booking.id, type: 'DRIVER_NOTIFICATION_FAILED', actor: 'system:notifier', meta: { offer_id: offerId, driver_id: driverId, reason_code: reason, retry_state: 'RETRYABLE' } });
     }
   }
 
-  // Reachability evidence can only keep an offer alive while it is still inside its un-evidenced window; it cannot resurrect a dead offer.
-  async function markReach(offerId, source) {
+  // Gate 1.5 reachability policy: DELIVERY_RECEIPT is TRANSPORT evidence only. It is stored separately and is never read as engagement.
+  async function markDelivery(offerId) {
     const t = nowMs();
-    return db.prepare(
-      `UPDATE driver_offers SET reach_evidence_at = ?, reach_evidence_source = ?, updated_at = ?
-       WHERE offer_id = ? AND state IN ${OPEN} AND reach_evidence_at IS NULL AND expires_at > ? AND offered_at > ?`,
-    ).bind(iso(t), source, iso(t), offerId, iso(t), iso(t - WINDOW.GRACE_END_MS)).run();
+    return db.prepare(`UPDATE driver_offers SET delivery_receipt_at = COALESCE(delivery_receipt_at, ?), updated_at = ? WHERE offer_id = ? AND state IN ${OPEN}`).bind(iso(t), iso(t), offerId).run();
+  }
+  // Engagement = the driver viewed the offer OR authenticated PWA/session activity occurred while it was open.
+  // Engagement never changes whether an offer is actionable (that is the 180 s envelope); it only decides whether dispatch broadens at 120 s.
+  const busyDriverIds = async () => (await db.prepare(`SELECT DISTINCT assigned_driver_id AS id FROM bookings WHERE assigned_driver_id IS NOT NULL AND status IN ${ACTIVE_SQL}`).all()).results.map((r) => r.id);
+  async function driverHasActiveTrip(driverId) {
+    return !!(await db.prepare(`SELECT 1 AS x FROM bookings WHERE assigned_driver_id = ? AND status IN ${ACTIVE_SQL} LIMIT 1`).bind(driverId).first());
   }
 
   // Idempotent: repeated sweeps converge, never multiply offers or escalations.
@@ -143,9 +147,9 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     // 1) expire what the server says is no longer actionable
     const [exp] = await db.batch([db.prepare(
       `UPDATE driver_offers SET state = 'TIMED_OUT', decision_at = ?, decision_reason_code = 'OFFER_EXPIRED', updated_at = ?
-       WHERE booking_id = ? AND state IN ${OPEN} AND (expires_at <= ? OR (offered_at <= ? AND reach_evidence_at IS NULL))
+       WHERE booking_id = ? AND state IN ${OPEN} AND expires_at <= ?
          AND EXISTS (SELECT 1 FROM bookings WHERE id = ? AND status = 'pending' AND assigned_driver_id IS NULL)`,
-    ).bind(iso(t), iso(t), bookingId, iso(t), iso(t - WINDOW.GRACE_END_MS), bookingId)]);
+    ).bind(iso(t), iso(t), bookingId, iso(t), bookingId)]);
     out.expired = exp.meta.changes;
     if (exp.meta.changes) await logOptional({ bookingId, type: 'OFFERS_TIMED_OUT', actor: 'system:dispatch', meta: { count: exp.meta.changes, reason_code: CODE.OFFER_EXPIRED, phase } });
 
@@ -153,16 +157,29 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (elapsed >= WINDOW.DEADLINE_MS) { out.fallback = await recordFallback(b, 'DEADLINE', phase); return out; }
 
     // 3) converge open offers toward the per-phase target
-    const open = await db.prepare(`SELECT offer_id, reach_evidence_at FROM driver_offers WHERE booking_id = ? AND state IN ${OPEN}`).bind(bookingId).all();
-    const evidenced = open.results.some((o) => o.reach_evidence_at);
+    // 2b) Gate 1.5: an open offer held by a driver who has since become occupied is stale; it can no longer win and no longer counts.
+    const busy = await busyDriverIds();
+    if (busy.length) {
+      const [stale] = await db.batch([db.prepare(
+        `UPDATE driver_offers SET state = 'SUPERSEDED', decision_at = ?, decision_reason_code = 'DRIVER_HAS_ACTIVE_TRIP', updated_at = ?
+         WHERE booking_id = ? AND state IN ${OPEN} AND driver_id IN (${busy.map(() => '?').join(',')})`,
+      ).bind(iso(t), iso(t), bookingId, ...busy)]);
+      if (stale.meta.changes) await logOptional({ bookingId, type: 'OFFERS_WITHDRAWN_BUSY', actor: 'system:dispatch', meta: { count: stale.meta.changes, reason_code: CODE.DRIVER_HAS_ACTIVE_TRIP, phase } });
+    }
+    const open = await db.prepare(`SELECT offer_id, engaged_at, delivery_receipt_at FROM driver_offers WHERE booking_id = ? AND state IN ${OPEN}`).bind(bookingId).all();
+    const engaged = open.results.some((o) => o.engaged_at);          // viewed / live PWA session
+    const delivered = open.results.some((o) => o.delivery_receipt_at);   // transport only: never substitutes for engagement
+    // PRIORITY: one driver. GRACE: wait for the one driver if there is any sign of life (engagement or a transport receipt); with neither, introduce a second.
+    // ESCALATED (>=120 s): without ENGAGEMENT, broaden even if the notification was delivered; the original offers stay actionable until the 180 s envelope.
     const target = phase === PHASE.PRIORITY ? 1
-      : phase === PHASE.CONNECTIVITY_GRACE ? (evidenced ? 1 : 2)
-        : 1 + WINDOW.ESCALATION_FANOUT;
+      : phase === PHASE.CONNECTIVITY_GRACE ? (engaged || delivered ? 1 : 2)
+        : (engaged ? 1 : 1 + WINDOW.ESCALATION_FANOUT);
     let have = open.results.length;
     if (have < target) {
       const driversRows = await db.prepare(
         `SELECT id, status, zones, online, forced_offline_until FROM drivers
-         WHERE status = 'verified' AND online = 1 AND id NOT IN (SELECT driver_id FROM driver_offers WHERE booking_id = ?) ORDER BY id`,
+         WHERE status = 'verified' AND online = 1 AND id NOT IN (SELECT driver_id FROM driver_offers WHERE booking_id = ?)
+           AND id NOT IN (SELECT assigned_driver_id FROM bookings WHERE assigned_driver_id IS NOT NULL AND status IN ${ACTIVE_SQL}) ORDER BY id`,
       ).bind(bookingId).all();
       const pool = driversRows.results.filter((d) => driverEligible(d, b.pickup_zone, t));
       for (const d of pool) {
@@ -201,31 +218,32 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
   async function touchSession(driverId) {
     const t = nowMs();
     await db.prepare(`UPDATE driver_sessions SET last_seen_at = ? WHERE driver_id = ?`).bind(iso(t), driverId).run();
-    // Session activity is reachability evidence for that driver's still-actionable open offers.
+    // Authenticated PWA/session activity is ENGAGEMENT evidence for that driver's still-open offers.
     await db.prepare(
-      `UPDATE driver_offers SET reach_evidence_at = ?, reach_evidence_source = 'SESSION', updated_at = ?
-       WHERE driver_id = ? AND state IN ${OPEN} AND reach_evidence_at IS NULL AND expires_at > ? AND offered_at > ?`,
-    ).bind(iso(t), iso(t), driverId, iso(t), iso(t - WINDOW.GRACE_END_MS)).run();
+      `UPDATE driver_offers SET engaged_at = ?, engagement_source = 'SESSION', updated_at = ?
+       WHERE driver_id = ? AND state IN ${OPEN} AND engaged_at IS NULL AND expires_at > ?`,
+    ).bind(iso(t), iso(t), driverId, iso(t)).run();
   }
 
-  const actionable = (o, t) => ['OFFERED', 'VIEWED'].includes(o.state) && ms(o.expires_at) > t && (ms(o.offered_at) > t - WINDOW.GRACE_END_MS || !!o.reach_evidence_at);
+  // An offer is actionable while it is open and inside the server-authoritative 180 s envelope. Delivery/engagement do not change that.
+  const actionable = (o, t) => ['OFFERED', 'VIEWED'].includes(o.state) && ms(o.expires_at) > t;
 
   async function listOffers(driverId) {
     const t = nowMs();
     const rows = await db.prepare(
-      `SELECT o.offer_id, o.state, o.dispatch_phase, o.offered_at, o.expires_at, o.viewed_at, o.reach_evidence_at,
+      `SELECT o.offer_id, o.state, o.dispatch_phase, o.offered_at, o.expires_at, o.viewed_at, o.engaged_at,
               b.pickup_zone, b.destination_zone, b.distance_km, b.vehicle_type, b.quoted_currency, b.quoted_amount, b.payment_method, o.booking_id
        FROM driver_offers o JOIN bookings b ON b.id = o.booking_id
        WHERE o.driver_id = ? AND o.state IN ${OPEN} ORDER BY o.offered_at`,
     ).bind(driverId).all();
-    const offers = [];
+    const offers = []; const busy = rows.results.length ? await driverHasActiveTrip(driverId) : false;
     for (const o of rows.results) {
       const run = await getRun(o.booking_id);
       offers.push({
         offer_id: o.offer_id, state: o.state, dispatch_phase: o.dispatch_phase,
         phase_now: run ? phaseAt(t - ms(run.started_at)) : null,
         offered_at: o.offered_at, expires_at: o.expires_at, viewed_at: o.viewed_at,
-        actionable: actionable(o, t),
+        actionable: actionable(o, t) && !busy, blocked_reason: busy ? CODE.DRIVER_HAS_ACTIVE_TRIP : null,
         trip: { pickup_zone: o.pickup_zone, destination_zone: o.destination_zone, distance_km: o.distance_km, vehicle_type: o.vehicle_type,
           fare: { currency: o.quoted_currency, amount: o.quoted_amount }, payment_method: o.payment_method },
       });
@@ -276,9 +294,9 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (!actionable(o, t) && !['ACCEPTED'].includes(o.state)) return reply({ ok: false, code: o.state === 'SUPERSEDED' ? CODE.ASSIGNMENT_ALREADY_TAKEN : CODE.OFFER_EXPIRED, offer: { offer_id: o.offer_id, state: o.state } });
     const r = await db.prepare(
       `UPDATE driver_offers SET state = CASE WHEN state = 'OFFERED' THEN 'VIEWED' ELSE state END, viewed_at = COALESCE(viewed_at, ?),
-         reach_evidence_at = COALESCE(reach_evidence_at, ?), reach_evidence_source = COALESCE(reach_evidence_source, 'VIEW'), updated_at = ?
-       WHERE offer_id = ? AND driver_id = ? AND state IN ${OPEN} AND expires_at > ? AND (offered_at > ? OR reach_evidence_at IS NOT NULL)`,
-    ).bind(iso(t), iso(t), iso(t), offerId, driverId, iso(t), iso(t - WINDOW.GRACE_END_MS)).run();
+         engaged_at = COALESCE(engaged_at, ?), engagement_source = COALESCE(engagement_source, 'VIEW'), updated_at = ?
+       WHERE offer_id = ? AND driver_id = ? AND state IN ${OPEN} AND expires_at > ?`,
+    ).bind(iso(t), iso(t), iso(t), offerId, driverId, iso(t)).run();
     if (r.meta.changes === 1) await logOptional({ bookingId: o.booking_id, type: 'OFFER_VIEWED', actor: `driver:${driverId}`, meta: { offer_id: offerId, driver_id: driverId } });
     return reply({ ok: true, code: CODE.OK, replay: r.meta.changes !== 1 });
   }
@@ -325,9 +343,10 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
 
     const driver = await getDriver(driverId);
     if (!driver || driver.status !== 'verified' || driver.online !== 1) return reply({ ok: false, code: CODE.DRIVER_OFFLINE });
+    if (await driverHasActiveTrip(driverId)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: o.state });   // stale/replayed offer cannot beat the busy rule
     if (!inZone(driver, booking.pickup_zone)) return reply({ ok: false, code: CODE.DRIVER_OUTSIDE_ZONE });
 
-    const t = nowMs(); const T = iso(t); const grace = iso(t - WINDOW.GRACE_END_MS);
+    const t = nowMs(); const T = iso(t);
     const actor = `driver:${driverId}`;
     const phase = phaseAt(t - ms((await getRun(o.booking_id)).started_at));
     const meta = (extra = {}) => ({ offer_id: offerId, driver_id: driverId, phase, critical: true, ...extra });
@@ -343,9 +362,10 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
           `UPDATE bookings SET assigned_driver_id = ?, status = 'accepted'
            WHERE id = ? AND assigned_driver_id IS NULL AND status = 'pending'
              AND EXISTS (SELECT 1 FROM driver_offers o WHERE o.offer_id = ? AND o.driver_id = ? AND o.booking_id = bookings.id AND o.state IN ${OPEN}
-                           AND o.expires_at > ? AND (o.offered_at > ? OR o.reach_evidence_at IS NOT NULL))
-             AND EXISTS (SELECT 1 FROM drivers d WHERE d.id = ? AND d.online = 1 AND d.status = 'verified')`,
-        ).bind(driverId, o.booking_id, offerId, driverId, T, grace, driverId),
+                           AND o.expires_at > ?)
+             AND EXISTS (SELECT 1 FROM drivers d WHERE d.id = ? AND d.online = 1 AND d.status = 'verified')
+             AND NOT EXISTS (SELECT 1 FROM bookings x WHERE x.assigned_driver_id = ? AND x.status IN ${ACTIVE_SQL})`,
+        ).bind(driverId, o.booking_id, offerId, driverId, T, driverId, driverId),
         // (2) decision recorded only if (1) took effect for this driver
         db.prepare(
           `UPDATE driver_offers SET state = 'ACCEPTED', decision_at = ?, decision_reason_code = 'ASSIGNED', updated_at = ?
@@ -378,6 +398,7 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (bk.assigned_driver_id != null && bk.assigned_driver_id !== driverId) return reply({ ok: false, code: CODE.ASSIGNMENT_ALREADY_TAKEN, offer_state: after.state });
     // The booking itself is no longer assignable (e.g. cancelled by staff while the offer was open): the offer is superseded by booking state.
     if (bk.status !== 'pending') return reply({ ok: false, code: CODE.SUPERSEDED, offer_state: after.state });
+    if (await driverHasActiveTrip(driverId)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: after.state });   // lost a same-driver race between two bookings
     return reply({ ok: false, code: CODE.OFFER_EXPIRED, offer_state: after.state });
   }
 

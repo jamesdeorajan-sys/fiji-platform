@@ -40,6 +40,7 @@ export const CODE = Object.freeze({
   TEST_DRIVER_MODE_REFUSED: 'TEST_DRIVER_MODE_REFUSED',
   FINANCIAL_EFFECTS_DISABLED: 'FINANCIAL_EFFECTS_DISABLED',
   NON_SYNTHETIC_BOOKING_REFUSED: 'NON_SYNTHETIC_BOOKING_REFUSED',
+  DRIVER_HAS_ACTIVE_TRIP: 'DRIVER_HAS_ACTIVE_TRIP',   // Gate 1.5 CEO decision: a driver with an ACTIVE assigned trip is not eligible for a new immediate offer
 });
 
 // Detailed trip lifecycle (booking_events). Coarse bookings.status stays pending|accepted|en_route|completed.
@@ -47,6 +48,8 @@ export const LIFECYCLE = Object.freeze([
   'DRIVER_ASSIGNED', 'EN_ROUTE_PICKUP', 'ARRIVED_PICKUP', 'PICKUP_VALIDATED', 'PASSENGER_ONBOARD',
   'EN_ROUTE_DESTINATION', 'ARRIVED_DESTINATION', 'COMPLETED',
 ]);
+// Gate 1.5: coarse bookings.status values that mean "driver is occupied with a guest" (first launch; no future/scheduled stacking).
+export const ACTIVE_TRIP_STATUSES = Object.freeze(['accepted', 'en_route']);
 export const REVIEW_HOOKS = Object.freeze(['REVIEW_REQUESTED', 'REVIEW_RECEIVED']);
 
 // Coarse production status implied by a lifecycle stage (stable production status model is NOT widened).
