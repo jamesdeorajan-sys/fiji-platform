@@ -1,0 +1,17 @@
+PASS offer screen shows no guest PII before assignment
+PASS offer shows PRIORITY phase and a countdown
+PASS at 75 s the offer is still open and labelled CONNECTIVITY GRACE (not expired, not cancelled)
+PASS Accept immediately shows local CONFIRMING; button disabled; job NOT shown as assigned yet
+PASS repeat tap while confirming did not create a second request — accept requests=1
+PASS guest details appear only after server-confirmed assignment
+PASS PICKUP_VALIDATED is blocked until photo evidence is stored
+PASS trip completed through the PWA
+PASS offline: UI stays CONFIRMING, shows Reconnecting…, never claims the job
+PASS retries after reconnect produced exactly one assignment (replay-safe)
+PASS reload recovers authoritative trip state from the server
+PASS losing driver sees a stable "already taken" result and never sees guest PII
+PASS no booking has more than one assigned driver / ACCEPTED offer
+PASS zero real sends (all notification intents suppressed/captured) — captured intents=10
+PASS browser made zero non-loopback requests — []
+
+browser checks: 15/15 passed

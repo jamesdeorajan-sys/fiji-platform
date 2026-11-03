@@ -222,6 +222,32 @@ test('G16 losing / stale offer returns a stable ASSIGNMENT_ALREADY_TAKEN and can
   finish(w);
 });
 
+test('G16b first-wins also holds against changes made OUTSIDE the offer flow: manual staff assignment and staff cancellation while offers are open', async () => {
+  // manual staff assignment lands while driver 1's offer is open (staff use the same winner-takes-it invariant)
+  let w = await makeWorld({ drivers: 3 });
+  let x = await begin(w);
+  w.db.raw.prepare(`UPDATE bookings SET assigned_driver_id = 2, status = 'accepted' WHERE id = ?`).run(x.b);
+  assert.equal((await w.service.accept({ driverId: 1, offerId: x.o.offer_id })).code, CODE.ASSIGNMENT_ALREADY_TAKEN);
+  assert.equal(w.db.q1(`SELECT assigned_driver_id d FROM bookings WHERE id=?`, x.b).d, 2, 'staff assignment is never overwritten by a late offer');
+  assert.equal(w.offerFor(x.b, 1).state, 'OFFERED', 'offer row untouched by the refused claim');
+  // the same, but the race is decided INSIDE the batch (booking changes after the pre-check read): chaos hook flips it mid-flight
+  w = await makeWorld({ drivers: 3, chaos: null }); x = await begin(w);
+  let flipped = false;
+  w.db.hooks.beforeStatement = async (sql) => { if (sql === 'BATCH' && !flipped) { flipped = true; w.db.raw.prepare(`UPDATE bookings SET assigned_driver_id = 3, status = 'accepted' WHERE id = ?`).run(x.b); } };
+  assert.equal((await w.service.accept({ driverId: 1, offerId: x.o.offer_id })).code, CODE.ASSIGNMENT_ALREADY_TAKEN);
+  assert.equal(w.db.q1(`SELECT assigned_driver_id d FROM bookings WHERE id=?`, x.b).d, 3);
+  assert.equal(evCount(w, x.b, 'DRIVER_ASSIGNED'), 0, 'no assignment audit written for a refused claim');
+  // staff cancel while an offer is open: the offer cannot resurrect or assign the booking
+  w = await makeWorld({ drivers: 2 }); x = await begin(w);
+  w.db.raw.prepare(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`).run(x.b);
+  assert.equal((await w.service.accept({ driverId: 1, offerId: x.o.offer_id })).code, CODE.SUPERSEDED);
+  assert.deepEqual({ ...w.db.q1(`SELECT status s, assigned_driver_id d FROM bookings WHERE id=?`, x.b) }, { s: 'cancelled', d: null });
+  w = await makeWorld({ drivers: 2 }); x = await begin(w);
+  w.db.hooks.beforeStatement = async (sql) => { if (sql === 'BATCH') { w.db.hooks.beforeStatement = null; w.db.raw.prepare(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`).run(x.b); } };
+  const late = await w.service.accept({ driverId: 1, offerId: x.o.offer_id });
+  assert.equal(late.code, CODE.SUPERSEDED); assert.equal(w.db.q1(`SELECT assigned_driver_id d FROM bookings WHERE id=?`, x.b).d, null);
+});
+
 test('G17 an expired offer cannot assign', async () => {
   const w = await makeWorld({ deliveryMode: NO_RECEIPT });
   const { b, o } = await begin(w); w.clock.advance(S(125));
@@ -374,13 +400,14 @@ test('G28 diagnostic read answers: last proven boundary, first missing/failed bo
   // decline -> next driver
   w = await makeWorld({ drivers: 3 }); ({ b, o } = await begin(w)); await w.service.decline({ driverId: 1, offerId: o.offer_id });
   d = await diagnose(w.db, b);
-  assert.equal(d.last_proven_boundary, 'DRIVER_DECISION'); assert.equal(d.first_missing_or_failed_boundary, 'OFFER_VIEWED'); assert.equal(d.retry_state, 'WAITING');   // decline proves DRIVER_DECISION; next driver's offer is awaiting a view
+  assert.equal(d.last_proven_boundary, 'DRIVER_NOTIFICATION_DELIVERED'); assert.equal(d.first_missing_or_failed_boundary, 'OFFER_VIEWED'); assert.equal(d.retry_state, 'WAITING');   // a decline does not advance the journey; next driver's offer awaits a view
   assert.ok(d.offers.some((x) => x.driver_id === 1 && x.reason_code === CODE.DRIVER_DECLINED) && d.offers.some((x) => x.driver_id === 2 && x.state === 'OFFERED'));
   // slow / reconnect: no receipt, view arrives late, accept
   w = await makeWorld({ drivers: 2, deliveryMode: NO_RECEIPT }); ({ b, o } = await begin(w)); w.clock.advance(S(100));
   d = await diagnose(w.db, b); assert.equal(d.first_missing_or_failed_boundary, 'DRIVER_NOTIFICATION_DELIVERED'); assert.equal(d.responsible_subsystem, 'NOTIFICATION');
   await w.service.view({ driverId: 1, offerId: o.offer_id }); await w.service.accept({ driverId: 1, offerId: o.offer_id });
-  d = await diagnose(w.db, b); assert.equal(d.last_proven_boundary, 'ASSIGNMENT_PERSISTED');
+  d = await diagnose(w.db, b); assert.equal(d.last_proven_boundary, 'ASSIGNMENT_PERSISTED'); assert.equal(d.first_missing_or_failed_boundary, 'PICKUP_EN_ROUTE');
+  assert.ok(d.upstream_gaps.some((g) => g.boundary === 'DRIVER_NOTIFICATION_DELIVERED'), 'the never-received delivery receipt stays visible as an upstream gap');
   // simultaneous accept
   w = await makeWorld({ drivers: 3, deliveryMode: NO_RECEIPT }); ({ b, o } = await begin(w)); w.clock.advance(S(61)); await w.service.sweep(b);
   await Promise.all([w.service.accept({ driverId: 1, offerId: o.offer_id }), w.service.accept({ driverId: 2, offerId: w.offerFor(b, 2).offer_id })]);

@@ -1,0 +1,82 @@
+{
+  "viewport": "390x844 @2x, isMobile+touch",
+  "slow_network": "CDP latency 600ms / 40KB/s down / 20KB/s up + 3.5s delayed Accept response",
+  "results": [
+    {
+      "name": "offer screen shows no guest PII before assignment",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "offer shows PRIORITY phase and a countdown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "at 75 s the offer is still open and labelled CONNECTIVITY GRACE (not expired, not cancelled)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Accept immediately shows local CONFIRMING; button disabled; job NOT shown as assigned yet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "repeat tap while confirming did not create a second request",
+      "ok": true,
+      "detail": "accept requests=1"
+    },
+    {
+      "name": "guest details appear only after server-confirmed assignment",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "PICKUP_VALIDATED is blocked until photo evidence is stored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "trip completed through the PWA",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "offline: UI stays CONFIRMING, shows Reconnecting…, never claims the job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "retries after reconnect produced exactly one assignment (replay-safe)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "reload recovers authoritative trip state from the server",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "losing driver sees a stable \"already taken\" result and never sees guest PII",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no booking has more than one assigned driver / ACCEPTED offer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "zero real sends (all notification intents suppressed/captured)",
+      "ok": true,
+      "detail": "captured intents=10"
+    },
+    {
+      "name": "browser made zero non-loopback requests",
+      "ok": true,
+      "detail": "[]"
+    }
+  ],
+  "failed": 0
+}

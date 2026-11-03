@@ -1549,3 +1549,13 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - list of unresolved defects/UNKNOWN items. No hidden waivers.
 
 **Gate decision rule:** Gate 2 remains HOLD until this evidence is reviewed. Gate 2, if separately approved by James, is one controlled synthetic/non-customer job to existing driver ID 1 and is the first stage permitted to intentionally generate a real driver notification.
+
+
+### CHECKPOINT 2026-11-03 - Driver PWA v2 Gate 1 isolated implementation + evidence (Claude, branch `ceo/driver-pwa-v2-gate1-isolated`)
+- **Scope / safety:** isolated, synthetic, in-memory only; everything under `driver-v2/`. No Worker deploy, traffic change, production D1 read/write/migration, secret change, scheduled handler, booking POST, WhatsApp/guest/admin/driver message, email, wallet/commission effect, second real driver record, or Bula/NAT/FijiDash change. Zero outbound network attempts recorded (guard throws on any). Gate 2 remains **HOLD**.
+- **Classification:** TESTED_NOT_LIVE. Results: gate suite 38/38, stress/race 4/4 (100 consecutive journeys: 0 double assignments, 0 forbidden pre-assignment PII exposures, 0 unexpected sends, 0 lost transitions; 200 contested races, one winner each), browser/PWA 15/15 at 390x844 with slow-network simulation. Full matrix: `driver-v2/evidence/GATE1-EVIDENCE.md`.
+- **Defects found and fixed (not waived):** concurrent same-millisecond duplicate Accept returned AUDIT_PERSIST_FAILED (win-guard hardened, same for Decline); mutation testing exposed a test gap for first-wins guards (added manual-staff-assignment / staff-cancel / mid-batch-flip tests and stable code SUPERSEDED); PWA hid new offers during an active trip (fixed); diagnostic semantics refined (break point = first un-proven boundary after the last proven one; declines do not advance the journey; upstream gaps listed separately).
+- **UNKNOWN / needs CEO decision before Gate 2:** should a driver with an active trip receive new offers (contract silent; currently not excluded); confirm that delivery receipt / view / session activity all count as reachability evidence and that unreachable offers end at offered_at+120 s (reachable at the 180 s envelope); synthetic competitor drivers 2..N exist only in the throw-away DB (driver 1 is the only real-test identity, placeholder number only).
+- **Not proven:** real D1 semantics (atomic batch, partial unique index, INSERT OR IGNORE...SELECT, json_extract) - needs an isolated D1 database; real multi-isolate concurrency; real devices/networks/camera/WhatsApp deep link; real object storage; staff console for the human-fallback queue.
+- **Next gate:** CEO review of Gate 1 evidence. Do not start Gate 2 (first real driver notification) without separate explicit GO.
+

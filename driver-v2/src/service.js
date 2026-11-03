@@ -252,8 +252,9 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (!b || b.assigned_driver_id !== driverId) return { ok: false, code: CODE.NOT_ASSIGNED_DRIVER };
     const stage = await currentStage(bookingId);
     const idx = LIFECYCLE.indexOf(stage);
+    const pickupEvidence = !!(await db.prepare(`SELECT 1 AS x FROM driver_evidence WHERE booking_id = ? AND kind = 'PICKUP' LIMIT 1`).bind(bookingId).first());
     return { ok: true, code: CODE.OK, trip: {
-      booking_id: b.id, status: b.status, stage, next_stage: LIFECYCLE[idx + 1] ?? null, server_now: iso(nowMs()),
+      booking_id: b.id, status: b.status, stage, next_stage: LIFECYCLE[idx + 1] ?? null, server_now: iso(nowMs()), evidence: { pickup: pickupEvidence },
       pickup_zone: b.pickup_zone, destination_zone: b.destination_zone, distance_km: b.distance_km, vehicle_type: b.vehicle_type,
       guest: { name: b.guest_name, phone: b.guest_phone, flight_number: b.flight_number, pickup_notes: b.pickup_notes },
     } };
@@ -318,6 +319,7 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (o.state === OFFER_STATE.ACCEPTED && booking.assigned_driver_id === driverId) return reply({ ok: true, code: CODE.ASSIGNED, replay: true, booking_id: o.booking_id });
     if (booking.assigned_driver_id != null && booking.assigned_driver_id !== driverId) return reply({ ok: false, code: CODE.ASSIGNMENT_ALREADY_TAKEN, offer_state: o.state });
     if (o.state === OFFER_STATE.SUPERSEDED) return reply({ ok: false, code: CODE.ASSIGNMENT_ALREADY_TAKEN, offer_state: o.state });
+    if (booking.assigned_driver_id == null && booking.status !== 'pending') return reply({ ok: false, code: CODE.SUPERSEDED, offer_state: o.state });
     if (o.state === OFFER_STATE.DECLINED) return reply({ ok: false, code: CODE.INVALID_TRANSITION });
     if (o.state === OFFER_STATE.TIMED_OUT) return reply({ ok: false, code: CODE.OFFER_EXPIRED });
 
@@ -364,7 +366,7 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
       return reply({ ok: false, code: CODE.AUDIT_PERSIST_FAILED, retryable: true, detail: String(e.message || e).slice(0, 120) });
     }
     const after = await loadOwnedOffer(driverId, offerId);
-    const bk = await db.prepare(`SELECT assigned_driver_id FROM bookings WHERE id = ?`).bind(o.booking_id).first();
+    const bk = await db.prepare(`SELECT assigned_driver_id, status FROM bookings WHERE id = ?`).bind(o.booking_id).first();
     if (after.state === OFFER_STATE.ACCEPTED && bk.assigned_driver_id === driverId) {
       // capture-only intents (suppressed): guest/admin messaging stays OFF in Gate 1
       if (res[0].meta.changes === 1) {
@@ -374,6 +376,8 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
       return reply({ ok: true, code: CODE.ASSIGNED, replay: res[0].meta.changes !== 1, booking_id: o.booking_id });
     }
     if (bk.assigned_driver_id != null && bk.assigned_driver_id !== driverId) return reply({ ok: false, code: CODE.ASSIGNMENT_ALREADY_TAKEN, offer_state: after.state });
+    // The booking itself is no longer assignable (e.g. cancelled by staff while the offer was open): the offer is superseded by booking state.
+    if (bk.status !== 'pending') return reply({ ok: false, code: CODE.SUPERSEDED, offer_state: after.state });
     return reply({ ok: false, code: CODE.OFFER_EXPIRED, offer_state: after.state });
   }
 

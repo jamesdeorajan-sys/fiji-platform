@@ -1,0 +1,710 @@
+{
+  "1_normal_accept": {
+    "summary": {
+      "last_proven_boundary": "ASSIGNMENT_PERSISTED",
+      "first_missing_or_failed_boundary": "PICKUP_EN_ROUTE",
+      "reason_code": null,
+      "responsible_subsystem": "TRIP",
+      "retry_state": "NONE",
+      "human_fallback_invoked": false
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "ACCEPTED",
+        "phase": "PRIORITY",
+        "reason_code": "ASSIGNED"
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_dc1b366acb1c09da0ccea86997f6496d",
+        "attempt_no": 1,
+        "status": "DELIVERED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_DELIVERED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 7,
+        "event": "OFFER_VIEWED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "driver:1",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 12,
+        "event": "DRIVER_DECISION",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 12,
+        "event": "ASSIGNMENT_CLAIM",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 12,
+        "event": "ASSIGNMENT_PERSISTED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 12,
+        "event": "DRIVER_ASSIGNED",
+        "driver": 1,
+        "offer": "ofr_dc1b…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      }
+    ]
+  },
+  "2_decline_then_next_driver_accepts": {
+    "summary": {
+      "last_proven_boundary": "ASSIGNMENT_PERSISTED",
+      "first_missing_or_failed_boundary": "PICKUP_EN_ROUTE",
+      "reason_code": null,
+      "responsible_subsystem": "TRIP",
+      "retry_state": "NONE",
+      "human_fallback_invoked": false
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "DECLINED",
+        "phase": "PRIORITY",
+        "reason_code": "DRIVER_DECLINED"
+      },
+      {
+        "driver": 2,
+        "state": "ACCEPTED",
+        "phase": "PRIORITY",
+        "reason_code": "ASSIGNED"
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_dde7bb6683b1084f581014f2dc865334",
+        "attempt_no": 1,
+        "status": "DELIVERED",
+        "reason_code": null
+      },
+      {
+        "driver_id": 2,
+        "offer_id": "ofr_7e723810dd038ed26116a76b01cd6064",
+        "attempt_no": 1,
+        "status": "DELIVERED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_dde7…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_dde7…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_DELIVERED",
+        "driver": 1,
+        "offer": "ofr_dde7…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 9,
+        "event": "DRIVER_DECISION",
+        "driver": 1,
+        "offer": "ofr_dde7…",
+        "actor": "driver:1",
+        "reason_code": "DRIVER_DECLINED",
+        "phase": null
+      },
+      {
+        "t_plus_s": 9,
+        "event": "OFFER_CREATED",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 9,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 9,
+        "event": "DRIVER_NOTIFICATION_DELIVERED",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 23,
+        "event": "DRIVER_DECISION",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "driver:2",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 23,
+        "event": "ASSIGNMENT_CLAIM",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "driver:2",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 23,
+        "event": "ASSIGNMENT_PERSISTED",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "driver:2",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 23,
+        "event": "DRIVER_ASSIGNED",
+        "driver": 2,
+        "offer": "ofr_7e72…",
+        "actor": "driver:2",
+        "reason_code": "ASSIGNED",
+        "phase": "PRIORITY"
+      }
+    ]
+  },
+  "3a_slow_no_delivery_receipt_at_71s_BEFORE_view": {
+    "summary": {
+      "last_proven_boundary": "DRIVER_NOTIFICATION_ATTEMPTED",
+      "first_missing_or_failed_boundary": "DRIVER_NOTIFICATION_DELIVERED",
+      "reason_code": "AWAITING_DRIVER",
+      "responsible_subsystem": "NOTIFICATION",
+      "retry_state": "WAITING",
+      "human_fallback_invoked": false
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "OFFERED",
+        "phase": "PRIORITY",
+        "reason_code": null
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_95a5180e9625c0674bfe9d7ff780a700",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      }
+    ]
+  },
+  "3b_slow_connection_view_at_95s_accept_at_98s": {
+    "summary": {
+      "last_proven_boundary": "ASSIGNMENT_PERSISTED",
+      "first_missing_or_failed_boundary": "PICKUP_EN_ROUTE",
+      "reason_code": null,
+      "responsible_subsystem": "TRIP",
+      "retry_state": "NONE",
+      "human_fallback_invoked": false
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "ACCEPTED",
+        "phase": "PRIORITY",
+        "reason_code": "ASSIGNED"
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_95a5180e9625c0674bfe9d7ff780a700",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 95,
+        "event": "OFFER_VIEWED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "driver:1",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 98,
+        "event": "DRIVER_DECISION",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 98,
+        "event": "ASSIGNMENT_CLAIM",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 98,
+        "event": "ASSIGNMENT_PERSISTED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 98,
+        "event": "DRIVER_ASSIGNED",
+        "driver": 1,
+        "offer": "ofr_95a5…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      }
+    ]
+  },
+  "4_simultaneous_accept_one_winner": {
+    "summary": {
+      "last_proven_boundary": "ASSIGNMENT_PERSISTED",
+      "first_missing_or_failed_boundary": "PICKUP_EN_ROUTE",
+      "reason_code": null,
+      "responsible_subsystem": "TRIP",
+      "retry_state": "NONE",
+      "human_fallback_invoked": false
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "ACCEPTED",
+        "phase": "PRIORITY",
+        "reason_code": "ASSIGNED"
+      },
+      {
+        "driver": 2,
+        "state": "SUPERSEDED",
+        "phase": "CONNECTIVITY_GRACE",
+        "reason_code": "ASSIGNMENT_ALREADY_TAKEN"
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_87f7c4a5ef28828eba9bdda4d076d36f",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      },
+      {
+        "driver_id": 2,
+        "offer_id": "ofr_0dcb6b85299d7489257d76790a15476f",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 62,
+        "event": "OFFER_CREATED",
+        "driver": 2,
+        "offer": "ofr_0dcb…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 62,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 2,
+        "offer": "ofr_0dcb…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 65,
+        "event": "DRIVER_DECISION",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 65,
+        "event": "ASSIGNMENT_CLAIM",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 65,
+        "event": "ASSIGNMENT_PERSISTED",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 65,
+        "event": "DRIVER_ASSIGNED",
+        "driver": 1,
+        "offer": "ofr_87f7…",
+        "actor": "driver:1",
+        "reason_code": "ASSIGNED",
+        "phase": "CONNECTIVITY_GRACE"
+      }
+    ]
+  },
+  "5_unresolved_180s_human_fallback": {
+    "summary": {
+      "last_proven_boundary": "DRIVER_NOTIFICATION_ATTEMPTED",
+      "first_missing_or_failed_boundary": "DRIVER_NOTIFICATION_DELIVERED",
+      "reason_code": "HUMAN_FALLBACK_REQUIRED",
+      "responsible_subsystem": "DISPATCH",
+      "retry_state": "HUMAN",
+      "human_fallback_invoked": true
+    },
+    "offers": [
+      {
+        "driver": 1,
+        "state": "TIMED_OUT",
+        "phase": "PRIORITY",
+        "reason_code": "OFFER_EXPIRED"
+      },
+      {
+        "driver": 2,
+        "state": "TIMED_OUT",
+        "phase": "CONNECTIVITY_GRACE",
+        "reason_code": "OFFER_EXPIRED"
+      }
+    ],
+    "delivery_attempts": [
+      {
+        "driver_id": 1,
+        "offer_id": "ofr_bbc32449044ec8196e6ea4185c84920f",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      },
+      {
+        "driver_id": 2,
+        "offer_id": "ofr_c2b0e08e312364d7647d1b6822cfc2bd",
+        "attempt_no": 1,
+        "status": "SUPPRESSED_CAPTURED",
+        "reason_code": null
+      }
+    ],
+    "timeline": [
+      {
+        "t_plus_s": 0,
+        "event": "BOOKING_SAVED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DISPATCH_ELIGIBLE",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 0,
+        "event": "OFFER_CREATED",
+        "driver": 1,
+        "offer": "ofr_bbc3…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "PRIORITY"
+      },
+      {
+        "t_plus_s": 0,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 1,
+        "offer": "ofr_bbc3…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 61,
+        "event": "OFFER_CREATED",
+        "driver": 2,
+        "offer": "ofr_c2b0…",
+        "actor": "system:dispatch",
+        "reason_code": null,
+        "phase": "CONNECTIVITY_GRACE"
+      },
+      {
+        "t_plus_s": 61,
+        "event": "DRIVER_NOTIFICATION_ATTEMPTED",
+        "driver": 2,
+        "offer": "ofr_c2b0…",
+        "actor": "system:notifier",
+        "reason_code": null,
+        "phase": null
+      },
+      {
+        "t_plus_s": 121,
+        "event": "OFFERS_TIMED_OUT",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": "OFFER_EXPIRED",
+        "phase": "ESCALATED_DISPATCH"
+      },
+      {
+        "t_plus_s": 181,
+        "event": "OFFERS_TIMED_OUT",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": "OFFER_EXPIRED",
+        "phase": "HUMAN_FALLBACK_REQUIRED"
+      },
+      {
+        "t_plus_s": 181,
+        "event": "HUMAN_FALLBACK_REQUIRED",
+        "driver": null,
+        "offer": null,
+        "actor": "system:dispatch",
+        "reason_code": "HUMAN_FALLBACK_REQUIRED",
+        "phase": "HUMAN_FALLBACK_REQUIRED"
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Driver v2 (Gate 1, isolated)",
+  "short_name": "Driver v2",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b1f27",
+  "theme_color": "#0b3a4a"
+}

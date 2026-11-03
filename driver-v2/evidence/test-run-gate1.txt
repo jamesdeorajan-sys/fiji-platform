@@ -1,0 +1,238 @@
+TAP version 13
+# Subtest: G01 synthetic booking identifiers cannot collide with real NAT/FD bookings; non-synthetic bookings are refused
+ok 1 - G01 synthetic booking identifiers cannot collide with real NAT/FD bookings; non-synthetic bookings are refused
+  ---
+  duration_ms: 5.731847
+  type: 'test'
+  ...
+# Subtest: G02 driver_id=1 is the only real-test identity; no second real phone; real-phone mode refuses every other driver id
+ok 2 - G02 driver_id=1 is the only real-test identity; no second real phone; real-phone mode refuses every other driver id
+  ---
+  duration_ms: 4.658415
+  type: 'test'
+  ...
+# Subtest: G03 suite needs no production D1 binding/ID/hostname (in-memory DB; no production identifiers in product code)
+ok 3 - G03 suite needs no production D1 binding/ID/hostname (in-memory DB; no production identifiers in product code)
+  ---
+  duration_ms: 2.998105
+  type: 'test'
+  ...
+# Subtest: G04 every outbound send is capture-only; any real network attempt fails the run (guard self-test included)
+ok 4 - G04 every outbound send is capture-only; any real network attempt fails the run (guard self-test included)
+  ---
+  duration_ms: 7.927401
+  type: 'test'
+  ...
+# Subtest: G05 wallet/commission state is unchanged by a completed journey; financial effects cannot be switched on in Gate 1
+ok 5 - G05 wallet/commission state is unchanged by a completed journey; financial effects cannot be switched on in Gate 1
+  ---
+  duration_ms: 13.593868
+  type: 'test'
+  ...
+# Subtest: G06 no scheduled handler, deployment, secret mutation or outbound HTTP exists in product code
+ok 6 - G06 no scheduled handler, deployment, secret mutation or outbound HTTP exists in product code
+  ---
+  duration_ms: 1.048212
+  type: 'test'
+  ...
+# Subtest: G07 pre-accept offer payload (service + HTTP) contains no guest name/phone/email/contact — for eligible AND losing drivers
+ok 7 - G07 pre-accept offer payload (service + HTTP) contains no guest name/phone/email/contact — for eligible AND losing drivers
+  ---
+  duration_ms: 31.70432
+  type: 'test'
+  ...
+# Subtest: G08 0–60 s PRIORITY: offer can be viewed, declined or accepted
+ok 8 - G08 0–60 s PRIORITY: offer can be viewed, declined or accepted
+  ---
+  duration_ms: 9.619719
+  type: 'test'
+  ...
+# Subtest: G09 at 60 s the booking is not cancelled or lost; the offer is still actionable (60 s is a KPI, not expiry)
+ok 9 - G09 at 60 s the booking is not cancelled or lost; the offer is still actionable (60 s is a KPI, not expiry)
+  ---
+  duration_ms: 4.816103
+  type: 'test'
+  ...
+# Subtest: G10 60–120 s CONNECTIVITY_GRACE: delivered-but-unconfirmed, viewed-late/reconnect and no-reachability cases never double-assign
+ok 10 - G10 60–120 s CONNECTIVITY_GRACE: delivered-but-unconfirmed, viewed-late/reconnect and no-reachability cases never double-assign
+  ---
+  duration_ms: 10.630805
+  type: 'test'
+  ...
+# Subtest: G11 120–180 s ESCALATED_DISPATCH: unreachable offers expire, next eligible drivers are offered, first valid server-confirmed accept wins
+ok 11 - G11 120–180 s ESCALATED_DISPATCH: unreachable offers expire, next eligible drivers are offered, first valid server-confirmed accept wins
+  ---
+  duration_ms: 8.396928
+  type: 'test'
+  ...
+# Subtest: G12 ≥180 s unresolved: HUMAN_FALLBACK_REQUIRED recorded, automation stops, booking stays valid (never cancelled)
+ok 12 - G12 ≥180 s unresolved: HUMAN_FALLBACK_REQUIRED recorded, automation stops, booking stays valid (never cancelled)
+  ---
+  duration_ms: 4.094345
+  type: 'test'
+  ...
+# Subtest: G13 server time is authoritative at 59/60, 119/120 and 179/180 s boundaries
+ok 13 - G13 server time is authoritative at 59/60, 119/120 and 179/180 s boundaries
+  ---
+  duration_ms: 19.359564
+  type: 'test'
+  ...
+# Subtest: G14 double-tap Accept (sequential and concurrent) is idempotent: one assignment, one acceptance event
+ok 14 - G14 double-tap Accept (sequential and concurrent) is idempotent: one assignment, one acceptance event
+  ---
+  duration_ms: 5.920591
+  type: 'test'
+  ...
+# Subtest: G15 two simultaneous eligible drivers cannot both win (50 interleaved trials)
+ok 15 - G15 two simultaneous eligible drivers cannot both win (50 interleaved trials)
+  ---
+  duration_ms: 158.157564
+  type: 'test'
+  ...
+# Subtest: G16 losing / stale offer returns a stable ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the winner
+ok 16 - G16 losing / stale offer returns a stable ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the winner
+  ---
+  duration_ms: 3.675854
+  type: 'test'
+  ...
+# Subtest: G16b first-wins also holds against changes made OUTSIDE the offer flow: manual staff assignment and staff cancellation while offers are open
+ok 17 - G16b first-wins also holds against changes made OUTSIDE the offer flow: manual staff assignment and staff cancellation while offers are open
+  ---
+  duration_ms: 9.519515
+  type: 'test'
+  ...
+# Subtest: G17 an expired offer cannot assign
+ok 18 - G17 an expired offer cannot assign
+  ---
+  duration_ms: 3.34012
+  type: 'test'
+  ...
+# Subtest: G18 Accept started client-side before a boundary but arriving after it follows the SERVER clock (client timestamp ignored)
+ok 19 - G18 Accept started client-side before a boundary but arriving after it follows the SERVER clock (client timestamp ignored)
+  ---
+  duration_ms: 4.614215
+  type: 'test'
+  ...
+# Subtest: G19 lost response after a successful commit: retry returns the already-decided result with no duplicated side effects
+ok 20 - G19 lost response after a successful commit: retry returns the already-decided result with no duplicated side effects
+  ---
+  duration_ms: 3.45122
+  type: 'test'
+  ...
+# Subtest: G20 refresh / reconnect recovers server truth: open offers before accept, active trip after
+ok 21 - G20 refresh / reconnect recovers server truth: open offers before accept, active trip after
+  ---
+  duration_ms: 5.943674
+  type: 'test'
+  ...
+# Subtest: G21 decline is explicit and durable, carries a reason code, advances dispatch and never cancels the booking
+ok 22 - G21 decline is explicit and durable, carries a reason code, advances dispatch and never cancels the booking
+  ---
+  duration_ms: 5.60583
+  type: 'test'
+  ...
+# Subtest: G22 no-response path walks the phases and ends in human fallback, not cancellation
+ok 23 - G22 no-response path walks the phases and ends in human fallback, not cancellation
+  ---
+  duration_ms: 3.23018
+  type: 'test'
+  ...
+# Subtest: G23 offline driver, explicit decline and provider notification failure are three distinguishable outcomes
+ok 24 - G23 offline driver, explicit decline and provider notification failure are three distinguishable outcomes
+  ---
+  duration_ms: 7.684677
+  type: 'test'
+  ...
+# Subtest: G24 human fallback is idempotent: repeated sweeps create exactly one escalation, one critical event, one staff intent
+ok 25 - G24 human fallback is idempotent: repeated sweeps create exactly one escalation, one critical event, one staff intent
+  ---
+  duration_ms: 4.623732
+  type: 'test'
+  ...
+# Subtest: G25 critical mutation and its required audit event are atomic: if the audit cannot persist the transition fails and nothing leaks
+ok 26 - G25 critical mutation and its required audit event are atomic: if the audit cannot persist the transition fails and nothing leaks
+  ---
+  duration_ms: 3.937479
+  type: 'test'
+  ...
+# Subtest: G26 every consequential event is correlated by booking_id + offer_id + driver_id + actor + timestamp; never by guest PII
+ok 27 - G26 every consequential event is correlated by booking_id + offer_id + driver_id + actor + timestamp; never by guest PII
+  ---
+  duration_ms: 8.565598
+  type: 'test'
+  ...
+# Subtest: G27 reason codes are stable machine-readable values independent of UI prose
+ok 28 - G27 reason codes are stable machine-readable values independent of UI prose
+  ---
+  duration_ms: 4.711016
+  type: 'test'
+  ...
+# Subtest: G28 diagnostic read answers: last proven boundary, first missing/failed boundary, reason code, retry state, human fallback — five scenarios
+ok 29 - G28 diagnostic read answers: last proven boundary, first missing/failed boundary, reason code, retry state, human fallback — five scenarios
+  ---
+  duration_ms: 13.437323
+  type: 'test'
+  ...
+# Subtest: G29 responsibilities are not mixed: offers hold decisions, attempts hold delivery evidence, events hold the timeline, bookings hold assignment
+ok 30 - G29 responsibilities are not mixed: offers hold decisions, attempts hold delivery evidence, events hold the timeline, bookings hold assignment
+  ---
+  duration_ms: 3.913378
+  type: 'test'
+  ...
+# Subtest: G30 only the winning driver can progress the trip or read guest/trip details
+ok 31 - G30 only the winning driver can progress the trip or read guest/trip details
+  ---
+  duration_ms: 3.534422
+  type: 'test'
+  ...
+# Subtest: G31 required lifecycle sequence DRIVER_ASSIGNED → … → COMPLETED is enforced and recorded in order
+ok 32 - G31 required lifecycle sequence DRIVER_ASSIGNED → … → COMPLETED is enforced and recorded in order
+  ---
+  duration_ms: 4.422338
+  type: 'test'
+  ...
+# Subtest: G32 invalid or skipped transitions return INVALID_TRANSITION and corrupt nothing
+ok 33 - G32 invalid or skipped transitions return INVALID_TRANSITION and corrupt nothing
+  ---
+  duration_ms: 4.402094
+  type: 'test'
+  ...
+# Subtest: G33 repeated and concurrent stage submissions are replay-safe
+ok 34 - G33 repeated and concurrent stage submissions are replay-safe
+  ---
+  duration_ms: 4.324932
+  type: 'test'
+  ...
+# Subtest: G34 pickup evidence failure/retry never falsely marks PICKUP_VALIDATED; object reference + metadata only
+ok 35 - G34 pickup evidence failure/retry never falsely marks PICKUP_VALIDATED; object reference + metadata only
+  ---
+  duration_ms: 4.75141
+  type: 'test'
+  ...
+# Subtest: G35 disconnect/reconnect mid-trip recovers authoritative state; offline-mid-job is flagged once without altering the trip
+ok 36 - G35 disconnect/reconnect mid-trip recovers authoritative state; offline-mid-job is flagged once without altering the trip
+  ---
+  duration_ms: 5.590159
+  type: 'test'
+  ...
+# Subtest: G36 completion retry cannot duplicate commission, messaging or completion events (all financial/messaging effects stay disabled)
+ok 37 - G36 completion retry cannot duplicate commission, messaging or completion events (all financial/messaging effects stay disabled)
+  ---
+  duration_ms: 6.450473
+  type: 'test'
+  ...
+# Subtest: G37-meta the zero-network-send guard is still clean after the whole matrix
+ok 38 - G37-meta the zero-network-send guard is still clean after the whole matrix
+  ---
+  duration_ms: 0.118222
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 540.009959

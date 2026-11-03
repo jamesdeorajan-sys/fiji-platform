@@ -23,7 +23,8 @@ export async function diagnose(db, bookingId) {
   });
 
   const proven = new Map();
-  for (const t of timeline) if (t.boundary && !proven.has(t.boundary)) proven.set(t.boundary, t);
+  // A decline is an outcome of one offer (listed under `offers` with its reason code); it does not advance the booking journey.
+  for (const t of timeline) if (t.boundary && !(t.event === 'DRIVER_DECISION' && t.decision === 'DECLINED') && !proven.has(t.boundary)) proven.set(t.boundary, t);
   const failedNotif = timeline.filter((t) => t.event === 'DRIVER_NOTIFICATION_FAILED');
   const fallback = timeline.find((t) => t.event === 'HUMAN_FALLBACK_REQUIRED') || null;
 
@@ -35,9 +36,12 @@ export async function diagnose(db, bookingId) {
   });
 
   let lastProven = null; for (const b of boundaries) if (b.state === 'PROVEN') lastProven = b;
-  // First boundary in the canonical order that is not PROVEN (a missing delivery receipt is surfaced even if the driver later
-  // reached the PWA by another route; for a completed trip this is the REVIEW_REQUESTED hook, which is not an error).
-  const next = boundaries.find((b) => b.state !== 'PROVEN') || null;
+  // Where the journey is BROKEN = the first boundary AFTER the last proven one that is not proven.
+  // Anything un-proven upstream of that (e.g. a delivery receipt that never arrived although the driver reached the PWA anyway)
+  // is surfaced separately as `upstream_gaps` so it is visible without misdirecting triage.
+  const lastIdx = lastProven ? boundaries.findIndex((x) => x.boundary === lastProven.boundary) : -1;
+  const next = boundaries.find((b, i) => i > lastIdx && b.state !== 'PROVEN') || null;
+  const upstreamGaps = boundaries.filter((b, i) => i < lastIdx && b.state !== 'PROVEN').map((b) => ({ boundary: b.boundary, state: b.state, reason_code: b.reason_code }));
 
   const openOffers = offers.filter((o) => ['OFFERED', 'VIEWED'].includes(o.state));
   let reason = next?.reason_code || null;
@@ -59,6 +63,6 @@ export async function diagnose(db, bookingId) {
     responsible_subsystem: subsystem,
     retry_state: retry,
     human_fallback_invoked: !!fallback || esc.some((e) => e.trigger_type === 'HUMAN_FALLBACK_REQUIRED'),
-    offers: outcomes, delivery_attempts: attemptsView, boundaries, timeline,
+    upstream_gaps: upstreamGaps, offers: outcomes, delivery_attempts: attemptsView, boundaries, timeline,
   };
 }
