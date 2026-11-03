@@ -129,8 +129,10 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
   // Engagement = the driver viewed the offer OR authenticated PWA/session activity occurred while it was open.
   // Engagement never changes whether an offer is actionable (that is the 180 s envelope); it only decides whether dispatch broadens at 120 s.
   const busyDriverIds = async () => (await db.prepare(`SELECT DISTINCT assigned_driver_id AS id FROM bookings WHERE assigned_driver_id IS NOT NULL AND status IN ${ACTIVE_SQL}`).all()).results.map((r) => r.id);
-  async function driverHasActiveTrip(driverId) {
-    return !!(await db.prepare(`SELECT 1 AS x FROM bookings WHERE assigned_driver_id = ? AND status IN ${ACTIVE_SQL} LIMIT 1`).bind(driverId).first());
+  // exceptBookingId: the booking an incoming Accept is about. A duplicate/concurrent tap on the driver's OWN just-won booking must stay an idempotent replay,
+  // never "busy" (found by repeating G14: a tap that read the offer before the winner committed saw the winner's trip as 'another active trip').
+  async function driverHasActiveTrip(driverId, exceptBookingId = null) {
+    return !!(await db.prepare(`SELECT 1 AS x FROM bookings WHERE assigned_driver_id = ? AND status IN ${ACTIVE_SQL} AND id <> ? LIMIT 1`).bind(driverId, exceptBookingId ?? -1).first());
   }
 
   // Idempotent: repeated sweeps converge, never multiply offers or escalations.
@@ -343,7 +345,7 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
 
     const driver = await getDriver(driverId);
     if (!driver || driver.status !== 'verified' || driver.online !== 1) return reply({ ok: false, code: CODE.DRIVER_OFFLINE });
-    if (await driverHasActiveTrip(driverId)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: o.state });   // stale/replayed offer cannot beat the busy rule
+    if (await driverHasActiveTrip(driverId, o.booking_id)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: o.state });   // stale/replayed offer cannot beat the busy rule
     if (!inZone(driver, booking.pickup_zone)) return reply({ ok: false, code: CODE.DRIVER_OUTSIDE_ZONE });
 
     const t = nowMs(); const T = iso(t);
@@ -398,7 +400,7 @@ export function createDriverService({ db, clock, notifier, evidenceStore, ids = 
     if (bk.assigned_driver_id != null && bk.assigned_driver_id !== driverId) return reply({ ok: false, code: CODE.ASSIGNMENT_ALREADY_TAKEN, offer_state: after.state });
     // The booking itself is no longer assignable (e.g. cancelled by staff while the offer was open): the offer is superseded by booking state.
     if (bk.status !== 'pending') return reply({ ok: false, code: CODE.SUPERSEDED, offer_state: after.state });
-    if (await driverHasActiveTrip(driverId)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: after.state });   // lost a same-driver race between two bookings
+    if (await driverHasActiveTrip(driverId, o.booking_id)) return reply({ ok: false, code: CODE.DRIVER_HAS_ACTIVE_TRIP, offer_state: after.state });   // lost a same-driver race between two bookings
     return reply({ ok: false, code: CODE.OFFER_EXPIRED, offer_state: after.state });
   }
 

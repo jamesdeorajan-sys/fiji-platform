@@ -89,6 +89,19 @@ test('G42b the same driver racing Accept on two different bookings: exactly one 
   checkInvariants(w);
 });
 
+test('G49 regression: concurrent duplicate Accept by the SAME driver on its own booking is always an idempotent ASSIGNED replay, never DRIVER_HAS_ACTIVE_TRIP (200 chaos trials)', async () => {
+  const w = await makeWorld({ drivers: 2, chaos: randomChaos(10) });
+  for (let i = 0; i < 200; i++) {
+    await w.freeDrivers();
+    const { b, o } = await begin(w, 1);
+    const rs = await Promise.all([1, 2, 3, 4].map(() => w.service.accept({ driverId: 1, offerId: o.offer_id })));
+    assert.ok(rs.every((r) => r.code === CODE.ASSIGNED), `trial ${i}: ${rs.map((r) => r.code)}`);
+    assert.equal(rs.filter((r) => r.replay === false).length, 1);
+    assert.equal(w.db.q1(`SELECT COUNT(*) n FROM booking_events WHERE booking_id=? AND event_type='DRIVER_ASSIGNED'`, b).n, 1);
+  }
+  checkInvariants(w);
+});
+
 test('G43 when every eligible driver is busy the booking is NOT cancelled: no offers, then HUMAN_FALLBACK_REQUIRED at 180 s', async () => {
   const w = await makeWorld({ drivers: 2 });
   await makeBusy(w, 1); await makeBusy(w, 2);

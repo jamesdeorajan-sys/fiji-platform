@@ -93,7 +93,8 @@ try {
 
   // ── Journey C: competing driver loses with a stable message ──
   await ctl('mode', '?m=NO_RECEIPT'); const b3 = (await ctl('new-booking')).booking_id; await ctl('advance', '?s=61');
-  const C1 = await mk(1), C2 = await mk(2);
+  // Gate 1.5 busy rule: driver 1 is still on the trip from Journey B, so it is (correctly) not offered b3. Two FREE drivers compete instead.
+  const C1 = await mk(2), C2 = await mk(3);
   await C1.page.goto(`${base}/#token=${C1.token}`); await C2.page.goto(`${base}/#token=${C2.token}`);
   await T(C1.page, 'offer-card').first().waitFor({ timeout: 8000 }); await T(C2.page, 'offer-card').first().waitFor({ timeout: 8000 });
   await T(C1.page, 'btn-accept').click(); await C1.page.locator(`[data-testid="trip-view"][data-booking="${b3}"]`).waitFor({ timeout: 10000 });

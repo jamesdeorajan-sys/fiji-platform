@@ -1,0 +1,16 @@
+# Driver PWA v2 — GATE 1.5 ISOLATED PROOF WORKER.   *** PACKAGE ONLY — NOT DEPLOYED. ***
+# Binds to exactly ONE database: the dedicated empty Gate 1.5 D1. Nothing else. See scripts/assert_package_safe.mjs for the enforced rules.
+name = "driver-v2-gate15-isolated"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+workers_dev = false      # CEO-owned deploy step turns the preview URL on only for the proof window (RUNBOOK.md); never enabled by this package
+preview_urls = false
+
+# Deliberately ABSENT: routes / route, [triggers] crons, [[services]], kv / r2 / queues / vectorize / ai / analytics bindings, [vars], secrets
+# (the single test-control secret GATE15_CONTROL_TOKEN is created on THIS isolated Worker at proof time and deleted at teardown; it is never in this file).
+
+[[d1_databases]]
+binding = "DB"
+database_name = "driver-v2-gate15-isolated-20261103"
+database_id = "SET_AT_DEPLOY_TO_ID_OF_driver-v2-gate15-isolated-20261103_ONLY"
