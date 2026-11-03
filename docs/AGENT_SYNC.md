@@ -1476,3 +1476,76 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - **Metrics required before tuning:** offer-to-delivery latency, delivery-to-view latency where observable, view-to-decision latency, accept latency percentiles, decline rate, timeout rate, assignment conflict rate, human-fallback rate and acceptance by dispatch phase. Tune windows from measured Fiji driver behaviour rather than assumptions.
 - **Gate 1 test additions:** delayed network responses around 59/60, 119/120 and 179/180 seconds; Accept POST started before boundary but received after it; duplicated/retried Accept; view with lost connection; reconnect; competing drivers in escalated phase; human fallback at 180s; late original-driver accept after another driver wins.
 - **Classification:** DESIGN / TESTED_NOT_LIVE until isolated implementation proves these rules. No production dispatch timer, message, schema migration or booking behaviour changed by this decision.
+
+
+### Driver PWA v2 Gate 1 acceptance matrix and evidence contract - 2026-11-03
+**Purpose:** make isolated implementation deterministic and make Gate 2 approval evidence-based. Code must not reinterpret production boundaries.
+
+#### A. Isolation / zero-side-effect gates
+1. Tests use synthetic booking identifiers that cannot collide with real NAT/FD bookings.
+2. Driver identity fixture is driver_id=1 only; no second real phone record is created/copied.
+3. No production D1 binding/ID/hostname is required to run the suite.
+4. WhatsApp, guest/admin messaging and other network sends use capture/no-send adapters. Any unexpected outbound network attempt fails the test.
+5. Wallet/commission/accrual effects are disabled and asserted unchanged.
+6. No scheduled production handler, deployment, secret mutation or live booking POST is part of Gate 1.
+7. Pre-accept offer/job payload contains no guest_name, guest_phone, email or other guest contact PII.
+
+#### B. Offer timing / adaptive dispatch
+8. 0-60s PRIORITY offer can be viewed, declined or accepted.
+9. At 60s the booking is not cancelled/lost. Connectivity-grace behavior is deterministic.
+10. 60-120s CONNECTIVITY_GRACE handles viewed-but-slow, delivered-but-unconfirmed, reconnect and no-reachability cases without double assignment.
+11. 120-180s ESCALATED_DISPATCH can introduce next eligible driver offer(s); first valid server-confirmed assignment wins.
+12. At >=180s unresolved automated dispatch records HUMAN_FALLBACK_REQUIRED and stops relying on automation; booking remains valid for human fulfilment.
+13. Server time is authoritative at 59/60, 119/120 and 179/180 boundaries.
+
+#### C. Acceptance / race / replay safety
+14. Double-tap Accept from one driver is idempotent: one assignment, one authoritative acceptance result.
+15. Two simultaneous eligible drivers accepting cannot both win.
+16. Losing/stale offer returns stable ASSIGNMENT_ALREADY_TAKEN/SUPERSEDED outcome and cannot overwrite winner.
+17. Expired offer cannot assign.
+18. Accept request started client-side before a boundary but arriving server-side after expiry follows server-authoritative rules.
+19. Lost response after a successful server commit can be safely retried and returns the already-decided result rather than duplicating side effects.
+20. Refresh/reconnect preserves enough offer state to recover the server truth.
+
+#### D. Decline / timeout / fallback
+21. Decline is explicit and durable with reason/outcome code; it advances dispatch without cancelling the booking.
+22. No-response path advances through configured phases and ends in human fallback, not booking cancellation.
+23. Offline/unreachable driver is distinguishable from explicit decline and provider notification failure.
+24. Human fallback is idempotent: repeated sweeps do not create uncontrolled duplicate escalations.
+
+#### E. Authoritative audit / diagnosis
+25. Critical acceptance/assignment lifecycle mutations and their required audit event are atomic or the transition fails.
+26. Each consequential offer event is correlated by booking_id + offer_id + driver_id where applicable.
+27. Stable reason codes exist independently of UI prose.
+28. For every synthetic booking, a diagnostic read can identify last proven boundary, first failed/missing boundary, reason code, retry state and whether human fallback occurred.
+29. booking_events remains the timeline; driver_offers remains offer/decision state; driver_broadcast_attempts remains delivery-attempt evidence. Tests reject accidental responsibility mixing.
+
+#### F. Trip lifecycle
+30. Winning driver alone can progress the trip.
+31. Required sequence is enforced: DRIVER_ASSIGNED -> EN_ROUTE_PICKUP -> ARRIVED_PICKUP -> PICKUP_VALIDATED -> PASSENGER_ONBOARD -> EN_ROUTE_DESTINATION -> ARRIVED_DESTINATION -> COMPLETED.
+32. Invalid/skipped transitions return INVALID_TRANSITION and do not corrupt state.
+33. Repeated stage submission is replay-safe.
+34. Pickup evidence failure/retry does not falsely mark PICKUP_VALIDATED.
+35. Disconnect/reconnect mid-trip recovers authoritative current state.
+36. Completion retry cannot duplicate commission, messaging or completion event side effects (all financial/messaging effects remain disabled in Gate 1).
+
+#### G. Stress threshold before Gate 2
+37. Run at least 100 consecutive synthetic end-to-end journeys with zero double assignment, zero forbidden PII exposure, zero unexpected network send and zero lost authoritative transition.
+38. Include concurrent-accept stress, repeated sweeps, delayed responses and reconnect cases in the evidence set.
+39. Any failure is FAILED, not waived; fix and rerun the affected suite plus the 100-journey run.
+
+#### Required evidence returned for review
+- exact branch and commit SHA;
+- file-level diff summary;
+- migration/schema fixture used in isolation;
+- test command(s) and exact pass/fail/skip counts;
+- named results for all 39 gates;
+- 100-journey stress summary;
+- race-test evidence showing one winner;
+- sample diagnostic timeline for: normal accept, decline->next driver, slow/reconnect, simultaneous accept, 180s human fallback;
+- explicit outbound-network capture showing zero real sends;
+- explicit assertion that no production D1/Worker/secret/deployment was touched;
+- browser/PWA evidence at phone viewport for offer, confirming, assigned, pickup and completed states;
+- list of unresolved defects/UNKNOWN items. No hidden waivers.
+
+**Gate decision rule:** Gate 2 remains HOLD until this evidence is reviewed. Gate 2, if separately approved by James, is one controlled synthetic/non-customer job to existing driver ID 1 and is the first stage permitted to intentionally generate a real driver notification.
