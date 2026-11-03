@@ -1,0 +1,45 @@
+{
+  "seed": 424242,
+  "journeys": {
+    "requested": 100,
+    "completed": 100,
+    "byScenario": {
+      "direct": 13,
+      "decline_then_next": 13,
+      "slow_race": 13,
+      "provider_failure": 13,
+      "lost_response": 12,
+      "evidence_retry": 12,
+      "double_tap": 12,
+      "offline_mid_trip": 12
+    },
+    "double_assignments": 0,
+    "forbidden_pii_exposures": 0,
+    "lost_authoritative_transitions": 0,
+    "unexpected_network_attempts": 0,
+    "captured_intents": 326,
+    "real_sends": 0,
+    "wallet_changed": false
+  },
+  "stress": {
+    "races": 200,
+    "races_with_multiple_open_offers": 200,
+    "winners_by_driver": {
+      "1": 71,
+      "2": 72,
+      "3": 45,
+      "4": 9,
+      "5": 3
+    },
+    "double_assignments": 0,
+    "forbidden_pii_exposures": 0,
+    "duplicate_escalations": 0,
+    "unexpected_network_attempts": 0,
+    "db_batches": 3211,
+    "db_rollbacks": 0,
+    "fallback_bookings": 100
+  },
+  "counters": {
+    "network_attempts_total": 0
+  }
+}
