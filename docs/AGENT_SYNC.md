@@ -1582,3 +1582,12 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - **UNKNOWN until the approval-gated remote run:** real Cloudflare D1 behaviour, true multi-isolate concurrency, remote clock effects on +/-3 s boundary margins, D1 plan limits. The HTTP runner cannot reproduce a mid-batch booking flip (covered by deterministic G16b only).
 - **Next gate:** package review -> if approved, the RUNBOOK sections 3-7 (pre-flight snapshot, schema apply to the isolated D1, isolated control secret, deploy, enable workers.dev for the isolated Worker only, run proof, evidence, teardown). Do not start Gate 2.
 
+
+
+### Gate 1.5 package review - 2026-11-03
+- Reviewed pushed package at branch tip a0974fb1ca3227cbc83e0bbc4fdeb490414e6717; code-under-test e852fce11537449bdeffd8421e77814ac5b1cbc8.
+- Package safety architecture accepted for isolated proof: one isolated D1 binding; runtime identity/table/host/env assertions before service handling; control endpoints closed with 404 without isolated token; synthetic-only fixture controls; placeholder phones; capture-only notifier; no customer routes/crons/production services.
+- **REMOTE EXECUTION remains HOLD pending one operational hardening delta:** remote race proof must stage 10 -> invariant/readback -> 50 -> invariant/readback -> 200, and any failed stage must stop further stress and proceed directly to evidence capture + teardown. Do not continue after a failed assertion.
+- Remote proof must capture before snapshot prior to schema/deploy; verify exact isolated D1 UUID fe5eba69-b654-40cb-bf80-4b9a37c03f0c before any write; verify production nadi-marketplace-db UUID 0ec1cd84-fcda-4f7f-8337-0fb70fe1a512 is never the configured binding.
+- Enabling workers.dev is allowed only for the isolated Worker during the approved proof window; no custom route/domain. Disable first during teardown, then delete isolated control secret, empty isolated D1, restore zero-binding shell, and run after/diff evidence.
+- Gate 2 remains HOLD. No real driver notification is authorised.
