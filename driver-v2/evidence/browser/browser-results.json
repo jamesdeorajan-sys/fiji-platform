@@ -58,10 +58,25 @@
       "detail": ""
     },
     {
-      "name": "browser run completed without exception",
-      "ok": false,
-      "detail": "locator.waitFor: Timeout 8000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-testid=\"offer-card\"]').first() to be visible\u001b[22m\n\n    at /home/claude/dpwa-wt/driver-v2/scripts/browser_evidence.mjs:98:42"
+      "name": "losing driver sees a stable \"already taken\" result and never sees guest PII",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no booking has more than one assigned driver / ACCEPTED offer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "zero real sends (all notification intents suppressed/captured)",
+      "ok": true,
+      "detail": "captured intents=10"
+    },
+    {
+      "name": "browser made zero non-loopback requests",
+      "ok": true,
+      "detail": "[]"
     }
   ],
-  "failed": 1
+  "failed": 0
 }

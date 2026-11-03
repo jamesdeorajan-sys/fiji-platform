@@ -1,0 +1,698 @@
+{
+  "target": "local-workerd",
+  "host": "127.0.0.1",
+  "commit_sha": "e852fce11537449bdeffd8421e77814ac5b1cbc8",
+  "schema_sha256": "e4b34d1de73235c78a5d0c9011642d3b42221a962365c4b76e4dea80dc9204c2",
+  "started_at": "2026-11-03T05:37:24.804Z",
+  "duration_s": 43,
+  "checks_total": 45,
+  "checks_failed": 0,
+  "http_requests_total": 1915,
+  "latency_ms": {
+    "p50": 49,
+    "p95": 78,
+    "max": 246
+  },
+  "summary": {
+    "ok": true,
+    "violations": [],
+    "counts": {
+      "bookings": 219,
+      "offers": 626,
+      "events": 4866,
+      "capture_rows": 1051,
+      "wallet_transactions": 0,
+      "drivers": 6
+    },
+    "capture_by_kind": {
+      "ADMIN_DRIVER_ASSIGNED": 212,
+      "DRIVER_OFFER": 626,
+      "GUEST_DRIVER_ASSIGNED": 212,
+      "STAFF_FALLBACK": 1
+    },
+    "real_sends": 0,
+    "wallet_changed": false,
+    "wallet_transactions": 0,
+    "non_placeholder_phones": 0,
+    "non_synthetic_bookings": 0
+  },
+  "checks": [
+    {
+      "name": "resource identity: Worker serves only after the identity marker matches driver-v2-gate15-isolated-20261103",
+      "pass": true,
+      "detail": {
+        "marker": "driver-v2-gate15-isolated-20261103",
+        "worker_name": "driver-v2-gate15-isolated"
+      }
+    },
+    {
+      "name": "Worker environment exposes ONLY the isolated DB binding (+ the isolated control token)",
+      "pass": true,
+      "detail": [
+        "DB",
+        "GATE15_CONTROL_TOKEN"
+      ]
+    },
+    {
+      "name": "database holds exactly the isolated fixture tables (no foreign/production tables)",
+      "pass": true,
+      "detail": [
+        "_cf_METADATA",
+        "booking_events",
+        "bookings",
+        "dispatch_escalations",
+        "dispatch_runs",
+        "driver_broadcast_attempts",
+        "driver_evidence",
+        "driver_offers",
+        "driver_sessions",
+        "drivers",
+        "gate15_capture",
+        "gate15_identity",
+        "gate15_meta",
+        "gate15_probe",
+        "sqlite_sequence",
+        "wallet_transactions",
+        "wallets"
+      ]
+    },
+    {
+      "name": "control surface is closed without the isolated token (404)",
+      "pass": true,
+      "detail": 404
+    },
+    {
+      "name": "D1 primitive: D1 batch rolls back ALL statements when one fails",
+      "pass": true,
+      "detail": {
+        "threw": true,
+        "rows_left": 0
+      }
+    },
+    {
+      "name": "D1 primitive: D1 batch commits all statements on success and reports per-statement meta.changes",
+      "pass": true,
+      "detail": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "D1 primitive: partial UNIQUE index rejects duplicates only inside its WHERE predicate",
+      "pass": true,
+      "detail": {
+        "duplicate_rejected": true,
+        "rows": 3
+      }
+    },
+    {
+      "name": "D1 primitive: INSERT OR IGNORE ... SELECT: guarded insert is idempotent; unique collision is ignored silently; false guard inserts nothing",
+      "pass": true,
+      "detail": {
+        "guarded": [
+          1,
+          0,
+          0
+        ],
+        "collision": 0,
+        "false_guard": 0
+      }
+    },
+    {
+      "name": "D1 primitive: json_extract works in SELECT and WHERE",
+      "pass": true,
+      "detail": {
+        "o": "ofr_x1",
+        "k": 7
+      }
+    },
+    {
+      "name": "D1 primitive: guarded INSERT...SELECT inside a failing batch is rolled back with it",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "seeded 6 synthetic placeholder drivers (driver 1 = only real-test identity)",
+      "pass": true,
+      "detail": 6
+    },
+    {
+      "name": "duplicate Accept (3 concurrent HTTP requests, same offer): all 200 ASSIGNED, exactly one non-replay",
+      "pass": true,
+      "detail": [
+        [
+          200,
+          "ASSIGNED",
+          false
+        ],
+        [
+          200,
+          "ASSIGNED",
+          true
+        ],
+        [
+          200,
+          "ASSIGNED",
+          true
+        ]
+      ]
+    },
+    {
+      "name": "duplicate Accept: one assigned driver, one ACCEPTED offer, one DRIVER_ASSIGNED, no duplicate critical events",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "capture": {
+          "ADMIN_DRIVER_ASSIGNED": 1,
+          "DRIVER_OFFER": 1,
+          "GUEST_DRIVER_ASSIGNED": 1
+        },
+        "booking": {
+          "id": 9000000001,
+          "status": "accepted",
+          "assigned_driver_id": 1
+        },
+        "offers": [
+          {
+            "driver_id": 1,
+            "offer_id": "ofr_668d0f1503730521bbf37b80e2517557",
+            "state": "ACCEPTED",
+            "decision_reason_code": "ASSIGNED",
+            "engaged_at": null,
+            "delivery_receipt_at": "2026-11-03T05:37:24.988Z",
+            "engagement_source": null
+          }
+        ],
+        "accepted_offers": 1,
+        "events": {
+          "ASSIGNMENT_CLAIM": 1,
+          "ASSIGNMENT_PERSISTED": 1,
+          "BOOKING_SAVED": 1,
+          "DISPATCH_ELIGIBLE": 1,
+          "DRIVER_ASSIGNED": 1,
+          "DRIVER_DECISION": 1,
+          "DRIVER_NOTIFICATION_ATTEMPTED": 1,
+          "DRIVER_NOTIFICATION_DELIVERED": 1,
+          "OFFER_CREATED": 1
+        },
+        "duplicate_critical_events": [],
+        "escalations": [],
+        "server_now": "2026-11-03T05:37:25.057Z"
+      }
+    },
+    {
+      "name": "replayed Accept later: 200 ASSIGNED replay=true, nothing duplicated",
+      "pass": true,
+      "detail": {
+        "server_now": "2026-11-03T05:37:25.070Z",
+        "ok": true,
+        "code": "ASSIGNED",
+        "replay": true,
+        "booking_id": 9000000001
+      }
+    },
+    {
+      "name": "guest/admin assignment intents captured exactly once, none sent",
+      "pass": true,
+      "detail": {
+        "ADMIN_DRIVER_ASSIGNED": 1,
+        "DRIVER_OFFER": 1,
+        "GUEST_DRIVER_ASSIGNED": 1
+      }
+    },
+    {
+      "name": "120 s+ without engagement: dispatch broadened to 3 open offers",
+      "pass": true,
+      "detail": [
+        {
+          "driver_id": 1,
+          "offer_id": "ofr_068eba8adceab9ee3416a0cfa10a607b",
+          "state": "OFFERED",
+          "dispatch_phase": "PRIORITY"
+        },
+        {
+          "driver_id": 2,
+          "offer_id": "ofr_56784b91290e812d2fc1c7b7f3e98347",
+          "state": "OFFERED",
+          "dispatch_phase": "ESCALATED_DISPATCH"
+        },
+        {
+          "driver_id": 3,
+          "offer_id": "ofr_0220075d7d8225d11e03805d88a3a971",
+          "state": "OFFERED",
+          "dispatch_phase": "ESCALATED_DISPATCH"
+        }
+      ]
+    },
+    {
+      "name": "stale Accept: losers get 409 ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the winner",
+      "pass": true,
+      "detail": [
+        "ASSIGNED",
+        "ASSIGNMENT_ALREADY_TAKEN",
+        "ASSIGNMENT_ALREADY_TAKEN"
+      ]
+    },
+    {
+      "name": "stale Accept readback: winner 2 assigned, other offers SUPERSEDED",
+      "pass": true,
+      "detail": [
+        {
+          "driver_id": 1,
+          "offer_id": "ofr_068eba8adceab9ee3416a0cfa10a607b",
+          "state": "SUPERSEDED",
+          "decision_reason_code": "ASSIGNMENT_ALREADY_TAKEN",
+          "engaged_at": null,
+          "delivery_receipt_at": "2026-11-03T05:37:25.178Z",
+          "engagement_source": null
+        },
+        {
+          "driver_id": 2,
+          "offer_id": "ofr_56784b91290e812d2fc1c7b7f3e98347",
+          "state": "ACCEPTED",
+          "decision_reason_code": "ASSIGNED",
+          "engaged_at": null,
+          "delivery_receipt_at": "2026-11-03T05:37:25.209Z",
+          "engagement_source": null
+        },
+        {
+          "driver_id": 3,
+          "offer_id": "ofr_0220075d7d8225d11e03805d88a3a971",
+          "state": "SUPERSEDED",
+          "decision_reason_code": "ASSIGNMENT_ALREADY_TAKEN",
+          "engaged_at": null,
+          "delivery_receipt_at": "2026-11-03T05:37:25.228Z",
+          "engagement_source": null
+        }
+      ]
+    },
+    {
+      "name": "pre-assignment PII exclusion: loser cannot read the trip (404 NOT_ASSIGNED_DRIVER), guest data only reaches the server-confirmed winner",
+      "pass": true,
+      "detail": [
+        404,
+        200
+      ]
+    },
+    {
+      "name": "pre-assignment PII exclusion: /api/state, /view and the control payload carry no guest name/phone/email/flight/notes (canaries absent)",
+      "pass": true,
+      "detail": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "name": "expired Accept (185 s): 410 OFFER_EXPIRED, booking stays unassigned",
+      "pass": true,
+      "detail": {
+        "server_now": "2026-11-03T05:37:25.732Z",
+        "ok": false,
+        "code": "OFFER_EXPIRED",
+        "offer_state": "OFFERED"
+      }
+    },
+    {
+      "name": "server-time boundary @57s (PRIORITY): phase reported PRIORITY; Accept succeeds",
+      "pass": true,
+      "detail": {
+        "phase": "PRIORITY",
+        "code": "ASSIGNED"
+      }
+    },
+    {
+      "name": "server-time boundary @63s (CONNECTIVITY_GRACE): phase reported CONNECTIVITY_GRACE; Accept succeeds",
+      "pass": true,
+      "detail": {
+        "phase": "CONNECTIVITY_GRACE",
+        "code": "ASSIGNED"
+      }
+    },
+    {
+      "name": "server-time boundary @117s (CONNECTIVITY_GRACE): phase reported CONNECTIVITY_GRACE; Accept succeeds",
+      "pass": true,
+      "detail": {
+        "phase": "CONNECTIVITY_GRACE",
+        "code": "ASSIGNED"
+      }
+    },
+    {
+      "name": "server-time boundary @123s (ESCALATED_DISPATCH): phase reported ESCALATED_DISPATCH; Accept succeeds",
+      "pass": true,
+      "detail": {
+        "phase": "ESCALATED_DISPATCH",
+        "code": "ASSIGNED"
+      }
+    },
+    {
+      "name": "server-time boundary @177s (ESCALATED_DISPATCH): phase reported ESCALATED_DISPATCH; Accept succeeds",
+      "pass": true,
+      "detail": {
+        "phase": "ESCALATED_DISPATCH",
+        "code": "ASSIGNED"
+      }
+    },
+    {
+      "name": "server-time boundary @183s (HUMAN_FALLBACK_REQUIRED): phase reported HUMAN_FALLBACK_REQUIRED; Accept is refused 410",
+      "pass": true,
+      "detail": {
+        "phase": "HUMAN_FALLBACK_REQUIRED",
+        "code": "OFFER_EXPIRED"
+      }
+    },
+    {
+      "name": ">=180 s: exactly one HUMAN_FALLBACK_REQUIRED event + one escalation row after repeated sweeps; booking still pending (never cancelled); one captured staff intent, none sent",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "capture": {
+          "DRIVER_OFFER": 1,
+          "STAFF_FALLBACK": 1
+        },
+        "booking": {
+          "id": 9000000011,
+          "status": "pending",
+          "assigned_driver_id": null
+        },
+        "offers": [
+          {
+            "driver_id": 1,
+            "offer_id": "ofr_a53e31b5aab2305ec27de2ff56d56ff6",
+            "state": "TIMED_OUT",
+            "decision_reason_code": "OFFER_EXPIRED",
+            "engaged_at": null,
+            "delivery_receipt_at": "2026-11-03T05:37:26.677Z",
+            "engagement_source": null
+          }
+        ],
+        "accepted_offers": 0,
+        "events": {
+          "BOOKING_SAVED": 1,
+          "DISPATCH_ELIGIBLE": 1,
+          "DRIVER_NOTIFICATION_ATTEMPTED": 1,
+          "DRIVER_NOTIFICATION_DELIVERED": 1,
+          "HUMAN_FALLBACK_REQUIRED": 1,
+          "OFFERS_TIMED_OUT": 1,
+          "OFFER_CREATED": 1
+        },
+        "duplicate_critical_events": [],
+        "escalations": [
+          {
+            "t": "HUMAN_FALLBACK_REQUIRED",
+            "n": 1
+          }
+        ],
+        "server_now": "2026-11-03T05:37:26.753Z"
+      }
+    },
+    {
+      "name": "both bookings (dispatched while driver 1 is free) offer driver 1",
+      "pass": true,
+      "detail": [
+        [
+          {
+            "driver_id": 1,
+            "offer_id": "ofr_c665e2f24c246da8c111f18e5735bd45",
+            "state": "OFFERED",
+            "dispatch_phase": "PRIORITY"
+          }
+        ],
+        [
+          {
+            "driver_id": 1,
+            "offer_id": "ofr_031d046474e58097c6d8d1ddd59a0665",
+            "state": "OFFERED",
+            "dispatch_phase": "PRIORITY"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "active driver cannot win a second offer through stale state: 409 DRIVER_HAS_ACTIVE_TRIP, booking Y stays unassigned",
+      "pass": true,
+      "detail": [
+        "ASSIGNED",
+        "DRIVER_HAS_ACTIVE_TRIP"
+      ]
+    },
+    {
+      "name": "new immediate booking skips the busy driver and offers a free eligible one",
+      "pass": true,
+      "detail": [
+        {
+          "driver_id": 2,
+          "offer_id": "ofr_24fba1a22678b986fee7f838604fc560",
+          "state": "OFFERED",
+          "dispatch_phase": "PRIORITY"
+        }
+      ]
+    },
+    {
+      "name": "after COMPLETED the previously busy driver is eligible again",
+      "pass": true,
+      "detail": [
+        {
+          "driver_id": 1,
+          "offer_id": "ofr_c2b11311df11aa18c00de926b6ae695c",
+          "state": "OFFERED",
+          "dispatch_phase": "PRIORITY"
+        }
+      ]
+    },
+    {
+      "name": "staff assignment while an offer is open: the stale Accept gets 409 ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the staff assignment (no assignment audit written)",
+      "pass": true,
+      "detail": {
+        "c": "ASSIGNMENT_ALREADY_TAKEN",
+        "rb": {
+          "id": 9000000016,
+          "status": "accepted",
+          "assigned_driver_id": 3
+        }
+      }
+    },
+    {
+      "name": "staff cancellation while an offer is open: Accept gets 409 SUPERSEDED, booking stays cancelled and unassigned",
+      "pass": true,
+      "detail": {
+        "c": "SUPERSEDED",
+        "rb": {
+          "id": 9000000017,
+          "status": "cancelled",
+          "assigned_driver_id": null
+        }
+      }
+    },
+    {
+      "name": "audit atomicity (assignment): injected audit failure -> 503 AUDIT_PERSIST_FAILED and NOTHING persisted (booking unassigned, offer still open, zero decision/assignment events)",
+      "pass": true,
+      "detail": {
+        "bad": "AUDIT_PERSIST_FAILED",
+        "rb": {
+          "ok": true,
+          "capture": {
+            "DRIVER_OFFER": 1
+          },
+          "booking": {
+            "id": 9000000018,
+            "status": "pending",
+            "assigned_driver_id": null
+          },
+          "offers": [
+            {
+              "driver_id": 1,
+              "offer_id": "ofr_05da56ce1eaf42379e38f8f11045dbb0",
+              "state": "OFFERED",
+              "decision_reason_code": null,
+              "engaged_at": null,
+              "delivery_receipt_at": "2026-11-03T05:37:27.257Z",
+              "engagement_source": null
+            }
+          ],
+          "accepted_offers": 0,
+          "events": {
+            "BOOKING_SAVED": 1,
+            "DISPATCH_ELIGIBLE": 1,
+            "DRIVER_NOTIFICATION_ATTEMPTED": 1,
+            "DRIVER_NOTIFICATION_DELIVERED": 1,
+            "OFFER_CREATED": 1
+          },
+          "duplicate_critical_events": [],
+          "escalations": [],
+          "server_now": "2026-11-03T05:37:27.312Z"
+        }
+      }
+    },
+    {
+      "name": "audit atomicity (assignment): after the fault clears, the retry succeeds exactly once",
+      "pass": true,
+      "detail": {
+        "server_now": "2026-11-03T05:37:27.353Z",
+        "ok": true,
+        "code": "ASSIGNED",
+        "replay": false,
+        "booking_id": 9000000018
+      }
+    },
+    {
+      "name": "audit atomicity (lifecycle): injected audit failure -> 503 and the coarse status did NOT advance",
+      "pass": true,
+      "detail": {
+        "s": 503,
+        "rb": {
+          "id": 9000000018,
+          "status": "accepted",
+          "assigned_driver_id": 1
+        }
+      }
+    },
+    {
+      "name": "audit atomicity (lifecycle): retry after the fault clears advances once",
+      "pass": true,
+      "detail": {
+        "server_now": "2026-11-03T05:37:27.432Z",
+        "ok": true,
+        "code": "OK",
+        "replay": false,
+        "stage": "EN_ROUTE_PICKUP"
+      }
+    },
+    {
+      "name": "decline is durable and replay-safe (uses json_extract guard): 200 DRIVER_DECLINED, replay=true, exactly one DRIVER_DECISION event, booking intact",
+      "pass": true,
+      "detail": {
+        "d1": {
+          "server_now": "2026-11-03T05:37:27.609Z",
+          "ok": true,
+          "code": "DRIVER_DECLINED",
+          "replay": false,
+          "advanced": 1
+        },
+        "d2": {
+          "server_now": "2026-11-03T05:37:27.618Z",
+          "ok": true,
+          "code": "DRIVER_DECLINED",
+          "replay": true
+        },
+        "rb": {
+          "BOOKING_SAVED": 1,
+          "DISPATCH_ELIGIBLE": 1,
+          "DRIVER_DECISION": 1,
+          "DRIVER_NOTIFICATION_ATTEMPTED": 4,
+          "DRIVER_NOTIFICATION_DELIVERED": 4,
+          "OFFER_CREATED": 4
+        }
+      }
+    },
+    {
+      "name": "real concurrent HTTP races: 200 contested races, exactly one server-confirmed winner each, losers 409, one assignment event, one ACCEPTED offer, others SUPERSEDED",
+      "pass": true,
+      "detail": {
+        "seed": 20261103,
+        "requested": 200,
+        "completed": 200,
+        "contested": 200,
+        "http_requests": 1200,
+        "status_histogram": {
+          "200": 400,
+          "409": 800
+        },
+        "code_histogram": {
+          "ASSIGNED": 400,
+          "ASSIGNMENT_ALREADY_TAKEN": 800
+        },
+        "winners_by_driver": {
+          "1": 72,
+          "2": 67,
+          "3": 61
+        },
+        "violations": [],
+        "max_in_flight": 6
+      }
+    },
+    {
+      "name": "races were genuinely contested across drivers (>=2 distinct winners)",
+      "pass": true,
+      "detail": {
+        "1": 72,
+        "2": 67,
+        "3": 61
+      }
+    },
+    {
+      "name": "global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)",
+      "pass": true,
+      "detail": []
+    },
+    {
+      "name": "zero real sends: every captured intent is suppressed (schema CHECK forbids otherwise); no WhatsApp/email/guest/admin send",
+      "pass": true,
+      "detail": {
+        "ADMIN_DRIVER_ASSIGNED": 212,
+        "DRIVER_OFFER": 626,
+        "GUEST_DRIVER_ASSIGNED": 212,
+        "STAFF_FALLBACK": 1
+      }
+    },
+    {
+      "name": "zero wallet/commission effects",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "violations": [],
+        "counts": {
+          "bookings": 219,
+          "offers": 626,
+          "events": 4866,
+          "capture_rows": 1051,
+          "wallet_transactions": 0,
+          "drivers": 6
+        },
+        "capture_by_kind": {
+          "ADMIN_DRIVER_ASSIGNED": 212,
+          "DRIVER_OFFER": 626,
+          "GUEST_DRIVER_ASSIGNED": 212,
+          "STAFF_FALLBACK": 1
+        },
+        "real_sends": 0,
+        "wallet_changed": false,
+        "wallet_transactions": 0,
+        "non_placeholder_phones": 0,
+        "non_synthetic_bookings": 0
+      }
+    },
+    {
+      "name": "zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings",
+      "pass": true,
+      "detail": {
+        "ok": true,
+        "violations": [],
+        "counts": {
+          "bookings": 219,
+          "offers": 626,
+          "events": 4866,
+          "capture_rows": 1051,
+          "wallet_transactions": 0,
+          "drivers": 6
+        },
+        "capture_by_kind": {
+          "ADMIN_DRIVER_ASSIGNED": 212,
+          "DRIVER_OFFER": 626,
+          "GUEST_DRIVER_ASSIGNED": 212,
+          "STAFF_FALLBACK": 1
+        },
+        "real_sends": 0,
+        "wallet_changed": false,
+        "wallet_transactions": 0,
+        "non_placeholder_phones": 0,
+        "non_synthetic_bookings": 0
+      }
+    }
+  ]
+}

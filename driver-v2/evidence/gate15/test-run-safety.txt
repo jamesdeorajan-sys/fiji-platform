@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: the package as shipped passes the safety assertion
+ok 1 - the package as shipped passes the safety assertion
+  ---
+  duration_ms: 10.658386
+  type: 'test'
+  ...
+# Subtest: package refuses: production D1 name nadi-marketplace-db
+ok 2 - package refuses: production D1 name nadi-marketplace-db
+  ---
+  duration_ms: 12.942442
+  type: 'test'
+  ...
+# Subtest: package refuses: production D1 id
+ok 3 - package refuses: production D1 id
+  ---
+  duration_ms: 7.417806
+  type: 'test'
+  ...
+# Subtest: package refuses: production worker identity nadi-dispatch-api
+ok 4 - package refuses: production worker identity nadi-dispatch-api
+  ---
+  duration_ms: 7.111249
+  type: 'test'
+  ...
+# Subtest: package refuses: a route
+ok 5 - package refuses: a route
+  ---
+  duration_ms: 6.744484
+  type: 'test'
+  ...
+# Subtest: package refuses: routes table
+ok 6 - package refuses: routes table
+  ---
+  duration_ms: 7.271356
+  type: 'test'
+  ...
+# Subtest: package refuses: a cron trigger
+ok 7 - package refuses: a cron trigger
+  ---
+  duration_ms: 6.998988
+  type: 'test'
+  ...
+# Subtest: package refuses: workers_dev = true
+ok 8 - package refuses: workers_dev = true
+  ---
+  duration_ms: 6.883088
+  type: 'test'
+  ...
+# Subtest: package refuses: a second D1 binding
+ok 9 - package refuses: a second D1 binding
+  ---
+  duration_ms: 6.911414
+  type: 'test'
+  ...
+# Subtest: package refuses: a KV binding
+ok 10 - package refuses: a KV binding
+  ---
+  duration_ms: 7.390272
+  type: 'test'
+  ...
+# Subtest: package refuses: plain [vars]
+ok 11 - package refuses: plain [vars]
+  ---
+  duration_ms: 6.694415
+  type: 'test'
+  ...
+# Subtest: package refuses: a service binding
+ok 12 - package refuses: a service binding
+  ---
+  duration_ms: 6.520622
+  type: 'test'
+  ...
+# Subtest: package refuses: outbound fetch() in worker source
+ok 13 - package refuses: outbound fetch() in worker source
+  ---
+  duration_ms: 6.812386
+  type: 'test'
+  ...
+# Subtest: package refuses: a scheduled handler
+ok 14 - package refuses: a scheduled handler
+  ---
+  duration_ms: 6.508303
+  type: 'test'
+  ...
+# Subtest: package refuses: a WhatsApp/messaging provider reference
+ok 15 - package refuses: a WhatsApp/messaging provider reference
+  ---
+  duration_ms: 6.416384
+  type: 'test'
+  ...
+# Subtest: package refuses: a production hostname in source
+ok 16 - package refuses: a production hostname in source
+  ---
+  duration_ms: 6.603984
+  type: 'test'
+  ...
+# Subtest: package refuses: a production worker name in source
+ok 17 - package refuses: a production worker name in source
+  ---
+  duration_ms: 6.754263
+  type: 'test'
+  ...
+# Subtest: package refuses: schema drift vs recorded hash
+ok 18 - package refuses: schema drift vs recorded hash
+  ---
+  duration_ms: 6.653463
+  type: 'test'
+  ...
+# Subtest: package refuses: a core-service file that sends over the network
+ok 19 - package refuses: a core-service file that sends over the network
+  ---
+  duration_ms: 6.223119
+  type: 'test'
+  ...
+# Subtest: runtime: unexpected bindings are refused
+ok 20 - runtime: unexpected bindings are refused
+  ---
+  duration_ms: 0.795262
+  type: 'test'
+  ...
+# Subtest: runtime: only localhost and the isolated workers.dev host are served; every production hostname is refused
+ok 21 - runtime: only localhost and the isolated workers.dev host are served; every production hostname is refused
+  ---
+  duration_ms: 0.474654
+  type: 'test'
+  ...
+# Subtest: runtime: a database without the identity marker, with a wrong marker, or with foreign (production-like) tables is refused
+ok 22 - runtime: a database without the identity marker, with a wrong marker, or with foreign (production-like) tables is refused
+  ---
+  duration_ms: 0.758285
+  type: 'test'
+  ...
+# Subtest: runtime: the Worker entry returns 503 ISOLATION_ASSERTION_FAILED before touching anything when bound to a wrong database or host
+ok 23 - runtime: the Worker entry returns 503 ISOLATION_ASSERTION_FAILED before touching anything when bound to a wrong database or host
+  ---
+  duration_ms: 25.171685
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 252.223825

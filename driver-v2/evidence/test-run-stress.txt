@@ -2,25 +2,25 @@ TAP version 13
 # Subtest: G37 100 consecutive synthetic end-to-end journeys: zero double assignment, zero forbidden PII exposure, zero real sends, zero lost transitions
 ok 1 - G37 100 consecutive synthetic end-to-end journeys: zero double assignment, zero forbidden PII exposure, zero real sends, zero lost transitions
   ---
-  duration_ms: 493.59528
+  duration_ms: 470.214278
   type: 'test'
   ...
 # Subtest: G38 concurrency / race stress: simultaneous accepts, repeated + concurrent sweeps, delayed responses, reconnect polling — all under random interleaving
 ok 2 - G38 concurrency / race stress: simultaneous accepts, repeated + concurrent sweeps, delayed responses, reconnect polling — all under random interleaving
   ---
-  duration_ms: 3717.511066
+  duration_ms: 1842.224162
   type: 'test'
   ...
 # Subtest: G38b 180 s human-fallback stress: 100 unreachable bookings, repeated + concurrent sweeps, exactly one escalation each, bookings never cancelled
 ok 3 - G38b 180 s human-fallback stress: 100 unreachable bookings, repeated + concurrent sweeps, exactly one escalation each, bookings never cancelled
   ---
-  duration_ms: 180.676602
+  duration_ms: 182.775489
   type: 'test'
   ...
 # Subtest: G39 failures are never waived: the invariant checker detects a planted double-assignment, orphan assignment, PII leak and wallet change
 ok 4 - G39 failures are never waived: the invariant checker detects a planted double-assignment, orphan assignment, PII leak and wallet change
   ---
-  duration_ms: 23.930253
+  duration_ms: 15.108571
   type: 'test'
   ...
 1..4
@@ -31,4 +31,4 @@ ok 4 - G39 failures are never waived: the invariant checker detects a planted do
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 4517.595249
+# duration_ms 2599.37366

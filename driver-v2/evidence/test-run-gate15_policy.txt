@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: G40 a driver with an ACTIVE assigned trip (accepted OR en_route) receives no new immediate offer; a free eligible driver receives it instead
+ok 1 - G40 a driver with an ACTIVE assigned trip (accepted OR en_route) receives no new immediate offer; a free eligible driver receives it instead
+  ---
+  duration_ms: 12.617971
+  type: 'test'
+  ...
+# Subtest: G41 after COMPLETED the previously busy driver becomes eligible again (and not before)
+ok 2 - G41 after COMPLETED the previously busy driver becomes eligible again (and not before)
+  ---
+  duration_ms: 10.260683
+  type: 'test'
+  ...
+# Subtest: G42 an active driver cannot win an offer through stale or replayed state (service + HTTP); a replay of their OWN accepted offer stays idempotent
+ok 3 - G42 an active driver cannot win an offer through stale or replayed state (service + HTTP); a replay of their OWN accepted offer stays idempotent
+  ---
+  duration_ms: 29.62764
+  type: 'test'
+  ...
+# Subtest: G42b the same driver racing Accept on two different bookings: exactly one wins (50 interleaved trials)
+ok 4 - G42b the same driver racing Accept on two different bookings: exactly one wins (50 interleaved trials)
+  ---
+  duration_ms: 271.345539
+  type: 'test'
+  ...
+# Subtest: G49 regression: concurrent duplicate Accept by the SAME driver on its own booking is always an idempotent ASSIGNED replay, never DRIVER_HAS_ACTIVE_TRIP (200 chaos trials)
+ok 5 - G49 regression: concurrent duplicate Accept by the SAME driver on its own booking is always an idempotent ASSIGNED replay, never DRIVER_HAS_ACTIVE_TRIP (200 chaos trials)
+  ---
+  duration_ms: 1036.549646
+  type: 'test'
+  ...
+# Subtest: G43 when every eligible driver is busy the booking is NOT cancelled: no offers, then HUMAN_FALLBACK_REQUIRED at 180 s
+ok 6 - G43 when every eligible driver is busy the booking is NOT cancelled: no offers, then HUMAN_FALLBACK_REQUIRED at 180 s
+  ---
+  duration_ms: 5.728983
+  type: 'test'
+  ...
+# Subtest: G44 DELIVERY_RECEIPT is transport evidence only: stored separately, never engagement, never shown as viewed
+ok 7 - G44 DELIVERY_RECEIPT is transport evidence only: stored separately, never engagement, never shown as viewed
+  ---
+  duration_ms: 2.119001
+  type: 'test'
+  ...
+# Subtest: G45 at 120 s a DELIVERED-but-unengaged offer does not block broadening; the original stays actionable inside 180 s; first valid accept wins
+ok 8 - G45 at 120 s a DELIVERED-but-unengaged offer does not block broadening; the original stays actionable inside 180 s; first valid accept wins
+  ---
+  duration_ms: 4.192312
+  type: 'test'
+  ...
+# Subtest: G46 ENGAGEMENT (OFFER_VIEWED or authenticated PWA session activity) holds dispatch to the engaged driver at 120 s; session polling counts, a mere receipt does not
+ok 9 - G46 ENGAGEMENT (OFFER_VIEWED or authenticated PWA session activity) holds dispatch to the engaged driver at 120 s; session polling counts, a mere receipt does not
+  ---
+  duration_ms: 7.918109
+  type: 'test'
+  ...
+# Subtest: G47 without a transport receipt and without engagement, a second driver is introduced early (60 s); engaged offers are never doubled early; fallback at 180 s keeps the booking
+ok 10 - G47 without a transport receipt and without engagement, a second driver is introduced early (60 s); engaged offers are never doubled early; fallback at 180 s keeps the booking
+  ---
+  duration_ms: 4.897286
+  type: 'test'
+  ...
+# Subtest: G48 busy-aware stress: 100 overlapping synthetic bookings over 6 drivers - never an offer to, assignment of, or second active trip for a busy driver; zero double assignments
+ok 11 - G48 busy-aware stress: 100 overlapping synthetic bookings over 6 drivers - never an offer to, assignment of, or second active trip for a busy driver; zero double assignments
+  ---
+  duration_ms: 543.019187
+  type: 'test'
+  ...
+# Subtest: G47b the Gate 1.5 delta introduces no network, send or wallet effect
+ok 12 - G47b the Gate 1.5 delta introduces no network, send or wallet effect
+  ---
+  duration_ms: 0.160724
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2008.79528

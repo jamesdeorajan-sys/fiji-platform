@@ -1,0 +1,49 @@
+PASS resource identity: Worker serves only after the identity marker matches driver-v2-gate15-isolated-20261103
+PASS Worker environment exposes ONLY the isolated DB binding (+ the isolated control token)
+PASS database holds exactly the isolated fixture tables (no foreign/production tables)
+PASS control surface is closed without the isolated token (404)
+PASS D1 primitive: D1 batch rolls back ALL statements when one fails
+PASS D1 primitive: D1 batch commits all statements on success and reports per-statement meta.changes
+PASS D1 primitive: partial UNIQUE index rejects duplicates only inside its WHERE predicate
+PASS D1 primitive: INSERT OR IGNORE ... SELECT: guarded insert is idempotent; unique collision is ignored silently; false guard inserts nothing
+PASS D1 primitive: json_extract works in SELECT and WHERE
+PASS D1 primitive: guarded INSERT...SELECT inside a failing batch is rolled back with it
+PASS seeded 6 synthetic placeholder drivers (driver 1 = only real-test identity)
+PASS duplicate Accept (3 concurrent HTTP requests, same offer): all 200 ASSIGNED, exactly one non-replay
+PASS duplicate Accept: one assigned driver, one ACCEPTED offer, one DRIVER_ASSIGNED, no duplicate critical events
+PASS replayed Accept later: 200 ASSIGNED replay=true, nothing duplicated
+PASS guest/admin assignment intents captured exactly once, none sent
+PASS 120 s+ without engagement: dispatch broadened to 3 open offers
+PASS stale Accept: losers get 409 ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the winner
+PASS stale Accept readback: winner 2 assigned, other offers SUPERSEDED
+PASS pre-assignment PII exclusion: loser cannot read the trip (404 NOT_ASSIGNED_DRIVER), guest data only reaches the server-confirmed winner
+PASS pre-assignment PII exclusion: /api/state, /view and the control payload carry no guest name/phone/email/flight/notes (canaries absent)
+PASS expired Accept (185 s): 410 OFFER_EXPIRED, booking stays unassigned
+PASS server-time boundary @57s (PRIORITY): phase reported PRIORITY; Accept succeeds
+PASS server-time boundary @63s (CONNECTIVITY_GRACE): phase reported CONNECTIVITY_GRACE; Accept succeeds
+PASS server-time boundary @117s (CONNECTIVITY_GRACE): phase reported CONNECTIVITY_GRACE; Accept succeeds
+PASS server-time boundary @123s (ESCALATED_DISPATCH): phase reported ESCALATED_DISPATCH; Accept succeeds
+PASS server-time boundary @177s (ESCALATED_DISPATCH): phase reported ESCALATED_DISPATCH; Accept succeeds
+PASS server-time boundary @183s (HUMAN_FALLBACK_REQUIRED): phase reported HUMAN_FALLBACK_REQUIRED; Accept is refused 410
+PASS >=180 s: exactly one HUMAN_FALLBACK_REQUIRED event + one escalation row after repeated sweeps; booking still pending (never cancelled); one captured staff intent, none sent
+PASS both bookings (dispatched while driver 1 is free) offer driver 1
+PASS active driver cannot win a second offer through stale state: 409 DRIVER_HAS_ACTIVE_TRIP, booking Y stays unassigned
+PASS new immediate booking skips the busy driver and offers a free eligible one
+PASS after COMPLETED the previously busy driver is eligible again
+PASS staff assignment while an offer is open: the stale Accept gets 409 ASSIGNMENT_ALREADY_TAKEN and cannot overwrite the staff assignment (no assignment audit written)
+PASS staff cancellation while an offer is open: Accept gets 409 SUPERSEDED, booking stays cancelled and unassigned
+PASS audit atomicity (assignment): injected audit failure -> 503 AUDIT_PERSIST_FAILED and NOTHING persisted (booking unassigned, offer still open, zero decision/assignment events)
+PASS audit atomicity (assignment): after the fault clears, the retry succeeds exactly once
+PASS audit atomicity (lifecycle): injected audit failure -> 503 and the coarse status did NOT advance
+PASS audit atomicity (lifecycle): retry after the fault clears advances once
+PASS decline is durable and replay-safe (uses json_extract guard): 200 DRIVER_DECLINED, replay=true, exactly one DRIVER_DECISION event, booking intact
+
+== 200 contested races over real concurrent HTTP ==
+PASS real concurrent HTTP races: 200 contested races, exactly one server-confirmed winner each, losers 409, one assignment event, one ACCEPTED offer, others SUPERSEDED
+PASS races were genuinely contested across drivers (>=2 distinct winners)
+PASS global invariants hold over the whole isolated database (no double accept, no orphan assignment, audit trail complete, one active trip per driver)
+PASS zero real sends: every captured intent is suppressed (schema CHECK forbids otherwise); no WhatsApp/email/guest/admin send
+PASS zero wallet/commission effects
+PASS zero real phone numbers (all driver phones are +000-GATE1 placeholders) and zero non-synthetic bookings
+
+45/45 checks passed -> /home/claude/dpwa-wt/driver-v2/evidence/gate15/local-workerd-results.json

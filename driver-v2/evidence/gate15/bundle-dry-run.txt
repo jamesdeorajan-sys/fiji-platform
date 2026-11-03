@@ -1,0 +1,9 @@
+ ⛅️ wrangler 4.156.2
+────────────────────
+Total Upload: 64.68 KiB / gzip: 15.45 KiB
+Your Worker has access to the following bindings:
+Binding                                          Resource         
+env.DB (driver-v2-gate15-isolated-20261103)      D1 Database      
+--dry-run: exiting now.
+bundle_sha256 29197f34352a2df2916f8661a791166aa55386fa2886c5ba1985fd072d751215  bytes 66230
+schema_sha256 e4b34d1de73235c78a5d0c9011642d3b42221a962365c4b76e4dea80dc9204c2
