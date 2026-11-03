@@ -1558,4 +1558,3 @@ Candidates under review are preserved: Worker `e99e52c`, NAT `5897656`, FijiDash
 - **UNKNOWN / needs CEO decision before Gate 2:** should a driver with an active trip receive new offers (contract silent; currently not excluded); confirm that delivery receipt / view / session activity all count as reachability evidence and that unreachable offers end at offered_at+120 s (reachable at the 180 s envelope); synthetic competitor drivers 2..N exist only in the throw-away DB (driver 1 is the only real-test identity, placeholder number only).
 - **Not proven:** real D1 semantics (atomic batch, partial unique index, INSERT OR IGNORE...SELECT, json_extract) - needs an isolated D1 database; real multi-isolate concurrency; real devices/networks/camera/WhatsApp deep link; real object storage; staff console for the human-fallback queue.
 - **Next gate:** CEO review of Gate 1 evidence. Do not start Gate 2 (first real driver notification) without separate explicit GO.
-
