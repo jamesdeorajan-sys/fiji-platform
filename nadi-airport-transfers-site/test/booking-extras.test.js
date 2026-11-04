@@ -7,8 +7,9 @@ import { readFileSync } from 'node:fs';
 import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
-const read = (f) => readFileSync(new URL('../src/' + f, import.meta.url), 'utf8').replace(/\r/g, '');
+const read = (f) => undoRouteVehicle(f, readFileSync(new URL('../src/' + f, import.meta.url), 'utf8')).replace(/\r/g, '');
 const html = read('index.html').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const extrasSrc = read('booking-extras.js');
 const fijiSrc = read('fiji-pickup.js');

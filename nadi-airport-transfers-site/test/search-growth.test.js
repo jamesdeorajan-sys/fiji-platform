@@ -10,11 +10,12 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SEARCH_GROWTH_NEW, SEARCH_GROWTH_EDITED } from './search-growth-revert.js';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, '..', 'src');
 const FIX = path.join(here, 'fixtures', 'pre-search-growth');
-const read = (f) => readFileSync(path.join(SRC, f), 'utf8');
+const read = (f) => undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8'));
 const fix = (f) => readFileSync(path.join(FIX, f.replace(/\//g, '_')), 'utf8');
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const unesc = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&rsquo;/g, '’').replace(/&ndash;/g, '–');

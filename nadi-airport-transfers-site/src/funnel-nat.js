@@ -6,6 +6,12 @@
   var URL_EVENTS = 'https://vakaviti-funnel-events-preview.helpronline.workers.dev/events';
   var PLATFORM = 'nadi';
   var once = {};
+  // Route-to-vehicle measurement plan (candidate r1). OFF: with V2 false this file sends exactly the events it sent before.
+  // Turn on only in an approved release, and only after the funnel Worker accepts these names (it ignores/rejects unknown
+  // ones today). Events carry no guest data, like every other event here.
+  var V2 = false;
+  function v2(name, key) { if (V2) send(name, key); }
+  window.__natFunnelV2 = function (on) { V2 = !!on; }; // tests only
 
   function sid() {
     try {
@@ -59,27 +65,34 @@
           if (p && d && p.value && d.value) send('route_selected', 'route');
         }
         if (t.classList && t.classList.contains('vehicle-radio') && t.checked) send('vehicle_selected', 'vehicle');
+        if (/^(travelDate|travelTime|flightNum|returnDate|returnTime|returnPickupLocation)$/.test(t.id || '')) v2('journey_details_open', 'jdo');
+      }, true);
+      document.addEventListener('input', function (e) {
+        var t = e.target; if (t && /^(flightNum|returnPickupLocation)$/.test(t.id || '')) v2('journey_details_open', 'jdo');
       }, true);
       document.addEventListener('click', function (e) {
         var t = e.target && e.target.closest ? e.target : null; if (!t) return;
-        if (t.closest('.btn-confirm')) { delete once.outcome; delete once.wa; send('confirm_clicked'); } // each press may lead to its own save attempt, outcome and hand-off
+        if (t.closest('.pax-btn, .trip-btn')) v2('journey_details_open', 'jdo');
+        if (t.closest('.btn-confirm')) { delete once.outcome; delete once.wa; send('confirm_clicked'); v2('save_attempt'); } // each press may lead to its own save attempt, outcome and hand-off
         // the booking hand-off button only (as FijiDash: #bulaWaBtn); header/footer/FAQ WhatsApp links are general contact, not a booking hand-off
         if (t.closest('#bulaWaBtn')) send('whatsapp_opened', 'wa');
       }, true);
       var step3 = document.getElementById('step3'), bula = document.getElementById('bulaSuccess');
       var mo = new MutationObserver(function () {
-        if (visible(step3)) send('details_opened', 'details');
+        if (visible(step3)) { send('details_opened', 'details'); v2('guest_details_open', 'gdo'); }
         if (visible(bula)) {
           var ref = (document.getElementById('bulaRef') || {}).textContent || '';
           var lead = (document.getElementById('bulaLeadText') || {}).textContent || '';
           // a save was attempted only when the outcome is "saved" or "could not confirm"; started is sent with the outcome so it counts attempts exactly
-          if (/Booking #\d+/.test(ref)) { if (!once.outcome) send('booking_post_started'); send('booking_post_succeeded', 'outcome'); }
+          if (/Booking #\d+/.test(ref)) { if (!once.outcome) send('booking_post_started'); send('booking_post_succeeded', 'outcome'); v2('save_success', 'ss'); }
           else if (/could not confirm/i.test(lead)) { if (!once.outcome) send('booking_post_started'); send('booking_post_failed', 'outcome'); }
           // "not saved online" = WhatsApp-only path (custom address): no save was attempted, so no outcome event
         }
       });
       var opts = { attributes: true, attributeFilter: ['style', 'class', 'hidden', 'disabled'] };
       [step3, bula].forEach(function (el) { if (el) mo.observe(el, opts); });
+      var step2 = document.getElementById('step2');
+      if (step2) new MutationObserver(function () { if (visible(step2)) { v2('journey_details_complete', 'jdc'); v2('vehicle_step_viewed', 'vsv'); } }).observe(step2, opts);
       var lead = document.getElementById('bulaLeadText'); if (lead) mo.observe(lead, { childList: true, characterData: true, subtree: true });
       var ref = document.getElementById('bulaRef'); if (ref) mo.observe(ref, { childList: true, characterData: true, subtree: true });
       try { setTimeout(routeFilled, 0); setTimeout(routeFilled, 1500); } catch (e) { /* no timers: the immediate check above still ran */ }

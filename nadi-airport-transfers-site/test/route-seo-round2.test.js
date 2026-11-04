@@ -10,9 +10,10 @@ import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, '..', 'src');
-const read = (f) => readFileSync(path.join(SRC, f), 'utf8').replace(/\r/g, '');
+const read = (f) => undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8')).replace(/\r/g, '');
 const sha = (f) => createHash('sha256').update(readFileSync(path.join(SRC, f))).digest('hex');
 const unesc = (s) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 const text = (h) => unesc(h.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();

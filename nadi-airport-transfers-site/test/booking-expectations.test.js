@@ -14,9 +14,10 @@ import { undoRouteSource, ROUTE_SOURCE_FILE } from './route-source-revert.js';
 import { SEARCH_GROWTH_NEW, undoSearchGrowth, undoSearchGrowthBuf } from './search-growth-revert.js';
 import { undoTaxiFaq } from './taxi-faq-revert.js';
 import { undoAttribution } from './attribution-revert.js';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
-const rd = (f) => readFileSync(path.join(SRC, f), 'utf8');
+const rd = (f) => undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8'));
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const html = rd('index.html');
 const visible = (t) => t.replace(/<head\b[\s\S]*?<\/head>/i, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -61,7 +62,7 @@ test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: undoing
 
 test('HISTORICAL-FIXTURE (reverts this release before comparing): SCOPE: every other served file is byte-identical to production 0de39c3 (fares, booking logic, hand-off, funnel, rentals, route pages)', () => {
   // route pages pass through undoTaxiFaq (the later taxi-FAQ candidate): nothing else in them may differ
-  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(undoRouteSource(f, readFileSync(path.join(SRC, f), 'utf8'))) : (f === 'app.js' ? undoAttribution(f, readFileSync(path.join(SRC, f), 'utf8')) : undoSearchGrowthBuf(f, readFileSync(path.join(SRC, f))))), want, f + ' changed');
+  for (const [f, want] of Object.entries(PROD_FILES)) assert.equal(sha(f.startsWith('transfer/') ? undoTaxiFaq(undoRouteSource(f, readFileSync(path.join(SRC, f), 'utf8'))) : (f === 'app.js' ? undoAttribution(f, undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8'))) : undoSearchGrowthBuf(f, readFileSync(path.join(SRC, f))))), want, f + ' changed');
   const files = [];
   const walk = (d) => { for (const n of readdirSync(d)) { const p = path.join(d, n); statSync(p).isDirectory() ? walk(p) : files.push(path.relative(SRC, p).split(path.sep).join('/')); } };
   walk(SRC); files.splice(0, files.length, ...files.filter((x) => x !== ROUTE_SOURCE_FILE && x !== SEARCH_GROWTH_NEW)); // route-source release: its one new file; search-growth release: its one new page

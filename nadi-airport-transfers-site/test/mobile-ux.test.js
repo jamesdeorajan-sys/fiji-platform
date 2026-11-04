@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
-const read = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), 'utf8');
+const read = (p) => undoRouteVehicle(p, readFileSync(new URL(`../src/${p}`, import.meta.url), 'utf8'));
 const app = read('app.js');
 const html = read('index.html').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const css = read('styles.css');

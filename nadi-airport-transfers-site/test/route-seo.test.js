@@ -10,9 +10,10 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, '..', 'src');
-const read = (f) => readFileSync(path.join(SRC, f), 'utf8').replace(/\r/g, '');
+const read = (f) => undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8')).replace(/\r/g, '');
 const RouteHandoff = (() => { const w = {}; const c = { window: w, document: {}, URLSearchParams, Object }; vm.createContext(c); vm.runInContext(readFileSync(path.join(SRC, 'route-handoff.js'), 'utf8'), c); return w.NadiRouteHandoff; })();
 const app = read('app.js');
 

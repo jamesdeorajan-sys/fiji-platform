@@ -12,9 +12,10 @@ import { undoRouteSource, ROUTE_SOURCE_FILE } from './route-source-revert.js';
 import { SEARCH_GROWTH_NEW, undoSearchGrowth, undoSearchGrowthBuf } from './search-growth-revert.js';
 import { undoTaxiFaq } from './taxi-faq-revert.js';
 import { undoRouteTitles } from './route-titles-revert.js';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
-const rd = (f) => readFileSync(path.join(SRC, f), 'utf8');
+const rd = (f) => undoRouteVehicle(f, readFileSync(path.join(SRC, f), 'utf8'));
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const PROD = { // production 67d0075 (Pages 6af90ee3-9ff8-4531-a421-d8494f09068a)
   'index.html': '163245f58bb66b6244235cc8bf8e999280b1eb65c003be7dc62f8d6b4de1da65',

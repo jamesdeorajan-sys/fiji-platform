@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 const SRC = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8').replace(/\r/g, '');
 const FUNNEL = readFileSync(new URL('../src/funnel-nat.js', import.meta.url), 'utf8');
 const block = SRC.slice(SRC.indexOf("const NAT_ATTRIBUTION_KEY"), SRC.indexOf('// Same real, unambiguous zone list'));
@@ -82,7 +83,7 @@ test('analytics is untouched: funnel-nat.js does not read or send the booking-so
 });
 
 test('cache key: app.js is requested with a new key (4 h max-age), and that script tag is the only index.html line changed', () => {
-  const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8');
+  const html = undoRouteVehicle('index.html', readFileSync(new URL('../src/index.html', import.meta.url), 'utf8'));
   assert.equal(html.split('app.js?v=20261016-attribution').length, 2);
   assert.ok(!html.includes('app.js?v=20261012-return-draft'));
 });

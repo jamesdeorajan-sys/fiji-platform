@@ -17,7 +17,9 @@ test('cannot skip vehicle selection',()=>{const {c}=harness();c.goToStep(3);asse
 test('invalid email returns to visible contact step',()=>{const {c,fields}=harness({email:'not-an-email'});c.goToStep(4);assert.equal(c.step,3);assert.equal(c.review,undefined);assert.equal(fields.email.focused,true);});
 test('invalid phone cannot reach review',()=>{const {c}=harness({phone:'x'});c.goToStep(4);assert.equal(c.step,3);assert.equal(c.review,undefined);});
 test('valid contact reaches review',()=>{const {c}=harness();c.goToStep(4);assert.equal(c.review,true);assert.equal(c.step,4);});
-test('missing flight returns to visible trip step',()=>{const {c,fields}=harness({flightNum:''});assert.equal(c.validateArrivalFlight(),false);assert.equal(c.step,1);assert.equal(fields.flightError.hidden,false);assert.equal(fields.flightNum.focused,true);});
-test('explicit unknown flight choice permits progression',()=>{const {c,fields}=harness({flightNum:''});fields.flightUnknown.checked=true;c.goToStep(2);assert.equal(c.step,2);assert.equal(fields.flightError.hidden,true);});
+// Route-to-vehicle candidate r1 (2026-11-04): the arrival flight number is OPTIONAL. These replace the two tests that pinned the old
+// hard gate ('missing flight returns to visible trip step' / 'explicit unknown flight choice permits progression').
+test('missing flight number never blocks the vehicle step (no second checkbox needed)',()=>{const {c,fields}=harness({flightNum:''});assert.equal(c.validateArrivalFlight(),true);c.goToStep(2);assert.equal(c.step,2);assert.equal(fields.flightError.hidden,true);assert.notEqual(fields.flightNum.focused,true);});
+test('a supplied flight number still reaches the vehicle step',()=>{const {c}=harness({flightNum:'FJ411'});c.goToStep(2);assert.equal(c.step,2);});
 test('non-airport pickup does not require flight details',()=>{const {c}=harness({pickup:'HOTEL',flightNum:''});assert.equal(c.validateArrivalFlight(),true);});
 test('invalid submission never locks button or starts a request',async()=>{const {c}=harness({email:'bad'});const start=source.indexOf('async function confirmBooking()');const end=source.indexOf('\nfunction ',start);vm.runInContext(source.slice(start,end),c);await c.confirmBooking();assert.equal(c.state.confirmBookingInFlight,undefined);assert.equal(c.step,3);});

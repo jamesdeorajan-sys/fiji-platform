@@ -10,10 +10,11 @@ import { readFileSync } from 'node:fs';
 import { a11yRevert } from './a11y-p0-revert.js';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
+import { undoRouteVehicle } from './route-vehicle-revert.js'; // newest candidate on top: earlier pins describe production 9eff91b and older
 
-const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8').replace(/\r/g, '');
+const app = undoRouteVehicle('app.js', readFileSync(new URL('../src/app.js', import.meta.url), 'utf8')).replace(/\r/g, '');
 const baseFn = readFileSync(new URL('./fixtures/buildWhatsAppURL.base.js', import.meta.url), 'utf8').replace(/\r/g, '');
-const html = readFileSync(new URL('../src/index.html', import.meta.url), 'utf8').replace(/\r/g, '').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
+const html = undoRouteVehicle('index.html', readFileSync(new URL('../src/index.html', import.meta.url), 'utf8')).replace(/\r/g, '').replace('app.js?v=20261016-attribution', 'app.js?v=20261012-return-draft') /* booking-attribution candidate bumped only this key; tested in booking-attribution.test.js */;
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
 const START = 'function buildWhatsAppURL(ref) {';

@@ -489,6 +489,7 @@ function updatePricing() {
     }
   }
 
+  preselectSedanIfFits();
   setVehicleCards('vehicleCards', buildVehicleCards());
   if (panel) panel.style.display = 'block';
   if (empty) empty.style.display = 'none';
@@ -538,6 +539,23 @@ const VEHICLES = [
   { key:'minivan', icon:'🚐', name:'Minivan',  maxPax:7,  maxBags:7,  cap:'4–7 passengers',  shortName:'Private Minivan' },
   { key:'minibus', icon:'🚌', name:'Minibus',  maxPax:12, maxBags:14, cap:'8–12 passengers', shortName:'Minibus' }
 ];
+
+// Route-to-vehicle conversion candidate r1 (2026-11-04): once a route is priced, the Sedan is
+// preselected ONLY when it carries the whole party (<= 3 passengers and <= 3 bags). It never
+// overrides a choice the guest made, never picks a vehicle that does not fit (larger parties get no
+// default and choose explicitly, exactly as before), and the guest can change it with one tap. A
+// preselection that stops fitting (party grows) is dropped again so no invalid default survives.
+// This changes only which card starts selected: prices, the 10% discount and the save payload are
+// computed from state.selectedVehicle by the unchanged functions.
+function preselectSedanIfFits() {
+  const sedan = VEHICLES.find(x => x.key === 'sedan');
+  if (!sedan) return;
+  if (state.selectedVehicle === 'sedan' && state.vehicleAuto && !vehicleFits(sedan)) {
+    state.selectedVehicle = null; state.vehicleAuto = false;
+  }
+  if (state.selectedVehicle) return;
+  if (vehicleFits(sedan)) { state.selectedVehicle = 'sedan'; state.vehicleAuto = true; state.vehicleNotice = ''; }
+}
 
 // Returns true if the vehicle can carry both the passengers and the luggage
 function vehicleFits(v) {
@@ -650,6 +668,7 @@ function selectVehicle(key, el) {
   const v = VEHICLES.find(x => x.key === key);
   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
   state.selectedVehicle = key;
+  state.vehicleAuto = false;
   document.querySelectorAll('.vehicle-card').forEach(c => c.classList.remove('selected'));
   if (el) el.classList.add('selected');
   state.vehicleNotice = '';
@@ -663,6 +682,7 @@ function selectVehicleDetail(key, el) {
   const v = VEHICLES.find(x => x.key === key);
   if (v && !vehicleFits(v)) { alertCapacity(v.name, v.maxPax, v.maxBags); return; }
   state.selectedVehicle = key;
+  state.vehicleAuto = false;
   document.querySelectorAll('.vehicle-detail-card').forEach(c => c.classList.remove('selected'));
   if (el) el.classList.add('selected');
   state.vehicleNotice = '';
@@ -807,18 +827,14 @@ function validateBookingContact() {
   return true;
 }
 
+// Flight number is OPTIONAL (route-to-vehicle conversion candidate r1, 2026-11-04): it never blocks
+// the guest from reaching the vehicle step or from saving. When a guest does type one it is still
+// stored and sent exactly as before (flight_number in the booking payload, 'Flight:' line in the
+// WhatsApp text). The function name and the hidden flightUnknown/flightError elements are kept so the
+// saved-draft shape and every existing caller are unchanged.
 function validateArrivalFlight() {
-  const missing = document.getElementById('pickup')?.value === 'NAN'
-    && !document.getElementById('flightNum')?.value.trim()
-    && !document.getElementById('flightUnknown')?.checked;
   const error = document.getElementById('flightError');
-  if (error) error.hidden = !missing;
-  if (missing) {
-    showStep(1);
-    document.getElementById('flightNum')?.focus();
-    document.getElementById('flightNum')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return false;
-  }
+  if (error) error.hidden = true;
   return true;
 }
 
