@@ -1870,3 +1870,13 @@ Re-upload the previous NAT tree (production `9eff91b`; zip `nat-r1-9eff91b.zip` 
 **Rollback target (unchanged):** 0c2aee7b-7151-4393-8ffa-2456c36b94af.
 **Anomalies:** none in code or tests; the only issue is deploy-path access. No genuine post-release booking evidence (no release).
 Evidence: docs/evidence/2026-11-04-nat-r1-release/.
+
+## 2026-11-04 ~16:55 — NAT R1 post-deploy verification: RELEASE NOT LIVE (verdict UNKNOWN — INSUFFICIENT EVIDENCE; no rollback needed)
+
+Read-only check run on CEO's message that the manual Pages deployment was complete.
+- Cloudflare Pages `nadiairporttransfers` (dashboard reloaded twice): Production deployment is STILL `0c2aee7b-7151-4393-8ffa-2456c36b94af` ("10 days ago"). No new Production deployment exists. The only recent entry is the Preview `nat-r1-verify` (eda1aea6, created by the earlier verification attempt; Access-protected).
+- Live served-asset sweep of nadiairporttransfers.com against artifact-manifest-830be21.json: 42/45 match; the 3 mismatches are exactly app.js (live 38b65ab72ab7d9d3, candidate 510174d9b84e39e9), index.html (live 45032081069a615a, candidate 5a80d4138f0f41ec), funnel-nat.js (live 33884363eff3376b, candidate a3ec7d1368416a83). All three live values equal the 9eff91b baseline. i.e. production serves the PRE-release baseline.
+- Consequence: acceptance points 3-14 and the pricing/mobile comparison against R1 were NOT run on production (they would only test the old code). Backend untouched (read-only session; no D1/Worker/dispatch access made). Genuine-booking watch not applicable (no release timestamp).
+- Likely explanations (unverified): deployment not yet submitted/finished, uploaded into a different project/environment, or the Production upload failed. Rollback not applicable (nothing to roll back); rollback target remains 0c2aee7b.
+- No deploy, no change, no booking, no notification made.
+- Next: James to confirm which deployment he created (Pages > nadiairporttransfers > deployment list) or re-run the folder upload (Production, folder `nadi-airport-transfers-site\src`); then re-run this verification.
