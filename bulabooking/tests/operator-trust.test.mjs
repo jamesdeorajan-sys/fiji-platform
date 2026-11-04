@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {operatorTrustProfile,normalizeOperatorSocialLink} from '../src/lib/operator-trust.mjs';
+test('unknown verification defaults unverified',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'}).verificationLabel,'Not yet verified'));
+test('pending is not verified',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'},{verificationStatus:'pending'}).verificationLabel,'Verification in progress'));
+test('verified only from evidence',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'},{verificationStatus:'verified'}).verificationLabel,'Verified operator'));
+test('suspended cannot take bookings',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'},{verificationStatus:'suspended',bookingEligible:true}).canAcceptBooking,false));
+test('unverified can be eligible under marketplace policy',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'},{bookingEligible:true}).canAcceptBooking,true));
+test('fake booking counts ignored',()=>assert.equal(operatorTrustProfile({name:'Fiji Adventures'},{completedBookings:-5}).completedBookings,0));
+test('facebook link accepted as unverified social evidence',()=>assert.equal(normalizeOperatorSocialLink({platform:'facebook',url:'https://www.facebook.com/example'}).verification,'operator_supplied'));
+test('spoofed facebook domain rejected',()=>assert.throws(()=>normalizeOperatorSocialLink({platform:'facebook',url:'https://facebook.com.evil.test/page'})));
+test('javascript URL rejected',()=>assert.throws(()=>normalizeOperatorSocialLink({platform:'website',url:'javascript:alert(1)'})));
+test('credentials in URL rejected',()=>assert.throws(()=>normalizeOperatorSocialLink({platform:'website',url:'https://user:pass@example.com/'})));
+test('private localhost website rejected',()=>assert.throws(()=>normalizeOperatorSocialLink({platform:'website',url:'https://localhost/admin'})));
