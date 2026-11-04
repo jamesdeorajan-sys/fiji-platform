@@ -1838,3 +1838,35 @@ Re-upload the previous NAT tree (production `9eff91b`; zip `nat-r1-9eff91b.zip` 
 2. Separately: funnel Worker accepts the 8 new event names (Worker change), then flip `V2=true` in a follow-up NAT release.
 3. Decision: confirm you accept making flight number optional and preselecting Sedan (reverses 17 and 21 Sep decisions).
 4. P1 (not built): sticky/visible Continue after route selection; real-device Safari test.
+
+## 2026-11-04 — NAT Conversion R1 release attempt: HOLD AT DEPLOY STEP (all gates PASS; deploy NOT performed)
+
+**Status: NOT DEPLOYED. Production is unchanged.** Stopped at the deploy step because the only authenticated path available (Cloudflare dashboard direct upload with a zip) could not be proven to place files at the site root, and the check was blocked. Nothing was deployed to production.
+
+**Gate 1 — production state (rollback target)**
+- Pages project nadiairporttransfers, production deployment `0c2aee7b-7151-4393-8ffa-2456c36b94af`, 1:21AM 26 Oct 2026 (dashboard, Sydney), aliases nadiairporttransfers.com / www.nadiairporttransfers.com. Re-confirmed still current at ~16:40 on 4 Nov.
+- 46/46 served assets match the 9eff91b manifest. Re-checked at end of session: live app.js 38b65ab72ab7d9d3, funnel-nat.js 33884363eff3376b (baseline values). 22 /transfer/* pages return 200.
+
+**Gate 2 — differential (exact artifact = git archive 830be21 src)**
+- 47 files; changed vs baseline: app.js 38b65ab72ab7d9d3 -> 510174d9b84e39e9, index.html 45032081069a615a -> 5a80d4138f0f41ec, funnel-nat.js 33884363eff3376b -> a3ec7d1368416a83. All 44 other files byte-identical. No Worker, D1, FijiDash, BookFijiTransfers or edge file touched.
+- Unchanged by function-source byte equality (route-vehicle.test.js): calculateTotal, computePrices, formatPrice, vehicleFits, recommendedVehicle, buildVehicleCards, buildVehicleDetailCards, alertCapacity, buildBookingIntentFingerprint, submitNadiBooking, buildWhatsAppURL, confirmBooking, getNatAttributionForPayload, captureNatAttribution, validateBookingContact, goToStep, updateExtras, refreshAfterCapacityChange. V2 funnel events shipped OFF (var V2 = false).
+
+**Gate 3 — regression and mobile**
+- release-gate-route-vehicle.sh: PASS, 425/425.
+- Playwright mobile journeys against the exact artifact, 320/360/390/430 x 10 scenarios = 40: 0 JS errors, 0 horizontal overflow, 0 API POSTs, 0 flight errors, back navigation OK. Scenarios: Denarau, Coral Coast, Natadola, Momi Bay (one-way, flight omitted), return + FJ411, custom address, one-way with flight supplied, pax3/bags3 boundary, party of 5, bags 5. Sedan auto-preselected and guest-details reached in every valid case; party>3 and bags>3 get NO default and Continue stays disabled until a card is chosen. Final confirm never pressed.
+
+**Gate 4 — revert module integrity (test/route-vehicle-revert.js)**
+- Why: ~12 older tests pin exact historical production bytes of app.js/index.html/funnel-nat.js; this release intentionally changes those three files, so those pins would otherwise fail by design.
+- Runtime effect: none. Lives under test/, not src/; no src file references it; not in the Pages artifact (47 upload files).
+- Masking: it makes legacy pins compare the OLD files, so those pins say nothing about the new behaviour. New behaviour is covered separately and not through the module: route-vehicle.test.js (20), guest-flow.test.js (2 rewritten), the Playwright journeys, and the function-equality checks.
+- Experiment: with the module disabled, 16 of 425 fail, 409 pass. Every failure is a historical SCOPE/byte-identity pin; the differential shows the only differing files are the 3 intended ones. No contradiction found. Verdict: no HOLD on this gate.
+
+**Deploy attempt**
+- No authenticated wrangler or Pages-deploy API in the cloud session; used the logged-in Cloudflare dashboard (Create deployment). Zip of the exact artifact sha256 a5cdf15423fb71b2721d131a9740268d9d60171aa639a05064bf4d91714d28f7 (copy placed on James's Downloads as nat-r1-830be21.zip).
+- Dashboard listed the zip's 47 files under a top-level folder named nat-r1-830be21.zip/. Not clicked for production because root placement could not be proven. To check safely, ONE PREVIEW deployment named nat-r1-verify was created (https://nat-r1-verify.fttlandingpage.pages.dev). It is behind Cloudflare Access (sign-in page), so contents could not be inspected; no credentials were entered. Production deployment was not created. Preview left in place (deleting is permanent; James to decide).
+- No booking, no save, no D1 write, no Worker change, no notification.
+
+**To finish the deploy (James, ~2 minutes):** Cloudflare dashboard > Workers & Pages > nadiairporttransfers > Create deployment > Production > drag in the FOLDER nadi-airport-transfers-site\src from the 830be21 checkout (not a zip) > Save and deploy. Or: wrangler pages deploy src --project-name nadiairporttransfers --branch main from that folder. Then ask Claude to run the 14-point post-deploy acceptance and hash comparison against artifact-manifest-830be21.json.
+**Rollback target (unchanged):** 0c2aee7b-7151-4393-8ffa-2456c36b94af.
+**Anomalies:** none in code or tests; the only issue is deploy-path access. No genuine post-release booking evidence (no release).
+Evidence: docs/evidence/2026-11-04-nat-r1-release/.
