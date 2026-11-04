@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {pilotTours,pilotProvider,transferPartner,pilotFx,previewFjdPrice,pilotTransferReferralUrl,tourTransferReferralUrl,pilotFxFresh} from '../src/data/pilot-tours.mjs';
 
 test('pilot has four distinct real-source tours',()=>{
@@ -57,3 +58,24 @@ test('pilot inline browser script parses and HTML structure is not embedded in J
 test('only verified tour destinations receive direct booking buttons',()=>{assert.equal(pilotTours.filter(t=>t.linkStatus==='verified_destination').length,1);assert.equal(pilotTours.filter(t=>t.linkStatus==='unavailable').length,2);assert.equal(pilotTours.filter(t=>t.linkStatus==='unverified_timeout').length,1);const html=readFileSync(new URL('../src/pages/pilot/fiji-tour-transfers.astro',import.meta.url),'utf8');assert.match(html,/t.linkStatus === 'verified_destination'/);assert.match(html,/Direct tour link is under review/);});
 
 test('expired exchange-rate fallback preserves original AUD source price',()=>{const html=readFileSync(new URL('../src/pages/pilot/fiji-tour-transfers.astro',import.meta.url),'utf8');assert.match(html,/FJD estimate unavailable\. Original AUD price:/);assert.match(html,/Number\.isFinite\(aud\)&&aud>0/);});
+
+test('browser FX renderer handles fresh, expired and invalid AUD prices',()=>{
+ const html=readFileSync(new URL('../src/pages/pilot/fiji-tour-transfers.astro',import.meta.url),'utf8');
+ const script=html.match(/<script is:inline>([\s\S]*?)<\/script>/)?.[1];
+ assert.ok(script);
+ function render(now,aud){
+  const el={dataset:{aud:String(aud)},textContent:''};
+  const document={documentElement:{dataset:{pilotFxRate:String(pilotFx.rate),pilotFxAsOf:pilotFx.asOf}},querySelectorAll:()=>[el]};
+  const FakeDate=class extends Date{static now(){return Date.parse(now);}};
+  runInNewContext(script,{document,Date:FakeDate,Number,Math});
+  return el.textContent;
+ }
+ const fresh=render('2026-11-05T00:00:00Z',76);
+ assert.match(fresh,/119\.41/);
+ assert.match(fresh,/AUD 76/);
+ const expired=render('2026-11-15T00:00:00Z',76);
+ assert.doesNotMatch(expired,/119\.41/);
+ assert.match(expired,/Original AUD price: 76/);
+ const invalid=render('2026-11-05T00:00:00Z',0);
+ assert.doesNotMatch(invalid,/Approximate FJD/);
+});
