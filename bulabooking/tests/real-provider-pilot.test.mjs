@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {pilotTours,pilotProvider,transferPartner,pilotFx,previewFjdPrice,pilotTransferReferralUrl,pilotFxFresh} from '../src/data/pilot-tours.mjs';
+import {pilotTours,pilotProvider,transferPartner,pilotFx,previewFjdPrice,pilotTransferReferralUrl,tourTransferReferralUrl,pilotFxFresh} from '../src/data/pilot-tours.mjs';
 
 test('pilot has four distinct real-source tours',()=>{
  assert.equal(pilotTours.length,4);
@@ -49,3 +49,5 @@ test('NAT referral uses attributable safe HTTPS URL',()=>{const u=new URL(pilotT
 test('dated FX rate cannot remain current indefinitely',()=>{assert.equal(pilotFxFresh(new Date('2026-11-05T00:00:00Z')),true);assert.equal(pilotFxFresh(new Date('2026-11-15T00:00:00Z')),false);});
 
 test('static HTML does not render dated FJD estimates without browser validation',()=>{const html=readFileSync(new URL('../src/pages/pilot/fiji-tour-transfers.astro',import.meta.url),'utf8');assert.doesNotMatch(html,/previewFjdPrice\(t\)/);assert.match(html,/data-pilot-price/);assert.match(html,/Date\.now\(\)-observed/);});
+
+test('each tour generates distinct attributed NAT transfer link',()=>{for(const tour of pilotTours){const u=new URL(tourTransferReferralUrl(tour.slug));assert.equal(u.hostname,'nadiairporttransfers.com');assert.equal(u.searchParams.get('utm_content'),tour.slug);}assert.throws(()=>tourTransferReferralUrl('invalid-tour'));});
