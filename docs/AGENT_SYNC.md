@@ -1880,3 +1880,9 @@ Read-only check run on CEO's message that the manual Pages deployment was comple
 - Likely explanations (unverified): deployment not yet submitted/finished, uploaded into a different project/environment, or the Production upload failed. Rollback not applicable (nothing to roll back); rollback target remains 0c2aee7b.
 - No deploy, no change, no booking, no notification made.
 - Next: James to confirm which deployment he created (Pages > nadiairporttransfers > deployment list) or re-run the folder upload (Production, folder `nadi-airport-transfers-site\src`); then re-run this verification.
+
+## 2026-11-04 ~17:05 — NAT R1 post-deploy verification re-run: STILL NOT LIVE (UNKNOWN — INSUFFICIENT EVIDENCE)
+- Pages `nadiairporttransfers` dashboard (fresh load): Production remains `0c2aee7b-7151-4393-8ffa-2456c36b94af` (10 days old). No new Production deployment after it; newest entry is still Preview `nat-r1-verify` (eda1aea6, 11 min old at check).
+- Live hashes (no-store fetch): app.js 38b65ab72ab7d9d3, funnel-nat.js 33884363eff3376b, index.html 45032081069a615a = 9eff91b baseline; expected R1 510174d9b84e39e9 / a3ec7d1368416a83 / 5a80d4138f0f41ec NOT served.
+- Per instruction: stopped. 14-point acceptance, mobile/pricing and booking-watch not run. No deploy, no change, no booking, no notification, no D1/Worker access. Rollback target unchanged 0c2aee7b.
+- Open question for James: the upload he made is not visible in this account's `nadiairporttransfers` deployment list (possibly submitted to another project/account, still processing, or not saved). Please confirm via the Deployments list.
