@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ReservationEngine} from '../src/lib/reservation-engine.mjs';
+const experienceId='experience_123';
+const serviceDate='2027-01-15';
+const make=()=>{const engine=new ReservationEngine();engine.defineSlot({experienceId,serviceDate,capacity:2,priceFjdCents:12550,operatorId:'operator_a'});return engine;};
+const req=(key,guests=1)=>({experienceId,serviceDate,idempotencyKey:key,guests});
+test('pending reservation holds inventory',()=>{const e=make();const b=e.request(req('booking_request_0001'));assert.equal(b.status,'pending');assert.equal(e.availability(experienceId,serviceDate).remaining,1);});
+test('duplicate request returns same booking without double reserve',()=>{const e=make();const a=e.request(req('booking_request_0001'));const b=e.request(req('booking_request_0001'));assert.equal(a.id,b.id);assert.equal(e.availability(experienceId,serviceDate).remaining,1);});
+test('idempotency key cannot be reused with different payload',()=>{const e=make();e.request(req('booking_request_0001'));assert.throws(()=>e.request(req('booking_request_0001',2)),/conflict/);});
+test('last seat cannot be oversold',()=>{const e=make();e.request(req('booking_request_0001',2));assert.throws(()=>e.request(req('booking_request_0002')),/Insufficient/);});
+test('decline releases capacity',()=>{const e=make();const b=e.request(req('booking_request_0001',2));e.transition({bookingId:b.id,next:'declined',actor:'operator',operatorId:'operator_a'});assert.equal(e.availability(experienceId,serviceDate).remaining,2);});
+test('expired request releases capacity',()=>{const e=make();const b=e.request(req('booking_request_0001'));e.transition({bookingId:b.id,next:'expired',actor:'system'});assert.equal(e.availability(experienceId,serviceDate).remaining,2);});
+test('different operator cannot accept booking',()=>{const e=make();const b=e.request(req('booking_request_0001'));assert.throws(()=>e.transition({bookingId:b.id,next:'accepted',actor:'operator',operatorId:'operator_b'}),/Access denied/);});
+test('accepted booking retains capacity',()=>{const e=make();const b=e.request(req('booking_request_0001'));e.transition({bookingId:b.id,next:'accepted',actor:'operator',operatorId:'operator_a'});assert.equal(e.availability(experienceId,serviceDate).remaining,1);});
+test('completed booking retains capacity',()=>{const e=make();const b=e.request(req('booking_request_0001'));e.transition({bookingId:b.id,next:'accepted',actor:'operator',operatorId:'operator_a'});e.transition({bookingId:b.id,next:'completed',actor:'operator',operatorId:'operator_a'});assert.equal(e.availability(experienceId,serviceDate).remaining,1);});
+test('cannot decline twice or release twice',()=>{const e=make();const b=e.request(req('booking_request_0001'));e.transition({bookingId:b.id,next:'declined',actor:'operator',operatorId:'operator_a'});assert.throws(()=>e.transition({bookingId:b.id,next:'declined',actor:'operator',operatorId:'operator_a'}));assert.equal(e.availability(experienceId,serviceDate).remaining,2);});
