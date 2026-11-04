@@ -12,7 +12,7 @@ export async function applyOperatorAction(db,input,session,now=new Date().toISOS
  if(!db||typeof db.prepare!=='function')throw Error('Database binding required');
  const a=validateOperatorAction(input,session);
  if(!Number.isFinite(Date.parse(now)))throw Error('Invalid timestamp');
- const result=await db.prepare('UPDATE bb_bookings SET status=?,updated_at=?,last_actor_id=?,last_actor_role='operator' WHERE id=? AND operator_id=? AND status=?')
+ const result=await db.prepare("UPDATE bb_bookings SET status=?,updated_at=?,last_actor_id=?,last_actor_role='operator' WHERE id=? AND operator_id=? AND status=?")
   .bind(a.next,new Date(now).toISOString(),a.actorId,a.bookingId,a.operatorId,a.expected).run();
  if(result?.meta?.changes!==1)throw Error('Booking unavailable, not owned by operator, or already transitioned');
  // The migration's AFTER UPDATE trigger atomically records the audit event and outbox entry.
