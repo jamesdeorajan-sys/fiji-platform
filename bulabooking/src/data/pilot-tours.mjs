@@ -14,3 +14,5 @@ export function previewFjdPrice(tour){if(tour.sourceCurrency!=='AUD')throw Error
 export function pilotTransferReferralUrl(){const u=new URL(transferPartner.website);u.searchParams.set('utm_source','bulabooking');u.searchParams.set('utm_medium','referral');u.searchParams.set('utm_campaign','fiji_tour_transfers_pilot');return u.toString();}
 
 export function pilotFxFresh(now=new Date(),maxAgeDays=3){const age=now.getTime()-Date.parse(pilotFx.asOf);return Number.isFinite(age)&&age>=0&&age<=maxAgeDays*86400000;}
+
+export function tourTransferReferralUrl(slug){if(!pilotTours.some(t=>t.slug===slug))throw Error('Unknown pilot tour');const u=new URL(pilotTransferReferralUrl());u.searchParams.set('utm_content',slug);return u.toString();}
