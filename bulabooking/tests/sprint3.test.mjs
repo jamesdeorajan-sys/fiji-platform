@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {listingDraftRequest,validateAiListingDraft} from '../src/lib/ai-listing.mjs';
+import {validateBookingRequest,quoteTotalCents,publicBookingStatus} from '../src/lib/booking-contract.mjs';
+import {requireOperatorScope,requireStaffScope} from '../src/lib/operator-access.mjs';
+const facts={operator:'Fiji Guide',title:'Reef Experience',location:'Nadi',description:'Guided reef experience with local operators and a briefing.'};
+test('AI draft request excludes price invention',()=>assert.match(listingDraftRequest(facts).systemInstructions.join(' '),/Never invent prices/));
+test('AI draft requires facts',()=>assert.throws(()=>listingDraftRequest({...facts,description:'short'})));
+test('AI draft always needs review',()=>assert.equal(validateAiListingDraft({headline:'A',summary:'B',seoTitle:'C',metaDescription:'D',faq:[],missingFacts:[]}).publicationStatus,'review_required'));
+test('AI malformed response rejected',()=>assert.throws(()=>validateAiListingDraft({headline:'x'})));
+test('booking request validates idempotency',()=>assert.equal(validateBookingRequest({experienceId:'experience_123',idempotencyKey:'unique_request_12345',serviceDate:'2027-01-15',guests:2}).guests,2));
+test('invalid date rejected',()=>assert.throws(()=>validateBookingRequest({experienceId:'experience_123',idempotencyKey:'unique_request_12345',serviceDate:'2027-02-30',guests:2})));
+test('quote is integer cents',()=>assert.equal(quoteTotalCents(12550,3),37650));
+test('pending not confirmed',()=>assert.equal(publicBookingStatus('pending').confirmed,false));
+test('operator tenant isolation',()=>assert.throws(()=>requireOperatorScope({authenticated:true,userId:'u1',operatorIds:['a']},'b')));
+test('operator allowed scope',()=>assert.equal(requireOperatorScope({authenticated:true,userId:'u1',operatorIds:['a']},'a').operatorId,'a'));
+test('staff role required',()=>assert.throws(()=>requireStaffScope({authenticated:true,userId:'u1',roles:['operator']})));
