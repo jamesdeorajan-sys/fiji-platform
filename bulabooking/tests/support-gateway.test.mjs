@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {normalizeInboundSupport,planSupportHandling} from '../src/lib/support-gateway.mjs';
+import {signHmacSha256,verifyHmacSha256} from '../src/lib/webhook-signature.mjs';
+const payload={messageId:'wamid.12345678',conversationId:'conversation_123',topic:'tour_faq',text:'What is included?',consentToAi:true};
+test('normalizes valid inbound support',()=>assert.equal(normalizeInboundSupport(payload).messageId,payload.messageId));
+test('rejects missing message ID',()=>assert.throws(()=>normalizeInboundSupport({...payload,messageId:''})));
+test('rejects oversized text',()=>assert.throws(()=>normalizeInboundSupport({...payload,text:'x'.repeat(4001)})));
+test('routine consented FAQ can route to AI',()=>assert.equal(planSupportHandling(payload,{humanAvailable:true,aiConfidence:.95}).channel,'ai_assist'));
+test('missing driver urgently routes human',()=>{const p=planSupportHandling({...payload,topic:'missing_driver'},{humanAvailable:true,aiConfidence:1});assert.equal(p.channel,'human_whatsapp');assert.equal(p.priority,'urgent');});
+test('missing driver routes monitored queue if no humans available',()=>assert.equal(planSupportHandling({...payload,topic:'missing_driver'},{humanAvailable:false,aiConfidence:1}).channel,'staff_queue'));
+test('booking status requires authoritative lookup',()=>assert.equal(planSupportHandling({...payload,topic:'booking_status'},{humanAvailable:true,aiConfidence:1}).channel,'staff_queue'));
+test('support plan excludes guest message body',()=>assert.equal(Object.hasOwn(planSupportHandling(payload,{humanAvailable:true,aiConfidence:.9}),'text'),false));
+test('no availability assertion without known staffing',()=>assert.throws(()=>planSupportHandling(payload,{aiConfidence:1})));
+test('HMAC validates unmodified bytes and rejects tampering',async()=>{const secret='test_secret_at_least_16_chars';const body='{"message":"hello"}';const signature='sha256='+await signHmacSha256(secret,body);assert.equal(await verifyHmacSha256(secret,body,signature),true);assert.equal(await verifyHmacSha256(secret,body+' ',signature),false);});
+test('HMAC rejects malformed signature',async()=>assert.equal(await verifyHmacSha256('test_secret_at_least_16_chars','body','invalid'),false));
