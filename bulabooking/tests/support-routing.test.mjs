@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {routeSupport,supportDisclosure} from '../src/lib/support-routing.mjs';
+test('routine consented question may use AI',()=>assert.equal(routeSupport({topic:'tour_faq',aiConfidence:0.94,humanAvailable:true,consentToAi:true}).channel,'ai_assist'));
+test('safety always goes human',()=>assert.equal(routeSupport({topic:'safety',aiConfidence:1,humanAvailable:true,consentToAi:true}).channel,'human_whatsapp'));
+test('refund goes to queue when no human available',()=>assert.equal(routeSupport({topic:'refund',aiConfidence:1,humanAvailable:false,consentToAi:true}).channel,'staff_queue'));
+test('no AI consent routes to human',()=>assert.equal(routeSupport({topic:'tour_faq',aiConfidence:1,humanAvailable:true,consentToAi:false}).channel,'human_whatsapp'));
+test('low confidence escalates',()=>assert.equal(routeSupport({topic:'tour_faq',aiConfidence:0.5,humanAvailable:true,consentToAi:true}).channel,'human_whatsapp'));
+test('AI never confirms bookings',()=>assert.equal(routeSupport({topic:'tour_faq',aiConfidence:1,humanAvailable:true,consentToAi:true}).automatedConfirmation,false));
+test('unconfigured support never claims online',()=>assert.match(supportDisclosure({humanAvailable:true,whatsappConfigured:false}),/not confirmed/));

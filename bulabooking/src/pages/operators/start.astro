@@ -1,0 +1,30 @@
+---
+import { CATEGORIES } from '../../lib/listing.mjs';
+---
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex,nofollow"/><title>Operator listing studio | BulaBooking</title><style>
+:root{font-family:system-ui,sans-serif;color:#143238;background:#f5faf9}*{box-sizing:border-box}body{margin:0}main{max-width:900px;margin:auto;padding:30px 18px 70px}a{color:#087b73}h1{font-size:clamp(2rem,5vw,3.5rem);letter-spacing:-.035em}p{line-height:1.55;color:#4b6368}.panel{background:white;border:1px solid #d4e5e2;border-radius:18px;padding:25px;margin:22px 0}label{display:block;font-weight:650;margin:16px 0 7px}input,select,textarea{width:100%;padding:12px;border:1px solid #8ea9a7;border-radius:9px;font:inherit}textarea{min-height:130px}button{border:0;border-radius:10px;padding:15px 20px;background:#087b73;color:white;font-weight:700;cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #e99b37}#preview[hidden]{display:none}.muted{font-size:.9rem;color:#4b6368}.warning{background:#fff4d9;padding:13px;border-radius:10px}.price{font-size:1.4rem;font-weight:750;color:#087b73}#error{color:#9e2525}dl{display:grid;grid-template-columns:130px 1fr;gap:12px}dt{font-weight:700}@media(max-width:550px){dl{grid-template-columns:1fr;gap:4px}}
+</style></head><body><main><a href="/">← BulaBooking</a><h1>Create your Fiji experience listing</h1><p>Preview how a professional listing could look. This is a local drafting tool — no account is created, no data is submitted, and nothing goes live.</p><p class="warning"><strong>Prototype:</strong> Do not enter private documents, customer details or passwords. AI generation, verification and bookings are not connected.</p>
+<form id="studio" class="panel">
+<label for="operator">Your operator or business name</label><input id="operator" name="operator" maxlength="120" required autocomplete="organization" placeholder="e.g. Your Fiji Adventures"/>
+<label for="title">Experience name</label><input id="title" name="title" maxlength="120" minlength="5" required placeholder="e.g. Guided island snorkelling"/>
+<label for="location">Fiji location</label><input id="location" name="location" maxlength="120" required placeholder="e.g. Nadi, Viti Levu"/>
+<label for="category">Category</label><select id="category" name="category" required><option value="">Choose category</option>{CATEGORIES.map(c=><option value={c}>{c}</option>)}</select>
+<label for="price">Price per person (FJD)</label><input id="price" name="price" inputmode="decimal" placeholder="125.00" required/><p class="muted">Operator-supplied price only. No AI price suggestions.</p>
+<label for="description">What happens on the experience?</label><textarea id="description" name="description" minlength="30" maxlength="2500" required placeholder="Explain the itinerary, what's included, duration and any requirements."></textarea>
+<button type="submit">Create local listing preview</button><p id="error" role="alert" aria-live="polite"></p>
+</form>
+<section id="preview" class="panel" hidden aria-live="polite"><h2 id="p-title"></h2><p id="p-location"></p><p id="p-price" class="price"></p><p id="p-description" style="white-space:pre-wrap"></p><dl><dt>Operator</dt><dd id="p-operator"></dd><dt>Category</dt><dd id="p-category"></dd><dt>Listing status</dt><dd>Draft — not published</dd></dl><p class="warning">Operator verification, capacity, cancellation policy, inclusions and booking terms must be completed before publication.</p></section>
+</main><script>
+import {draftListing,formatFjd} from '../../lib/listing.mjs';
+const form=document.querySelector('#studio');
+form?.addEventListener('submit',event=>{
+ event.preventDefault();
+ const error=document.querySelector('#error');const preview=document.querySelector('#preview');
+ try{
+ const draft=draftListing(Object.fromEntries(new FormData(form).entries()));
+ const fields={'#p-title':draft.title,'#p-location':draft.location,'#p-price':formatFjd(draft.priceFjdCents)+' per person','#p-description':draft.description,'#p-operator':draft.operator,'#p-category':draft.category};
+ for(const [selector,value] of Object.entries(fields))document.querySelector(selector).textContent=value;
+ error.textContent='';preview.hidden=false;preview.scrollIntoView({behavior:'smooth',block:'start'});
+ }catch(e){preview.hidden=true;error.textContent=e.message;}
+});
+</script></body></html>

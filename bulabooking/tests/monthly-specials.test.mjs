@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {monthlySpecialState,publicSpecial} from '../src/lib/monthly-specials.mjs';
+const offer={operatorId:'operator_001',title:'November Fiji resort special',priceFjdCents:29900,priceBasis:'night',startsAt:'2026-10-31T12:00:00Z',expiresAt:'2026-11-30T11:59:59Z',stayFrom:'2026-11-01',stayUntil:'2027-01-31',publicationStatus:'approved',terms:'Subject to availability and operator confirmation.',maxOccupancy:2,timeZone:'Pacific/Fiji'};
+test('active offer can be requested',()=>assert.equal(monthlySpecialState(offer,'2026-11-05T00:00:00Z').bookable,true));
+test('expired offer cannot be requested',()=>assert.deepEqual(monthlySpecialState(offer,'2026-11-30T11:59:59Z'),{state:'expired',bookable:false,indexable:false}));
+test('future offer is not bookable',()=>assert.equal(monthlySpecialState(offer,'2026-10-01T00:00:00Z').state,'scheduled'));
+test('draft cannot be published',()=>assert.equal(monthlySpecialState({...offer,publicationStatus:'draft'},'2026-11-05T00:00:00Z').bookable,false));
+test('withdrawn cannot be published',()=>assert.equal(monthlySpecialState({...offer,publicationStatus:'withdrawn'},'2026-11-05T00:00:00Z').state,'withdrawn'));
+test('missing terms rejected',()=>assert.throws(()=>monthlySpecialState({...offer,terms:'No'})));
+test('non-FJD rate rejected',()=>assert.throws(()=>monthlySpecialState({...offer,priceFjdCents:-1})));
+test('invalid date range rejected',()=>assert.throws(()=>monthlySpecialState({...offer,stayFrom:'2027-02-01'})));
+test('published offer displays FJD and expiry',()=>{const item=publicSpecial(offer,'2026-11-05T00:00:00Z');assert.equal(item.currency,'FJD');assert.equal(item.expiresAt,offer.expiresAt);});

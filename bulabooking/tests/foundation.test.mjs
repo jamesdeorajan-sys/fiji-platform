@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {draftListing,parseFjdToCents} from '../src/lib/listing.mjs';
+import {transitionBooking,bookingMessage} from '../src/lib/booking-state.mjs';
+const fixture={operator:'Local Fiji Tours',title:'Snorkel the Reef',location:'Nadi',category:'Snorkelling',price:'125.50',description:'Guided reef snorkelling with safety briefing and equipment.'};
+test('FJD cents exact',()=>assert.equal(parseFjdToCents('125.50'),12550));
+test('invalid FJD rejected',()=>{for(const v of ['-1','1.234','1e6','NaN','10000000'])assert.throws(()=>parseFjdToCents(v))});
+test('draft never publishes or enables booking',()=>{const d=draftListing(fixture);assert.equal(d.publicationStatus,'draft');assert.equal(d.bookingStatus,'unavailable');assert.equal(d.priceFjdCents,12550)});
+test('missing operator data rejected',()=>assert.throws(()=>draftListing({...fixture,description:'short'})));
+test('operator may accept pending request',()=>assert.equal(transitionBooking({status:'pending'},'accepted','operator').status,'accepted'));
+test('guest cannot self-confirm',()=>assert.throws(()=>transitionBooking({status:'pending'},'accepted','guest')));
+test('completed booking cannot be reopened',()=>assert.throws(()=>transitionBooking({status:'completed'},'pending','operator')));
+test('accepted cancellation requires review',()=>assert.throws(()=>transitionBooking({status:'accepted'},'cancelled','guest')));
+test('pending language never claims confirmation',()=>assert.match(bookingMessage('pending'),/Not yet confirmed/));
