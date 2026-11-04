@@ -18,7 +18,7 @@ const overlap = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || 
   await new Promise((r) => srv.once('listening', r));
   const base = 'http://127.0.0.1:' + srv.address().port, browser = await chromium.launch(), out = [];
   for (const w of [320, 360, 390, 430]) {
-    const scenarios = [...ROUTES.map(([l, q]) => ({ name: 'oneway-noflight-' + l, q, ret: false, flight: '' })), { name: 'return-flight-Denarau', q: 'Hilton Fiji', ret: true, flight: 'FJ411' }, { name: 'custom-address', custom: true }, { name: 'party-of-5', q: 'Hilton Fiji', pax: 5 }];
+    const scenarios = [...ROUTES.map(([l, q]) => ({ name: 'oneway-noflight-' + l, q, ret: false, flight: '' })), { name: 'return-flight-Denarau', q: 'Hilton Fiji', ret: true, flight: 'FJ411' }, { name: 'custom-address', custom: true }, { name: 'party-of-5', q: 'Hilton Fiji', pax: 5 }, { name: 'oneway-flight-supplied', q: 'Hilton Fiji', ret: false, flight: 'FJ411' }, { name: 'boundary-3pax-3bags', q: 'Hilton Fiji', pax: 3, bags: 3 }, { name: 'bags-5', q: 'Hilton Fiji', bags: 5 }];
     for (const sc of scenarios) {
       const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
       const page = await ctx.newPage(); const blocked = [], errs = [];
@@ -33,6 +33,7 @@ const overlap = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || 
       else rec.destOpt = await pick(page, 'destination', sc.q);
       if (sc.ret) await tap(page, '.trip-btn:nth-child(2)');
       if (sc.pax) for (let i = 2; i < sc.pax; i++) { try { await tap(page, '[onclick="changePax(1)"]'); } catch (e) { rec.paxErr = String(e).slice(0, 80); } }
+      if (sc.bags) for (let i = 2; i < sc.bags; i++) { try { await tap(page, '[onclick="changeLuggage(1)"]'); } catch (e) { rec.bagErr = String(e).slice(0, 80); } }
       if (sc.flight) await page.fill('#flightNum', sc.flight);
       await page.waitForTimeout(300);
       rec.state = await page.evaluate(() => ({ pax: state.passengers, bags: state.luggage, veh: state.selectedVehicle, auto: !!state.vehicleAuto }));
@@ -51,11 +52,11 @@ const overlap = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || 
         rec.priceShown = await page.$$eval('#vehicleDetailCards .vd-price', (e) => e.map((x) => x.textContent.trim().slice(0, 18)));
         rec.chatOverlapCta2 = overlap(await geo(page, '#nextBtn2'), await geo(page, '#chatLauncher, .chat-launcher, #fijiChatBtn, [class*="chat-fab"], [class*="chat-toggle"]'));
         if (w === 390 && sc.name === 'oneway-noflight-Denarau' && SHOTS) await page.screenshot({ path: `${SHOTS}/${TAG}-390-2-vehicle-step.png` });
-        if (sc.pax) { rec.step3AfterNoTap = await page.evaluate(() => { document.getElementById('nextBtn2').click(); return document.getElementById('step3').style.display !== 'none'; }); try { await tap(page, '#vehicleDetailCards .vehicle-detail-card:not(.disabled)'); } catch (e) { rec.cardTapErr = String(e).slice(0, 80); } rec.nextBtn2AfterTap = (await geo(page, '#nextBtn2')).disabled; }
+        if (sc.pax > 3 || sc.bags > 3) { rec.step3AfterNoTap = await page.evaluate(() => { document.getElementById('nextBtn2').click(); return document.getElementById('step3').style.display !== 'none'; }); try { await tap(page, '#vehicleDetailCards .vehicle-detail-card:not(.disabled)'); } catch (e) { rec.cardTapErr = String(e).slice(0, 80); } rec.nextBtn2AfterTap = (await geo(page, '#nextBtn2')).disabled; }
         // back navigation keeps the route, then forward again and reach guest details (never confirm)
         await tap(page, '#step2 .btn-secondary'); rec.backStep1 = await page.$eval('#step1', (e) => e.style.display !== 'none'); rec.routeKept = await page.evaluate(() => destination.value + '|' + pickup.value);
         await tap(page, '#nextBtn1');
-        if (!sc.pax) { await tap(page, '#nextBtn2'); rec.step3 = await page.$eval('#step3', (e) => e.style.display !== 'none'); }
+        if (!(sc.pax > 3 || sc.bags > 3)) { await tap(page, '#nextBtn2'); rec.step3 = await page.$eval('#step3', (e) => e.style.display !== 'none'); }
         if (rec.step3) { await page.fill('#firstName', 'Test'); await page.fill('#lastName', 'Guest'); await page.fill('#email', 'test@example.com'); await page.fill('#phone', '+61400000000'); rec.detailsEntered = true; }
         if (rec.step3 && w === 390 && sc.name === 'oneway-noflight-Denarau' && SHOTS) await page.screenshot({ path: `${SHOTS}/${TAG}-390-3-guest-details.png` });
       }
