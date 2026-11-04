@@ -1616,3 +1616,49 @@ Local revalidation (all green):
 Still UNPROVEN until the remote run (unchanged): real D1 semantics/limits, true multi-isolate concurrency, remote clock vs +-3 s margins, wrangler rollback on the real account, and the real Cloudflare API response shapes consumed by snapshot.mjs (written to the documented schema, exercised only against the fake).
 
 Gate 2 remains HOLD. Awaiting final GO review.
+
+## URGENT READ-ONLY PRODUCTION HEALTH INVESTIGATION - NAT + FijiDash (Claude, observed 2026-11-04 ~04:50 UTC = 15:50 Sydney)
+Gate 1.5 remote execution PAUSED per CEO. READ-ONLY: SELECT-only D1 queries, public-page browsing, one GET /health. No deploy, no config change, no booking submitted, no message sent, no D1 mutation.
+
+CLASSIFICATION
+- NAT booking journey: HEALTHY (loads, quote, destination, vehicle, guest-details all work; live saves confirmed). Conversion friction noted below.
+- FD booking journey: HEALTHY (same checks; live saves confirmed; funnel shows zero save failures in 28 days).
+- Traffic acquisition: PARTIAL FAILURE (small base, and one referrer channel collapsed on ~21-22 Oct).
+- Conversion funnel: HEALTHY on FD; DEGRADED/UNCERTAIN on NAT homepage engine (see friction).
+- Booking-save backend: HEALTHY. Notifications: HEALTHY.
+
+EVIDENCE
+- Observed 2026-11-04 04:50 UTC. Production version: NOT independently observable from this session (v112 136d7aeb-... is ChatGPT's reading; unverified here). GET api.nadiairporttransfers.com/health = 200, service nadi-dispatch-api, db_connected true, r2_connected true, whatsapp_configured true.
+- A REAL guest booking #397 was saved at 2026-11-04 04:35:37 UTC (source bing, referrer a NAT page, route Nadi Airport > Denarau, FJD 79.56) while I was investigating - not mine. It has created > driver_broadcast_sent > admin_notification_sent > admin_short_alert_sent, admin state SENT (provider 200). Previous: #396 2026-11-03 19:00:52 UTC. Total now 389 rows.
+- Counts (UTC windows, relative to 04:34): last24h 4 / prev24h 6; last3d 16 / prev3d 14; last7d 33 / prev7d 24; last14d 57 / prev14d 80. Value (settlement FJD): 483/916; 2169/1516; 4319/3129; 7448/10890. Daily 1-16 over six weeks (typical 4-6); current gap 9.6h vs max 19.1h in 30 days and 27 gaps >9.5h: the quiet spell is within normal variance. Monthly: Sep 173, Oct 167, Nov 16 so far. This is a long-running low baseline, not a new outage.
+- Attribution (booking-level; no site column exists, so engine = client_booking_ref prefix, origin = first_referrer; unknown stays unknown):
+  last7d  : FD-engine on NAT pages 20, FD-engine referrer book.fijidash 1, FD-engine no/other referrer 3, FTT-engine (NAT homepage/legacy, no referrer) 10
+  prev7d  : 11 / 0 / 3 / 10
+  last14d : 31 / 1 / 6 / 20      prev14d: 25(approx) / 15 / 12 / 28
+  Source (attribution_source) last14d: chatgpt.com ~22, google 10, direct 12, bing 0 recorded (one bing booking since: #397), other remainder. Source capture was sparse before ~25 Oct, so older source splits are unreliable.
+  Vehicle mix last7d: sedan 19, minivan 12, minibus 2 (prev7d 14/9/1). Routes last7d: Denarau 13, Coral Coast 6, Natadola 5, Wailoaloa 3, Momi Bay 3, Pacific Harbour 2, Sonaisali 1; all pickups Nadi Airport.
+- Funnel (separate funnel D1 vakaviti-funnel-events-preview; distinct sessions; FD = platform fijidash incl. NAT route pages that embed the FD engine; NAT = platform nadi homepage engine). Weeks: last7d / prev7d / 14-21d / 21-28d
+  FD   page_view 129/121/154/137; route 103/87/119/101; vehicle 99/85/118/102; details 48/43/58/51; confirm 26/17/36/28; post_started 24/13/27/22; post_succeeded 24/13/27/22; post_failed 0/0/0/0; whatsapp_opened 23/17/33/23
+  NAT  page_view 140/146/121; route 51/48/63; vehicle 27/29/37; details 25/26/34; confirm 9/14/16; post_started 7/10/9; post_succeeded 7/10/9; post_failed 0; whatsapp 8/12/15 (route events only exist since 16 Oct)
+  First measurable decline: FD sessions whose first referrer is the fijidash site fell from about 41 and 35 sessions/week (21-28d, 14-21d ago) to 9 and 9 (last two weeks); daily about 5.5 until 20 Oct, about 1 from 22 Oct. Their conversion is unchanged (about 25%). Total FD-platform sessions stayed flat (15-25/day) because NAT-page-referred sessions rose (about 5 to 8-14/day). So the break is upstream of the booking page (traffic), not inside the journey. Funnel has no device/browser column: mobile, JS-error and ad-blocker analysis is UNKNOWN.
+- Within-journey leaks (steady, not new): NAT homepage engine loses about 47% between route and vehicle selection and about 64% between details and confirm in the last week (small n: 51 > 27 > 25 > 9). FD loses about 52% between vehicle and details and 46% between details and confirm, but 92% of confirms complete.
+- Browser journeys (desktop, no data entered, nothing submitted): NAT: homepage loads; Nadi Airport > Sheraton Denarau Villas quote FJ$45/58/81 (10% off over FJ$50); vehicle step loads; details step loads. FD: same route, identical prices; vehicle pre-selected; details loads. Differences: NAT blocks the Journey step until a flight number is entered or "I don't know my flight number yet" is ticked (FD let me through without one) and NAT shows "nothing is selected yet" until a vehicle is tapped (FD pre-selects Sedan). Pricing rendered with no API call observed (client-side), custom-address lookups use quote_requests_log (6 lookups on 3 Nov, 9 on 1 Nov - working).
+- Notifications: 57 of 57 bookings in the last 14 days have a created event, admin_notification state SENT and at least one driver broadcast SENT; zero escalations in 14 days.
+- Contamination disclosure: my browsing fired about one NAT and one FD analytics session (page_view/route/vehicle/details) around 04:43-04:47 UTC into the funnel D1. No booking rows. I did not click any confirm.
+
+FIRST BROKEN/DEGRADED BOUNDARY: traffic into the FD-referred entry (about 21-22 Oct). Nothing is broken at save, notification or pricing.
+
+RANKED LIKELY CAUSES (hypotheses, not proven)
+1. Structural: only about 35-45 booking-page sessions/day combined; at 15-25% session-to-booking the arithmetic is 4-6 bookings/day. The 14-day dip vs the prior 14 is mostly the legacy no-referrer (FTT) stream halving (28 to 20) and the fijidash-referred stream vanishing (15 to 1); the last 7 days are actually up 37% on the prior 7.
+2. Loss of the fijidash-referred channel from about 21-22 Oct: something that sent visitors from the fijidash site/links/ads stopped or changed. NOT identifiable from available data.
+3. NAT homepage engine friction (flight-number gate, nothing preselected, 24/7 wording vs FD staffed-hours wording) - plausible conversion drag, small sample.
+4. Attribution gaps (about 45 percent of funnel sessions and about 30 percent of bookings have no source/referrer), so channel attribution is understated.
+
+P0 ACTIONS (recommendations only; none executed)
+1. No emergency repair: both journeys can take bookings now and #397 proves the save and notify path. Do not deploy anything for this.
+2. CEO/ChatGPT: recall or inspect what changed around 20-22 Oct on fijidash.com (ads, links, redirects, social, bookfijitransfers redirect which first appears in last 7d with 23 sessions) - this is the only step-change in the data.
+3. Decide whether to relax the NAT flight-number gate and preselect a vehicle (parity with FD) - separate, tested change.
+4. Real-phone test of both journeys (mobile cannot be verified here) and add a device/viewport field to funnel events later.
+5. Gate 1.5 stays paused until CEO says resume.
+
+UNKNOWN: production version id independently; mobile journey; real-user JS errors/failed fetches (no logs available); ad-blocker/tracking gaps; custom-address end-to-end save; browser back/forward; success-screen wording; WhatsApp-only branch outcomes beyond whatsapp_opened counts; upstream traffic sources (Cloudflare Web Analytics, search consoles, ad spend not accessed); save-request payload not inspected statically (tool output was blocked) - evidenced instead by successful live saves and 0 funnel post failures in 28 days.
