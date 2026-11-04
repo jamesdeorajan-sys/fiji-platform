@@ -10,3 +10,5 @@ export const transferPartner={name:'Nadi Airport Transfers',website:'https://nad
 
 export const pilotFx={from:'AUD',to:'FJD',rate:1.5711719,asOf:'2026-11-04T17:00:00Z',source:'https://exchangerates.me/aud/fjd',kind:'indicative_mid_market'};
 export function previewFjdPrice(tour){if(tour.sourceCurrency!=='AUD')throw Error('Expected AUD');return Math.round(tour.sourcePrice*pilotFx.rate*100)/100;}
+
+export function pilotTransferReferralUrl(){const u=new URL(transferPartner.website);u.searchParams.set('utm_source','bulabooking');u.searchParams.set('utm_medium','referral');u.searchParams.set('utm_campaign','fiji_tour_transfers_pilot');return u.toString();}
