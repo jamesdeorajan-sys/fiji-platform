@@ -24,9 +24,7 @@ export async function saveBookingRequest(db,raw){
  SELECT ?,?,?,?,?,?,?,'FJD',?,'pending',?,? FROM bb_slots
  WHERE id=? AND operator_id=? AND listing_id=? AND price_fjd_cents * ? = ?`)
  .bind(input.id,input.idempotencyKey,input.fingerprint,input.slotId,input.operatorId,input.listingId,input.quantity,input.totalFjdCents,input.createdAt,input.createdAt,input.slotId,input.operatorId,input.listingId,input.quantity,input.totalFjdCents);
- // SQLite changes() checks immediately preceding INSERT; a failed quote/slot match aborts batch.
- const assertInsert=db.prepare(`SELECT CASE WHEN changes() != 1 THEN RAISE(ABORT,'booking_insert_failed') END`);
- // NOTE: SQLite RAISE() is only allowed inside triggers. Replace with FK-enforced dependent INSERT:
+ // The event FK causes the batch to roll back if INSERT SELECT inserted no booking.
  const event=db.prepare('INSERT INTO bb_booking_events(id,booking_id,event_type,actor_type,occurred_at) VALUES (?, ?, ?, ?, ?)')
  .bind(input.eventId,input.id,'booking_request_saved','guest',input.createdAt);
  const outbox=db.prepare('INSERT INTO bb_outbox(id,booking_id,event_type,created_at) VALUES (?,?,?,?)')
