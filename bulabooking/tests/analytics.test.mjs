@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateAnalyticsEvent,summarizeListingEvents} from '../src/lib/analytics-contract.mjs';
+import {evaluateListingVisibility} from '../src/lib/visibility-audit.mjs';
+const base={eventId:'event_0001',eventName:'listing_view',providerId:'provider_001',listingId:'listing_001',occurredAt:'2026-11-05T00:00:00Z',source:'organic_google'};
+test('valid event has canonical timestamp',()=>assert.equal(validateAnalyticsEvent(base).occurredAt,'2026-11-05T00:00:00.000Z'));
+test('unknown event name rejected',()=>assert.throws(()=>validateAnalyticsEvent({...base,eventName:'payment_captured'})));
+test('booking events require booking reference',()=>assert.throws(()=>validateAnalyticsEvent({...base,eventName:'booking_accepted'})));
+test('PII excluded from normalized analytics',()=>assert.equal(Object.hasOwn(validateAnalyticsEvent({...base,email:'guest@example.com'}),'email'),false));
+test('duplicate event IDs counted once',()=>assert.equal(summarizeListingEvents([base,base],base.providerId,base.listingId).counts.listing_view,1));
+test('provider metrics remain isolated',()=>assert.equal(summarizeListingEvents([base], 'provider_002',base.listingId).counts.listing_view,0));
+test('conversion rates reflect saved and accepted separately',()=>{const events=[base,{...base,eventId:'event_0002',eventName:'booking_request_saved',bookingId:'booking_001'},{...base,eventId:'event_0003',eventName:'booking_accepted',bookingId:'booking_001'}];const result=summarizeListingEvents(events,base.providerId,base.listingId);assert.equal(result.viewToRequestRate,1);assert.equal(result.requestToAcceptanceRate,1);});
+test('unknown visibility checks do not count as pass',()=>{const result=evaluateListingVisibility({indexable:true,canonical:false});assert.equal(result.passed,1);assert.equal(result.failed,1);assert.equal(result.unknown,10);});
+test('readiness does not imply ranking',()=>assert.match(evaluateListingVisibility({}).warning,/not a search ranking/));
