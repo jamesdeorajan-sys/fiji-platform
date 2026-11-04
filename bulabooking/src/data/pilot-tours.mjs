@@ -7,3 +7,6 @@ export const pilotTours=[
 ];
 export const pilotProvider={name:'Fiji Tour Transfers',website:'https://fijitourtransfers.com/',verification:'pilot_source_review_pending',bookingMode:'external_provider_site'};
 export const transferPartner={name:'Nadi Airport Transfers',website:'https://nadiairporttransfers.com/',affiliation:'Affiliated transfer service',bookingMode:'external_transfer_site'};
+
+export const pilotFx={from:'AUD',to:'FJD',rate:1.5711719,asOf:'2026-11-04T17:00:00Z',source:'https://exchangerates.me/aud/fjd',kind:'indicative_mid_market'};
+export function previewFjdPrice(tour){if(tour.sourceCurrency!=='AUD')throw Error('Expected AUD');return Math.round(tour.sourcePrice*pilotFx.rate*100)/100;}
