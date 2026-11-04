@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {validateOperatorAction,applyOperatorAction,listOperatorBookings} from '../src/lib/operator-booking-service.mjs';
+const session={authenticated:true,role:'operator',operatorId:'operator_001'};
+test('operator must be authenticated',()=>assert.throws(()=>validateOperatorAction({bookingId:'booking_001',action:'accept'},{...session,authenticated:false})));
+test('guest cannot accept bookings',()=>assert.throws(()=>validateOperatorAction({bookingId:'booking_001',action:'accept'},{...session,role:'guest'})));
+test('accept requires pending',()=>assert.deepEqual(validateOperatorAction({bookingId:'booking_001',action:'accept'},session).expected,'pending'));
+test('complete requires accepted',()=>assert.equal(validateOperatorAction({bookingId:'booking_001',action:'complete'},session).expected,'accepted'));
+test('unsupported action rejected',()=>assert.throws(()=>validateOperatorAction({bookingId:'booking_001',action:'refund'},session)));
+test('tenant and expected status passed to conditional update',async()=>{let args;const db={prepare:()=>({bind:(...values)=>{args=values;return {run:async()=>({meta:{changes:1}})};}})};const result=await applyOperatorAction(db,{bookingId:'booking_001',action:'accept'},session,'2026-11-05T00:00:00Z');assert.equal(result.status,'accepted');assert.deepEqual(args.slice(2),['booking_001','operator_001','pending']);});
+test('failed conditional update is not confirmation',async()=>{const db={prepare:()=>({bind:()=>({run:async()=>({meta:{changes:0}})})})};await assert.rejects(()=>applyOperatorAction(db,{bookingId:'booking_001',action:'accept'},session));});
+test('operator listing is tenant scoped and bounded',async()=>{let args;const db={prepare:()=>({bind:(...values)=>{args=values;return {all:async()=>({results:[{id:'booking_001'}]})};}})};const rows=await listOperatorBookings(db,session,{limit:10,offset:0});assert.equal(rows.length,1);assert.deepEqual(args,['operator_001',10,0]);});
+test('unbounded listing rejected',async()=>await assert.rejects(()=>listOperatorBookings({},session,{limit:10000})));
