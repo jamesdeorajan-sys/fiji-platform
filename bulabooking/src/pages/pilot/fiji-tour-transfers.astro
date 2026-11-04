@@ -54,7 +54,15 @@ a{color:#087b73}h1{font-size:clamp(2rem,5vw,3.5rem)}p{line-height:1.55;color:#50
   document.querySelectorAll('[data-pilot-price]').forEach(el=>{
     const aud=Number(el.dataset.aud);
     if(!valid||!Number.isFinite(aud)||aud<=0){
-      el.textContent='FJD estimate temporarily unavailable · Verify current price on provider website';
+      el.textContent='FJD estimate temporarily unavailable · Original source AU
+      return;
+    }
+    el.textContent='Approx. FJ$'+(Math.round(aud*rate*100)/100).toFixed(2)+' · Converted from AU$'+aud+' · Verify final price on provider website';
+  });
+})();
+</script>
+</body></html>
++(Number.isFinite(aud)&&aud>0?aud:'—')+' · Verify current price on provider website';
       return;
     }
     el.textContent='Approx. FJ$'+(Math.round(aud*rate*100)/100).toFixed(2)+' · Converted from AU$'+aud+' · Verify final price on provider website';
