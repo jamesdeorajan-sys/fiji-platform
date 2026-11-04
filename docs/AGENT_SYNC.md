@@ -1662,3 +1662,109 @@ P0 ACTIONS (recommendations only; none executed)
 5. Gate 1.5 stays paused until CEO says resume.
 
 UNKNOWN: production version id independently; mobile journey; real-user JS errors/failed fetches (no logs available); ad-blocker/tracking gaps; custom-address end-to-end save; browser back/forward; success-screen wording; WhatsApp-only branch outcomes beyond whatsapp_opened counts; upstream traffic sources (Cloudflare Web Analytics, search consoles, ad spend not accessed); save-request payload not inspected statically (tool output was blocked) - evidenced instead by successful live saves and 0 funnel post failures in 28 days.
+
+---
+
+## 2026-11-04 (Sydney ~17:00) — CEO REVENUE RECOVERY REPORT (READ-ONLY FORENSICS, 15 Oct → 4 Nov)
+
+Scope: read-only. No deploys, no D1 writes, no DNS/redirect/Cloudflare mutations, no test bookings, no notifications. Gate 1.5 remains PAUSED. Data: funnel D1 (47733821…) and nadi-marketplace-db bookings, SELECT only. Funnel NAT events exist only from 16 Oct; funnel has no device column.
+
+### ROOT CAUSE
+There is no single break around 20–22 Oct, and the booking backend is healthy (booking #397 saved 4 Nov). Three separate things explain what looked like a collapse:
+1. The "FijiDash referral collapse" is largely a measurement artefact. FijiDash (FD) landing sessions fell only about 20% (21.8/day on 5–14 Oct to 16.9/day on 28 Oct–4 Nov). The "referrer = fijidash" sessions that vanished were FD's own /transfer/* pages and ChatGPT-sourced landings, which are not an independent channel. There was a real but short dip on 21–22 Oct (FD sessions 16 and 7; conversion 10.9% for 21–27 Oct) that had recovered by 28 Oct (17.8%).
+2. The "direct" drop is relabelling. NAT bookings had zero source capture until about 21–25 Oct, so every NAT booking showed as "direct" (45 of 45 in 1–14 Oct). Direct fell from 50 to 6 because capture started working, not because guests vanished.
+3. The real, persistent decline is NAT. NAT bookings (FTT- refs) fell from about 2.8–3.2/day (Sep and 1–14 Oct) to about 1.1–1.8/day from 15 Oct onward. FD-engine bookings are roughly flat (3.3 → 4.0 → 2.0 → 3.0/day). NAT traffic is steady at about 19–20 sessions/day, so the loss is conversion after landing. Only 31–53% of NAT page sessions pick a route, and only about 56% of those reach the vehicle step, against about 99% on FD, which preselects a vehicle.
+The first measurable NAT change is 15–16 Oct, when NAT funnel instrumentation began. The NAT frontend source is not in this repo, so what shipped then is UNKNOWN. This is timing only and is not proof of causation.
+
+### WHAT BROKE OR CHANGED AROUND 20–22 OCTOBER
+Timeline (UTC, from D1):
+- 5 Oct: NAT booking spike (10 in one day). Funnel starts for FD.
+- 15–16 Oct: NAT funnel events begin. NAT bookings step down from about 3/day to about 1.5/day.
+- 19–20 Oct: FD spike of 13 bookings in two days (9 on 19 Oct), which makes the following days look worse.
+- 21 Oct: FD 16 sessions, 1 booking. 22 Oct: FD 7 sessions, NAT 12 sessions. No hour-by-hour gap, so this was a trough and not an outage. Bookings: 2 per day on 21 and 22 Oct.
+- 21–26 Oct: bookings average about 2.7/day. Recovery starts 27 Oct (6) and holds at about 4–6/day from 28 Oct.
+- 24–25 Oct: vakaviti-edge Worker created and live (v1–v10, approved by James 25 Oct). This is after the dip.
+- 25 Oct 01:10: first bookfijitransfers/redirect session.
+- 3 Nov: nadi-dispatch-api modified (unexplained; health checks passed).
+Repo history: no code commits 13–22 Oct except docs.
+
+Cause classification:
+| Suspected cause | Verdict |
+|---|---|
+| Booking backend fault | DISPROVEN (bookings flowing daily, 0 failed posts, #397 saved) |
+| vakaviti-edge Worker causing the dip | DISPROVEN (created 24 Oct, after the dip) |
+| BookFijiTransfers redirect causing the dip | DISPROVEN (first seen 25 Oct, after the dip) |
+| FD "referral collapse" being real lost traffic | DISPROVEN as a collapse (about -20% sessions); mostly internal-referrer and labelling effects (LIKELY) |
+| "Direct" collapse | PROVEN artefact (NAT capture 0/45 until about 21–25 Oct) |
+| NAT bookings halved since 15 Oct | PROVEN (observed); cause UNKNOWN |
+| NAT route→vehicle friction (no vehicle preselect; flight gate) | LIKELY (FD 99% vs NAT 56%, but small sample and source not in repo) |
+| 21–27 Oct conversion dip on FD | POSSIBLE (short, self-recovered, cause UNKNOWN) |
+| Pages deployments, DNS, redirect rules, Worker routes for 20–22 Oct | UNKNOWN (not exposed by MCP; not inspected) |
+| Search visibility, CTR, ads | UNKNOWN (no Search Console or ads data available) |
+
+### Four-period comparison (observed)
+Funnel sessions by platform (funnel starts 5 Oct for FD, 16 Oct for NAT):
+| Period | FD page sessions | FD route | FD vehicle | FD details | FD confirm | FD booked | NAT page sessions | NAT route | NAT vehicle | NAT details | NAT confirm | NAT booked |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5–14 Oct | 218 | 152 | 155 | 79 | 45 | 38 | n/a | n/a | n/a | n/a | n/a | n/a |
+| 15–20 Oct | 128 | 99 | 98 | 50 | 31 | 22 | 116 | 61 | 36 | 33 | 15 | 9 |
+| 21–27 Oct | 119 | 82 | 80 | 39 | 17 | 13 | 141 | 44 | 24 | 23 | 13 | 8 |
+| 28 Oct–4 Nov | 135 | 108 | 104 | 50 | 26 | 24 | 148 | 55 | 31 | 27 | 11 | 9 |
+
+Bookings table by engine (per day): 
+| Period | NAT | FD-engine | Total | Avg settlement (FJ$) |
+|---|---|---|---|---|
+| 1–14 Oct | 45 (3.2) | 46 (3.3) | 91 (6.5) | 130 |
+| 15–20 Oct | 11 (1.8) | 24 (4.0) | 35 (5.8) | 147 |
+| 21–27 Oct | 8 (1.1) | 14 (2.0) | 22 (3.1) | 135 |
+| 28 Oct–4 Nov | 12 (1.5) | 24 (3.0) | 36 (4.5) | 127 |
+Impressions, clicks, CTR and average position: not available (UNKNOWN).
+
+### NAT
+- Traffic health: steady, about 19–20 sessions/day. Not the problem.
+- Conversion health: page→booked about 6–8% (FD about 17%). NAT route→vehicle loss is 41–45% every period (about 56% retained), so the 47% observation is confirmed with three periods of data.
+- Friction: flight-number gate and no Sedan preselect are LIKELY contributors but UNVERIFIED in code (NAT source not in this repo). FD has near-zero route→vehicle loss because it preselects a vehicle.
+- Revenue opportunity: see below.
+
+### FIJIDASH
+- Traffic: down about 20% from early Oct; spike and trough around 19–22 Oct.
+- Conversion: healthy at about 17% page→booked (10.9% in the 21–27 Oct week). Zero failed posts.
+- The "referral collapse": FD's own /transfer/* pages and utm_source=chatgpt.com landings dominate the old referrer counts and faded; labels also changed once capture improved. Not a lost partner channel.
+
+### BOOKFIJITRANSFERS
+24 FD-platform sessions from 25 Oct 01:10 to 2 Nov (first_source=bookfijitransfers, medium=redirect), 15 of them on 31 Oct (including 4 within 11 seconds from a bing.com referrer, which looks bot-like). 2 booked (about 8%, below FD's 17%). Origin and target URL are UNKNOWN: BookFijiTransfers is a separate system outside this repo and D1. It did not exist before the dip, so it neither caused nor helped it. It is small. Attribution is not being rewritten in the data I can see; the redirect arrives tagged and is recorded.
+
+### WHAT IS NOT BROKEN
+Booking backend and D1 writes; notifications; /health; FD booking conversion; vakaviti-edge (fail-open; produced about 4 sessions, 0 bookings, in 10 days — a traffic source in its infancy, not a leak); NAT traffic volume; funnel instrumentation.
+
+### Revenue opportunity (ESTIMATES unless marked observed)
+Observed economics: average settlement about FJ$133/booking (184 bookings, 1 Oct–4 Nov).
+- A. FD traffic back to the 15–20 Oct level (21.3 vs 16.9 sessions/day, same 17% conversion): +0.75/day to +1.0/day (FD-engine 4.0 vs 3.0) = +22 to +30 bookings/month = FJ$3.0k–4.0k/month. Upper bound; the 20% gap may partly be measurement.
+- B. NAT abandonment (44% route→vehicle loss) improved by 10/20/30%: +0.12 / +0.24 / +0.35 bookings/day = +3.5 / +7.1 / +10.6 per month = FJ$470 / 940 / 1,410 per month (base 1.5 NAT bookings/day).
+- C. Both: +0.9 to +1.1 bookings/day = +26 to +33 per month = about FJ$3.5k–4.4k/month.
+These are small sample projections and are not additive with certainty.
+
+### P0 — DO NOW (max 3)
+1. NAT: preselect Sedan once a route is chosen (as FD does). Evidence: FD route→vehicle about 99% vs NAT 56%. Impact: B scenario, +3.5 to +10.6 bookings/month. Location: NAT widget source on the nadiairporttransfers.com Pages project (not in this repo — needs the NAT frontend repo or project). Test: staging preview, route → vehicle shows Sedan selected, price correct, user can change. Rollback: redeploy previous Pages build. Risk: low; upsell visibility slightly reduced.
+2. NAT: make flight number optional at the route step (collect it after guest details or via the "I don't know yet" option by default). The earlier flight-number proposal was HELD, so this needs a CEO decision. Evidence: gate is LIKELY friction but unverified in code. Impact: same bucket as action 1, not additive. Location: same NAT widget. Test: complete journey without flight; reservation still carries a flight-pending flag for the team. Rollback: redeploy. Risk: medium; operations lose flight info up front, so the team must chase it on WhatsApp.
+3. Close the unknowns that only the CEO can see (no production change): export Search Console (impressions/clicks/CTR/position) for the four periods for NAT and FD, and the Cloudflare Pages deployment history for NAT and FD for 13–23 Oct. Impact: resolves the UNKNOWN items before spending effort on the wrong fix. Risk: none.
+
+### P1 — NEXT (max 3)
+1. Identify what shipped to NAT on 15–16 Oct from Pages deployment history, then compare behaviour before and after.
+2. Add a device column and funnel steps for flight and vehicle gating to the funnel Worker so mobile friction is measurable.
+3. Document the BookFijiTransfers redirect owner/target and preserve its UTM through to FD.
+
+### DO NOT DO
+Do not rebuild or repair the booking backend; do not change DNS or the BookFijiTransfers redirect; do not remove vakaviti-edge; do not run a broad NAT redesign; do not resume Gate 1.5 until revenue work is reviewed.
+
+### CEO APPROVAL QUEUE (nothing implemented)
+1. NAT Sedan preselect (production change to NAT widget).
+2. NAT optional flight number (production change; operations impact).
+3. Provide Search Console exports and Pages deployment history (read access only).
+4. Funnel Worker: add device column (production change to funnel Worker; D1 schema change).
+
+### Limits of this investigation
+- Mobile real-journey check (Track F) was NOT achieved: the browser extension would not emulate a 390×844 or 320–360 px viewport (the window stayed at desktop width), so flight gate, vehicle selection, sticky elements, WhatsApp overlap, back navigation, custom address, return journey and guest-details entry were not tested. Desktop home page check only: hero CTA "Get instant price" visible; a chat bubble sits bottom-right (overlap with other floating elements unverified).
+- NAT widget source is not in this repo, so friction findings rest on funnel data.
+- Origin of bookfijitransfers redirect, Pages/DNS/redirect history, search and ad data: UNKNOWN.
+- My own test sessions added about one NAT and one FD funnel session earlier today.
