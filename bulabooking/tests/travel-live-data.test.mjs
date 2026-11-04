@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {weatherSnapshot,fxSnapshot,convertIndicativeFjd,FIJI_PLACES} from '../src/lib/travel-live-data.mjs';
+test('three Fiji locations configured',()=>assert.equal(FIJI_PLACES.length,3));
+test('unapproved weather source never shown live',()=>assert.equal(weatherSnapshot({observedAt:'2026-11-05T00:00:00Z',temperatureC:28,windKmh:10}).status,'unavailable'));
+test('approved fresh weather is current',()=>assert.equal(weatherSnapshot({observedAt:'2026-11-05T00:00:00Z',temperatureC:28,windKmh:10},{now:'2026-11-05T00:15:00Z',licensed:true}).status,'current'));
+test('old weather is stale',()=>assert.equal(weatherSnapshot({observedAt:'2026-11-04T00:00:00Z',temperatureC:28,windKmh:10},{now:'2026-11-05T00:15:00Z',licensed:true}).status,'stale'));
+test('bad weather values rejected',()=>assert.equal(weatherSnapshot({observedAt:'2026-11-05T00:00:00Z',temperatureC:NaN,windKmh:10},{now:'2026-11-05T00:15:00Z',licensed:true}).status,'unavailable'));
+test('fresh FJD currency quote is indicative',()=>assert.equal(fxSnapshot({base:'FJD',quote:'AUD',rate:0.7,date:'2026-11-04'},{now:'2026-11-05T00:00:00Z'}).status,'indicative'));
+test('stale FX rate not usable',()=>assert.equal(fxSnapshot({base:'FJD',quote:'AUD',rate:0.7,date:'2026-10-01'},{now:'2026-11-05T00:00:00Z'}).status,'stale'));
+test('currency quote cannot use another base',()=>assert.equal(fxSnapshot({base:'USD',quote:'AUD',rate:0.7,date:'2026-11-04'},{now:'2026-11-05T00:00:00Z'}).status,'unavailable'));
+test('convert only fresh indicative quotes',()=>assert.equal(convertIndicativeFjd(100,{status:'indicative',rate:0.7}),70));
+test('reject stale conversion',()=>assert.throws(()=>convertIndicativeFjd(100,{status:'stale',rate:0.7})));
