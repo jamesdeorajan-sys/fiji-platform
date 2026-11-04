@@ -1,0 +1,578 @@
+[
+ {
+  "w": 320,
+  "route": "Denarau",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "HILTON_DENARAU",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2104,
+   "bottom": 2162,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1096,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2036,
+   "bottom": 2094,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 320,
+  "route": "CoralCoast",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "OUTRIGGER_FIJI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2104,
+   "bottom": 2162,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1096,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2059,
+   "bottom": 2117,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 320,
+  "route": "Natadola",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "INTERCONTINENTAL_NATADOLA",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2132,
+   "bottom": 2190,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1096,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2059,
+   "bottom": 2117,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 320,
+  "route": "Momi",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "MARRIOTT_MOMI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2137,
+   "bottom": 2195,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1096,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2095,
+   "bottom": 2153,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 360,
+  "route": "Denarau",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "HILTON_DENARAU",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2058,
+   "bottom": 2116,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1075,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2024,
+   "bottom": 2082,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 360,
+  "route": "CoralCoast",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "OUTRIGGER_FIJI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2058,
+   "bottom": 2116,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1075,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2047,
+   "bottom": 2105,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 360,
+  "route": "Natadola",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "INTERCONTINENTAL_NATADOLA",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2086,
+   "bottom": 2144,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1075,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2047,
+   "bottom": 2105,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 360,
+  "route": "Momi",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "MARRIOTT_MOMI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1916,
+   "bottom": 1974,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1217,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2047,
+   "bottom": 2105,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 390,
+  "route": "Denarau",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "HILTON_DENARAU",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1895,
+   "bottom": 1953,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 1985,
+   "bottom": 2043,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 390,
+  "route": "CoralCoast",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "OUTRIGGER_FIJI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 2037,
+   "bottom": 2095,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1036,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2008,
+   "bottom": 2066,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 390,
+  "route": "Natadola",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "INTERCONTINENTAL_NATADOLA",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1895,
+   "bottom": 1953,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2008,
+   "bottom": 2066,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 390,
+  "route": "Momi",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "MARRIOTT_MOMI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1895,
+   "bottom": 1953,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 2008,
+   "bottom": 2066,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 430,
+  "route": "Denarau",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "HILTON_DENARAU",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1867,
+   "bottom": 1908,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 1965,
+   "bottom": 2006,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 430,
+  "route": "CoralCoast",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "OUTRIGGER_FIJI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1867,
+   "bottom": 1908,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 1989,
+   "bottom": 2030,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 430,
+  "route": "Natadola",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "INTERCONTINENTAL_NATADOLA",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1895,
+   "bottom": 1936,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 1989,
+   "bottom": 2030,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ },
+ {
+  "w": 430,
+  "route": "Momi",
+  "tag": "before",
+  "pickupOptionFound": true,
+  "optionFound": true,
+  "destValue": "MARRIOTT_MOMI",
+  "pickupValue": "NAN",
+  "cta1_beforeScroll": {
+   "top": 1867,
+   "bottom": 1908,
+   "vh": 844,
+   "disabled": false,
+   "display": "flex"
+  },
+  "scrollY_afterRoute": 1178,
+  "step2Visible": false,
+  "flightErrorVisible": true,
+  "flightNumValue": "",
+  "step2AfterUnknownTick": true,
+  "selectedVehicleAtStep2": null,
+  "cta2": {
+   "top": 1989,
+   "bottom": 2030,
+   "vh": 844,
+   "disabled": true,
+   "display": "flex"
+  },
+  "vehicleHint": "Tap a vehicle to choose it. ★ Recommended is only a suggestion — nothing is sele",
+  "funnel": [
+   "booking_page_view",
+   "route_selected"
+  ],
+  "blockedRequests": 2,
+  "jsErrors": []
+ }
+]

@@ -1768,3 +1768,73 @@ Do not rebuild or repair the booking backend; do not change DNS or the BookFijiT
 - NAT widget source is not in this repo, so friction findings rest on funnel data.
 - Origin of bookfijitransfers redirect, Pages/DNS/redirect history, search and ad data: UNKNOWN.
 - My own test sessions added about one NAT and one FD funnel session earlier today.
+
+---
+
+## 2026-11-04 (Sydney ~17:45) — NAT ROUTE→VEHICLE: ROOT CAUSE + ISOLATED CANDIDATE (NOT DEPLOYED)
+
+Gate 1.5 remains PAUSED. No production change, deploy, booking, notification or D1 write. Candidate branch `ceo/nat-route-vehicle-conversion-r1` @ `830be21a4e14c536e43941632eafd9dfff8a882d` (pushed). Evidence: `docs/evidence/2026-11-04-nat-route-vehicle/`.
+
+### 1. Authoritative NAT source (PROVEN)
+- Repository: local clone `/home/claude/nat0de` (the NAT working repo; lineage includes fiji-platform up to `33882eb`; the 93 later NAT commits touch only `nadi-airport-transfers-site/`). Branch `ceo/nat-search-growth-r1`, commit `9eff91b` (2026-10-26).
+- Why the earlier investigation did not find it: `fiji-platform` `origin/main` only has NAT source to `4c2aec1`/Oct 5. NAT releases since 5 Oct were uploaded to Cloudflare Pages by hand from release trees and were labelled "LOCAL ONLY" in git, so they were never on GitHub.
+- Correspondence evidence (read from the LIVE site on 2026-11-04 16:10 via the browser, raw-byte SHA-256 vs `git show 9eff91b`): app.js `38b65ab7…`, styles.css `2df99123…`, booking-extras.js `e8aef0ce…`, booking-extras.css `5da6759b…`, fiji-pickup.js `9ac0ea0e…`, funnel-nat.js `33884363…`, chat-widget.js `e8a3891f…`, route-handoff.js `8d7f90cc…`, sitemap.xml `00bdb9aa…`, robots.txt `2b6dbb08…` ALL byte-identical; index.html identical after removing the Cloudflare-injected analytics beacon (`45032081069a615a`). 10 of 10 served assets + the home page match. Production deployment ID itself was NOT observed (no token).
+- FijiDash comparison source: tree `996d7be`; live FD app.js `8ecb2b67…` and styles.css `f1e71e2a…` are byte-identical to it.
+- Baseline before my edits: `node --test test/*.test.js` = 405/405 pass at `9eff91b`.
+
+### 2. Root cause of the route→vehicle loss
+Reproduced in real Chromium at 320/360/390/430 px × 4 routes (Denarau, Coral Coast, Natadola, Momi) = 16/16 runs, production-equivalent source, all network blocked.
+1. FIRST BLOCKING POINT (reproduced 16/16): on a pickup at Nadi Airport, the first tap on "Continue to vehicle selection" with the flight field empty does NOT continue. `validateArrivalFlight()` (introduced 2026-09-17) stops, shows the message in plain unstyled text, focuses the flight box and scrolls back up. The guest must tick "I don't know my flight number yet" and then scroll about 1,000 px back down to find Continue again. FijiDash has no such gate (soft prompt at the very end only).
+2. SECOND GATE: step 2 starts with nothing selected and its Continue button disabled until a card is tapped ("nothing is selected yet", explicit-choice design from 2026-09-21). FijiDash auto-selects the recommended vehicle the moment prices render.
+3. MEASUREMENT CAVEAT (important): `vehicle_selected` on NAT fires only on an explicit card tap; there is no "vehicle step viewed" event. FijiDash's 99% is largely an automatic event (vehicle auto-selected). So 56% vs 99% is NOT like for like; NAT's 44% includes guests who reached step 2 and did not tap, guests stopped at the flight gate, and guests who never pressed Continue. Existing telemetry cannot split those. The candidate adds events that can.
+4. NOT a difference: scroll distance. After choosing a route the Continue button is about 1,900 px below the fold on BOTH sites (NAT 1,867–2,137 px; FD 1,884–2,292 px). The price panel only appears after the same long form on both. Not proven to matter; deferred (P1).
+5. Not found: no JavaScript errors, no layout overflow at any width, route selection through the typeahead works on mobile Chromium at all four widths (the 15–16 Oct accessibility change did not break it in Chromium; Safari/WebKit NOT tested).
+6. The gates are old (17 and 21 Sep) while NAT bookings stepped down from about 2.8–3.2/day to about 1.1–1.8/day on 15–16 Oct. So the gates cap NAT conversion but do NOT by themselves explain the 15 Oct step-down; that remains UNKNOWN (accessibility release, funnel script and traffic mix all landed 15–16 Oct). Do not claim otherwise.
+7. Ops risk of an optional flight: only 3 of 31 NAT bookings (10%) and 5 of 62 FD bookings (8%) since 15 Oct had no flight number, and FD already allows it; most guests supply one.
+
+### 3. Candidate (3 files, smallest safe change)
+- `app.js`: `validateArrivalFlight()` never blocks (kept as a function so every caller and saved drafts are unchanged); new `preselectSedanIfFits()` called once in `updatePricing()`; two `state.vehicleAuto=false` lines on explicit taps.
+  - Sedan is preselected ONLY if passengers ≤ 3 and bags ≤ 3. 4+ passengers or 4+ bags: nothing preselected, guest chooses as today. A guest's own choice is never overridden. An auto-selected Sedan is dropped if the party grows past capacity. One tap changes it.
+- `index.html`: "Flight number — optional", "You can send this later if you don't have it yet.", the second checkbox hidden (element kept for draft compatibility), two cache keys bumped (`app.js?v=20261104-route-vehicle`, `funnel-nat.js?v=20261104-funnel-v2off`).
+- `funnel-nat.js`: measurement-plan events behind `var V2 = false` (OFF; production behaviour identical).
+- Deliberately NOT changed: pricing, 10% discount, VEHICLES capacity table, save payload, `flight_number` storage, idempotency, attribution, hand-off, retry, Worker, D1, notifications, styles, route pages, chat widget. Scroll distance / sticky Continue deferred (not proven).
+
+### 4. Tests
+- Full suite: 425/425 pass (405 existing + 20 new). `release-gate-route-vehicle.sh`: PASS (exactly app.js, funnel-nat.js, index.html differ from `9eff91b`; every other upload file byte-identical; no Worker or other site touched).
+- New `test/route-vehicle.test.js` (20): no-flight guest reaches step 2 in one tap; flight guest still works; hidden checkbox path still works; non-airport pickup unaffected; markup wording; Sedan preselect for 1–3 pax/≤3 bags; no default for 4+ pax or 4+ bags (7 cases); guest choice never overridden; auto-Sedan dropped/restored on party change; pricing, discount, capacity, payload, fingerprint, WhatsApp, attribution, confirm code byte-identical to production; app.js differs from production only in the 3 named places; index.html only in flight markup + 2 cache keys; V2 OFF = identical events to production for the same journey; V2 ON = the 8 plan events once each, in order, no guest data.
+- Older release pins were wired through `test/route-vehicle-revert.js` (fixtures of 9eff91b) as every earlier release did; one behaviour test pair in `guest-flow.test.js` that pinned the old hard gate was replaced.
+- Real-browser journey (`test/journey/route-vehicle-journey.cjs`, 28 scenarios = 4 widths × [4 routes one-way without flight, return with flight, custom address, party of 5]): 0 anomalies. Every scenario reached the vehicle step in one tap with no error; Sedan preselected where it fits; party of 5 has no default and Continue stays disabled until a card is tapped; back navigation keeps the route; guest details enterable; 0 JS errors; 0 horizontal overflow; confirm never pressed; every non-local request aborted. Chat launcher overlap NOT re-measured (existing `chat-clearance` tests pass, file unchanged).
+- Before/after at 390 px (screenshots in the evidence folder): before = blocked with flight message, nothing selected at step 2; after = step 2 with "Selected: Private Sedan. Continue when you're ready." and FJ$49 shown for Nadi Airport→Hilton.
+
+### 5. Behavioural diff NAT vs FijiDash, ranked by likely conversion impact
+1. Hard flight gate at first Continue (NAT) vs none (FD) — HIGH, reproduced.
+2. No vehicle default and disabled step-2 Continue (NAT) vs auto-select (FD) — MEDIUM-HIGH, reproduced.
+3. Event semantics (explicit tap vs automatic) — large effect on the reported 56% vs 99%; not a guest effect.
+4. Error message unstyled (plain text) at the gate — LOW (disappears with the gate).
+5. Taps/fields otherwise equivalent; Continue ~1,900 px below fold on both — NEUTRAL.
+
+### 6. Expected conversion impact (ESTIMATES; small sample, NAT P4 funnel: about 7 route sessions/day, vehicle 3.9/day, 9 bookings in 8 days; table average 1.5 NAT bookings/day; FJ$133 average settlement)
+- Reaching step 2 at 70% / 80% of route-selected (from the 56% explicit-tap baseline): vehicle-step volume +25% / +43%; at an unchanged 29% vehicle→booking rate: about +0.3 to +0.4 / +0.5 to +0.6 bookings/day = +9 to +11 / +14 to +19 per month = about FJ$1.2k–1.5k / 1.9k–2.6k per month. Confidence LOW–MEDIUM: assumes the extra guests convert like today's; the 56% is not a step-view rate.
+
+### 7. Measurement plan (built, OFF; do not activate in this task)
+Events (V2): route_selected (existing), journey_details_open (first interaction with date/time/flight/pax/trip type), journey_details_complete (step 2 shown after Continue), vehicle_step_viewed (step 2 visible), vehicle_selected (explicit tap, existing), guest_details_open (step 3), save_attempt (confirm pressed), save_success (booking saved). PRIMARY KPI: vehicle_step_viewed ÷ route_selected (new definition; the 56% baseline is the old explicit-tap rate, so the like-for-like pre-release comparator is route→journey_details_complete after V2 goes on, and bookings/day).
+- Pre-requisite: the funnel Worker `vakaviti-funnel-events-preview` ALLOWED_EVENTS does not list the new names; it must accept them first (separate approval) and `V2` set to true in the release.
+- NOTE: once Sedan is preselected the explicit `vehicle_selected` count will FALL by design; do not read that as harm.
+- 24 h (about 7 route sessions: safety only): no JS error, booking_post_failed 0, step-2 reached by ≥ 56% of route_selected, bookings still arriving, no wrong-vehicle complaint.
+- 72 h (about 20 sessions): vehicle_step_viewed ÷ route_selected ≥ 65%; no rise in bookings flagged for wrong vehicle.
+- 7 d (about 50 sessions): ≥ 70% (target), ≥ 80% (stretch); NAT bookings ≥ 1.8/day (from 1.5). Rollback trigger: any of the safety conditions fails, or the step-view rate is below baseline at 72 h.
+- Sample sizes are small: judge on 7-day totals, not single days.
+
+### 8. Rollback
+Re-upload the previous NAT tree (production `9eff91b`; zip `nat-r1-9eff91b.zip` kept in the release scratch) or use Cloudflare Pages → `nadiairporttransfers` → Deployments → previous deployment → Rollback. Record the current production deployment ID before release (NOT observed here). Revert is 3 files; the release gate and tests prove the delta.
+
+### 9. Risks / things for the CEO to decide
+- Reverses two deliberate decisions: hard flight gate (Sep 17) and "nothing preselected" (Sep 21: "never silently substitute the recommended vehicle"). Mitigation: preselect only when valid, visible "Selected: Private Sedan", price shown, confirmation step unchanged, one tap to change.
+- Dispatch will see more bookings without a flight number (about 10% today; FD already allows it).
+- Not tested: Safari/WebKit and real phones; slow network; keyboard-open effects; chat-launcher overlap re-measurement.
+
+### CEO APPROVAL QUEUE (nothing deployed)
+1. Release NAT candidate `830be21` (3 files) to production, after you record the current Pages deployment ID. Requires explicit GO and the release gate.
+2. Separately: funnel Worker accepts the 8 new event names (Worker change), then flip `V2=true` in a follow-up NAT release.
+3. Decision: confirm you accept making flight number optional and preselecting Sedan (reverses 17 and 21 Sep decisions).
+4. P1 (not built): sticky/visible Continue after route selection; real-device Safari test.

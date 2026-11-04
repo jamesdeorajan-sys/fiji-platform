@@ -1,0 +1,1458 @@
+[
+ {
+  "w": 320,
+  "scenario": "oneway-noflight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2279,
+   "bottom": 2337,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1123,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1768,
+   "bottom": 1826,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "oneway-noflight-CoralCoast",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2279,
+   "bottom": 2337,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1123,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1741,
+   "bottom": 1799,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$129 FJ$116You s",
+   "FJ$159 FJ$143You s",
+   "FJ$199 FJ$179You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "OUTRIGGER_FIJI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "oneway-noflight-Natadola",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2307,
+   "bottom": 2365,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1127,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1737,
+   "bottom": 1795,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$179 FJ$161You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "INTERCONTINENTAL_NATADOLA|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "oneway-noflight-Momi",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2312,
+   "bottom": 2370,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1183,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1717,
+   "bottom": 1775,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$175.92 FJ$157.9"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "MARRIOTT_MOMI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "return-flight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2096,
+   "bottom": 2154,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1149,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1715,
+   "bottom": 1773,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$95 FJ$85You sav",
+   "FJ$130 FJ$117You s",
+   "FJ$185 FJ$166You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "custom-address",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2712,
+   "bottom": 2770,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1251,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1657,
+   "bottom": 1715,
+   "left": 45,
+   "right": 245,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$40",
+   "FJ$65 FJ$58You sav",
+   "FJ$85 FJ$76You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "CUSTOM_DEST|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 320,
+  "scenario": "party-of-5",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 5,
+   "bags": 2,
+   "veh": null,
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 1818,
+   "bottom": 1876,
+   "left": 25,
+   "right": 225,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1123,
+  "step2Veh": null,
+  "cta2": {
+   "top": 1738,
+   "bottom": 1796,
+   "left": 45,
+   "right": 245,
+   "disabled": true
+  },
+  "hint": "Your Sedan can't carry 4 passengers. Please choose another vehicle.",
+  "cardsSelected": 0,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "step3AfterNoTap": false,
+  "nextBtn2AfterTap": false,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "vehicle_selected"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "oneway-noflight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2229,
+   "bottom": 2287,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1170,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1679,
+   "bottom": 1737,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "oneway-noflight-CoralCoast",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2229,
+   "bottom": 2287,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1170,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1702,
+   "bottom": 1760,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$129 FJ$116You s",
+   "FJ$159 FJ$143You s",
+   "FJ$199 FJ$179You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "OUTRIGGER_FIJI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "oneway-noflight-Natadola",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2257,
+   "bottom": 2315,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1175,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1697,
+   "bottom": 1755,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$179 FJ$161You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "INTERCONTINENTAL_NATADOLA|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "oneway-noflight-Momi",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2229,
+   "bottom": 2287,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1170,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1702,
+   "bottom": 1760,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$175.92 FJ$157.9"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "MARRIOTT_MOMI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "return-flight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2047,
+   "bottom": 2105,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1143,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1729,
+   "bottom": 1787,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$95 FJ$85You sav",
+   "FJ$130 FJ$117You s",
+   "FJ$185 FJ$166You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "custom-address",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2547,
+   "bottom": 2605,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1224,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1687,
+   "bottom": 1745,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$40",
+   "FJ$65 FJ$58You sav",
+   "FJ$85 FJ$76You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "CUSTOM_DEST|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 360,
+  "scenario": "party-of-5",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 5,
+   "bags": 2,
+   "veh": null,
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 1768,
+   "bottom": 1826,
+   "left": 45,
+   "right": 285,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1170,
+  "step2Veh": null,
+  "cta2": {
+   "top": 1679,
+   "bottom": 1737,
+   "left": 45,
+   "right": 285,
+   "disabled": true
+  },
+  "hint": "Your Sedan can't carry 4 passengers. Please choose another vehicle.",
+  "cardsSelected": 0,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "step3AfterNoTap": false,
+  "nextBtn2AfterTap": false,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "vehicle_selected"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "oneway-noflight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2208,
+   "bottom": 2266,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 953,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1856,
+   "bottom": 1914,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "oneway-noflight-CoralCoast",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2208,
+   "bottom": 2266,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1160,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1673,
+   "bottom": 1731,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$129 FJ$116You s",
+   "FJ$159 FJ$143You s",
+   "FJ$199 FJ$179You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "OUTRIGGER_FIJI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "oneway-noflight-Natadola",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2208,
+   "bottom": 2266,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1160,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1673,
+   "bottom": 1731,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$179 FJ$161You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "INTERCONTINENTAL_NATADOLA|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "oneway-noflight-Momi",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2208,
+   "bottom": 2266,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1160,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1673,
+   "bottom": 1731,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$175.92 FJ$157.9"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "MARRIOTT_MOMI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "return-flight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2026,
+   "bottom": 2084,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1191,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1642,
+   "bottom": 1700,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$95 FJ$85You sav",
+   "FJ$130 FJ$117You s",
+   "FJ$185 FJ$166You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "custom-address",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2526,
+   "bottom": 2584,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1154,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1655,
+   "bottom": 1713,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$40",
+   "FJ$65 FJ$58You sav",
+   "FJ$85 FJ$76You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "CUSTOM_DEST|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 390,
+  "scenario": "party-of-5",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 5,
+   "bags": 2,
+   "veh": null,
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 1747,
+   "bottom": 1805,
+   "left": 45,
+   "right": 315,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1216,
+  "step2Veh": null,
+  "cta2": {
+   "top": 1649,
+   "bottom": 1707,
+   "left": 45,
+   "right": 315,
+   "disabled": true
+  },
+  "hint": "Your Sedan can't carry 4 passengers. Please choose another vehicle.",
+  "cardsSelected": 0,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "step3AfterNoTap": false,
+  "nextBtn2AfterTap": false,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "vehicle_selected"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "oneway-noflight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2155,
+   "bottom": 2196,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1100,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1709,
+   "bottom": 1750,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "oneway-noflight-CoralCoast",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2155,
+   "bottom": 2196,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1149,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1684,
+   "bottom": 1725,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$129 FJ$116You s",
+   "FJ$159 FJ$143You s",
+   "FJ$199 FJ$179You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "OUTRIGGER_FIJI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "oneway-noflight-Natadola",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2183,
+   "bottom": 2224,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1154,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1679,
+   "bottom": 1720,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$179 FJ$161You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "INTERCONTINENTAL_NATADOLA|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "oneway-noflight-Momi",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2155,
+   "bottom": 2196,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1149,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1684,
+   "bottom": 1725,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$99 FJ$89You sav",
+   "FJ$149 FJ$134You s",
+   "FJ$175.92 FJ$157.9"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "MARRIOTT_MOMI|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "return-flight-Denarau",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2000,
+   "bottom": 2041,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1185,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1648,
+   "bottom": 1689,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$95 FJ$85You sav",
+   "FJ$130 FJ$117You s",
+   "FJ$185 FJ$166You s"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "custom-address",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 2,
+   "bags": 2,
+   "veh": "sedan",
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 2500,
+   "bottom": 2541,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1208,
+  "step2Veh": "sedan",
+  "cta2": {
+   "top": 1601,
+   "bottom": 1642,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "hint": "Selected: Private Sedan. Continue when you're ready.",
+  "cardsSelected": 1,
+  "priceShown": [
+   "FJ$40",
+   "FJ$65 FJ$58You sav",
+   "FJ$85 FJ$76You sav"
+  ],
+  "chatOverlapCta2": null,
+  "backStep1": true,
+  "routeKept": "CUSTOM_DEST|NAN",
+  "step3": true,
+  "detailsEntered": true,
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "details_opened"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ },
+ {
+  "w": 430,
+  "scenario": "party-of-5",
+  "tag": "after",
+  "destOpt": true,
+  "state": {
+   "pax": 5,
+   "bags": 2,
+   "veh": null,
+   "auto": true
+  },
+  "panel": "block",
+  "cta1": {
+   "top": 1694,
+   "bottom": 1735,
+   "left": 45,
+   "right": 355,
+   "disabled": false
+  },
+  "step2": true,
+  "flightErr": false,
+  "scrollY": 1149,
+  "step2Veh": null,
+  "cta2": {
+   "top": 1660,
+   "bottom": 1701,
+   "left": 45,
+   "right": 355,
+   "disabled": true
+  },
+  "hint": "Your Sedan can't carry 4 passengers. Please choose another vehicle.",
+  "cardsSelected": 0,
+  "priceShown": [
+   "FJ$49",
+   "FJ$69 FJ$62You sav",
+   "FJ$99 FJ$89You sav"
+  ],
+  "chatOverlapCta2": null,
+  "step3AfterNoTap": false,
+  "nextBtn2AfterTap": false,
+  "backStep1": true,
+  "routeKept": "HILTON_DENARAU|NAN",
+  "hOverflow": false,
+  "funnel": [
+   "booking_page_view",
+   "route_selected",
+   "vehicle_selected"
+  ],
+  "blocked": 2,
+  "apiPosts": 0,
+  "js": []
+ }
+]
