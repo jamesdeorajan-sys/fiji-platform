@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {prepareAccommodationSubmission,approveAccommodationSubmission,draftAccommodationPromotionBrief} from '../src/lib/accommodation-submissions.mjs';
+const session={authenticated:true,role:'operator',operatorId:'operator_001',actorId:'person_001'};
+const input={operatorId:'operator_001',title:'November beachfront accommodation offer',propertyName:'Sample property',roomType:'Garden room',location:'Nadi',cancellationTerms:'Cancellation conditions are shown by the provider.',priceFjdCents:29900,priceBasis:'night',startsAt:'2026-11-01T00:00:00+12:00',expiresAt:'2026-12-01T00:00:00+12:00',stayFrom:'2026-11-01',stayUntil:'2027-01-31',terms:'Subject to availability and confirmation by property.',maxOccupancy:2,timeZone:'Pacific/Fiji',bookingUrl:'https://hotel.example/book',approvedBookingOrigin:'https://hotel.example'};
+test('operator can submit draft only',()=>assert.equal(prepareAccommodationSubmission(input,session).offer.publicationStatus,'draft'));
+test('cross-tenant submission rejected',()=>assert.throws(()=>prepareAccommodationSubmission({...input,operatorId:'operator_999'},session)));
+test('operator cannot self approve',()=>assert.throws(()=>prepareAccommodationSubmission({...input,publicationStatus:'approved'},session)));
+test('unverified external domain rejected',()=>assert.throws(()=>prepareAccommodationSubmission({...input,bookingUrl:'https://other.example/book'},session)));
+test('staff approval requires all checks',()=>assert.throws(()=>approveAccommodationSubmission(prepareAccommodationSubmission(input,session),{authenticated:true,role:'staff',actorId:'person_002'})));
+test('approved offer requires staff and verification',()=>assert.equal(approveAccommodationSubmission(prepareAccommodationSubmission(input,session),{authenticated:true,role:'staff',actorId:'person_002'},{bookingOriginVerified:true,claimsVerified:true,termsVerified:true}).offer.publicationStatus,'approved'));
+test('AI brief contains only supplied facts',()=>assert.equal(draftAccommodationPromotionBrief(prepareAccommodationSubmission(input,session)).facts.priceFjdCents,29900));
