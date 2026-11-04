@@ -1,5 +1,6 @@
 name: BulaBooking foundation checks
 on:
+  workflow_dispatch:
   push:
     branches:
       - codex/bulabooking-marketplace-foundation
