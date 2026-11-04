@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {pilotTours,pilotProvider,transferPartner} from '../src/data/pilot-tours.mjs';
+import {pilotTours,pilotProvider,transferPartner,pilotFx,previewFjdPrice} from '../src/data/pilot-tours.mjs';
 
 test('pilot has four distinct real-source tours',()=>{
  assert.equal(pilotTours.length,4);
@@ -32,12 +32,14 @@ test('NAT affiliation is disclosed',()=>{
 test('pilot page stays noindex with external booking and disclaimer',()=>{
  const html=readFileSync(new URL('../src/pages/pilot/fiji-tour-transfers.astro',import.meta.url),'utf8');
  assert.match(html,/noindex,nofollow/);
- assert.match(html,/Source prices are advertised in AUD/);
+ assert.match(html,/FJD prices are indicative conversions/);
  assert.match(html,/rel="noopener noreferrer sponsored"/);
- assert.match(html,/AU\$\{t.sourcePrice\}/);
+ assert.match(html,/previewFjdPrice/);
 });
 test('homepage links pilot and NAT',()=>{
  const html=readFileSync(new URL('../src/pages/index.astro',import.meta.url),'utf8');
  assert.match(html,/\/pilot\/fiji-tour-transfers\//);
  assert.match(html,/https:\/\/nadiairporttransfers.com\//);
 });
+
+test('FJD preview conversions have dated source',()=>{assert.equal(pilotFx.to,'FJD');assert.equal(previewFjdPrice(pilotTours[0]),119.41);assert.equal(previewFjdPrice(pilotTours[1]),218.39);assert.equal(previewFjdPrice(pilotTours[2]),141.41);});
