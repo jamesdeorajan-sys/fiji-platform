@@ -12,3 +12,5 @@ export const pilotFx={from:'AUD',to:'FJD',rate:1.5711719,asOf:'2026-11-04T17:00:
 export function previewFjdPrice(tour){if(tour.sourceCurrency!=='AUD')throw Error('Expected AUD');return Math.round(tour.sourcePrice*pilotFx.rate*100)/100;}
 
 export function pilotTransferReferralUrl(){const u=new URL(transferPartner.website);u.searchParams.set('utm_source','bulabooking');u.searchParams.set('utm_medium','referral');u.searchParams.set('utm_campaign','fiji_tour_transfers_pilot');return u.toString();}
+
+export function pilotFxFresh(now=new Date(),maxAgeDays=3){const age=now.getTime()-Date.parse(pilotFx.asOf);return Number.isFinite(age)&&age>=0&&age<=maxAgeDays*86400000;}
