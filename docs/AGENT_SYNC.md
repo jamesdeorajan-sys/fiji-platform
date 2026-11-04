@@ -1886,3 +1886,25 @@ Read-only check run on CEO's message that the manual Pages deployment was comple
 - Live hashes (no-store fetch): app.js 38b65ab72ab7d9d3, funnel-nat.js 33884363eff3376b, index.html 45032081069a615a = 9eff91b baseline; expected R1 510174d9b84e39e9 / a3ec7d1368416a83 / 5a80d4138f0f41ec NOT served.
 - Per instruction: stopped. 14-point acceptance, mobile/pricing and booking-watch not run. No deploy, no change, no booking, no notification, no D1/Worker access. Rollback target unchanged 0c2aee7b.
 - Open question for James: the upload he made is not visible in this account's `nadiairporttransfers` deployment list (possibly submitted to another project/account, still processing, or not saved). Please confirm via the Deployments list.
+
+## 2026-11-04 ~18:30 — NAT R1 deployment-mechanics blocker (">1000 files"): diagnosis and safe deploy method (NO production change)
+
+**Finding.** The clean artifact folder is correct; the dashboard error is explained by the folder layout in Downloads.
+- `C:\Users\James\Downloads\nat-r1-830be21\` (device listing, recursive): exactly 47 files in plain folders (transfer/, rental-assets/, nadi-airport-car-rentals/, nadi-airport-transfers-with-child-seats/); no symlink/junction/reparse entries (listing types are only file/dir); no node_modules, no hidden tree, no recursion. All 47 staged and sha256-checked against artifact-manifest-830be21.json: 47/47 match, 0 mismatch, 0 extra files; index.html is at the folder root. This equals commit 830be21 src.
+- `...\Downloads\nat-r1-830be21-DEPLOY\` is EMPTY (do not use).
+- ROOT CAUSE (probable, evidence-based): the same 47 artifact files were also extracted LOOSE into the root of `C:\Users\James\Downloads\` (confirmed loose app.js, index.html, funnel-nat.js, _redirects, 404.html, robots.txt, route-*.js, chat-widget.js, booking-extras.*, fiji-pickup.js, favicon.ico, icon-512.png and the three directories, all stamped with the artifact mtime). Downloads itself holds ~1,877 files + 123 folders (listing capped at 2,000 entries), i.e. >1,000. Cloudflare's 1,000-file limit matches a selection that included the Downloads root or its contents rather than only the nested folder. The "Upload 47 files?" prompt came from the browser for the folder chosen at that moment; why Cloudflare then saw more could not be reproduced from here (unconfirmed).
+- SAFETY NOTE: had the limit not blocked it, picking Downloads would have uploaded the contents of Downloads (personal/business files) to a public Pages site. Do not select Downloads or any parent of the artifact.
+- No bytes were altered; candidate unchanged. Nothing was written to production, D1, Workers; no notifications; no Save and deploy.
+
+**Safe deployment method (needs James; I have no shell on his computer and no Cloudflare credentials in the cloud session).**
+Preferred - Wrangler on James's machine (the machine has Node and a ~/.wrangler folder). PowerShell:
+1. `cd "C:\Users\James\Downloads\nat-r1-830be21"`   (folder with index.html directly inside; no functions/ or wrangler.toml present, so Wrangler will not add anything)
+2. Preflight (read-only): `npx wrangler whoami` -> account must be the one that owns nadiairporttransfers.com (account id 595101df2c562b3c65595420d43f9fe1, "Helpronline@gmail.com's Account"); then `npx wrangler pages deployment list --project-name nadiairporttransfers` -> newest Production row must still be 0c2aee7b-7151-4393-8ffa-2456c36b94af.
+3. Deploy: `npx wrangler pages deploy . --project-name nadiairporttransfers --branch main --commit-hash 830be21a4e14c536e43941632eafd9dfff8a882d --commit-message "NAT Conversion R1" --commit-dirty=true`
+   Expect "Uploading... (47 files)" (many may show as already uploaded) then a *.fttlandingpage.pages.dev URL. `--branch main` makes it Production (production branch is main).
+Fallback - dashboard: Create deployment > Production > upload folder, selecting ONLY `nat-r1-830be21` (never Downloads); the confirm dialog must say 47 files; then Save and deploy.
+After deploy: ask Claude to re-run verification (hash sweep vs manifest + 14-point acceptance).
+
+**Rollback procedure (verified-available target):** dashboard > Workers & Pages > nadiairporttransfers > Deployments > `0c2aee7b-7151-4393-8ffa-2456c36b94af` > "..." > Rollback to this deployment (baseline 9eff91b, 46 assets verified earlier). Wrangler has no `pages rollback` command; the equivalent is re-deploying the 9eff91b tree.
+
+**Authorisation check:** CEO instruction permits Production deploy only if existing authorisation covers the method and account/project can be positively verified before mutation. Neither Wrangler nor an authenticated account is reachable from this session, so no deploy was attempted. CEO/James action IS required (steps above).
