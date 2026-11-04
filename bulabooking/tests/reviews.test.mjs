@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {prepareVerifiedReview,reviewModerationTransition,summarizePublishedReviews} from '../src/lib/reviews.mjs';
+import {operatorReviewResponseRequest} from '../src/lib/review-response.mjs';
+const booking={id:'booking_001',listingId:'listing_001',operatorId:'operator_001',guestId:'guest_001',status:'completed',isTest:false};
+const input={rating:4,title:'Great day',body:'Great guides and a wonderful experience in Fiji.'};
+test('completed verified booking produces unpublished review',()=>{const r=prepareVerifiedReview({booking,review:input,actorGuestId:'guest_001'});assert.equal(r.verifiedBooking,true);assert.equal(r.publicationStatus,'unpublished');});
+test('pending booking cannot review',()=>assert.throws(()=>prepareVerifiedReview({booking:{...booking,status:'pending'},review:input,actorGuestId:'guest_001'})));
+test('another guest cannot review',()=>assert.throws(()=>prepareVerifiedReview({booking,review:input,actorGuestId:'guest_002'})));
+test('test booking cannot review',()=>assert.throws(()=>prepareVerifiedReview({booking:{...booking,isTest:true},review:input,actorGuestId:'guest_001'})));
+test('out of range rating rejected',()=>assert.throws(()=>prepareVerifiedReview({booking,review:{...input,rating:6},actorGuestId:'guest_001'})));
+test('operator cannot moderate own review',()=>{const r=prepareVerifiedReview({booking,review:input,actorGuestId:'guest_001'});assert.throws(()=>reviewModerationTransition(r,'approved','operator'));});
+test('approved review is published',()=>{const r=prepareVerifiedReview({booking,review:input,actorGuestId:'guest_001'});assert.equal(reviewModerationTransition(r,'approved','moderator').publicationStatus,'published');});
+test('rejection requires documented policy reason',()=>{const r=prepareVerifiedReview({booking,review:input,actorGuestId:'guest_001'});assert.throws(()=>reviewModerationTransition(r,'rejected','moderator','bad'));});
+test('only published verified reviews count',()=>{const r=reviewModerationTransition(prepareVerifiedReview({booking,review:input,actorGuestId:'guest_001'}),'approved','moderator');assert.deepEqual(summarizePublishedReviews([r,{...r,bookingId:'booking_002',moderationStatus:'pending'}],'listing_001').count,1);});
+test('empty rating is null not fabricated',()=>assert.equal(summarizePublishedReviews([],'listing_001').averageRating,null));
+test('review response remains draft',()=>{const request=operatorReviewResponseRequest({publicationStatus:'published',rating:2,body:'Service was late'},{name:'Local Operator'});assert.equal(request.publicationStatus,'draft_requires_operator_approval');});
