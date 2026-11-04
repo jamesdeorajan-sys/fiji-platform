@@ -47,26 +47,18 @@ a{color:#087b73}h1{font-size:clamp(2rem,5vw,3.5rem)}p{line-height:1.55;color:#50
 </main>
 <script is:inline>
 (function(){
-  const rate=Number(document.documentElement.dataset.pilotFxRate);
-  const observed=Date.parse(document.documentElement.dataset.pilotFxAsOf||'');
-  const age=Date.now()-observed;
-  const valid=Number.isFinite(rate)&&rate>0&&Number.isFinite(age)&&age>=0&&age<=3*86400000;
-  document.querySelectorAll('[data-pilot-price]').forEach(el=>{
-    const aud=Number(el.dataset.aud);
-    if(!valid||!Number.isFinite(aud)||aud<=0){
-      el.textContent='FJD estimate temporarily unavailable · Original source AU
-      return;
-    }
-    el.textContent='Approx. FJ$'+(Math.round(aud*rate*100)/100).toFixed(2)+' · Converted from AU$'+aud+' · Verify final price on provider website';
-  });
-})();
-</script>
-</body></html>
-+(Number.isFinite(aud)&&aud>0?aud:'—')+' · Verify current price on provider website';
-      return;
-    }
-    el.textContent='Approx. FJ$'+(Math.round(aud*rate*100)/100).toFixed(2)+' · Converted from AU$'+aud+' · Verify final price on provider website';
-  });
+ const rate=Number(document.documentElement.dataset.pilotFxRate);
+ const observed=Date.parse(document.documentElement.dataset.pilotFxAsOf||'');
+ const age=Date.now()-observed;
+ const valid=Number.isFinite(rate)&&rate>0&&Number.isFinite(age)&&age>=0&&age<=259200000;
+ document.querySelectorAll('[data-pilot-price]').forEach(el=>{
+  const aud=Number(el.dataset.aud);
+  if(!valid||!Number.isFinite(aud)||aud<=0){
+   el.textContent='FJD estimate unavailable. Original AUD price: '+(Number.isFinite(aud)&&aud>0?aud:'not available')+'. Verify current provider price.';
+   return;
+  }
+  el.textContent='Approximate FJD '+(Math.round(aud*rate*100)/100).toFixed(2)+' converted from AUD '+aud+'. Verify final provider price.';
+ });
 })();
 </script>
 </body></html>
