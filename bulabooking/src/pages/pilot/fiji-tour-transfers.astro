@@ -31,7 +31,7 @@ a{color:#087b73}h1{font-size:clamp(2rem,5vw,3.5rem)}p{line-height:1.55;color:#50
 <p class="small">{t.area} · {t.duration}</p>
 <h3>{t.title}</h3><p>{t.summary}</p>
 <p class="small" data-pilot-price data-aud={t.sourcePrice}>FJD estimate unavailable until current rate is checked · Original source AU${t.sourcePrice} · Verify final price on provider website</p>
-<a class="button" href={t.sourceUrl} rel="noopener noreferrer sponsored" target="_blank">View tour and check availability</a>
+{t.linkStatus === 'verified_destination' ? <a class="button" href={t.sourceUrl} rel="noopener noreferrer sponsored" target="_blank">View tour and check availability</a> : <p class="notice">Direct tour link is under review. <a href={pilotProvider.website} rel="noopener noreferrer" target="_blank">Check the provider's website</a> for current listings and availability.</p>}
 <p class="small">External website: {pilotProvider.name}</p>
 <p><a href={tourTransferReferralUrl(t.slug)} rel="noopener noreferrer sponsored" target="_blank">Need transport? Check private transfers</a></p>
 <p class="small">Affiliated transfer service · Not included unless confirmed by tour provider</p>
